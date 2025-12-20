@@ -1,0 +1,49 @@
+import { AdminSectionKey } from './types';
+
+export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description: string }[] = [
+  {
+    key: 'dashboard',
+    label: 'Dashboard',
+    description: 'Resumen general de actividad y métricas.',
+  },
+  {
+    key: 'calendar',
+    label: 'Calendario',
+    description: 'Planificación semanal y control de citas.',
+  },
+  {
+    key: 'search',
+    label: 'Buscar citas',
+    description: 'Historial completo de citas filtrado por barbero o fecha.',
+  },
+  {
+    key: 'clients',
+    label: 'Clientes',
+    description: 'Gestión de clientes y su historial de visitas.',
+  },
+  {
+    key: 'services',
+    label: 'Servicios',
+    description: 'Catálogo de servicios disponibles en el salón.',
+  },
+  {
+    key: 'barbers',
+    label: 'Barberos',
+    description: 'Administración del equipo de estilistas.',
+  },
+  {
+    key: 'alerts',
+    label: 'Alertas',
+    description: 'Mensajes destacados o avisos para clientes.',
+  },
+  {
+    key: 'holidays',
+    label: 'Festivos',
+    description: 'Bloqueo de días no laborables generales o por barbero.',
+  },
+  {
+    key: 'roles',
+    label: 'Roles y permisos',
+    description: 'Configuración de roles administrativos y accesos.',
+  },
+];
