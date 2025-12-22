@@ -151,6 +151,11 @@ const syncMockUserReference = (updatedUser: User) => {
   }
 };
 
+const normalizeUserRecord = (user: User): User =>
+  user.email === SUPER_ADMIN_EMAIL
+    ? { ...user, role: 'admin', isSuperAdmin: true, adminRoleId: null }
+    : user;
+
 // In-memory data stores (simulating database)
 const ensureSuperAdminFlag = (list: User[]): User[] =>
   list.map((user) =>
@@ -231,14 +236,40 @@ export const getUserById = async (id: string): Promise<User | undefined> => {
   return users.find(u => u.id === id);
 };
 
+export const getUserByEmail = async (email: string): Promise<User | undefined> => {
+  await delay(200);
+  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+};
+
+export const getUserByFirebaseUid = async (firebaseUid: string): Promise<User | undefined> => {
+  await delay(200);
+  return users.find((u) => u.firebaseUid === firebaseUid);
+};
+
+export const createUser = async (data: Omit<User, 'id'> & { id?: string }): Promise<User> => {
+  await delay();
+  const existing = data.email
+    ? users.find((u) => u.email.toLowerCase() === data.email.toLowerCase())
+    : undefined;
+  if (existing) return existing;
+
+  const newUser: User = normalizeUserRecord({
+    ...data,
+    id: data.id || `user-${Date.now()}`,
+  });
+
+  users.push(newUser);
+  syncMockUserReference(newUser);
+  saveToStorage();
+  return newUser;
+};
+
 export const updateUser = async (id: string, data: Partial<User>): Promise<User> => {
   await delay();
   const index = users.findIndex(u => u.id === id);
   if (index === -1) throw new Error('User not found');
-  const updated = { ...users[index], ...data };
-  users[index] = updated.email === SUPER_ADMIN_EMAIL
-    ? { ...updated, role: 'admin', isSuperAdmin: true, adminRoleId: null }
-    : updated;
+  const updated = normalizeUserRecord({ ...users[index], ...data });
+  users[index] = updated;
   syncMockUserReference(users[index]);
   saveToStorage();
   return users[index];

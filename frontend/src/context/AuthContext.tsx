@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, UserRole } from '@/data/types';
-import { users } from '@/data/mockData';
+import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api';
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  updateProfile as updateFirebaseProfile,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import { auth, googleProvider } from '@/lib/firebaseConfig';
 
 interface AuthContextType {
   user: User | null;
@@ -9,112 +19,158 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
-  updateProfile: (data: Partial<User>) => void;
+  logout: () => Promise<void>;
+  updateProfile: (data: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'barberia-auth';
+const SUPER_ADMIN_EMAIL = 'admin@barberia.com';
+const defaultNotificationPrefs = { email: true, whatsapp: true };
+
+const getDisplayName = (firebaseUser: FirebaseUser, providedName?: string) => {
+  const email = firebaseUser.email || '';
+  if (providedName) return providedName;
+  if (firebaseUser.displayName) return firebaseUser.displayName;
+  if (email) return email.split('@')[0];
+  return 'Usuario';
+};
+
+const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Partial<User>): Promise<User> => {
+  const email = firebaseUser.email || extras?.email;
+  if (!email) {
+    throw new Error('El usuario de Firebase no tiene email asociado');
+  }
+
+  const existingByUid = await getUserByFirebaseUid(firebaseUser.uid);
+  const existing = existingByUid || (await getUserByEmail(email));
+
+   const phone = extras?.phone || firebaseUser.phoneNumber || existing?.phone;
+   const notificationPrefs =
+    existing?.notificationPrefs ||
+    (phone ? { ...defaultNotificationPrefs } : { email: true, whatsapp: false });
+
+  const payload: Partial<User> = {
+    firebaseUid: firebaseUser.uid,
+    name: getDisplayName(firebaseUser, extras?.name),
+    email,
+    phone,
+    avatar: firebaseUser.photoURL || existing?.avatar,
+    role: existing?.role ?? (email === SUPER_ADMIN_EMAIL ? 'admin' : 'client'),
+    adminRoleId: existing?.adminRoleId ?? null,
+    isSuperAdmin: existing?.isSuperAdmin ?? (email === SUPER_ADMIN_EMAIL),
+    notificationPrefs,
+  };
+
+  if (existing) {
+    return updateUser(existing.id, payload);
+  }
+
+  return createUser({
+    firebaseUid: firebaseUser.uid,
+    name: payload.name || getDisplayName(firebaseUser),
+    email,
+    phone: payload.phone,
+    role: (payload.role || 'client') as UserRole,
+    notificationPrefs: payload.notificationPrefs || notificationPrefs,
+    avatar: payload.avatar,
+    adminRoleId: payload.adminRoleId ?? null,
+    isSuperAdmin: payload.isSuperAdmin,
+  });
+};
+
+const getFriendlyError = (error: any) => {
+  const code = error?.code || '';
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+      return 'Credenciales inválidas. Verifica tu email y contraseña.';
+    case 'auth/popup-closed-by-user':
+      return 'La ventana de inicio de sesión se cerró antes de completar el proceso.';
+    case 'auth/email-already-in-use':
+      return 'Ya existe una cuenta con ese email.';
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos. Inténtalo más tarde.';
+    default:
+      return 'No se pudo completar la autenticación. Inténtalo de nuevo.';
+  }
+};
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (stored) {
-      try {
-        const data = JSON.parse(stored);
-        setUser(data.user);
-      } catch (e) {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setIsLoading(true);
+      if (!firebaseUser) {
+        setUser(null);
+        setIsLoading(false);
+        return;
       }
-    }
-    setIsLoading(false);
+
+      try {
+        const profile = await mapFirebaseUserToProfile(firebaseUser);
+        setUser(profile);
+      } catch (error) {
+        console.error('Error al sincronizar el usuario de Firebase', error);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const saveSession = (user: User) => {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
-      user,
-      token: `mock-token-${user.id}`,
-    }));
-  };
-
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Find user by email (mock auth - in real app, validate password)
-    const foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (!foundUser) {
-      return { success: false, error: 'Usuario no encontrado. Verifica tu email.' };
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      const profile = await mapFirebaseUserToProfile(credential.user);
+      setUser(profile);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: getFriendlyError(error) };
     }
-    
-    // Mock password validation (accept any password for demo)
-    setUser(foundUser);
-    saveSession(foundUser);
-    return { success: true };
   };
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
-    // Simulate Google OAuth flow
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    
-    // For demo, login as first client user
-    const clientUser = users.find(u => u.role === 'client');
-    if (clientUser) {
-      setUser(clientUser);
-      saveSession(clientUser);
+    try {
+      const credential = await signInWithPopup(auth, googleProvider);
+      const profile = await mapFirebaseUserToProfile(credential.user);
+      setUser(profile);
       return { success: true };
+    } catch (error) {
+      return { success: false, error: getFriendlyError(error) };
     }
-    
-    return { success: false, error: 'Error al conectar con Google' };
   };
 
   const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Check if email already exists
-    const existingUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (existingUser) {
-      return { success: false, error: 'Este email ya está registrado.' };
-    }
-    
-    // Create new user
-    const newUser: User = {
-      id: `user-${Date.now()}`,
-      name,
-      email,
-      role: 'client',
-      notificationPrefs: { email: true, whatsapp: false },
-      adminRoleId: null,
-    };
-    
-    users.push(newUser);
-    setUser(newUser);
-    saveSession(newUser);
-    return { success: true };
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-  };
-
-  const updateProfile = (data: Partial<User>) => {
-    if (user) {
-      const updated = { ...user, ...data };
-      setUser(updated);
-      saveSession(updated);
-      
-      // Update in mock data
-      const index = users.findIndex(u => u.id === user.id);
-      if (index !== -1) {
-        users[index] = updated;
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      if (auth.currentUser) {
+        await updateFirebaseProfile(auth.currentUser, { displayName: name });
       }
+      const profile = await mapFirebaseUserToProfile(credential.user, { name });
+      setUser(profile);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: getFriendlyError(error) };
+    }
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+    setUser(null);
+  };
+
+  const updateProfile = async (data: Partial<User>) => {
+    if (!user) return;
+    const updated = await updateUser(user.id, data);
+    setUser(updated);
+    if (auth.currentUser && data.name) {
+      await updateFirebaseProfile(auth.currentUser, { displayName: data.name });
     }
   };
 

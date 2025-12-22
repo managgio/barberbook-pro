@@ -299,8 +299,8 @@ const AuthPage: React.FC = () => {
           <div className="mt-6 space-y-3">
             <div className="p-4 rounded-lg bg-secondary/50 border border-border">
               <p className="text-xs text-muted-foreground text-center">
-                <strong>Demo:</strong> Usa <code className="text-primary">carlos@example.com</code> para cliente o{' '}
-                <code className="text-primary">admin@barberia.com</code> para admin (cualquier contraseña)
+                Autenticación real con Firebase. Inicia sesión con Google o crea tu cuenta con email y contraseña.
+                Si usas <code className="text-primary">admin@barberia.com</code> se asignará el rol de administrador automáticamente.
               </p>
             </div>
           </div>

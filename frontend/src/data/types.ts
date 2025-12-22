@@ -2,6 +2,7 @@ export type UserRole = 'client' | 'admin';
 
 export interface User {
   id: string;
+  firebaseUid?: string;
   name: string;
   email: string;
   phone?: string;

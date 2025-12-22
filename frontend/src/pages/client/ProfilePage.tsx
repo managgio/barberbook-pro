@@ -26,22 +26,30 @@ const ProfilePage: React.FC = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-    updateProfile({
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      notificationPrefs,
-    });
+      await updateProfile({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        notificationPrefs,
+      });
 
-    toast({
-      title: 'Perfil actualizado',
-      description: 'Tus datos han sido guardados correctamente.',
-    });
-
-    setIsLoading(false);
+      toast({
+        title: 'Perfil actualizado',
+        description: 'Tus datos han sido guardados correctamente.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo actualizar',
+        description: 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
