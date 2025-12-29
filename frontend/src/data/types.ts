@@ -33,7 +33,7 @@ export interface Service {
   name: string;
   description: string;
   price: number;
-  duration: 30; // Always 30 minutes
+  duration: number; // Minutes
 }
 
 export type AppointmentStatus = 'confirmed' | 'completed' | 'cancelled';

@@ -79,8 +79,10 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
   });
 };
 
-const getFriendlyError = (error: any) => {
-  const code = error?.code || '';
+const getFriendlyError = (error: unknown) => {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? (error as { code?: string }).code || ''
+    : '';
   switch (code) {
     case 'auth/invalid-credential':
     case 'auth/user-not-found':

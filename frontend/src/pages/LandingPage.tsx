@@ -119,7 +119,7 @@ const LandingPage: React.FC = () => {
               { icon: Scissors, value: '15+', label: 'Años de experiencia' },
               { icon: Star, value: '4.9', label: 'Valoración media' },
               { icon: Calendar, value: '5K+', label: 'Reservas/año' },
-              { icon: Clock, value: '30min', label: 'Por servicio' },
+              { icon: Clock, value: 'A medida', label: 'Duraciones por servicio' },
             ].map((stat, index) => (
               <div key={stat.label} className="text-center" style={{ animationDelay: `${0.5 + index * 0.1}s` }}>
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-3">

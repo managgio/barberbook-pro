@@ -26,6 +26,7 @@ const AdminServices: React.FC = () => {
     name: '',
     description: '',
     price: '',
+    duration: '',
   });
 
   useEffect(() => {
@@ -40,7 +41,7 @@ const AdminServices: React.FC = () => {
 
   const openCreateDialog = () => {
     setEditingService(null);
-    setFormData({ name: '', description: '', price: '' });
+    setFormData({ name: '', description: '', price: '', duration: '' });
     setIsDialogOpen(true);
   };
 
@@ -50,6 +51,7 @@ const AdminServices: React.FC = () => {
       name: service.name,
       description: service.description,
       price: service.price.toString(),
+      duration: service.duration.toString(),
     });
     setIsDialogOpen(true);
   };
@@ -64,11 +66,19 @@ const AdminServices: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      const parsedDuration = parseInt(formData.duration, 10);
+      if (Number.isNaN(parsedDuration) || parsedDuration <= 0) {
+        toast({ title: 'Duración inválida', description: 'Define la duración en minutos.', variant: 'destructive' });
+        setIsSubmitting(false);
+        return;
+      }
+
       if (editingService) {
         await updateService(editingService.id, {
           name: formData.name,
           description: formData.description,
           price: parseFloat(formData.price),
+          duration: parsedDuration,
         });
         toast({ title: 'Servicio actualizado', description: 'Los cambios han sido guardados.' });
       } else {
@@ -76,7 +86,7 @@ const AdminServices: React.FC = () => {
           name: formData.name,
           description: formData.description,
           price: parseFloat(formData.price),
-          duration: 30,
+          duration: parsedDuration,
         });
         toast({ title: 'Servicio creado', description: 'El nuevo servicio ha sido añadido.' });
       }
@@ -209,10 +219,21 @@ const AdminServices: React.FC = () => {
                   required
                 />
               </div>
-              <div className="p-3 bg-secondary/50 rounded-lg">
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="duration">Duración (minutos)</Label>
+                <Input
+                  id="duration"
+                  type="number"
+                  min="5"
+                  step="5"
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  placeholder="30"
+                  required
+                />
+                <p className="text-xs text-muted-foreground flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  Duración fija: 30 minutos
+                  Define cuánto dura este servicio para calcular los huecos disponibles.
                 </p>
               </div>
             </div>

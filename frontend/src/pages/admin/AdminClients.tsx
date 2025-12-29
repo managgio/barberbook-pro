@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,14 +56,17 @@ const AdminClients: React.FC = () => {
     [clients, selectedClientId]
   );
 
-  const getClientAppointments = (clientId: string) =>
-    appointments
-      .filter((appointment) => appointment.userId === clientId)
-      .sort((a, b) => new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime());
+  const getClientAppointments = useCallback(
+    (clientId: string) =>
+      appointments
+        .filter((appointment) => appointment.userId === clientId)
+        .sort((a, b) => new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime()),
+    [appointments]
+  );
 
   const selectedClientAppointments = useMemo(
     () => (selectedClient ? getClientAppointments(selectedClient.id) : []),
-    [selectedClient, appointments]
+    [selectedClient, getClientAppointments]
   );
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);

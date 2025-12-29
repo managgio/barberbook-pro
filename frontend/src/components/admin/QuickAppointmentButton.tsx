@@ -62,7 +62,7 @@ const QuickAppointmentButton: React.FC = () => {
   }, [toast]);
 
   useEffect(() => {
-    if (!selectedBarberId || !selectedDate) {
+    if (!selectedBarberId || !selectedDate || !selectedServiceId) {
       setAvailableSlots([]);
       setSelectedTime('');
       return;
@@ -71,7 +71,9 @@ const QuickAppointmentButton: React.FC = () => {
     const fetchSlots = async () => {
       setSlotsLoading(true);
       try {
-        const slots = await getAvailableSlots(selectedBarberId, selectedDate);
+        const slots = await getAvailableSlots(selectedBarberId, selectedDate, {
+          serviceId: selectedServiceId,
+        });
         setAvailableSlots(slots);
       } catch (error) {
         toast({
@@ -85,7 +87,7 @@ const QuickAppointmentButton: React.FC = () => {
     };
 
     fetchSlots();
-  }, [selectedBarberId, selectedDate, toast]);
+  }, [selectedBarberId, selectedDate, selectedServiceId, toast]);
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLowerCase();
@@ -309,14 +311,21 @@ const QuickAppointmentButton: React.FC = () => {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Servicio</Label>
-                  <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
+                  <Select
+                    value={selectedServiceId}
+                    onValueChange={(value) => {
+                      setSelectedServiceId(value);
+                      setSelectedTime('');
+                      setAvailableSlots([]);
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona un servicio" />
                     </SelectTrigger>
                     <SelectContent>
                       {services.map((service) => (
                         <SelectItem key={service.id} value={service.id}>
-                          {service.name} · {service.price}€
+                          {service.name} · {service.price}€ · {service.duration} min
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -359,7 +368,7 @@ const QuickAppointmentButton: React.FC = () => {
                       type="date"
                       min={minDate}
                       value={selectedDate}
-                      disabled={!selectedBarberId}
+                      disabled={!selectedBarberId || !selectedServiceId}
                       onChange={(e) => setSelectedDate(e.target.value)}
                     />
                   </div>
@@ -369,9 +378,9 @@ const QuickAppointmentButton: React.FC = () => {
                       Selecciona la hora
                     </Label>
                     <div className="min-h-[100px] rounded-2xl border border-dashed border-border p-3">
-                      {!selectedBarberId || !selectedDate ? (
+                      {!selectedServiceId || !selectedBarberId || !selectedDate ? (
                         <p className="text-sm text-muted-foreground">
-                          Selecciona primero barbero y fecha.
+                          Selecciona servicio, barbero y fecha para ver la disponibilidad.
                         </p>
                       ) : slotsLoading ? (
                         <div className="flex items-center justify-center py-6">

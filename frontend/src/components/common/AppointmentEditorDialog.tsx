@@ -77,20 +77,18 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, appointment?.id]);
 
-  const loadSlots = async (barberId: string, date: string, currentTime?: string) => {
-    if (!barberId || !date) {
+  const loadSlots = async (barberId: string, date: string, serviceId?: string) => {
+    if (!barberId || !date || !serviceId) {
       setAvailableSlots([]);
       return;
     }
     setSlotsLoading(true);
     try {
-      const slots = await getAvailableSlots(barberId, date);
-      const merged = [...slots];
-      if (currentTime && !slots.includes(currentTime)) {
-        merged.push(currentTime);
-        merged.sort();
-      }
-      setAvailableSlots(merged);
+      const slots = await getAvailableSlots(barberId, date, {
+        serviceId,
+        appointmentIdToIgnore: appointment?.id,
+      });
+      setAvailableSlots(slots);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo cargar la disponibilidad.', variant: 'destructive' });
       setAvailableSlots([]);
@@ -100,12 +98,11 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   };
 
   useEffect(() => {
-    if (form.barberId && form.date) {
-      const currentAppointmentTime = appointment ? appointment.startDateTime.split('T')[0] === form.date ? form.time : undefined : undefined;
-      loadSlots(form.barberId, form.date, currentAppointmentTime);
+    if (form.barberId && form.date && form.serviceId) {
+      loadSlots(form.barberId, form.date, form.serviceId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.barberId, form.date]);
+  }, [form.barberId, form.date, form.serviceId]);
 
   const slotGroups = useMemo(() => {
     const morning: string[] = [];
@@ -165,14 +162,17 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Servicio</Label>
-                <Select value={form.serviceId} onValueChange={(value) => setForm((prev) => ({ ...prev, serviceId: value }))}>
+                <Select
+                  value={form.serviceId}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, serviceId: value, time: '' }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona un servicio" />
                   </SelectTrigger>
                   <SelectContent>
                     {services.map((service) => (
                       <SelectItem key={service.id} value={service.id}>
-                        {service.name} · {service.price}€
+                        {service.name} · {service.price}€ · {service.duration} min
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -212,9 +212,9 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                   <Clock className="w-4 h-4" /> Selecciona la hora
                 </Label>
                 <div className="min-h-[120px] rounded-2xl border border-dashed border-border p-3">
-                  {!form.barberId || !form.date ? (
+                  {!form.serviceId || !form.barberId || !form.date ? (
                     <p className="text-sm text-muted-foreground">
-                      Selecciona primero barbero y fecha.
+                      Selecciona servicio, barbero y fecha.
                     </p>
                   ) : slotsLoading ? (
                     <div className="flex items-center justify-center py-6">

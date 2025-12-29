@@ -107,10 +107,11 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
         title: 'Foto subida',
         description: 'Imagen optimizada y guardada en ImageKit.',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'No se pudo subir la imagen.';
       toast({
         title: 'Error al subir',
-        description: error?.message || 'No se pudo subir la imagen.',
+        description: message,
         variant: 'destructive',
       });
     } finally {

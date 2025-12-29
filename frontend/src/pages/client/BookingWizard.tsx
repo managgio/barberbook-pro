@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import {
   ChevronRight, 
   Calendar, 
   Scissors,
+  Clock,
   Loader2,
   CheckCircle,
 } from 'lucide-react';
@@ -75,12 +76,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }, [searchParams]);
 
   useEffect(() => {
-    if (booking.barberId && currentStep === 1) {
-      fetchSlots();
-    }
-  }, [booking.barberId, selectedDate, currentStep]);
-
-  useEffect(() => {
     if (booking.barberId) {
       const stillActive = barbers.some(
         (barber) => barber.id === booking.barberId && barber.isActive !== false
@@ -119,14 +114,22 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     return { morningSlots: morning, afternoonSlots: afternoon };
   }, [availableSlots]);
 
-  const fetchSlots = async () => {
-    if (!booking.barberId) return;
+  const fetchSlots = useCallback(async () => {
+    if (!booking.barberId || !booking.serviceId) return;
     setIsSlotsLoading(true);
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    const slots = await getAvailableSlots(booking.barberId, dateStr);
+    const slots = await getAvailableSlots(booking.barberId, dateStr, {
+      serviceId: booking.serviceId,
+    });
     setAvailableSlots(slots);
     setIsSlotsLoading(false);
-  };
+  }, [booking.barberId, booking.serviceId, selectedDate]);
+
+  useEffect(() => {
+    if (booking.barberId && booking.serviceId && currentStep === 1) {
+      fetchSlots();
+    }
+  }, [booking.barberId, booking.serviceId, selectedDate, currentStep, fetchSlots]);
 
   const handleSelectService = (serviceId: string) => {
     setBooking({
@@ -345,6 +348,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         </div>
                         <h3 className="font-semibold text-foreground">{service.name}</h3>
                         <p className="text-sm text-muted-foreground mt-1">{service.description}</p>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3">
+                          <Clock className="w-4 h-4" />
+                          {service.duration} min
+                        </div>
                       </CardContent>
                     </Card>
                   ))}

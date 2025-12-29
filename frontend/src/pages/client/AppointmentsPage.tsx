@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,7 @@ const AppointmentsPage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
     const [appts, barbersData, servicesData] = await Promise.all([
@@ -42,13 +42,13 @@ const AppointmentsPage: React.FC = () => {
     setBarbers(barbersData);
     setServices(servicesData);
     setIsLoading(false);
-  };
+  }, [user]);
 
   useEffect(() => {
     if (user) {
       loadData();
     }
-  }, [user]);
+  }, [user, loadData]);
 
   const upcomingAppointments = appointments
     .filter(a => !isPast(parseISO(a.startDateTime)) && a.status === 'confirmed')
@@ -65,7 +65,8 @@ const AppointmentsPage: React.FC = () => {
     const service = getService(appointment.serviceId);
     const barber = getBarber(appointment.barberId);
     const startDate = parseISO(appointment.startDateTime);
-    const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+    const durationMinutes = service?.duration ?? 30;
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
     
     const formatDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     

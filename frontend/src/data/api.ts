@@ -25,6 +25,8 @@ import {
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const SUPER_ADMIN_EMAIL = 'admin@barberia.com';
+const DEFAULT_SERVICE_DURATION = 30;
+const SLOT_INTERVAL_MINUTES = 15;
 
 // Simulate network delay
 const delay = (ms: number = 300) => new Promise(resolve => setTimeout(resolve, ms));
@@ -79,6 +81,17 @@ const normalizeBarber = (barber: Barber): Barber => ({
   endDate: barber.endDate ? toISODate(barber.endDate) : null,
   isActive: barber.isActive ?? true,
 });
+
+const normalizeService = (service: Service): Service => {
+  const parsedDuration = Number(service.duration);
+  const duration = Number.isFinite(parsedDuration) && parsedDuration > 0
+    ? parsedDuration
+    : DEFAULT_SERVICE_DURATION;
+  return {
+    ...service,
+    duration,
+  };
+};
 
 const cloneRole = (role: AdminRole): AdminRole => ({
   ...role,
@@ -136,7 +149,10 @@ const normalizeSchedule = (schedule?: Partial<ShopSchedule>): ShopSchedule => {
     const dayData = schedule?.[day] as Partial<DaySchedule> | undefined;
     const isLegacy = dayData && Object.prototype.hasOwnProperty.call(dayData, 'open');
     if (isLegacy) {
-      normalized[day] = convertLegacyDay(dayData as any, fallback);
+      normalized[day] = convertLegacyDay(
+        dayData as { open?: string; close?: string; closed?: boolean },
+        fallback
+      );
       return;
     }
     const morning = normalizeShift(dayData?.morning, fallback.morning);
@@ -176,7 +192,7 @@ const ensureSuperAdminFlag = (list: User[]): User[] =>
 
 let users = ensureSuperAdminFlag([...initialUsers]);
 let barbers = initialBarbers.map(normalizeBarber);
-let services = [...initialServices];
+let services = initialServices.map(normalizeService);
 let appointments = [...initialAppointments];
 let alerts = [...initialAlerts];
 let generalHolidays: HolidayRange[] = holidaysGeneral.map((range) => normalizeRange(range));
@@ -196,7 +212,7 @@ const loadFromStorage = () => {
       const data = JSON.parse(stored);
       users = ensureSuperAdminFlag(data.users || initialUsers);
       barbers = (data.barbers || initialBarbers).map(normalizeBarber);
-      services = data.services || initialServices;
+      services = (data.services || initialServices).map(normalizeService);
       appointments = data.appointments || initialAppointments;
       alerts = data.alerts || initialAlerts;
       generalHolidays = normalizeRangeList(data.generalHolidays, holidaysGeneral);
@@ -332,7 +348,7 @@ export const getServiceById = async (id: string): Promise<Service | undefined> =
 
 export const createService = async (data: Omit<Service, 'id'>): Promise<Service> => {
   await delay();
-  const newService: Service = { ...data, id: `service-${Date.now()}` };
+  const newService: Service = normalizeService({ ...data, id: `service-${Date.now()}` });
   services.push(newService);
   saveToStorage();
   return newService;
@@ -342,7 +358,7 @@ export const updateService = async (id: string, data: Partial<Service>): Promise
   await delay();
   const index = services.findIndex(s => s.id === id);
   if (index === -1) throw new Error('Service not found');
-  services[index] = { ...services[index], ...data };
+  services[index] = normalizeService({ ...services[index], ...data });
   saveToStorage();
   return services[index];
 };
@@ -556,36 +572,48 @@ export const removeBarberHolidayRange = async (barberId: string, range: HolidayR
   return barberSpecificHolidays[barberId].map((item) => ({ ...item }));
 };
 
-const generateSlotsForShift = (shift: ShiftSchedule): string[] => {
+const timeToMinutes = (time: string): number => {
+  const [hour, minute] = time.split(':').map(Number);
+  return hour * 60 + minute;
+};
+
+const minutesToTime = (minutes: number): string => {
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+};
+
+const getServiceDuration = (serviceId?: string): number => {
+  if (!serviceId) return DEFAULT_SERVICE_DURATION;
+  const service = services.find((s) => s.id === serviceId);
+  return service?.duration ?? DEFAULT_SERVICE_DURATION;
+};
+
+const generateSlotsForShift = (shift: ShiftSchedule, serviceDuration: number): string[] => {
   if (!shift.enabled) return [];
-  const [startHour, startMin] = shift.start.split(':').map(Number);
-  const [endHour, endMin] = shift.end.split(':').map(Number);
+  const startMinutes = timeToMinutes(shift.start);
+  const endMinutes = timeToMinutes(shift.end);
   const slots: string[] = [];
 
-  // Guard against invalid ranges
-  if (startHour > endHour || (startHour === endHour && startMin >= endMin)) {
-    return slots;
-  }
+  if (startMinutes >= endMinutes || serviceDuration <= 0) return slots;
 
-  let currentHour = startHour;
-  let currentMin = startMin;
-
-  while (currentHour < endHour || (currentHour === endHour && currentMin < endMin)) {
-    const timeStr = `${currentHour.toString().padStart(2, '0')}:${currentMin.toString().padStart(2, '0')}`;
-    slots.push(timeStr);
-
-    currentMin += 30;
-    if (currentMin >= 60) {
-      currentMin -= 60;
-      currentHour += 1;
-    }
+  for (
+    let current = startMinutes;
+    current + serviceDuration <= endMinutes;
+    current += SLOT_INTERVAL_MINUTES
+  ) {
+    slots.push(minutesToTime(current));
   }
 
   return slots;
 };
 
 // Availability check
-export const getAvailableSlots = async (barberId: string, date: string): Promise<string[]> => {
+export const getAvailableSlots = async (
+  barberId: string,
+  date: string,
+  options?: { serviceId?: string; appointmentIdToIgnore?: string }
+): Promise<string[]> => {
   await delay(400);
   const barber = barbers.find((b) => b.id === barberId);
   if (!barber || barber.isActive === false) return [];
@@ -606,9 +634,11 @@ export const getAvailableSlots = async (barberId: string, date: string): Promise
   const barberHolidays = barberSpecificHolidays[barberId] || [];
   if (barberHolidays.some((range) => isDateInRange(date, range))) return [];
 
+  const targetDuration = getServiceDuration(options?.serviceId);
+
   const rawSlots = [
-    ...generateSlotsForShift(schedule.morning),
-    ...generateSlotsForShift(schedule.afternoon),
+    ...generateSlotsForShift(schedule.morning, targetDuration),
+    ...generateSlotsForShift(schedule.afternoon, targetDuration),
   ];
   if (rawSlots.length === 0) return [];
 
@@ -616,15 +646,27 @@ export const getAvailableSlots = async (barberId: string, date: string): Promise
 
   const bookedAppointments = appointments.filter(
     (a) =>
-      a.barberId === barberId && a.startDateTime.startsWith(date) && a.status !== 'cancelled'
+      a.barberId === barberId &&
+      a.startDateTime.startsWith(date) &&
+      a.status !== 'cancelled' &&
+      a.id !== options?.appointmentIdToIgnore
   );
 
-  const bookedTimes = bookedAppointments.map((a) => {
+  const bookedRanges = bookedAppointments.map((a) => {
     const d = new Date(a.startDateTime);
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes()
-      .toString()
-      .padStart(2, '0')}`;
+    const startMinutes = d.getHours() * 60 + d.getMinutes();
+    const duration = getServiceDuration(a.serviceId);
+    return {
+      start: startMinutes,
+      end: startMinutes + duration,
+    };
   });
 
-  return uniqueSlots.filter((slot) => !bookedTimes.includes(slot));
+  return uniqueSlots.filter((slot) => {
+    const slotStart = timeToMinutes(slot);
+    const slotEnd = slotStart + targetDuration;
+    return bookedRanges.every(
+      (range) => slotEnd <= range.start || slotStart >= range.end
+    );
+  });
 };
