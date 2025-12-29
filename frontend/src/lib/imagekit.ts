@@ -1,5 +1,5 @@
 const UPLOAD_URL = 'https://upload.imagekit.io/api/v1/files/upload';
-const DEFAULT_FOLDER = '/barbers';
+const DEFAULT_FOLDER = import.meta.env.VITE_IMAGEKIT_FOLDER || '/barbers';
 
 const assertConfig = () => {
   const publicKey = import.meta.env.VITE_IMAGEKIT_PUBLIC_KEY;
