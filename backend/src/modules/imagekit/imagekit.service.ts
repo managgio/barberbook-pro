@@ -21,4 +21,27 @@ export class ImageKitService {
 
     return { token, expire, signature, publicKey, urlEndpoint };
   }
+
+  async deleteFile(fileId: string) {
+    const privateKey = this.configService.get<string>('IMAGEKIT_PRIVATE_KEY');
+    if (!privateKey) {
+      throw new InternalServerErrorException('ImageKit no está configurado');
+    }
+
+    const response = await fetch(`https://api.imagekit.io/v1/files/${fileId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${privateKey}:`).toString('base64')}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new InternalServerErrorException(
+        `No se pudo eliminar la imagen en ImageKit: ${error || response.statusText}`,
+      );
+    }
+
+    return { success: true };
+  }
 }

@@ -39,7 +39,7 @@ export const uploadToImageKit = async (
   file: Blob,
   fileName: string,
   folder: string = DEFAULT_FOLDER
-): Promise<string> => {
+): Promise<{ url: string; fileId: string }> => {
   const auth = await requestImageKitAuth();
   const formData = new FormData();
   formData.append('file', file);
@@ -64,5 +64,13 @@ export const uploadToImageKit = async (
   }
 
   const result = await response.json();
-  return result.url as string;
+  return { url: result.url as string, fileId: result.fileId as string };
+};
+
+export const deleteFromImageKit = async (fileId: string): Promise<void> => {
+  const response = await fetch(`/api/imagekit/file/${fileId}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || 'No se pudo eliminar la imagen.');
+  }
 };

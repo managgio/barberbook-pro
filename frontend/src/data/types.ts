@@ -20,6 +20,7 @@ export interface Barber {
   id: string;
   name: string;
   photo?: string | null;
+  photoFileId?: string | null;
   specialty: string;
   role: 'worker' | 'admin';
   bio?: string;

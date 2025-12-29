@@ -12,6 +12,7 @@ export const mapBarber = (barber: Barber) => ({
   id: barber.id,
   name: barber.name,
   photo: sanitizeBarberPhoto(barber.photo) || null,
+  photoFileId: sanitizeBarberPhoto(barber.photo) ? barber.photoFileId || null : null,
   specialty: barber.specialty,
   role: barber.role,
   bio: barber.bio || null,

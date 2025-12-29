@@ -9,6 +9,10 @@ export class CreateBarberDto {
   @IsString()
   photo?: string;
 
+  @IsOptional()
+  @IsString()
+  photoFileId?: string | null;
+
   @IsString()
   specialty!: string;
 

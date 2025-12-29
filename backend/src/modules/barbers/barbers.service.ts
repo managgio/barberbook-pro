@@ -26,6 +26,7 @@ export class BarbersService {
       data: {
         name: data.name,
         photo: data.photo,
+        photoFileId: data.photoFileId,
         specialty: data.specialty,
         role: data.role || 'worker',
         bio: data.bio,
@@ -44,6 +45,7 @@ export class BarbersService {
       data: {
         name: data.name,
         photo: data.photo ?? undefined,
+        photoFileId: data.photoFileId ?? undefined,
         specialty: data.specialty,
         role: data.role,
         bio: data.bio ?? undefined,

@@ -1,14 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Upload, Sparkles, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Upload, Sparkles, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { uploadToImageKit } from '@/lib/imagekit';
-import { useToast } from '@/hooks/use-toast';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
+
+export type PhotoChangePayload = {
+  previewUrl: string;
+  dataUrl?: string;
+  zoom?: number;
+  remove?: boolean;
+};
 
 type Props = {
   value: string;
-  onChange: (url: string) => void;
+  onChange: (data: PhotoChangePayload) => void;
 };
 
 const loadImage = (src: string) =>
@@ -19,7 +25,7 @@ const loadImage = (src: string) =>
     img.src = src;
   });
 
-const cropAndCompress = async (src: string, zoom: number) => {
+export const cropAndCompress = async (src: string, zoom: number) => {
   const image = await loadImage(src);
   const side = Math.min(image.width, image.height);
   const cropSize = side / zoom;
@@ -57,12 +63,10 @@ const cropAndCompress = async (src: string, zoom: number) => {
 };
 
 export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
-  const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>(value);
   const [selectedDataUrl, setSelectedDataUrl] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number>(1.05);
-  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     setPreviewUrl(value);
@@ -75,6 +79,7 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
       const dataUrl = event.target?.result as string;
       setSelectedDataUrl(dataUrl);
       setPreviewUrl(dataUrl);
+      onChange({ previewUrl: dataUrl, dataUrl, zoom });
     };
     reader.readAsDataURL(file);
   };
@@ -85,38 +90,11 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
     handleFile(file || null);
   };
 
-  const handleUpload = async () => {
-    if (!selectedDataUrl) {
-      toast({
-        title: 'Selecciona una imagen',
-        description: 'Adjunta una foto antes de subirla.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const blob = await cropAndCompress(selectedDataUrl, zoom);
-      const fileName = `barber-${Date.now()}.webp`;
-      const url = await uploadToImageKit(blob, fileName);
-      setPreviewUrl(url);
-      setSelectedDataUrl(null);
-      onChange(url);
-      toast({
-        title: 'Foto subida',
-        description: 'Imagen optimizada y guardada en ImageKit.',
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'No se pudo subir la imagen.';
-      toast({
-        title: 'Error al subir',
-        description: message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsUploading(false);
-    }
+  const handleRemovePhoto = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setPreviewUrl(defaultAvatar);
+    setSelectedDataUrl(null);
+    onChange({ previewUrl: defaultAvatar, remove: true });
   };
 
   return (
@@ -125,7 +103,7 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
         <div className="space-y-1">
           <Label>Foto del barbero</Label>
           <p className="text-sm text-muted-foreground">
-            Recorte automático a cuadrado y compresión WebP antes de subir a ImageKit.
+            Recorte automático a cuadrado y compresión WebP antes de guardar la imagen.
           </p>
         </div>
         {previewUrl && (
@@ -154,25 +132,17 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
           <div className="flex-1 space-y-1">
             <p className="font-medium text-foreground">Arrastra o selecciona una imagen</p>
             <p className="text-sm text-muted-foreground">
-              Recomendado 800x800px. Admite JPG/PNG/WebP. El archivo se optimiza antes de subir.
+              Recomendado 800x800px. Admite JPG/PNG/WebP. El archivo se optimiza antes de guardar.
             </p>
             <div className="flex flex-wrap gap-3 pt-2">
               <Button
                 type="button"
-                variant="secondary"
+                variant="ghost"
                 size="sm"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={handleRemovePhoto}
               >
-                Elegir archivo
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleUpload}
-                disabled={isUploading || !selectedDataUrl}
-              >
-                {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Confirmar imagen
+                <Trash2 className="mr-2 h-4 w-4" />
+                Eliminar foto
               </Button>
             </div>
           </div>
@@ -190,7 +160,7 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
         <div className="rounded-lg border bg-card p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Sparkles className="h-4 w-4" />
-            <span>Ajusta el recorte (zoom) antes de subir</span>
+            <span>Ajusta el recorte (zoom) antes de guardar</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-[220px_1fr] items-center">
             <div className="relative aspect-square overflow-hidden rounded-xl border">
@@ -212,7 +182,13 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
                 max={2}
                 step={0.05}
                 value={[zoom]}
-                onValueChange={(vals) => setZoom(vals[0])}
+                onValueChange={(vals) => {
+                  const newZoom = vals[0];
+                  setZoom(newZoom);
+                  if (selectedDataUrl) {
+                    onChange({ previewUrl: selectedDataUrl, dataUrl: selectedDataUrl, zoom: newZoom });
+                  }
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 Se recorta al centro y se exporta a WebP 800x800 ({Math.round(zoom * 100)}% de zoom).

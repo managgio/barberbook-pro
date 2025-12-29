@@ -12,6 +12,10 @@ export class UpdateBarberDto {
 
   @IsOptional()
   @IsString()
+  photoFileId?: string | null;
+
+  @IsOptional()
+  @IsString()
   specialty?: string;
 
   @IsOptional()

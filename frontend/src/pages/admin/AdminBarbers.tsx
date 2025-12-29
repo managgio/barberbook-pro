@@ -15,8 +15,9 @@ import { Plus, Pencil, Trash2, Calendar, Loader2, UserCircle, CalendarClock, Cop
 import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
-import { BarberPhotoUploader } from '@/components/admin/BarberPhotoUploader';
+import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/components/admin/BarberPhotoUploader';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 
 const DAY_LABELS: { key: keyof ShopSchedule; label: string; short: string }[] = [
   { key: 'monday', label: 'Lunes', short: 'Lun' },
@@ -61,9 +62,13 @@ const AdminBarbers: React.FC = () => {
   const [copiedSchedule, setCopiedSchedule] = useState<ShopSchedule | null>(null);
   const [copySource, setCopySource] = useState(0);
   const todayISO = new Date().toISOString().split('T')[0];
+  const [pendingPhoto, setPendingPhoto] = useState<{ dataUrl: string; zoom: number } | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [originalPhotoFileId, setOriginalPhotoFileId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     photo: defaultAvatar,
+    photoFileId: null as string | null,
     specialty: '',
     bio: '',
     startDate: todayISO,
@@ -83,7 +88,10 @@ const AdminBarbers: React.FC = () => {
 
   const openCreateDialog = () => {
     setEditingBarber(null);
-    setFormData({ name: '', photo: defaultAvatar, specialty: '', bio: '', startDate: todayISO, endDate: '', isActive: true });
+    setFormData({ name: '', photo: defaultAvatar, photoFileId: null, specialty: '', bio: '', startDate: todayISO, endDate: '', isActive: true });
+    setPendingPhoto(null);
+    setRemovePhoto(false);
+    setOriginalPhotoFileId(null);
     setIsDialogOpen(true);
   };
 
@@ -92,13 +100,37 @@ const AdminBarbers: React.FC = () => {
     setFormData({
       name: barber.name,
       photo: barber.photo || defaultAvatar,
+      photoFileId: barber.photoFileId || null,
       specialty: barber.specialty,
       bio: barber.bio || '',
       startDate: barber.startDate || todayISO,
       endDate: barber.endDate || '',
       isActive: barber.isActive ?? true,
     });
+    setPendingPhoto(null);
+    setRemovePhoto(false);
+    setOriginalPhotoFileId(barber.photoFileId || null);
     setIsDialogOpen(true);
+  };
+
+  const handlePhotoChange = (change: PhotoChangePayload) => {
+    setFormData((prev) => ({
+      ...prev,
+      photo: change.previewUrl,
+      photoFileId: change.remove ? null : change.dataUrl ? null : prev.photoFileId,
+    }));
+
+    if (change.remove) {
+      setPendingPhoto(null);
+      setRemovePhoto(true);
+      return;
+    }
+
+    if (change.dataUrl) {
+      setPendingPhoto({ dataUrl: change.dataUrl, zoom: change.zoom ?? 1.05 });
+      setRemovePhoto(false);
+      return;
+    }
   };
 
   const openDeleteDialog = (id: string) => {
@@ -247,10 +279,50 @@ const AdminBarbers: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      let updatedPhoto = formData.photo;
+      let updatedPhotoFileId = formData.photoFileId;
+      const previousFileId = originalPhotoFileId;
+      if (removePhoto) {
+        if (previousFileId) {
+          try {
+            await deleteFromImageKit(previousFileId);
+          } catch (cleanupError) {
+            console.error(cleanupError);
+            toast({
+              title: 'Aviso',
+              description: 'No se pudo borrar la foto anterior. Revisa el almacenamiento.',
+              variant: 'destructive',
+            });
+          }
+        }
+        updatedPhoto = defaultAvatar;
+        updatedPhotoFileId = null;
+      } else if (pendingPhoto) {
+        const blob = await cropAndCompress(pendingPhoto.dataUrl, pendingPhoto.zoom);
+        const fileName = `barber-${Date.now()}.webp`;
+        const { url, fileId } = await uploadToImageKit(blob, fileName);
+        updatedPhoto = url;
+        updatedPhotoFileId = fileId;
+
+        if (previousFileId && previousFileId !== fileId) {
+          try {
+            await deleteFromImageKit(previousFileId);
+          } catch (cleanupError) {
+            console.error(cleanupError);
+            toast({
+              title: 'Aviso',
+              description: 'No se pudo borrar la foto anterior. Revisa el almacenamiento.',
+              variant: 'destructive',
+            });
+          }
+        }
+      }
+
       if (editingBarber) {
         await updateBarber(editingBarber.id, {
           name: formData.name,
-          photo: formData.photo,
+          photo: updatedPhoto,
+          photoFileId: updatedPhotoFileId,
           specialty: formData.specialty,
           bio: formData.bio,
           role: 'worker',
@@ -262,7 +334,8 @@ const AdminBarbers: React.FC = () => {
       } else {
         await createBarber({
           name: formData.name,
-          photo: formData.photo,
+          photo: updatedPhoto,
+          photoFileId: updatedPhotoFileId,
           specialty: formData.specialty,
           bio: formData.bio,
           role: 'worker',
@@ -401,7 +474,7 @@ const AdminBarbers: React.FC = () => {
               <div className="space-y-2">
                 <BarberPhotoUploader
                   value={formData.photo}
-                  onChange={(url) => setFormData({ ...formData, photo: url })}
+                  onChange={handlePhotoChange}
                 />
               </div>
               <div className="space-y-2">

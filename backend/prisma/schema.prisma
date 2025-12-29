@@ -62,6 +62,7 @@ model Barber {
   id          String           @id @default(cuid())
   name        String
   photo       String?
+  photoFileId String?
   specialty   String
   role        BarberRole       @default(worker)
   bio         String?
