@@ -25,7 +25,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const SUPER_ADMIN_EMAIL = 'admin@barberia.com';
+const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
 const defaultNotificationPrefs = { email: true, whatsapp: true };
 
 const getDisplayName = (firebaseUser: FirebaseUser, providedName?: string) => {
@@ -37,7 +37,7 @@ const getDisplayName = (firebaseUser: FirebaseUser, providedName?: string) => {
 };
 
 const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Partial<User>): Promise<User> => {
-  const email = firebaseUser.email || extras?.email;
+  const email = (firebaseUser.email || extras?.email || '').toLowerCase();
   if (!email) {
     throw new Error('El usuario de Firebase no tiene email asociado');
   }

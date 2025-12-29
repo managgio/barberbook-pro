@@ -7,7 +7,7 @@ Este repositorio contiene el código de **Barberbook Pro**, organizado como un *
 ```text
 .
 ├─ frontend/   # Aplicación web (Vite + React + TypeScript + Tailwind + shadcn-ui)
-└─ backend/    # (Futuro) API / backend del proyecto
+└─ backend/    # API NestJS + Prisma + MySQL
 ```
 
 ## Frontend
@@ -20,7 +20,7 @@ El frontend vive en `frontend/` y está construido con:
 - shadcn-ui
 - Tailwind CSS
 
-### Desarrollo local (solo frontend por ahora)
+### Desarrollo local (solo frontend)
 
 ```sh
 # Clonar el repositorio
@@ -40,20 +40,42 @@ npm run dev
 ### Configuración de ImageKit (subida de fotos)
 
 - Copia `frontend/.env.example` a `frontend/.env.local` y rellena:
+  - `VITE_API_BASE_URL` (URL del backend, por defecto `http://localhost:3000/api`)
   - `VITE_IMAGEKIT_PUBLIC_KEY`
   - `VITE_IMAGEKIT_URL_ENDPOINT`
-  - `IMAGEKIT_PRIVATE_KEY` (solo para firmar en local, no se expone al cliente).
-- El `vite dev` expone un endpoint local `/api/imagekit/sign` que genera las firmas necesarias. En producción debes replicar este endpoint en tu backend o función serverless.
+- El backend expone `/api/imagekit/sign` para firmar subidas; ya no se firma en el dev server de Vite.
 
-## Backend (futuro)
+## Backend (NestJS + Prisma + MySQL)
 
-En el futuro, el backend se ubicará en la carpeta `backend/` y también formará parte de este mismo repositorio Git.
+El backend vive en `backend/` con NestJS y Prisma sobre MySQL.
 
-Cuando exista, la sección se podrá ampliar con:
+### Puesta en marcha
 
-- Tecnologías usadas (Node, Nest, Express, etc.)
-- Cómo levantar el servidor en desarrollo
-- Scripts de test y despliegue
+```sh
+cd backend
+cp .env.example .env   # ajusta DATABASE_URL, claves de ImageKit y puerto
+npm install
+npx prisma generate
+npx prisma migrate dev --name init
+npm run prisma:seed     # datos de ejemplo que sustituyen los mocks del frontend
+npm run start:dev
+```
+
+### Dependencias principales
+
+- NestJS (REST API con validación y CORS)
+- Prisma ORM (MySQL) con seed inicial (usuarios, barberos, servicios, citas, festivos y horarios)
+- ImageKit (firma de subidas desde `/api/imagekit/sign`)
+- Superadmin configurable por email (env `SUPER_ADMIN_EMAIL` en backend y `VITE_SUPER_ADMIN_EMAIL` en frontend)
+- Notificaciones: correo al crear/editar citas y recordatorio SMS 24h antes (Twilio)
+
+### Variables de entorno clave (backend)
+
+- `DATABASE_URL` (MySQL)
+- `SUPER_ADMIN_EMAIL`
+- ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`
+- Twilio (SMS): `TWILIO_AUTH_SID` (o `TWILIO_ACCOUNT_SID`), `TWILIO_ACCOUNT_TOKEN` (auth token), `TWILIO_MESSAGING_SERVICE_SID`
+- Email (avisos): `EMAIL`, `PASSWORD` y opcional `EMAIL_HOST` (default `smtp.gmail.com`), `EMAIL_PORT` (default `587`)
 
 ## Uso de Git en el monorepo
 

@@ -25,8 +25,8 @@ import { Loader2, Shield, Users } from 'lucide-react';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
 
-const SUPER_ADMIN_EMAIL = 'admin@barberia.com';
-const isSuperAdminUser = (candidate: User) => candidate.isSuperAdmin || candidate.email === SUPER_ADMIN_EMAIL;
+const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
+const isSuperAdminUser = (candidate: User) => candidate.isSuperAdmin || candidate.email.toLowerCase() === SUPER_ADMIN_EMAIL;
 
 const AdminRoles: React.FC = () => {
   const { user } = useAuth();

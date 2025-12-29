@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { shopSchedule } from '@/data/mockData';
 import { Clock, MapPin, Phone, Instagram, Mail } from 'lucide-react';
 import { SALON_INFO } from '@/data/salonInfo';
+import { getShopSchedule } from '@/data/api';
+import { ShopSchedule } from '@/data/types';
 
 const dayNames: Record<string, string> = {
   monday: 'Lunes',
@@ -15,7 +16,7 @@ const dayNames: Record<string, string> = {
   sunday: 'Domingo',
 };
 
-const formatDaySchedule = (schedule: (typeof shopSchedule)[keyof typeof shopSchedule]) => {
+const formatDaySchedule = (schedule: ShopSchedule[keyof ShopSchedule]) => {
   if (schedule.closed) return 'Cerrado';
   const segments: string[] = [];
   if (schedule.morning.enabled) {
@@ -28,6 +29,20 @@ const formatDaySchedule = (schedule: (typeof shopSchedule)[keyof typeof shopSche
 };
 
 const HoursLocationPage: React.FC = () => {
+  const [schedule, setSchedule] = useState<ShopSchedule | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await getShopSchedule();
+        setSchedule(data);
+      } catch (error) {
+        console.error('Error fetching shop schedule', error);
+      }
+    };
+    load();
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -54,19 +69,23 @@ const HoursLocationPage: React.FC = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {Object.entries(shopSchedule).map(([day, schedule]) => (
-                    <div 
-                      key={day}
-                      className="flex justify-between items-center py-3 border-b border-border last:border-0"
-                    >
-                      <span className="font-medium text-foreground">{dayNames[day]}</span>
-                      <span className={`${schedule.closed ? 'text-muted-foreground' : 'text-primary'}`}>
-                        {formatDaySchedule(schedule)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                {schedule ? (
+                  <div className="space-y-3">
+                    {Object.entries(schedule).map(([day, daySchedule]) => (
+                      <div 
+                        key={day}
+                        className="flex justify-between items-center py-3 border-b border-border last:border-0"
+                      >
+                        <span className="font-medium text-foreground">{dayNames[day]}</span>
+                        <span className={`${daySchedule.closed ? 'text-muted-foreground' : 'text-primary'}`}>
+                          {formatDaySchedule(daySchedule)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Cargando horario...</p>
+                )}
               </CardContent>
             </Card>
 

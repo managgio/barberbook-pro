@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
@@ -15,17 +15,33 @@ import {
   Phone,
   Mail,
 } from 'lucide-react';
-import { barbers, services } from '@/data/mockData';
 import heroBackground from '@/assets/img/mainImage.webp';
 import heroImage from '@/assets/img/portada.png';
 import letreroImage from '@/assets/img/letrero.png';
 import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
 import { SALON_INFO } from '@/data/salonInfo';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { Barber, Service } from '@/data/types';
+import { getBarbers, getServices } from '@/data/api';
 
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const currentYear = new Date().getFullYear();
+  const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [barbersData, servicesData] = await Promise.all([getBarbers(), getServices()]);
+        setBarbers(barbersData);
+        setServices(servicesData);
+      } catch (error) {
+        console.error('Error loading landing data', error);
+      }
+    };
+    loadData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -165,6 +181,11 @@ const LandingPage: React.FC = () => {
                 </CardContent>
               </Card>
             ))}
+            {services.length === 0 && (
+              <div className="md:col-span-2 lg:col-span-3 text-center text-muted-foreground">
+                Cargando servicios...
+              </div>
+            )}
           </div>
 
           <div className="text-center mt-12">
@@ -212,6 +233,11 @@ const LandingPage: React.FC = () => {
                 </CardContent>
               </Card>
             ))}
+            {barbers.length === 0 && (
+              <div className="md:col-span-2 lg:col-span-4 text-center text-muted-foreground">
+                Cargando equipo...
+              </div>
+            )}
           </div>
         </div>
       </section>

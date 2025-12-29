@@ -19,7 +19,7 @@ export interface User {
 export interface Barber {
   id: string;
   name: string;
-  photo: string;
+  photo?: string | null;
   specialty: string;
   role: 'worker' | 'admin';
   bio?: string;
@@ -40,7 +40,7 @@ export type AppointmentStatus = 'confirmed' | 'completed' | 'cancelled';
 
 export interface Appointment {
   id: string;
-  userId: string;
+  userId: string | null;
   barberId: string;
   serviceId: string;
   startDateTime: string; // ISO string

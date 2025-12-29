@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  client
+  admin
+}
+
+enum BarberRole {
+  worker
+  admin
+}
+
+enum AppointmentStatus {
+  confirmed
+  completed
+  cancelled
+}
+
+enum AlertType {
+  info
+  warning
+  success
+}
+
+model User {
+  id                  String      @id @default(cuid())
+  firebaseUid         String?     @unique
+  name                String
+  email               String      @unique
+  phone               String?
+  role                UserRole    @default(client)
+  notificationEmail   Boolean     @default(true)
+  notificationWhatsapp Boolean    @default(false)
+  avatar              String?
+  isSuperAdmin        Boolean     @default(false)
+  adminRoleId         String?
+  adminRole           AdminRole?  @relation(fields: [adminRoleId], references: [id])
+  appointments        Appointment[]
+  barber              Barber?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+model AdminRole {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  permissions Json
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Barber {
+  id          String           @id @default(cuid())
+  name        String
+  photo       String?
+  specialty   String
+  role        BarberRole       @default(worker)
+  bio         String?
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean          @default(true)
+  userId      String?          @unique
+  user        User?            @relation(fields: [userId], references: [id])
+  appointments Appointment[]
+  schedule    BarberSchedule?
+  holidays    BarberHoliday[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Service {
+  id          String        @id @default(cuid())
+  name        String
+  description String
+  price       Decimal       @db.Decimal(10, 2)
+  duration    Int
+  appointments Appointment[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Appointment {
+  id            String             @id @default(cuid())
+  userId        String?
+  user          User?              @relation(fields: [userId], references: [id])
+  barberId      String
+  barber        Barber             @relation(fields: [barberId], references: [id])
+  serviceId     String
+  service       Service            @relation(fields: [serviceId], references: [id])
+  startDateTime DateTime
+  status        AppointmentStatus  @default(confirmed)
+  notes         String?
+  guestName     String?
+  guestContact  String?
+  reminderSent  Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model Alert {
+  id        String    @id @default(cuid())
+  title     String
+  message   String
+  active    Boolean   @default(true)
+  type      AlertType @default(info)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model GeneralHoliday {
+  id        Int      @id @default(autoincrement())
+  start     DateTime
+  end       DateTime
+  createdAt DateTime @default(now())
+}
+
+model BarberHoliday {
+  id        Int      @id @default(autoincrement())
+  barberId  String
+  barber    Barber   @relation(fields: [barberId], references: [id])
+  start     DateTime
+  end       DateTime
+  createdAt DateTime @default(now())
+}
+
+model ShopSchedule {
+  id        Int      @id @default(1)
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+model BarberSchedule {
+  id        Int      @id @default(autoincrement())
+  barberId  String   @unique
+  barber    Barber   @relation(fields: [barberId], references: [id])
+  data      Json
+  updatedAt DateTime @updatedAt
+}
