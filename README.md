@@ -37,6 +37,14 @@ npm install  # o pnpm/yarn, según uses
 npm run dev
 ```
 
+### Configuración de ImageKit (subida de fotos)
+
+- Copia `frontend/.env.example` a `frontend/.env.local` y rellena:
+  - `VITE_IMAGEKIT_PUBLIC_KEY`
+  - `VITE_IMAGEKIT_URL_ENDPOINT`
+  - `IMAGEKIT_PRIVATE_KEY` (solo para firmar en local, no se expone al cliente).
+- El `vite dev` expone un endpoint local `/api/imagekit/sign` que genera las firmas necesarias. En producción debes replicar este endpoint en tu backend o función serverless.
+
 ## Backend (futuro)
 
 En el futuro, el backend se ubicará en la carpeta `backend/` y también formará parte de este mismo repositorio Git.

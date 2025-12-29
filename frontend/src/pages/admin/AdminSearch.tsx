@@ -14,6 +14,7 @@ import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
@@ -181,7 +182,7 @@ const AdminSearch: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <img 
-                            src={getBarber(apt.barberId)?.photo} 
+                            src={getBarber(apt.barberId)?.photo || defaultAvatar} 
                             alt=""
                             className="w-8 h-8 rounded-full object-cover"
                           />

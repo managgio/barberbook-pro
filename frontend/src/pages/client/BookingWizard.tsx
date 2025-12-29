@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import AlertBanner from '@/components/common/AlertBanner';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const STEPS = ['Servicio', 'Barbero y horario', 'Confirmación'];
 
@@ -378,7 +379,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           )}
                         >
                           <img 
-                            src={barber.photo} 
+                            src={barber.photo || defaultAvatar} 
                             alt={barber.name}
                             className="w-14 h-14 rounded-xl object-cover"
                           />
@@ -569,7 +570,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 {/* Barber */}
                 <div className="flex items-center gap-4">
                   <img 
-                    src={getBarber()?.photo} 
+                    src={getBarber()?.photo || defaultAvatar} 
                     alt={getBarber()?.name}
                     className="w-12 h-12 rounded-lg object-cover"
                   />

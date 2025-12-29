@@ -10,6 +10,7 @@ import { Calendar, User, ArrowRight, Scissors, Crown } from 'lucide-react';
 import { format, isPast, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const ClientDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -130,7 +131,7 @@ const ClientDashboard: React.FC = () => {
                     className="flex items-center gap-4 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
                   >
                     <img 
-                      src={barber?.photo} 
+                      src={barber?.photo || defaultAvatar} 
                       alt={barber?.name}
                       className="w-12 h-12 rounded-full object-cover"
                     />

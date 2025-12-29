@@ -22,6 +22,7 @@ import {
   DaySchedule,
   ShiftSchedule,
 } from './types';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const SUPER_ADMIN_EMAIL = 'admin@barberia.com';
 
@@ -63,8 +64,17 @@ const isDateInRange = (date: string, range: HolidayRange) =>
 
 const todayISO = () => toISODate(new Date().toISOString());
 
+const sanitizeBarberPhoto = (photo?: string): string => {
+  if (!photo) return defaultAvatar;
+  if (photo.includes('images.unsplash.com') || photo.toLowerCase().includes('shadcn')) {
+    return defaultAvatar;
+  }
+  return photo;
+};
+
 const normalizeBarber = (barber: Barber): Barber => ({
   ...barber,
+  photo: sanitizeBarberPhoto(barber.photo),
   startDate: barber.startDate ? toISODate(barber.startDate) : todayISO(),
   endDate: barber.endDate ? toISODate(barber.endDate) : null,
   isActive: barber.isActive ?? true,

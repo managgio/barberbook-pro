@@ -15,6 +15,7 @@ import { SALON_INFO } from '@/data/salonInfo';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
@@ -92,7 +93,7 @@ const AppointmentsPage: React.FC = () => {
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <img 
-              src={barber?.photo} 
+              src={barber?.photo || defaultAvatar} 
               alt={barber?.name}
               className="w-16 h-16 rounded-xl object-cover"
             />

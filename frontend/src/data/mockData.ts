@@ -1,4 +1,5 @@
 import { User, Barber, Service, Appointment, ShopSchedule, Alert, AdminRole, DaySchedule } from './types';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const createDaySchedule = (
   morning: [string, string] | null,
@@ -67,7 +68,7 @@ export const barbers: Barber[] = [
   {
     id: 'barber-1',
     name: 'Miguel Ángel',
-    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face',
+    photo: defaultAvatar,
     specialty: 'Cortes clásicos',
     role: 'admin',
     bio: 'Más de 15 años de experiencia en cortes tradicionales y modernos.',
@@ -78,7 +79,7 @@ export const barbers: Barber[] = [
   {
     id: 'barber-2',
     name: 'Alejandro Ruiz',
-    photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&crop=face',
+    photo: defaultAvatar,
     specialty: 'Degradados & Fades',
     role: 'worker',
     bio: 'Especialista en degradados y técnicas modernas de barbería.',
@@ -89,7 +90,7 @@ export const barbers: Barber[] = [
   {
     id: 'barber-3',
     name: 'David Fernández',
-    photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop&crop=face',
+    photo: defaultAvatar,
     specialty: 'Barba & Afeitado',
     role: 'worker',
     bio: 'Experto en cuidado de barba y afeitado tradicional con navaja.',
@@ -100,7 +101,7 @@ export const barbers: Barber[] = [
   {
     id: 'barber-4',
     name: 'Pablo Martín',
-    photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&h=400&fit=crop&crop=face',
+    photo: defaultAvatar,
     specialty: 'Estilos urbanos',
     role: 'worker',
     bio: 'Creador de estilos únicos y tendencias urbanas.',

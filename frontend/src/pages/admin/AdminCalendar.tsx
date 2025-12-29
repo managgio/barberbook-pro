@@ -27,6 +27,7 @@ import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import { useToast } from '@/hooks/use-toast';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 9); // 9:00 - 20:00
 
@@ -237,7 +238,7 @@ const AdminCalendar: React.FC = () => {
 
               <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
                 <img 
-                  src={getBarber(selectedAppointment.barberId)?.photo}
+                  src={getBarber(selectedAppointment.barberId)?.photo || defaultAvatar}
                   alt=""
                   className="w-10 h-10 rounded-full object-cover"
                 />

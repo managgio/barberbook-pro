@@ -21,6 +21,7 @@ import heroImage from '@/assets/img/portada.png';
 import letreroImage from '@/assets/img/letrero.png';
 import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
 import { SALON_INFO } from '@/data/salonInfo';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
@@ -199,7 +200,7 @@ const LandingPage: React.FC = () => {
               >
                 <div className="aspect-square relative overflow-hidden">
                   <img 
-                    src={barber.photo} 
+                    src={barber.photo || defaultAvatar} 
                     alt={barber.name}
                     className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                   />

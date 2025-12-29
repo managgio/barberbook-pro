@@ -8,6 +8,7 @@ import { Barber } from '@/data/types';
 import { useAuth } from '@/context/AuthContext';
 import { Calendar, Loader2 } from 'lucide-react';
 import { CardSkeleton } from '@/components/common/Skeleton';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const BarbersPage: React.FC = () => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -58,7 +59,7 @@ const BarbersPage: React.FC = () => {
                 >
                   <div className="aspect-square relative overflow-hidden">
                     <img 
-                      src={barber.photo} 
+                      src={barber.photo || defaultAvatar} 
                       alt={barber.name}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     />

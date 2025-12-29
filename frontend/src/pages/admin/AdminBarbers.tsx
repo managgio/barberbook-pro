@@ -15,6 +15,8 @@ import { Plus, Pencil, Trash2, Calendar, Loader2, UserCircle, CalendarClock, Cop
 import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
+import { BarberPhotoUploader } from '@/components/admin/BarberPhotoUploader';
+import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const DAY_LABELS: { key: keyof ShopSchedule; label: string; short: string }[] = [
   { key: 'monday', label: 'Lunes', short: 'Lun' },
@@ -61,7 +63,7 @@ const AdminBarbers: React.FC = () => {
   const todayISO = new Date().toISOString().split('T')[0];
   const [formData, setFormData] = useState({
     name: '',
-    photo: '',
+    photo: defaultAvatar,
     specialty: '',
     bio: '',
     startDate: todayISO,
@@ -81,7 +83,7 @@ const AdminBarbers: React.FC = () => {
 
   const openCreateDialog = () => {
     setEditingBarber(null);
-    setFormData({ name: '', photo: '', specialty: '', bio: '', startDate: todayISO, endDate: '', isActive: true });
+    setFormData({ name: '', photo: defaultAvatar, specialty: '', bio: '', startDate: todayISO, endDate: '', isActive: true });
     setIsDialogOpen(true);
   };
 
@@ -89,7 +91,7 @@ const AdminBarbers: React.FC = () => {
     setEditingBarber(barber);
     setFormData({
       name: barber.name,
-      photo: barber.photo,
+      photo: barber.photo || defaultAvatar,
       specialty: barber.specialty,
       bio: barber.bio || '',
       startDate: barber.startDate || todayISO,
@@ -323,7 +325,7 @@ const AdminBarbers: React.FC = () => {
               <CardContent className="p-6">
                 <div className="flex gap-4">
                   <img 
-                    src={barber.photo} 
+                    src={barber.photo || defaultAvatar} 
                     alt={barber.name}
                     className="w-24 h-24 rounded-xl object-cover"
                   />
@@ -378,7 +380,7 @@ const AdminBarbers: React.FC = () => {
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingBarber ? 'Editar barbero' : 'Nuevo barbero'}
@@ -397,14 +399,9 @@ const AdminBarbers: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="photo">URL de foto</Label>
-                <Input
-                  id="photo"
-                  type="url"
+                <BarberPhotoUploader
                   value={formData.photo}
-                  onChange={(e) => setFormData({ ...formData, photo: e.target.value })}
-                  placeholder="https://..."
-                  required
+                  onChange={(url) => setFormData({ ...formData, photo: url })}
                 />
               </div>
               <div className="space-y-2">
