@@ -209,7 +209,7 @@ const QuickAppointmentButton: React.FC = () => {
             <div className="space-y-6">
               {/* Client selection */}
               <div className="space-y-3">
-                <Label className="text-base text-foreground">Cliente</Label>
+                <Label className="text-base text-foreground block">Cliente</Label>
                 <div className="inline-flex rounded-2xl border border-border bg-muted/50 p-1">
                   <button
                     type="button"
