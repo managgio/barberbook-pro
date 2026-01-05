@@ -92,7 +92,7 @@ const AppointmentsPage: React.FC = () => {
     
     return (
       <Card variant={isHistorical ? 'default' : 'elevated'} className={isHistorical ? 'opacity-70' : ''}>
-        <CardContent className="p-6">
+        <CardContent className="p-6 relative">
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <img 
               src={barber?.photo || defaultAvatar} 
@@ -134,38 +134,43 @@ const AppointmentsPage: React.FC = () => {
                  appointment.status === 'completed' ? 'Completada' : 'Cancelada'}
               </span>
               <span className="text-xl font-bold text-primary">{service?.price}€</span>
-              {!isHistorical && (
-                <div className="flex flex-col gap-2">
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={generateCalendarLink(appointment)} target="_blank" rel="noopener noreferrer">
-                      <CalendarPlus className="w-4 h-4 mr-1" />
-                      Añadir al calendario
-                    </a>
-                  </Button>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        setEditingAppointment(appointment);
-                        setIsEditorOpen(true);
-                      }}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive"
-                      onClick={() => setDeleteTarget(appointment)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
+          {!isHistorical && (
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="md:order-1"
+              >
+                <a href={generateCalendarLink(appointment)} target="_blank" rel="noopener noreferrer">
+                  <CalendarPlus className="w-4 h-4 mr-1" />
+                  Añadir al calendario
+                </a>
+              </Button>
+              <div className="absolute top-4 right-4 flex gap-2 md:static md:order-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    setEditingAppointment(appointment);
+                    setIsEditorOpen(true);
+                  }}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive"
+                  onClick={() => setDeleteTarget(appointment)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
