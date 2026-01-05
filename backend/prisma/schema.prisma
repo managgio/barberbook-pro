@@ -139,6 +139,12 @@ model ShopSchedule {
   updatedAt DateTime @updatedAt
 }
 
+model SiteSettings {
+  id        Int      @id @default(1)
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 model BarberSchedule {
   id        Int      @id @default(autoincrement())
   barberId  String   @unique

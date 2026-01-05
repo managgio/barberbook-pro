@@ -8,6 +8,7 @@ import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
 import heroImage from '@/assets/img/mainImage.webp';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -23,6 +24,13 @@ const AuthPage: React.FC = () => {
   const { login, loginWithGoogle, signup, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useSiteSettings();
+  const experienceYears = Math.max(0, new Date().getFullYear() - settings.stats.experienceStartYear);
+  const formatYearlyBookings = (value: number) => {
+    if (value >= 10000) return `${(value / 1000).toFixed(0)}K`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+    return value.toString();
+  };
 
   // Redirect if already authenticated
   React.useEffect(() => {
@@ -126,14 +134,14 @@ const AuthPage: React.FC = () => {
           </h1>
           
           <p className="text-muted-foreground text-lg max-w-md">
-            Reserva tu cita en segundos y disfruta de la experiencia boutique de Le Blond Hair Salon en Valencia.
+            Reserva tu cita en segundos y disfruta de la experiencia de Le Blond Hair Salon.
           </p>
 
           <div className="mt-12 grid grid-cols-3 gap-6">
             {[
-              { value: '15+', label: 'Años de experiencia' },
-              { value: '5K+', label: 'Clientes satisfechos' },
-              { value: '4.9', label: 'Valoración media' },
+              { value: `${experienceYears}+`, label: 'Años de experiencia' },
+              { value: `${formatYearlyBookings(settings.stats.yearlyBookings)}+`, label: 'Clientes satisfechos' },
+              { value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
             ].map((stat) => (
               <div key={stat.label}>
                 <p className="text-2xl font-bold text-primary">{stat.value}</p>

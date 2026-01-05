@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Navbar from '@/components/layout/Navbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, MapPin, Phone, Instagram, Mail } from 'lucide-react';
-import { SALON_INFO } from '@/data/salonInfo';
-import { getShopSchedule } from '@/data/api';
+import { Clock, MapPin, Phone, Instagram, Mail, Twitter, Linkedin, Youtube, Music2 } from 'lucide-react';
 import { ShopSchedule } from '@/data/types';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
 
 const dayNames: Record<string, string> = {
   monday: 'Lunes',
@@ -29,19 +29,58 @@ const formatDaySchedule = (schedule: ShopSchedule[keyof ShopSchedule]) => {
 };
 
 const HoursLocationPage: React.FC = () => {
-  const [schedule, setSchedule] = useState<ShopSchedule | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
+  const { settings, isLoading } = useSiteSettings();
+  const schedule = settings.openingHours;
+  const whatsappLink = buildWhatsappLink(settings.contact.phone) || '#';
+  const phoneHref = settings.contact.phone
+    ? `tel:${settings.contact.phone.replace(/\s+/g, '')}`
+    : '#';
+  const phoneDisplay = formatPhoneDisplay(settings.contact.phone) || settings.contact.phone;
+  const formatHandle = (value?: string) => {
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) {
       try {
-        const data = await getShopSchedule();
-        setSchedule(data);
-      } catch (error) {
-        console.error('Error fetching shop schedule', error);
+        const url = new URL(value);
+        const path = url.pathname.replace(/^\/+/, '');
+        return path ? (path.startsWith('@') ? path : `@${path}`) : url.hostname;
+      } catch {
+        return value;
       }
-    };
-    load();
-  }, []);
+    }
+    const clean = value.replace(/^@+/, '');
+    return clean ? `@${clean}` : '';
+  };
+  const socials = [
+    {
+      key: 'instagram',
+      label: formatHandle(settings.socials.instagram),
+      icon: Instagram,
+      url: buildSocialUrl('instagram', settings.socials.instagram),
+      handle: settings.socials.instagram,
+    },
+    { key: 'x', label: formatHandle(settings.socials.x), icon: Twitter, url: buildSocialUrl('x', settings.socials.x), handle: settings.socials.x },
+    {
+      key: 'tiktok',
+      label: formatHandle(settings.socials.tiktok),
+      icon: Music2,
+      url: buildSocialUrl('tiktok', settings.socials.tiktok),
+      handle: settings.socials.tiktok,
+    },
+    {
+      key: 'youtube',
+      label: formatHandle(settings.socials.youtube),
+      icon: Youtube,
+      url: buildSocialUrl('youtube', settings.socials.youtube),
+      handle: settings.socials.youtube,
+    },
+    {
+      key: 'linkedin',
+      label: formatHandle(settings.socials.linkedin),
+      icon: Linkedin,
+      url: buildSocialUrl('linkedin', settings.socials.linkedin),
+      handle: settings.socials.linkedin,
+    },
+  ].filter((social) => social.url && social.label);
 
   return (
     <div className="min-h-screen bg-background">
@@ -55,7 +94,7 @@ const HoursLocationPage: React.FC = () => {
               Horario y <span className="text-gradient">ubicación</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Visítanos en Sagunto, a minutos de Valencia. Estamos aquí para cuidar de tu imagen.
+              Visítanos cuando quieras. Estamos aquí para cuidar de tu imagen.
             </p>
           </div>
 
@@ -95,14 +134,14 @@ const HoursLocationPage: React.FC = () => {
               <Card variant="elevated" className="overflow-hidden animate-slide-up" style={{ animationDelay: '0.1s' }}>
                 <div className="aspect-video">
                   <iframe
-                    src={SALON_INFO.mapEmbedUrl}
+                    src={settings.location.mapEmbedUrl || settings.location.mapUrl}
                     width="100%"
                     height="100%"
                     style={{ border: 0 }}
                     allowFullScreen
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
-                    title="Ubicación de Le Blond Hair Salon"
+                    title={`Ubicación de ${settings.branding.name}`}
                   />
                 </div>
               </Card>
@@ -111,7 +150,6 @@ const HoursLocationPage: React.FC = () => {
               <Card variant="elevated" className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-primary" />
                     Contacto
                   </CardTitle>
                 </CardHeader>
@@ -121,23 +159,32 @@ const HoursLocationPage: React.FC = () => {
                     <div>
                       <p className="font-medium text-foreground">Dirección</p>
                       <a
-                        href={SALON_INFO.mapUrl}
+                        href={settings.location.mapUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
                       >
-                        {SALON_INFO.locationLabel}
+                        {settings.location.label}
                       </a>
                     </div>
                   </div>
                   
-                  <div className="flex items-start gap-3">
-                    <Phone className="w-5 h-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="font-medium text-foreground">Teléfono</p>
-                      <a href={`tel:${SALON_INFO.phoneHref}`} className="text-primary hover:underline">
-                        {SALON_INFO.phoneDisplay}
-                      </a>
+                      <div className="flex items-start gap-3">
+                        <Phone className="w-5 h-5 text-muted-foreground mt-0.5" />
+                        <div>
+                          <p className="font-medium text-foreground">Contacto</p>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                            <a
+                              href={phoneHref}
+                              className="text-primary hover:underline"
+                            >
+                              Llamar · {phoneDisplay || settings.contact.phone}
+                            </a>
+                            <span className="hidden sm:block text-muted-foreground">·</span>
+                            <a href={whatsappLink} className="text-primary hover:underline">
+                              WhatsApp directo
+                            </a>
+                      </div>
                     </div>
                   </div>
 
@@ -145,8 +192,8 @@ const HoursLocationPage: React.FC = () => {
                     <Mail className="w-5 h-5 text-muted-foreground mt-0.5" />
                     <div>
                       <p className="font-medium text-foreground">Correo</p>
-                      <a href={`mailto:${SALON_INFO.email}`} className="text-primary hover:underline">
-                        {SALON_INFO.email}
+                      <a href={`mailto:${settings.contact.email}`} className="text-primary hover:underline">
+                        {settings.contact.email}
                       </a>
                     </div>
                   </div>
@@ -155,17 +202,24 @@ const HoursLocationPage: React.FC = () => {
 
                   <div>
                     <p className="font-medium text-foreground mb-3">Síguenos</p>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <a 
-                        href={SALON_INFO.instagram} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                      >
-                        <Instagram className="w-5 h-5" />
-                        @leblondhairsalon
-                      </a>
-                    </div>
+                    {socials.length > 0 ? (
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {socials.map((social) => (
+                          <a 
+                            key={social.key}
+                            href={social.url}
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          >
+                            <social.icon className="w-5 h-5" />
+                            {social.label}
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Sin redes configuradas.</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>

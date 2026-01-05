@@ -15,6 +15,7 @@ import {
   ChevronsRight,
   CalendarDays,
   Shield,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
 import { AdminRole, AdminSectionKey } from '@/data/types';
 import { getAdminRoles } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 interface NavItem {
   href: string;
@@ -39,6 +41,7 @@ const navItems: NavItem[] = [
   { href: '/admin/barbers', label: 'Barberos', icon: UserCircle, section: 'barbers' },
   { href: '/admin/alerts', label: 'Alertas', icon: Bell, section: 'alerts' },
   { href: '/admin/holidays', label: 'Festivos', icon: CalendarDays, section: 'holidays' },
+  { href: '/admin/settings', label: 'Configuración', icon: Settings, section: 'settings' },
   { href: '/admin/roles', label: 'Roles', icon: Shield, section: 'roles' },
 ];
 
@@ -51,6 +54,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const { settings } = useSiteSettings();
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [isLoadingRoles, setIsLoadingRoles] = useState(false);
 
@@ -117,7 +121,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           />
           {!collapsed && (
             <div>
-              <span className="text-lg font-bold text-sidebar-foreground">Le Blond</span>
+              <span className="text-lg font-bold text-sidebar-foreground">{settings.branding.shortName}</span>
               <span className="block text-xs text-muted-foreground">Panel Admin</span>
             </div>
           )}

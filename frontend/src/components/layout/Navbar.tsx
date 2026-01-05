@@ -4,9 +4,11 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { User, LogOut } from 'lucide-react';
 import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
+  const { settings } = useSiteSettings();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
@@ -19,7 +21,7 @@ const Navbar: React.FC = () => {
               alt="Le Blond Hair Salon logo"
               className="w-10 h-10 object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105"
             />
-            <span className="text-xl font-bold text-foreground">Le Blond</span>
+            <span className="text-xl font-bold text-foreground">{settings.branding.shortName}</span>
           </Link>
 
           {/* Auth Section */}

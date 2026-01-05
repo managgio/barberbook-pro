@@ -81,6 +81,42 @@ export interface Alert {
   type: 'info' | 'warning' | 'success';
 }
 
+export interface SiteStats {
+  experienceStartYear: number;
+  averageRating: number;
+  yearlyBookings: number;
+  repeatClientsPercentage: number;
+}
+
+export interface SocialLinks {
+  instagram?: string;
+  x?: string;
+  tiktok?: string;
+  youtube?: string;
+  linkedin?: string;
+}
+
+export interface SiteSettings {
+  branding: {
+    name: string;
+    shortName: string;
+    tagline: string;
+    description: string;
+  };
+  location: {
+    label: string;
+    mapUrl: string;
+    mapEmbedUrl: string;
+  };
+  contact: {
+    phone: string;
+    email: string;
+  };
+  socials: SocialLinks;
+  stats: SiteStats;
+  openingHours: ShopSchedule;
+}
+
 export type AdminSectionKey =
   | 'dashboard'
   | 'calendar'
@@ -90,7 +126,8 @@ export type AdminSectionKey =
   | 'barbers'
   | 'alerts'
   | 'holidays'
-  | 'roles';
+  | 'roles'
+  | 'settings';
 
 export interface AdminRole {
   id: string;

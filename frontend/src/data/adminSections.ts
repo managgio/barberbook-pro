@@ -46,4 +46,9 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
     label: 'Roles y permisos',
     description: 'Configuración de roles administrativos y accesos.',
   },
+  {
+    key: 'settings',
+    label: 'Configuración',
+    description: 'Datos generales, redes y horario de apertura.',
+  },
 ];

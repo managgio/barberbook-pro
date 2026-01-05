@@ -11,6 +11,7 @@ import { HolidaysModule } from './modules/holidays/holidays.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
 import { ImageKitModule } from './modules/imagekit/imagekit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     SchedulesModule,
     ImageKitModule,
     NotificationsModule,
+    SettingsModule,
   ],
 })
 export class AppModule {}

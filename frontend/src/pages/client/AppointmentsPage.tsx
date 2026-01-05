@@ -11,15 +11,16 @@ import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import { useNavigate } from 'react-router-dom';
-import { SALON_INFO } from '@/data/salonInfo';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { settings } = useSiteSettings();
   const { toast } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -72,10 +73,10 @@ const AppointmentsPage: React.FC = () => {
     
     const params = new URLSearchParams({
       action: 'TEMPLATE',
-      text: `${service?.name} - ${SALON_INFO.name}`,
+      text: `${service?.name} - ${settings.branding.name}`,
       dates: `${formatDate(startDate)}/${formatDate(endDate)}`,
       details: `Cita con ${barber?.name}`,
-      location: SALON_INFO.locationLabel,
+      location: settings.location.label,
     });
     
     return `https://calendar.google.com/calendar/render?${params.toString()}`;
@@ -112,12 +113,12 @@ const AppointmentsPage: React.FC = () => {
                 </span>
                 <a
                   className="flex items-center gap-1 text-primary hover:underline"
-                  href={SALON_INFO.mapUrl}
+                  href={settings.location.mapUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <MapPin className="w-4 h-4" />
-                  {SALON_INFO.locationLabel}
+                  {settings.location.label}
                 </a>
               </div>
             </div>

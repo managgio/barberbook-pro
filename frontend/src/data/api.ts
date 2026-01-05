@@ -7,6 +7,7 @@ import {
   ShopSchedule,
   HolidayRange,
   AdminRole,
+  SiteSettings,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -151,6 +152,13 @@ export const deleteAlert = async (id: string): Promise<void> =>
 
 // Schedule API
 export const getShopSchedule = async (): Promise<ShopSchedule> => apiRequest('/schedules/shop');
+export const updateShopSchedule = async (schedule: ShopSchedule): Promise<ShopSchedule> =>
+  apiRequest('/schedules/shop', { method: 'PUT', body: { schedule } });
+
+// Settings API
+export const getSiteSettings = async (): Promise<SiteSettings> => apiRequest('/settings');
+export const updateSiteSettings = async (settings: SiteSettings): Promise<SiteSettings> =>
+  apiRequest('/settings', { method: 'PUT', body: { settings } });
 
 // Holidays API
 export const getHolidaysGeneral = async (): Promise<HolidayRange[]> => apiRequest('/holidays/general');

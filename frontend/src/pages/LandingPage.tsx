@@ -8,25 +8,60 @@ import {
   Scissors, 
   Calendar, 
   Star, 
-  Clock, 
+  Repeat, 
   MapPin, 
   ArrowRight,
   Instagram,
   Phone,
   Mail,
+  Twitter,
+  Linkedin,
+  Youtube,
+  Music2,
 } from 'lucide-react';
 import heroBackground from '@/assets/img/mainImage.webp';
 import heroImage from '@/assets/img/portada.png';
 import letreroImage from '@/assets/img/letrero.png';
 import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
-import { SALON_INFO } from '@/data/salonInfo';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 import { Barber, Service } from '@/data/types';
 import { getBarbers, getServices } from '@/data/api';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
 
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
+  const { settings } = useSiteSettings();
   const currentYear = new Date().getFullYear();
+  const experienceYears = Math.max(0, currentYear - settings.stats.experienceStartYear);
+  const formatYearlyBookings = (value: number) => {
+    if (value >= 10000) return `${(value / 1000).toFixed(0)}K`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+    return value.toString();
+  };
+  const whatsappLink = buildWhatsappLink(settings.contact.phone) || '#';
+  const phoneDisplay = formatPhoneDisplay(settings.contact.phone) || settings.contact.phone;
+  const formatHandle = (value?: string) => {
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) {
+      try {
+        const url = new URL(value);
+        const path = url.pathname.replace(/^\/+/, '');
+        return path ? (path.startsWith('@') ? path : `@${path}`) : url.hostname;
+      } catch {
+        return value;
+      }
+    }
+    const clean = value.replace(/^@+/, '');
+    return clean ? `@${clean}` : '';
+  };
+  const socials = [
+    { key: 'instagram', label: formatHandle(settings.socials.instagram), icon: Instagram, url: buildSocialUrl('instagram', settings.socials.instagram) },
+    { key: 'x', label: formatHandle(settings.socials.x), icon: Twitter, url: buildSocialUrl('x', settings.socials.x) },
+    { key: 'tiktok', label: formatHandle(settings.socials.tiktok), icon: Music2, url: buildSocialUrl('tiktok', settings.socials.tiktok) },
+    { key: 'youtube', label: formatHandle(settings.socials.youtube), icon: Youtube, url: buildSocialUrl('youtube', settings.socials.youtube) },
+    { key: 'linkedin', label: formatHandle(settings.socials.linkedin), icon: Linkedin, url: buildSocialUrl('linkedin', settings.socials.linkedin) },
+  ].filter((item) => item.url && item.label);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
 
@@ -70,12 +105,12 @@ const LandingPage: React.FC = () => {
               </div>
               
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-foreground mb-6 leading-tight">
-                {SALON_INFO.name}<br />
-                <span className="text-gradient">{SALON_INFO.tagline}</span>
+                {settings.branding.name}<br />
+                <span className="text-gradient">{settings.branding.tagline}</span>
               </h1>
               
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto lg:mx-0 mb-10">
-                Un salón boutique en Sagunto dedicado a crear cortes, color y peinados a medida para quienes buscan estilo y cuidado premium.
+                {settings.branding.description}
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
@@ -117,12 +152,12 @@ const LandingPage: React.FC = () => {
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
                     <a
-                      href={SALON_INFO.mapUrl}
+                      href={settings.location.mapUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm font-semibold text-foreground hover:text-primary transition-colors"
                     >
-                      {SALON_INFO.locationLabel}
+                      {settings.location.label}
                     </a>
                   </div>
                 </div>
@@ -132,10 +167,10 @@ const LandingPage: React.FC = () => {
 
           <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
             {[
-              { icon: Scissors, value: '15+', label: 'Años de experiencia' },
-              { icon: Star, value: '4.9', label: 'Valoración media' },
-              { icon: Calendar, value: '5K+', label: 'Reservas/año' },
-              { icon: Clock, value: 'A medida', label: 'Duraciones por servicio' },
+              { icon: Scissors, value: `${experienceYears}+`, label: 'Años de experiencia' },
+              { icon: Star, value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
+              { icon: Calendar, value: `${formatYearlyBookings(settings.stats.yearlyBookings)}`, label: 'Reservas/año' },
+              { icon: Repeat, value: `${settings.stats.repeatClientsPercentage}%`, label: 'Clientes que repiten' },
             ].map((stat, index) => (
               <div key={stat.label} className="text-center" style={{ animationDelay: `${0.5 + index * 0.1}s` }}>
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-3">
@@ -259,9 +294,9 @@ const LandingPage: React.FC = () => {
               ¿Listo para tu<br />
               <span className="text-gradient">nuevo look?</span>
             </h2>
-            <p className="text-xl text-muted-foreground mb-10">
-              Reserva tu cita en menos de un minuto y vive la experiencia boutique de Le Blond Hair Salon.
-            </p>
+              <p className="text-xl text-muted-foreground mb-10">
+                Reserva tu cita en menos de un minuto y vive la experiencia {settings.branding.name}.
+              </p>
             <Button variant="hero" size="xl" asChild>
               <Link to={isAuthenticated ? '/app/book' : '/auth?tab=signup'}>
                 <Calendar className="w-5 h-5 mr-2" />
@@ -283,17 +318,16 @@ const LandingPage: React.FC = () => {
                   alt="Le Blond Hair Salon logo"
                   className="w-10 h-10 rounded-lg object-contain shadow-sm"
                 />
-                <span className="text-xl font-bold text-foreground">{SALON_INFO.name}</span>
+                <span className="text-xl font-bold text-foreground">{settings.branding.name}</span>
               </Link>
               <p className="text-sm text-muted-foreground">
-                Salón de belleza boutique y genderless en Sagunto con servicios personalizados y productos de vanguardia.
+                Citas rápidas, experiencia premium y un equipo que cuida cada detalle.
               </p>
             </div>
             
             <div>
               <h4 className="font-semibold text-foreground mb-4">Enlaces</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/barbers" className="hover:text-primary transition-colors">Barberos</Link></li>
                 <li><Link to="/hours-location" className="hover:text-primary transition-colors">Horario y ubicación</Link></li>
                 <li><Link to="/auth" className="hover:text-primary transition-colors">Iniciar sesión</Link></li>
               </ul>
@@ -305,24 +339,24 @@ const LandingPage: React.FC = () => {
                 <li className="flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
                   <a
-                    href={SALON_INFO.mapUrl}
+                    href={settings.location.mapUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-primary transition-colors"
                   >
-                    {SALON_INFO.locationLabel}
+                    {settings.location.label}
                   </a>
                 </li>
                 <li className="flex items-center gap-2">
                   <Phone className="w-4 h-4" />
-                  <a href={`tel:${SALON_INFO.phoneHref}`} className="hover:text-primary transition-colors">
-                    {SALON_INFO.phoneDisplay}
+                  <a href={whatsappLink} className="hover:text-primary transition-colors">
+                  {phoneDisplay}
                   </a>
                 </li>
                 <li className="flex items-center gap-2">
                   <Mail className="w-4 h-4" />
-                  <a href={`mailto:${SALON_INFO.email}`} className="hover:text-primary transition-colors">
-                    {SALON_INFO.email}
+                  <a href={`mailto:${settings.contact.email}`} className="hover:text-primary transition-colors">
+                    {settings.contact.email}
                   </a>
                 </li>
               </ul>
@@ -330,17 +364,24 @@ const LandingPage: React.FC = () => {
             
             <div>
               <h4 className="font-semibold text-foreground mb-4">Síguenos</h4>
-              <div className="flex gap-3">
-                <a 
-                  href={SALON_INFO.instagram}
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto px-4 py-2 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors gap-2"
-                >
-                  <Instagram className="w-5 h-5" />
-                  @leblondhairsalon
-                </a>
-              </div>
+              {socials.length > 0 ? (
+                <div className="flex flex-wrap gap-3">
+                  {socials.map((social) => (
+                    <a
+                      key={social.key}
+                      href={social.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors gap-2"
+                    >
+                      <social.icon className="w-5 h-5" />
+                      {social.label}
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Sin redes configuradas.</p>
+              )}
             </div>
           </div>
           

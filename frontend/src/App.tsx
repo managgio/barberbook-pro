@@ -8,7 +8,6 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 // Pages
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
-import BarbersPage from "./pages/BarbersPage";
 import HoursLocationPage from "./pages/HoursLocationPage";
 import NotFound from "./pages/NotFound";
 import GuestBookingPage from "./pages/GuestBookingPage";
@@ -31,6 +30,7 @@ import AdminBarbers from "./pages/admin/AdminBarbers";
 import AdminAlerts from "./pages/admin/AdminAlerts";
 import AdminHolidays from "./pages/admin/AdminHolidays";
 import AdminRoles from "./pages/admin/AdminRoles";
+import AdminSettings from "./pages/admin/AdminSettings";
 
 // Protected Route
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -62,7 +62,6 @@ const App = () => (
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/book" element={<GuestBookingPage />} />
-            <Route path="/barbers" element={<BarbersPage />} />
             <Route path="/hours-location" element={<HoursLocationPage />} />
 
             {/* Client Routes */}
@@ -83,6 +82,7 @@ const App = () => (
               <Route path="barbers" element={<AdminBarbers />} />
               <Route path="alerts" element={<AdminAlerts />} />
               <Route path="holidays" element={<AdminHolidays />} />
+              <Route path="settings" element={<AdminSettings />} />
               <Route path="roles" element={<AdminRoles />} />
             </Route>
 

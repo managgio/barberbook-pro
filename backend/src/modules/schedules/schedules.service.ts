@@ -28,6 +28,13 @@ export class SchedulesService {
       update: { data: normalized },
       create: { id: 1, data: normalized },
     });
+    const existingSettings = await this.prisma.siteSettings.findUnique({ where: { id: 1 } });
+    if (existingSettings) {
+      await this.prisma.siteSettings.update({
+        where: { id: 1 },
+        data: { data: { ...(existingSettings.data as Record<string, unknown>), openingHours: normalized } },
+      });
+    }
     return cloneSchedule(normalized);
   }
 
