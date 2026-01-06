@@ -61,7 +61,7 @@ model AdminRole {
 model Barber {
   id          String           @id @default(cuid())
   name        String
-  photo       String?
+  photo       String?          @db.Text
   photoFileId String?
   specialty   String
   role        BarberRole       @default(worker)
