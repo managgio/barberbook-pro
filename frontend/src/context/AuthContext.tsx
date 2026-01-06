@@ -44,10 +44,10 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
   const existingByUid = await getUserByFirebaseUid(firebaseUser.uid);
   const existing = existingByUid || (await getUserByEmail(email));
 
-   const phone = extras?.phone || firebaseUser.phoneNumber || existing?.phone;
-   const notificationPrefs =
+  const phone = extras?.phone || firebaseUser.phoneNumber || existing?.phone;
+  const notificationPrefs =
     existing?.notificationPrefs ||
-    (phone ? { ...defaultNotificationPrefs } : { email: true, whatsapp: false });
+    { email: true, whatsapp: true };
 
   const payload: Partial<User> = {
     firebaseUid: firebaseUser.uid,

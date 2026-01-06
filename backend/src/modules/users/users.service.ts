@@ -27,7 +27,7 @@ export class UsersService {
   private mapPrefs(data: Partial<CreateUserDto | UpdateUserDto>, useDefaults = false) {
     return {
       notificationEmail: data.notificationEmail ?? (useDefaults ? true : undefined),
-      notificationWhatsapp: data.notificationWhatsapp ?? (useDefaults ? false : undefined),
+      notificationWhatsapp: data.notificationWhatsapp ?? (useDefaults ? true : undefined),
     };
   }
 
