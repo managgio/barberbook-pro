@@ -4,6 +4,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { mapUser } from './users.mapper';
 import { User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
 
@@ -53,20 +54,50 @@ export class UsersService {
 
   async create(data: CreateUserDto) {
     const payload = this.applySuperAdminFlag(data);
-    const created = await this.prisma.user.create({
-      data: {
-        firebaseUid: payload.firebaseUid,
-        name: payload.name,
-        email: payload.email.toLowerCase(),
-        phone: payload.phone,
-        role: payload.role || 'client',
-        avatar: payload.avatar,
-        adminRoleId: payload.adminRoleId ?? null,
-        isSuperAdmin: payload.isSuperAdmin ?? false,
-        ...this.mapPrefs(payload, true),
-      },
-    });
-    return mapUser(created);
+    try {
+      const created = await this.prisma.user.create({
+        data: {
+          firebaseUid: payload.firebaseUid,
+          name: payload.name,
+          email: payload.email.toLowerCase(),
+          phone: payload.phone,
+          role: payload.role || 'client',
+          avatar: payload.avatar,
+          adminRoleId: payload.adminRoleId ?? null,
+          isSuperAdmin: payload.isSuperAdmin ?? false,
+          ...this.mapPrefs(payload, true),
+        },
+      });
+      return mapUser(created);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        payload.email
+      ) {
+        const email = payload.email.toLowerCase();
+        const existing = await this.prisma.user.findUnique({ where: { email } });
+        if (!existing) {
+          throw error;
+        }
+        const updated = await this.prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            firebaseUid: payload.firebaseUid ?? existing.firebaseUid,
+            name: payload.name ?? existing.name,
+            email,
+            phone: payload.phone ?? existing.phone,
+            role: payload.role ?? existing.role,
+            avatar: payload.avatar ?? existing.avatar,
+            adminRoleId: payload.adminRoleId ?? existing.adminRoleId,
+            isSuperAdmin: payload.isSuperAdmin ?? existing.isSuperAdmin,
+            ...this.mapPrefs(payload, false),
+          },
+        });
+        return mapUser(updated);
+      }
+      throw error;
+    }
   }
 
   async update(id: string, data: UpdateUserDto) {
