@@ -169,7 +169,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateProfile = async (data: Partial<User>) => {
     if (!user) return;
-    const updated = await updateUser(user.id, data);
+
+    const payload: any = {
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+    };
+
+    if (data.notificationPrefs) {
+      payload.notificationEmail = data.notificationPrefs.email;
+      payload.notificationWhatsapp = data.notificationPrefs.whatsapp;
+    }
+
+    const updated = await updateUser(user.id, payload);
     setUser(updated);
     if (auth.currentUser && data.name) {
       await updateFirebaseProfile(auth.currentUser, { displayName: data.name });

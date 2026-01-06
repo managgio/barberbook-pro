@@ -176,15 +176,18 @@ export class AppointmentsService {
 
   private async notifyAppointment(appointment: any, action: 'creada' | 'actualizada' | 'cancelada') {
     const contact = this.getContact(appointment.user, appointment.guestName, appointment.guestContact);
-    await this.notificationsService.sendAppointmentEmail(
-      contact,
-      {
-        date: appointment.startDateTime,
-        serviceName: appointment.service?.name,
-        barberName: appointment.barber?.name,
-      },
-      action,
-    );
+    const allowEmail = appointment.user ? appointment.user.notificationEmail !== false : true;
+    if (allowEmail) {
+      await this.notificationsService.sendAppointmentEmail(
+        contact,
+        {
+          date: appointment.startDateTime,
+          serviceName: appointment.service?.name,
+          barberName: appointment.barber?.name,
+        },
+        action,
+      );
+    }
   }
 
   private getContact(user: any, guestName?: string | null, guestContact?: string | null) {

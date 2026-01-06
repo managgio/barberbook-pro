@@ -47,6 +47,11 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const appointment of appointments) {
+      const allowSms = appointment.user ? appointment.user.notificationWhatsapp === true : false;
+      if (!allowSms) {
+        continue;
+      }
+
       const contact = this.getContact(appointment.user, appointment.guestName, appointment.guestContact);
       await this.notificationsService.sendReminderSms(contact, {
         date: appointment.startDateTime,
