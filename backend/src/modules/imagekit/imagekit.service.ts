@@ -10,6 +10,7 @@ export class ImageKitService {
     const privateKey = this.configService.get<string>('IMAGEKIT_PRIVATE_KEY');
     const publicKey = this.configService.get<string>('IMAGEKIT_PUBLIC_KEY');
     const urlEndpoint = this.configService.get<string>('IMAGEKIT_URL_ENDPOINT');
+    const folder = this.configService.get<string>('IMAGEKIT_FOLDER') || '/barbers';
 
     if (!privateKey || !publicKey || !urlEndpoint) {
       throw new InternalServerErrorException('ImageKit no está configurado');
@@ -19,7 +20,7 @@ export class ImageKitService {
     const expire = Math.floor(Date.now() / 1000) + 60 * 10;
     const signature = crypto.createHmac('sha1', privateKey).update(token + expire).digest('hex');
 
-    return { token, expire, signature, publicKey, urlEndpoint };
+    return { token, expire, signature, publicKey, urlEndpoint, folder };
   }
 
   async deleteFile(fileId: string) {

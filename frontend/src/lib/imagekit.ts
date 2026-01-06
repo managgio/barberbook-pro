@@ -1,14 +1,4 @@
 const UPLOAD_URL = 'https://upload.imagekit.io/api/v1/files/upload';
-const DEFAULT_FOLDER = import.meta.env.VITE_IMAGEKIT_FOLDER || '/barbers';
-
-const assertConfig = () => {
-  const publicKey = import.meta.env.VITE_IMAGEKIT_PUBLIC_KEY;
-  const urlEndpoint = import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT;
-  if (!publicKey || !urlEndpoint) {
-    throw new Error('ImageKit no está configurado. Añade las variables de entorno.');
-  }
-  return { publicKey, urlEndpoint };
-};
 
 export type ImageKitAuth = {
   token: string;
@@ -16,29 +6,32 @@ export type ImageKitAuth = {
   signature: string;
   publicKey: string;
   urlEndpoint: string;
+  folder: string;
 };
 
 export const requestImageKitAuth = async (): Promise<ImageKitAuth> => {
-  const config = assertConfig();
   const response = await fetch('/api/imagekit/sign');
   if (!response.ok) {
     throw new Error('No se pudo obtener la firma de ImageKit.');
   }
   const data = await response.json();
+  if (!data.publicKey || !data.urlEndpoint) {
+    throw new Error('ImageKit no está configurado en el servidor.');
+  }
   return {
-    ...config,
     token: data.token,
     expire: data.expire,
     signature: data.signature,
-    publicKey: data.publicKey || config.publicKey,
-    urlEndpoint: data.urlEndpoint || config.urlEndpoint,
+    publicKey: data.publicKey,
+    urlEndpoint: data.urlEndpoint,
+    folder: data.folder,
   };
 };
 
 export const uploadToImageKit = async (
   file: Blob,
   fileName: string,
-  folder: string = DEFAULT_FOLDER
+  folder?: string
 ): Promise<{ url: string; fileId: string }> => {
   const auth = await requestImageKitAuth();
   const formData = new FormData();
@@ -49,8 +42,9 @@ export const uploadToImageKit = async (
   formData.append('signature', auth.signature);
   formData.append('publicKey', auth.publicKey);
   formData.append('useUniqueFileName', 'true');
-  if (folder) {
-    formData.append('folder', folder);
+  const targetFolder = folder || auth.folder;
+  if (targetFolder) {
+    formData.append('folder', targetFolder);
   }
 
   const response = await fetch(UPLOAD_URL, {

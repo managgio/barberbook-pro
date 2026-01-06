@@ -25,7 +25,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
 const defaultNotificationPrefs = { email: true, whatsapp: true };
 
 const getDisplayName = (firebaseUser: FirebaseUser, providedName?: string) => {
@@ -56,9 +55,9 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     email,
     phone,
     avatar: firebaseUser.photoURL || existing?.avatar,
-    role: existing?.role ?? (email === SUPER_ADMIN_EMAIL ? 'admin' : 'client'),
+    role: existing?.role ?? 'client',
     adminRoleId: existing?.adminRoleId ?? null,
-    isSuperAdmin: existing?.isSuperAdmin ?? (email === SUPER_ADMIN_EMAIL),
+    isSuperAdmin: existing?.isSuperAdmin,
     notificationPrefs,
   };
 
