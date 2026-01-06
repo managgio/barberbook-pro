@@ -1,4 +1,5 @@
 const UPLOAD_URL = 'https://upload.imagekit.io/api/v1/files/upload';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export type ImageKitAuth = {
   token: string;
@@ -10,7 +11,7 @@ export type ImageKitAuth = {
 };
 
 export const requestImageKitAuth = async (): Promise<ImageKitAuth> => {
-  const response = await fetch('/api/imagekit/sign');
+  const response = await fetch(`${API_BASE}/imagekit/sign`);
   if (!response.ok) {
     throw new Error('No se pudo obtener la firma de ImageKit.');
   }
@@ -62,7 +63,7 @@ export const uploadToImageKit = async (
 };
 
 export const deleteFromImageKit = async (fileId: string): Promise<void> => {
-  const response = await fetch(`/api/imagekit/file/${fileId}`, { method: 'DELETE' });
+  const response = await fetch(`${API_BASE}/imagekit/file/${fileId}`, { method: 'DELETE' });
   if (!response.ok) {
     const message = await response.text();
     throw new Error(message || 'No se pudo eliminar la imagen.');
