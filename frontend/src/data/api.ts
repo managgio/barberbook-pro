@@ -2,6 +2,8 @@ import {
   User,
   Barber,
   Service,
+  Offer,
+  ServiceCategory,
   Appointment,
   Alert,
   ShopSchedule,
@@ -102,6 +104,33 @@ export const updateService = async (id: string, data: Partial<Service>): Promise
   apiRequest(`/services/${id}`, { method: 'PATCH', body: data });
 export const deleteService = async (id: string): Promise<void> =>
   apiRequest(`/services/${id}`, { method: 'DELETE' });
+
+// Offers API
+export const getOffers = async (): Promise<Offer[]> => apiRequest('/offers');
+export const getActiveOffers = async (): Promise<Offer[]> => apiRequest('/offers/active');
+export const createOffer = async (data: Omit<Offer, 'id' | 'categories' | 'services'> & {
+  categoryIds?: string[];
+  serviceIds?: string[];
+}): Promise<Offer> => apiRequest('/offers', { method: 'POST', body: data });
+export const updateOffer = async (
+  id: string,
+  data: Partial<Omit<Offer, 'id' | 'categories' | 'services'>> & { categoryIds?: string[]; serviceIds?: string[] },
+): Promise<Offer> => apiRequest(`/offers/${id}`, { method: 'PATCH', body: data });
+export const deleteOffer = async (id: string): Promise<void> => apiRequest(`/offers/${id}`, { method: 'DELETE' });
+
+// Service Categories API
+export const getServiceCategories = async (withServices = true): Promise<ServiceCategory[]> =>
+  apiRequest('/service-categories', { query: { withServices } });
+export const createServiceCategory = async (
+  data: Omit<ServiceCategory, 'id' | 'services'>,
+): Promise<ServiceCategory> =>
+  apiRequest('/service-categories', { method: 'POST', body: data });
+export const updateServiceCategory = async (
+  id: string,
+  data: Partial<Omit<ServiceCategory, 'id' | 'services'>>,
+): Promise<ServiceCategory> => apiRequest(`/service-categories/${id}`, { method: 'PATCH', body: data });
+export const deleteServiceCategory = async (id: string): Promise<void> =>
+  apiRequest(`/service-categories/${id}`, { method: 'DELETE' });
 
 // Appointments API
 export const getAppointments = async (): Promise<Appointment[]> => apiRequest('/appointments');

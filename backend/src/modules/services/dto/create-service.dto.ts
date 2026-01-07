@@ -15,4 +15,8 @@ export class CreateServiceDto {
   @IsNumber()
   @Min(1)
   duration!: number;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string | null;
 }

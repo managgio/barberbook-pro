@@ -6,4 +6,6 @@ export const mapAlert = (alert: Alert) => ({
   message: alert.message,
   active: alert.active,
   type: alert.type,
+  startDate: alert.startDate,
+  endDate: alert.endDate,
 });

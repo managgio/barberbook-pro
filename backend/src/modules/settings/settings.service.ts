@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SiteSettings, normalizeSettings, cloneSettings } from './settings.types';
 
@@ -26,6 +26,16 @@ export class SettingsService {
 
   async updateSettings(settings: SiteSettings): Promise<SiteSettings> {
     const normalized = normalizeSettings(settings);
+
+    if (normalized.services.categoriesEnabled) {
+      const uncategorized = await this.prisma.service.count({ where: { categoryId: null } });
+      if (uncategorized > 0) {
+        throw new BadRequestException(
+          'Asigna una categoría a todos los servicios antes de activar la categorización.',
+        );
+      }
+    }
+
     await this.prisma.siteSettings.upsert({
       where: { id: 1 },
       update: { data: normalized },

@@ -12,6 +12,8 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
 import { ImageKitModule } from './modules/imagekit/imagekit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { ServiceCategoriesModule } from './modules/service-categories/service-categories.module';
+import { OffersModule } from './modules/offers/offers.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { SettingsModule } from './modules/settings/settings.module';
     ImageKitModule,
     NotificationsModule,
     SettingsModule,
+    ServiceCategoriesModule,
+    OffersModule,
   ],
 })
 export class AppModule {}

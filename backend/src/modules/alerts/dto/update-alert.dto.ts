@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, IsDateString } from 'class-validator';
 import { AlertType } from '@prisma/client';
 
 export class UpdateAlertDto {
@@ -17,4 +17,12 @@ export class UpdateAlertDto {
   @IsOptional()
   @IsEnum(AlertType)
   type?: AlertType;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 }

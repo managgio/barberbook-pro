@@ -209,7 +209,14 @@ const LandingPage: React.FC = () => {
                     <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Scissors className="w-6 h-6 text-primary" />
                     </div>
-                    <span className="text-2xl font-bold text-primary">{service.price}€</span>
+                    <div className="text-right">
+                      {service.appliedOffer && service.finalPrice !== undefined && Math.abs(service.price - service.finalPrice) > 0.001 && (
+                        <div className="text-xs line-through text-muted-foreground">{service.price}€</div>
+                      )}
+                      <span className="text-2xl font-bold text-primary">
+                        {(service.finalPrice ?? service.price).toFixed(2)}€
+                      </span>
+                    </div>
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">{service.name}</h3>
                   <p className="text-sm text-muted-foreground mb-4">{service.description}</p>

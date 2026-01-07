@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getAlerts, createAlert, updateAlert, deleteAlert } from '@/data/api';
 import { Alert as AlertType } from '@/data/types';
-import { Plus, Pencil, Trash2, Bell, Info, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Bell, Info, AlertTriangle, CheckCircle, Loader2, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
@@ -30,6 +30,9 @@ const AdminAlerts: React.FC = () => {
     message: '',
     type: 'info' as 'info' | 'warning' | 'success',
     active: true,
+    hasSchedule: false,
+    startDate: '',
+    endDate: '',
   });
 
   useEffect(() => {
@@ -44,7 +47,7 @@ const AdminAlerts: React.FC = () => {
 
   const openCreateDialog = () => {
     setEditingAlert(null);
-    setFormData({ title: '', message: '', type: 'info', active: true });
+    setFormData({ title: '', message: '', type: 'info', active: true, hasSchedule: false, startDate: '', endDate: '' });
     setIsDialogOpen(true);
   };
 
@@ -55,6 +58,9 @@ const AdminAlerts: React.FC = () => {
       message: alert.message,
       type: alert.type,
       active: alert.active,
+      hasSchedule: !!(alert.startDate || alert.endDate),
+      startDate: alert.startDate ? alert.startDate.slice(0, 10) : '',
+      endDate: alert.endDate ? alert.endDate.slice(0, 10) : '',
     });
     setIsDialogOpen(true);
   };
@@ -69,11 +75,31 @@ const AdminAlerts: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      if (formData.hasSchedule && formData.startDate && formData.endDate && formData.startDate > formData.endDate) {
+        toast({ title: 'Rango de fechas inválido', description: 'La fecha de inicio debe ser anterior a la de fin.', variant: 'destructive' });
+        setIsSubmitting(false);
+        return;
+      }
+
       if (editingAlert) {
-        await updateAlert(editingAlert.id, formData);
+        await updateAlert(editingAlert.id, {
+          title: formData.title,
+          message: formData.message,
+          type: formData.type,
+          active: formData.active,
+          startDate: formData.hasSchedule ? formData.startDate || undefined : null,
+          endDate: formData.hasSchedule ? formData.endDate || undefined : null,
+        });
         toast({ title: 'Alerta actualizada', description: 'Los cambios han sido guardados.' });
       } else {
-        await createAlert(formData);
+        await createAlert({
+          title: formData.title,
+          message: formData.message,
+          type: formData.type,
+          active: formData.active,
+          startDate: formData.hasSchedule ? formData.startDate || undefined : undefined,
+          endDate: formData.hasSchedule ? formData.endDate || undefined : undefined,
+        });
         toast({ title: 'Alerta creada', description: 'La nueva alerta ha sido añadida.' });
       }
       
@@ -175,6 +201,12 @@ const AdminAlerts: React.FC = () => {
                         checked={alert.active}
                         onCheckedChange={() => toggleActive(alert)}
                       />
+                      {(alert.startDate || alert.endDate) && (
+                        <div className="text-[11px] text-muted-foreground bg-background/50 border border-border rounded-full px-2 py-1">
+                          {alert.startDate ? `Inicio ${alert.startDate.slice(0, 10)}` : 'Sin inicio'} ·{' '}
+                          {alert.endDate ? `Fin ${alert.endDate.slice(0, 10)}` : 'Sin fin'}
+                        </div>
+                      )}
                       <Button variant="ghost" size="icon" onClick={() => openEditDialog(alert)}>
                         <Pencil className="w-4 h-4" />
                       </Button>
@@ -270,6 +302,50 @@ const AdminAlerts: React.FC = () => {
                   checked={formData.active}
                   onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
                 />
+              </div>
+              <div className="space-y-2 rounded-xl border border-dashed border-border p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="flex items-center gap-2">
+                      <CalendarIcon className="w-4 h-4" />
+                      Programar por fechas
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Define inicio y fin; si lo dejas vacío será indefinida.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.hasSchedule}
+                    onCheckedChange={(checked) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        hasSchedule: checked,
+                        startDate: checked ? prev.startDate : '',
+                        endDate: checked ? prev.endDate : '',
+                      }))
+                    }
+                  />
+                </div>
+                {formData.hasSchedule && (
+                  <div className="grid sm:grid-cols-2 gap-3 pt-2">
+                    <div className="space-y-1">
+                      <Label>Inicio</Label>
+                      <Input
+                        type="date"
+                        value={formData.startDate}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, startDate: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Fin</Label>
+                      <Input
+                        type="date"
+                        value={formData.endDate}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, endDate: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <DialogFooter>

@@ -29,6 +29,17 @@ enum AlertType {
   success
 }
 
+enum DiscountType {
+  percentage
+  amount
+}
+
+enum OfferScope {
+  all
+  categories
+  services
+}
+
 model User {
   id                  String      @id @default(cuid())
   firebaseUid         String?     @unique
@@ -84,9 +95,14 @@ model Service {
   description String
   price       Decimal       @db.Decimal(10, 2)
   duration    Int
+  categoryId  String?
+  category    ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   appointments Appointment[]
+  offers      Offer[]       @relation("ServiceOffers")
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  @@index([categoryId])
 }
 
 model Appointment {
@@ -113,6 +129,8 @@ model Alert {
   message   String
   active    Boolean   @default(true)
   type      AlertType @default(info)
+  startDate DateTime?
+  endDate   DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -151,4 +169,31 @@ model BarberSchedule {
   barber    Barber   @relation(fields: [barberId], references: [id])
   data      Json
   updatedAt DateTime @updatedAt
+}
+
+model ServiceCategory {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  position    Int       @default(0)
+  services    Service[]
+  offers      Offer[]   @relation("OfferCategories")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Offer {
+  id            String           @id @default(cuid())
+  name          String
+  description   String?
+  discountType  DiscountType
+  discountValue Decimal          @db.Decimal(10, 2)
+  scope         OfferScope
+  startDate     DateTime?
+  endDate       DateTime?
+  active        Boolean          @default(true)
+  categories    ServiceCategory[] @relation("OfferCategories")
+  services      Service[]        @relation("ServiceOffers")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }

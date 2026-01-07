@@ -34,7 +34,11 @@ export interface Service {
   name: string;
   description: string;
   price: number;
+  finalPrice?: number;
   duration: number; // Minutes
+  categoryId?: string | null;
+  category?: ServiceCategory | null;
+  appliedOffer?: AppliedOffer | null;
 }
 
 export type AppointmentStatus = 'confirmed' | 'completed' | 'cancelled';
@@ -79,6 +83,8 @@ export interface Alert {
   message: string;
   active: boolean;
   type: 'info' | 'warning' | 'success';
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 export interface SiteStats {
@@ -94,6 +100,14 @@ export interface SocialLinks {
   tiktok?: string;
   youtube?: string;
   linkedin?: string;
+}
+
+export interface ServiceCategory {
+  id: string;
+  name: string;
+  description?: string;
+  position?: number;
+  services?: Service[];
 }
 
 export interface SiteSettings {
@@ -115,6 +129,38 @@ export interface SiteSettings {
   socials: SocialLinks;
   stats: SiteStats;
   openingHours: ShopSchedule;
+  services: {
+    categoriesEnabled: boolean;
+  };
+}
+
+export type DiscountType = 'percentage' | 'amount';
+export type OfferScope = 'all' | 'categories' | 'services';
+
+export interface AppliedOffer {
+  id: string;
+  name: string;
+  description?: string;
+  discountType: DiscountType;
+  discountValue: number;
+  scope: OfferScope;
+  startDate?: string | null;
+  endDate?: string | null;
+  amountOff: number;
+}
+
+export interface Offer {
+  id: string;
+  name: string;
+  description?: string;
+  discountType: DiscountType;
+  discountValue: number;
+  scope: OfferScope;
+  startDate?: string | null;
+  endDate?: string | null;
+  active: boolean;
+  categories: ServiceCategory[];
+  services: Service[];
 }
 
 export type AdminSectionKey =

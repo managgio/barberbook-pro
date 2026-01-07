@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
-import { getServices, getBarbers, getAvailableSlots, updateAppointment } from '@/data/api';
-import { Appointment, Barber, Service } from '@/data/types';
+import { getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
+import { Appointment, Barber, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +28,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const { toast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
+  const [categoriesEnabled, setCategoriesEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -44,12 +46,16 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     if (!appointment) return;
     setIsLoading(true);
     try {
-      const [servicesData, barbersData] = await Promise.all([
+      const [servicesData, barbersData, categoriesData, settingsData] = await Promise.all([
         getServices(),
         getBarbers(),
+        getServiceCategories(true),
+        getSiteSettings(),
       ]);
       setServices(servicesData);
       setBarbers(barbersData);
+      setServiceCategories(categoriesData);
+      setCategoriesEnabled(settingsData.services.categoriesEnabled);
       const initialDate = appointment.startDateTime.split('T')[0];
       const dateObj = new Date(appointment.startDateTime);
       const initialTime = `${dateObj.getHours().toString().padStart(2, '0')}:${dateObj
@@ -120,6 +126,19 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     return barbers.filter((barber) => barber.isActive !== false);
   }, [barbers, context]);
 
+  const orderedCategories = useMemo(
+    () =>
+      [...serviceCategories].sort(
+        (a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name),
+      ),
+    [serviceCategories],
+  );
+
+  const uncategorizedServices = useMemo(
+    () => services.filter((service) => !service.categoryId),
+    [services],
+  );
+
   const handleSave = async () => {
     if (!appointment) return;
     if (!form.serviceId || !form.barberId || !form.date || !form.time) {
@@ -170,11 +189,50 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                     <SelectValue placeholder="Selecciona un servicio" />
                   </SelectTrigger>
                   <SelectContent>
-                    {services.map((service) => (
-                      <SelectItem key={service.id} value={service.id}>
-                        {service.name} · {service.price}€ · {service.duration} min
-                      </SelectItem>
-                    ))}
+                    {categoriesEnabled && orderedCategories.length > 0 ? (
+                      <>
+                        {orderedCategories.map((category, index) => {
+                          const servicesByCategory =
+                            category.services && category.services.length > 0
+                              ? category.services
+                              : services.filter((service) => service.categoryId === category.id);
+                          if (servicesByCategory.length === 0) return null;
+                          const shouldShowSeparator =
+                            index < orderedCategories.length - 1 || uncategorizedServices.length > 0;
+                          return (
+                            <React.Fragment key={category.id}>
+                              <SelectGroup>
+                                <SelectLabel>{category.name}</SelectLabel>
+                                {servicesByCategory.map((service) => (
+                                  <SelectItem key={service.id} value={service.id}>
+                                    {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                              {shouldShowSeparator && <SelectSeparator />}
+                            </React.Fragment>
+                          );
+                        })}
+                        {uncategorizedServices.length > 0 && (
+                          <React.Fragment key="uncategorized">
+                            <SelectGroup>
+                              <SelectLabel>Otros</SelectLabel>
+                              {uncategorizedServices.map((service) => (
+                                <SelectItem key={service.id} value={service.id}>
+                                  {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </React.Fragment>
+                        )}
+                      </>
+                    ) : (
+                      services.map((service) => (
+                        <SelectItem key={service.id} value={service.id}>
+                          {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>

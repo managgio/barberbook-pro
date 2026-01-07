@@ -3,9 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getUsers, getBarbers, getServices, getAvailableSlots, createAppointment } from '@/data/api';
-import { Barber, Service, User } from '@/data/types';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getUsers, getBarbers, getServices, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
+import { Barber, Service, ServiceCategory, User } from '@/data/types';
 import { Plus, Search, Loader2, UserCircle2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,8 @@ const QuickAppointmentButton: React.FC = () => {
   const [clients, setClients] = useState<User[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
+  const [categoriesEnabled, setCategoriesEnabled] = useState(false);
 
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -38,14 +40,18 @@ const QuickAppointmentButton: React.FC = () => {
     const fetchData = async () => {
       setIsLoadingData(true);
       try {
-        const [usersData, barbersData, servicesData] = await Promise.all([
+        const [usersData, barbersData, servicesData, categoriesData, settingsData] = await Promise.all([
           getUsers(),
           getBarbers(),
           getServices(),
+          getServiceCategories(true),
+          getSiteSettings(),
         ]);
         setClients(usersData.filter((user) => user.role === 'client'));
         setBarbers(barbersData);
         setServices(servicesData);
+        setServiceCategories(categoriesData);
+        setCategoriesEnabled(settingsData.services.categoriesEnabled);
       } catch (error) {
         console.error(error);
         toast({
@@ -112,6 +118,19 @@ const QuickAppointmentButton: React.FC = () => {
     });
     return { morning, afternoon };
   }, [availableSlots]);
+
+  const orderedCategories = useMemo(
+    () =>
+      [...serviceCategories].sort(
+        (a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name),
+      ),
+    [serviceCategories],
+  );
+
+  const uncategorizedServices = useMemo(
+    () => services.filter((service) => !service.categoryId),
+    [services],
+  );
 
   const resetForm = () => {
     setClientSearch('');
@@ -323,11 +342,47 @@ const QuickAppointmentButton: React.FC = () => {
                       <SelectValue placeholder="Selecciona un servicio" />
                     </SelectTrigger>
                     <SelectContent>
-                      {services.map((service) => (
-                        <SelectItem key={service.id} value={service.id}>
-                          {service.name} · {service.price}€ · {service.duration} min
-                        </SelectItem>
-                      ))}
+                      {categoriesEnabled && orderedCategories.length > 0 ? (
+                        <>
+                          {orderedCategories.map((category, index) => {
+                            const servicesByCategory =
+                              category.services && category.services.length > 0
+                                ? category.services
+                                : services.filter((service) => service.categoryId === category.id);
+                            if (servicesByCategory.length === 0) return null;
+                            const showSeparator = index < orderedCategories.length - 1 || uncategorizedServices.length > 0;
+                            return (
+                              <React.Fragment key={category.id}>
+                                <SelectGroup>
+                                  <SelectLabel>{category.name}</SelectLabel>
+                                  {servicesByCategory.map((service) => (
+                                  <SelectItem key={service.id} value={service.id}>
+                                    {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                                {showSeparator && <SelectSeparator />}
+                              </React.Fragment>
+                            );
+                          })}
+                          {uncategorizedServices.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel>Otros</SelectLabel>
+                              {uncategorizedServices.map((service) => (
+                                <SelectItem key={service.id} value={service.id}>
+                                  {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                        </>
+                      ) : (
+                        services.map((service) => (
+                          <SelectItem key={service.id} value={service.id}>
+                            {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

@@ -5,8 +5,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { getServices, getBarbers, getAvailableSlots, createAppointment } from '@/data/api';
-import { Service, Barber, BookingState, User } from '@/data/types';
+import { Badge } from '@/components/ui/badge';
+import { getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
+import { Service, Barber, BookingState, User, ServiceCategory } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -40,6 +41,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
+  const [categoriesEnabled, setCategoriesEnabled] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
@@ -59,21 +62,33 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [servicesData, barbersData] = await Promise.all([
-        getServices(),
-        getBarbers(),
-      ]);
-      setServices(servicesData);
-      setBarbers(barbersData);
-      setIsLoading(false);
-
-      // If barber was preselected, move to step 1
-      if (searchParams.get('barber')) {
-        setCurrentStep(0); // Start at service selection
+      setIsLoading(true);
+      try {
+        const [servicesData, barbersData, categoriesData, settingsData] = await Promise.all([
+          getServices(),
+          getBarbers(),
+          getServiceCategories(true),
+          getSiteSettings(),
+        ]);
+        setServices(servicesData);
+        setBarbers(barbersData);
+        setServiceCategories(categoriesData);
+        setCategoriesEnabled(settingsData.services.categoriesEnabled);
+      } catch (error) {
+        toast({
+          title: 'No pudimos cargar los servicios',
+          description: 'Intenta de nuevo en unos segundos.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+        if (searchParams.get('barber')) {
+          setCurrentStep(0); // Start at service selection
+        }
       }
     };
     fetchData();
-  }, [searchParams]);
+  }, [searchParams, toast]);
 
   useEffect(() => {
     if (booking.barberId) {
@@ -114,6 +129,31 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     return { morningSlots: morning, afternoonSlots: afternoon };
   }, [availableSlots]);
 
+  const orderedCategories = useMemo(
+    () =>
+      [...serviceCategories].sort(
+        (a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name),
+      ),
+    [serviceCategories],
+  );
+
+  const categorizedServices = useMemo(
+    () =>
+      orderedCategories.map((category) => ({
+        ...category,
+        services:
+          category.services?.length && category.services[0]?.id
+            ? category.services
+            : services.filter((service) => service.categoryId === category.id),
+      })),
+    [orderedCategories, services],
+  );
+
+  const uncategorizedServices = useMemo(
+    () => services.filter((service) => !service.categoryId),
+    [services],
+  );
+
   const fetchSlots = useCallback(async () => {
     if (!booking.barberId || !booking.serviceId) return;
     setIsSlotsLoading(true);
@@ -141,6 +181,51 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     setVisibleMonth(startOfMonth(today));
     setAvailableSlots([]);
     setCurrentStep(1);
+  };
+
+  const renderServiceCard = (service: Service) => {
+    const finalPrice = service.finalPrice ?? service.price;
+    const hasOffer = !!service.appliedOffer && Math.abs(finalPrice - service.price) > 0.001;
+    return (
+      <Card
+        key={service.id}
+        variant={booking.serviceId === service.id ? 'selected' : 'interactive'}
+        className="cursor-pointer h-full shadow-sm"
+        onClick={() => handleSelectService(service.id)}
+      >
+        <CardContent className="p-4 flex flex-col gap-3">
+          <div className="flex justify-between items-start">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Scissors className="w-5 h-5 text-primary" />
+            </div>
+            <div className="text-right">
+              {hasOffer && <div className="text-xs line-through text-muted-foreground">{service.price}€</div>}
+              <span className="text-xl font-bold text-primary">{finalPrice.toFixed(2)}€</span>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-semibold text-foreground">{service.name}</h3>
+            <p className="text-sm text-muted-foreground line-clamp-2">{service.description}</p>
+          </div>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              {service.duration} min
+            </div>
+            {categoriesEnabled && service.category && (
+              <Badge variant="secondary" className="text-[11px]">
+                {service.category.name}
+              </Badge>
+            )}
+          </div>
+          {hasOffer && service.appliedOffer && (
+            <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
+              {service.appliedOffer.name} · ahorras {service.appliedOffer.amountOff.toFixed(2)}€
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
   };
 
   const handleSelectBarber = (barberId: string) => {
@@ -324,37 +409,61 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         <CardContent className="p-6">
           {/* Step 0: Select Service */}
           {currentStep === 0 && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Elige tu servicio</h2>
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Elige tu servicio</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Primero selecciona qué necesitas; después elegiremos profesional y horario.
+                  </p>
+                </div>
+              </div>
               {isLoading ? (
                 <div className="grid md:grid-cols-2 gap-4">
-                  {[1, 2, 3, 4].map(i => <CardSkeleton key={i} />)}
+                  {[1, 2, 3, 4].map((i) => <CardSkeleton key={i} />)}
+                </div>
+              ) : categoriesEnabled && categorizedServices.length > 0 ? (
+                <div className="space-y-4">
+                  {categorizedServices.map((category) => (
+                    <div
+                      key={category.id}
+                      className="rounded-3xl border border-border/60 bg-muted/30 p-4 sm:p-5 space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-lg font-semibold text-foreground">{category.name}</h3>
+                          <p className="text-sm text-muted-foreground">{category.description || 'Servicios de esta familia'}</p>
+                        </div>
+                        <span className="px-3 py-1 rounded-full border border-border text-xs text-muted-foreground">
+                          {category.services?.length ?? 0} servicios
+                        </span>
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {category.services?.map((service) => renderServiceCard(service))}
+                      </div>
+                    </div>
+                  ))}
+                  {uncategorizedServices.length > 0 && (
+                    <div className="rounded-3xl border border-border/60 bg-muted/30 p-4 sm:p-5 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Sin categoría</p>
+                          <h3 className="text-lg font-semibold text-foreground">Otros servicios</h3>
+                          <p className="text-sm text-muted-foreground">Aún no agrupados en una categoría.</p>
+                        </div>
+                        <span className="px-3 py-1 rounded-full border border-border text-xs text-muted-foreground">
+                          {uncategorizedServices.length} servicios
+                        </span>
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {uncategorizedServices.map((service) => renderServiceCard(service))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 gap-4">
-                  {services.map((service) => (
-                    <Card
-                      key={service.id}
-                      variant={booking.serviceId === service.id ? 'selected' : 'interactive'}
-                      className="cursor-pointer"
-                      onClick={() => handleSelectService(service.id)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                            <Scissors className="w-5 h-5 text-primary" />
-                          </div>
-                          <span className="text-xl font-bold text-primary">{service.price}€</span>
-                        </div>
-                        <h3 className="font-semibold text-foreground">{service.name}</h3>
-                        <p className="text-sm text-muted-foreground mt-1">{service.description}</p>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3">
-                          <Clock className="w-4 h-4" />
-                          {service.duration} min
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  {services.map((service) => renderServiceCard(service))}
                 </div>
               )}
             </div>

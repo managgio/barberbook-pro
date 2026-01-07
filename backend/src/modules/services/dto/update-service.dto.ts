@@ -18,4 +18,8 @@ export class UpdateServiceDto {
   @IsNumber()
   @Min(1)
   duration?: number;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string | null;
 }

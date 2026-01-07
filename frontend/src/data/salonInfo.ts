@@ -68,4 +68,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
       afternoon: { enabled: false, start: '00:00', end: '00:00' },
     },
   },
+  services: {
+    categoriesEnabled: false,
+  },
 };

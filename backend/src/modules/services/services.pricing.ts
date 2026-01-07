@@ -1,0 +1,81 @@
+import { Offer, OfferScope, DiscountType, Service, ServiceCategory } from '@prisma/client';
+
+type OfferWithRelations = Offer & { categories: ServiceCategory[]; services: Service[] };
+type ServiceWithCategory = Service & { categoryId?: string | null };
+
+export const isOfferActiveNow = (offer: Offer, now: Date = new Date()) => {
+  if (!offer.active) return false;
+  if (offer.startDate && offer.startDate > now) return false;
+  if (offer.endDate && offer.endDate < now) return false;
+  return true;
+};
+
+const appliesToService = (offer: OfferWithRelations, service: ServiceWithCategory) => {
+  switch (offer.scope) {
+    case OfferScope.all:
+      return true;
+    case OfferScope.categories:
+      return !!service.categoryId && offer.categories.some((cat) => cat.id === service.categoryId);
+    case OfferScope.services:
+      return offer.services.some((srv) => srv.id === service.id);
+    default:
+      return false;
+  }
+};
+
+const calculateFinalPrice = (basePrice: number, offer: OfferWithRelations) => {
+  if (offer.discountType === DiscountType.percentage) {
+    const factor = Math.max(0, 1 - Number(offer.discountValue) / 100);
+    return basePrice * factor;
+  }
+  return Math.max(0, basePrice - Number(offer.discountValue));
+};
+
+export const computeServicePricing = (service: ServiceWithCategory, offers: OfferWithRelations[]) => {
+  const basePrice = Number(service.price);
+  let finalPrice = basePrice;
+  let appliedOffer: OfferWithRelations | null = null;
+
+  offers.forEach((offer) => {
+    if (!isOfferActiveNow(offer)) return;
+    if (!appliesToService(offer, service)) return;
+    const priceAfter = calculateFinalPrice(basePrice, offer);
+    if (priceAfter < finalPrice) {
+      finalPrice = priceAfter;
+      appliedOffer = offer;
+    }
+  });
+
+  let appliedOfferData: {
+    id: string;
+    name: string;
+    description: string;
+    discountType: DiscountType;
+    discountValue: number;
+    scope: OfferScope;
+    startDate: Date | null;
+    endDate: Date | null;
+    amountOff: number;
+  } | null = null;
+
+  if (appliedOffer) {
+    const offer = appliedOffer as OfferWithRelations;
+    appliedOfferData = {
+      id: offer.id,
+      name: offer.name,
+      description: offer.description ?? '',
+      discountType: offer.discountType,
+      discountValue: Number(offer.discountValue),
+      scope: offer.scope,
+      startDate: offer.startDate,
+      endDate: offer.endDate,
+      amountOff: basePrice - finalPrice,
+    };
+  }
+
+  return {
+    basePrice,
+    finalPrice,
+    appliedOffer: appliedOfferData,
+  };
+};
