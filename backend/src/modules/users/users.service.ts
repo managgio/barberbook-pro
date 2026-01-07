@@ -1,15 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { mapUser } from './users.mapper';
 import { User } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import { getAdminAuth } from '../../lib/firebaseAdmin';
 
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
   constructor(private readonly prisma: PrismaService) {}
 
   private applySuperAdminFlag<T extends Partial<CreateUserDto | UpdateUserDto>>(data: T): T {
@@ -122,5 +124,28 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     return mapUser(updated);
+  }
+
+  async remove(id: string) {
+    const existing = await this.prisma.user.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('User not found');
+
+    if (existing.firebaseUid) {
+      const adminAuth = getAdminAuth();
+      if (adminAuth) {
+        try {
+          await adminAuth.deleteUser(existing.firebaseUid);
+        } catch (error) {
+          this.logger?.warn?.(`No se pudo eliminar en Firebase Auth (${existing.firebaseUid}): ${error}`);
+        }
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.appointment.deleteMany({ where: { userId: id } }),
+      this.prisma.user.delete({ where: { id } }),
+    ]);
+
+    return { success: true };
   }
 }

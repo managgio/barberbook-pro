@@ -7,11 +7,15 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { User, Mail, Phone, Bell, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { deleteUser } from '@/data/api';
 
 const ProfilePage: React.FC = () => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, logout } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -49,6 +53,28 @@ const ProfilePage: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    setIsDeleting(true);
+    try {
+      await deleteUser(user.id);
+      await logout();
+      toast({
+        title: 'Perfil eliminado',
+        description: 'Tu cuenta y citas asociadas se han eliminado.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo eliminar',
+        description: 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
     }
   };
 
@@ -173,7 +199,49 @@ const ProfilePage: React.FC = () => {
           {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
           Guardar cambios
         </Button>
+
+        {/* Danger zone */}
+        <Card variant="elevated" className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-destructive">Zona peligrosa</CardTitle>
+            <CardDescription>
+              Eliminar tu perfil borrará también todas tus citas asociadas. Esta acción no se puede deshacer.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="destructive"
+              type="button"
+              onClick={() => setDeleteDialogOpen(true)}
+              disabled={isDeleting}
+            >
+              Eliminar mi cuenta
+            </Button>
+          </CardContent>
+        </Card>
       </form>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar tu cuenta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminarán tu perfil y todas tus citas asociadas. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              type="button"
+              onClick={handleDeleteAccount}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
