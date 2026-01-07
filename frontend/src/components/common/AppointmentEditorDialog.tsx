@@ -134,9 +134,13 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     [serviceCategories],
   );
 
-  const uncategorizedServices = useMemo(
-    () => services.filter((service) => !service.categoryId),
-    [services],
+  const uncategorizedServices = useMemo(() => services.filter((service) => !service.categoryId), [services]);
+  const servicesByCategory = useMemo(
+    () => orderedCategories.reduce<Record<string, Service[]>>((acc, cat) => {
+      acc[cat.id] = services.filter((service) => service.categoryId === cat.id);
+      return acc;
+    }, {}),
+    [orderedCategories, services],
   );
 
   const handleSave = async () => {
@@ -192,18 +196,15 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                     {categoriesEnabled && orderedCategories.length > 0 ? (
                       <>
                         {orderedCategories.map((category, index) => {
-                          const servicesByCategory =
-                            category.services && category.services.length > 0
-                              ? category.services
-                              : services.filter((service) => service.categoryId === category.id);
-                          if (servicesByCategory.length === 0) return null;
+                          const servicesForCategory = servicesByCategory[category.id] || [];
+                          if (servicesForCategory.length === 0) return null;
                           const shouldShowSeparator =
                             index < orderedCategories.length - 1 || uncategorizedServices.length > 0;
                           return (
                             <React.Fragment key={category.id}>
                               <SelectGroup>
                                 <SelectLabel>{category.name}</SelectLabel>
-                                {servicesByCategory.map((service) => (
+                                {servicesForCategory.map((service) => (
                                   <SelectItem key={service.id} value={service.id}>
                                     {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
                                   </SelectItem>

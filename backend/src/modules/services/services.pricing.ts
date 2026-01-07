@@ -5,8 +5,17 @@ type ServiceWithCategory = Service & { categoryId?: string | null };
 
 export const isOfferActiveNow = (offer: Offer, now: Date = new Date()) => {
   if (!offer.active) return false;
-  if (offer.startDate && offer.startDate > now) return false;
-  if (offer.endDate && offer.endDate < now) return false;
+  const reference = now;
+  if (offer.startDate) {
+    const start = new Date(offer.startDate);
+    start.setHours(0, 0, 0, 0);
+    if (reference < start) return false;
+  }
+  if (offer.endDate) {
+    const end = new Date(offer.endDate);
+    end.setHours(23, 59, 59, 999);
+    if (reference > end) return false;
+  }
   return true;
 };
 
@@ -31,13 +40,17 @@ const calculateFinalPrice = (basePrice: number, offer: OfferWithRelations) => {
   return Math.max(0, basePrice - Number(offer.discountValue));
 };
 
-export const computeServicePricing = (service: ServiceWithCategory, offers: OfferWithRelations[]) => {
+export const computeServicePricing = (
+  service: ServiceWithCategory,
+  offers: OfferWithRelations[],
+  referenceDate: Date = new Date(),
+) => {
   const basePrice = Number(service.price);
   let finalPrice = basePrice;
   let appliedOffer: OfferWithRelations | null = null;
 
   offers.forEach((offer) => {
-    if (!isOfferActiveNow(offer)) return;
+    if (!isOfferActiveNow(offer, referenceDate)) return;
     if (!appliesToService(offer, service)) return;
     const priceAfter = calculateFinalPrice(basePrice, offer);
     if (priceAfter < finalPrice) {

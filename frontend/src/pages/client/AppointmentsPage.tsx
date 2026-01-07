@@ -89,6 +89,9 @@ const AppointmentsPage: React.FC = () => {
     const barber = getBarber(appointment.barberId);
     const service = getService(appointment.serviceId);
     const date = parseISO(appointment.startDateTime);
+    const basePrice = service?.price ?? appointment.price;
+    const paidPrice = appointment.price;
+    const hadOffer = paidPrice < (basePrice - 0.001);
     
     return (
       <Card variant={isHistorical ? 'default' : 'elevated'} className={isHistorical ? 'opacity-70' : ''}>
@@ -133,7 +136,15 @@ const AppointmentsPage: React.FC = () => {
                 {appointment.status === 'confirmed' ? 'Confirmada' : 
                  appointment.status === 'completed' ? 'Completada' : 'Cancelada'}
               </span>
-              <span className="text-xl font-bold text-primary">{service?.price}€</span>
+              <div className="text-right">
+                {hadOffer && (
+                  <div className="text-xs line-through text-muted-foreground">
+                    {basePrice.toFixed(2)}€
+                  </div>
+                )}
+                <span className="text-xl font-bold text-primary">{paidPrice.toFixed(2)}€</span>
+                {hadOffer && <div className="text-[11px] text-green-600">Precio promocional</div>}
+              </div>
             </div>
           </div>
           {!isHistorical && (

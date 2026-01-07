@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -8,6 +9,7 @@ import { HolidaysService } from '../holidays/holidays.service';
 import { SchedulesService } from '../schedules/schedules.service';
 import { DEFAULT_SHOP_SCHEDULE, ShopSchedule } from '../schedules/schedule.types';
 import { NotificationsService } from '../notifications/notifications.service';
+import { computeServicePricing, isOfferActiveNow } from '../services/services.pricing';
 
 const DEFAULT_SERVICE_DURATION = 30;
 const SLOT_INTERVAL_MINUTES = 15;
@@ -53,13 +55,37 @@ export class AppointmentsService {
     return mapAppointment(appointment);
   }
 
+  private async calculateAppointmentPrice(serviceId: string, startDateTime: Date) {
+    const service = await this.prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service) {
+      throw new NotFoundException('Service not found');
+    }
+
+    const offers = await this.prisma.offer.findMany({
+      where: { active: true },
+      include: { categories: true, services: true },
+    });
+
+    const pricing = computeServicePricing(
+      service,
+      offers.filter((offer) => isOfferActiveNow(offer, startDateTime)),
+      startDateTime,
+    );
+
+    return pricing.finalPrice ?? Number(service.price);
+  }
+
   async create(data: CreateAppointmentDto) {
+    const startDateTime = new Date(data.startDateTime);
+    const price = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
+
     const appointment = await this.prisma.appointment.create({
       data: {
         userId: data.userId,
         barberId: data.barberId,
         serviceId: data.serviceId,
-        startDateTime: new Date(data.startDateTime),
+        startDateTime,
+        price: new Prisma.Decimal(price),
         status: data.status || 'confirmed',
         notes: data.notes,
         guestName: data.guestName,
@@ -78,9 +104,9 @@ export class AppointmentsService {
       const current = await this.prisma.appointment.findUnique({ where: { id } });
       if (!current) throw new NotFoundException('Appointment not found');
 
-      const startChanged = data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
+      const startChanged =
+        data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
       const statusChanged = data.status && data.status !== current.status;
-      const newStatus = data.status || current.status;
       const isCancelled = statusChanged && data.status === 'cancelled';
 
       let reminderSent: boolean | undefined;
@@ -90,6 +116,13 @@ export class AppointmentsService {
         reminderSent = false;
       }
 
+      const nextServiceId = data.serviceId ?? current.serviceId;
+      const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
+      const shouldRecalculatePrice = data.serviceId !== undefined || data.startDateTime !== undefined;
+      const price = shouldRecalculatePrice
+        ? new Prisma.Decimal(await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime))
+        : undefined;
+
       const updated = await this.prisma.appointment.update({
         where: { id },
         data: {
@@ -97,6 +130,7 @@ export class AppointmentsService {
           barberId: data.barberId,
           serviceId: data.serviceId,
           startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
+          price,
           status: data.status,
           notes: data.notes,
           guestName: data.guestName,

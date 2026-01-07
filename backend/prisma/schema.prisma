@@ -114,6 +114,7 @@ model Appointment {
   serviceId     String
   service       Service            @relation(fields: [serviceId], references: [id])
   startDateTime DateTime
+  price         Decimal            @db.Decimal(10, 2)
   status        AppointmentStatus  @default(confirmed)
   notes         String?
   guestName     String?

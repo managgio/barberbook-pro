@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
-import { Service, Barber, BookingState, User, ServiceCategory } from '@/data/types';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -18,7 +18,7 @@ import {
   Loader2,
   CheckCircle,
 } from 'lucide-react';
-import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore } from 'date-fns';
+import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -141,10 +141,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () =>
       orderedCategories.map((category) => ({
         ...category,
-        services:
-          category.services?.length && category.services[0]?.id
-            ? category.services
-            : services.filter((service) => service.categoryId === category.id),
+        services: services.filter((service) => service.categoryId === category.id),
       })),
     [orderedCategories, services],
   );
@@ -184,8 +181,18 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   };
 
   const renderServiceCard = (service: Service) => {
-    const finalPrice = service.finalPrice ?? service.price;
-    const hasOffer = !!service.appliedOffer && Math.abs(finalPrice - service.price) > 0.001;
+    const basePrice = service.price;
+    const computedOfferPrice =
+      service.finalPrice ??
+      (service.appliedOffer
+        ? service.appliedOffer.discountType === 'percentage'
+          ? basePrice * Math.max(0, 1 - service.appliedOffer.discountValue / 100)
+          : Math.max(0, basePrice - service.appliedOffer.discountValue)
+        : undefined);
+    const finalPrice = computedOfferPrice ?? basePrice;
+    const hasOffer = finalPrice < basePrice - 0.001;
+    const offerEnds = service.appliedOffer?.endDate ? new Date(service.appliedOffer.endDate) : null;
+    const daysLeft = offerEnds ? differenceInCalendarDays(offerEnds, today) : null;
     return (
       <Card
         key={service.id}
@@ -198,7 +205,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
               <Scissors className="w-5 h-5 text-primary" />
             </div>
-            <div className="text-right">
+            <div className="text-right space-y-1">
+              {hasOffer && (
+                <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-primary/10 text-primary text-[11px] border border-primary/30">
+                  {service.appliedOffer?.name ?? 'Oferta'}
+                </div>
+              )}
               {hasOffer && <div className="text-xs line-through text-muted-foreground">{service.price}€</div>}
               <span className="text-xl font-bold text-primary">{finalPrice.toFixed(2)}€</span>
             </div>
@@ -212,15 +224,18 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               <Clock className="w-4 h-4" />
               {service.duration} min
             </div>
-            {categoriesEnabled && service.category && (
-              <Badge variant="secondary" className="text-[11px]">
-                {service.category.name}
-              </Badge>
-            )}
           </div>
           {hasOffer && service.appliedOffer && (
-            <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
-              {service.appliedOffer.name} · ahorras {service.appliedOffer.amountOff.toFixed(2)}€
+            <div className="text-xs bg-primary/5 border border-primary/20 rounded-xl px-3 py-2 space-y-1">
+              <div className="flex items-center gap-2 text-primary">
+                {service.appliedOffer.name} · ahorras {service.appliedOffer.amountOff.toFixed(2)}€
+              </div>
+              {service.appliedOffer.endDate && (
+                <div className="text-[11px] text-muted-foreground">
+                  Válida hasta {format(offerEnds as Date, "d 'de' MMMM", { locale: es })}
+                  {daysLeft !== null && daysLeft >= 0 ? ` (${daysLeft} día${daysLeft === 1 ? '' : 's'})` : ''}
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -242,6 +257,62 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const getService = () => services.find(s => s.id === booking.serviceId);
   const getBarber = () => barbers.find(b => b.id === booking.barberId);
   const availableBarbers = barbers.filter((barber) => barber.isActive !== false);
+
+  const isOfferActiveOnDate = (offer?: AppliedOffer | null, date?: Date | null) => {
+    if (!offer || !date) return false;
+    const day = new Date(date);
+    const start = offer.startDate ? new Date(offer.startDate) : null;
+    const end = offer.endDate ? new Date(offer.endDate) : null;
+    if (start) {
+      start.setHours(0, 0, 0, 0);
+      if (isBefore(day, start)) return false;
+    }
+    if (end) {
+      end.setHours(23, 59, 59, 999);
+      if (isAfter(day, end)) return false;
+    }
+    return true;
+  };
+
+  const selectedPricing = useMemo(() => {
+    const service = getService();
+    if (!service) return null;
+    const basePrice = service.price;
+    const referenceDate = booking.dateTime ? new Date(booking.dateTime) : selectedDate;
+    const offerActive = isOfferActiveOnDate(service.appliedOffer, referenceDate);
+    if (offerActive && service.appliedOffer) {
+      const offer = service.appliedOffer;
+      const discountValue = offer.discountType === 'percentage'
+        ? basePrice * (offer.discountValue / 100)
+        : offer.discountValue;
+      const finalPrice = Math.max(0, basePrice - discountValue);
+      return { basePrice, finalPrice, appliedOffer: offer, amountOff: basePrice - finalPrice };
+    }
+    return { basePrice, finalPrice: basePrice, appliedOffer: null, amountOff: 0 };
+  }, [booking.dateTime, selectedDate, services, booking.serviceId]);
+
+  const activeOffers = useMemo(() => {
+    const refDate = selectedDate;
+    const seen = new Map<string, AppliedOffer>();
+    services.forEach((service) => {
+      const offer = service.appliedOffer;
+      const basePrice = service.price;
+      const computedPrice =
+        service.finalPrice ??
+        (offer
+          ? offer.discountType === 'percentage'
+            ? basePrice * Math.max(0, 1 - offer.discountValue / 100)
+            : Math.max(0, basePrice - offer.discountValue)
+          : undefined);
+      const finalPrice = computedPrice ?? basePrice;
+      if (!offer || finalPrice >= basePrice - 0.001) return;
+      if (!isOfferActiveOnDate(offer, refDate)) return;
+      if (!seen.has(offer.id)) {
+        seen.set(offer.id, offer);
+      }
+    });
+    return Array.from(seen.values());
+  }, [services, selectedDate]);
 
   const canProceed = () => {
     switch (currentStep) {
@@ -418,6 +489,30 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </p>
                 </div>
               </div>
+              {activeOffers.length > 0 && (
+                <div className="rounded-2xl border border-primary/40 bg-primary/10 p-4 space-y-2">
+                  <p className="text-sm font-semibold text-primary flex items-center gap-2">
+                    <Check className="w-4 h-4" />
+                    Hay ofertas activas ahora mismo
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs text-primary">
+                    {activeOffers.map((offer) => {
+                      const hasDates = offer.startDate || offer.endDate;
+                      const validity = hasDates
+                        ? `${offer.startDate ? format(new Date(offer.startDate), "d MMM", { locale: es }) : 'Ya'} → ${offer.endDate ? format(new Date(offer.endDate), "d MMM", { locale: es }) : 'Sin límite'}`
+                        : 'Por tiempo limitado';
+                      return (
+                        <span
+                          key={offer.id}
+                          className="px-3 py-1 rounded-full bg-primary/15 text-primary border border-primary/20"
+                        >
+                          {offer.name} · {validity}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {isLoading ? (
                 <div className="grid md:grid-cols-2 gap-4">
                   {[1, 2, 3, 4].map((i) => <CardSkeleton key={i} />)}
@@ -678,8 +773,37 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <p className="text-sm text-muted-foreground">Servicio</p>
                     <p className="font-semibold text-foreground">{getService()?.name}</p>
                   </div>
-                  <span className="text-xl font-bold text-primary">{getService()?.price}€</span>
+                  <div className="text-right">
+                    {selectedPricing?.appliedOffer ? (
+                      <>
+                        <div className="text-xs line-through text-muted-foreground">
+                          {selectedPricing.basePrice.toFixed(2)}€
+                        </div>
+                        <div className="text-xl font-bold text-primary">
+                          {selectedPricing.finalPrice.toFixed(2)}€
+                        </div>
+                        <div className="text-[11px] text-green-600">
+                          Oferta activa ({selectedPricing.appliedOffer.name})
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-xl font-bold text-primary">
+                        {selectedPricing?.finalPrice.toFixed(2)}€
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {getService()?.appliedOffer && !selectedPricing?.appliedOffer && (
+                  <div className="text-sm text-primary bg-primary/10 border border-primary/30 rounded-lg px-3 py-2">
+                    La oferta "{getService()?.appliedOffer?.name}" no aplica para la fecha seleccionada. Se usará el precio estándar.
+                  </div>
+                )}
+                {selectedPricing?.appliedOffer?.endDate && (
+                  <div className="text-xs text-muted-foreground">
+                    Precio promocional válido para citas hasta{' '}
+                    {format(new Date(selectedPricing.appliedOffer.endDate), "d 'de' MMMM", { locale: es })}.
+                  </div>
+                )}
 
                 <hr className="border-border" />
 

@@ -49,6 +49,7 @@ export interface Appointment {
   barberId: string;
   serviceId: string;
   startDateTime: string; // ISO string
+  price: number;
   status: AppointmentStatus;
   notes?: string;
   guestName?: string;
@@ -186,6 +187,17 @@ export interface BookingState {
   serviceId: string | null;
   barberId: string | null;
   dateTime: string | null;
+}
+
+export interface CreateAppointmentPayload {
+  userId?: string | null;
+  barberId: string;
+  serviceId: string;
+  startDateTime: string;
+  status?: AppointmentStatus;
+  notes?: string;
+  guestName?: string;
+  guestContact?: string;
 }
 
 export interface HolidayRange {

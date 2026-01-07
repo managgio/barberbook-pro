@@ -110,6 +110,7 @@ const services = [
   { id: 'service-5', name: 'Corte + Barba', description: 'Combo completo: corte de pelo y arreglo de barba.', price: 28, duration: 60 },
   { id: 'service-6', name: 'Tratamiento capilar', description: 'Tratamiento hidratante y nutritivo para el cabello.', price: 15, duration: 45 },
 ];
+const servicePriceMap = Object.fromEntries(services.map((service) => [service.id, service.price]));
 
 const alerts = [
   {
@@ -194,6 +195,7 @@ async function main() {
       serviceId: 'service-2',
       startDateTime: new Date(tomorrow.setHours(10, 0, 0, 0)),
       status: 'confirmed' as const,
+      price: servicePriceMap['service-2'],
       reminderSent: false,
     },
     {
@@ -203,6 +205,7 @@ async function main() {
       serviceId: 'service-5',
       startDateTime: new Date(yesterday.setHours(11, 30, 0, 0)),
       status: 'completed' as const,
+      price: servicePriceMap['service-5'],
       reminderSent: false,
     },
     {
@@ -212,6 +215,7 @@ async function main() {
       serviceId: 'service-1',
       startDateTime: new Date(today.setHours(15, 0, 0, 0)),
       status: 'confirmed' as const,
+      price: servicePriceMap['service-1'],
       reminderSent: false,
     },
     {
@@ -221,6 +225,7 @@ async function main() {
       serviceId: 'service-3',
       startDateTime: new Date(dayAfter.setHours(12, 0, 0, 0)),
       status: 'confirmed' as const,
+      price: servicePriceMap['service-3'],
       reminderSent: false,
     },
   ];

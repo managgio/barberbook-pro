@@ -6,6 +6,7 @@ export const mapAppointment = (appointment: Appointment) => ({
   barberId: appointment.barberId,
   serviceId: appointment.serviceId,
   startDateTime: appointment.startDateTime.toISOString(),
+  price: Number(appointment.price),
   status: appointment.status,
   notes: appointment.notes || null,
   guestName: appointment.guestName || null,

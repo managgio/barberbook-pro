@@ -5,6 +5,7 @@ import {
   Offer,
   ServiceCategory,
   Appointment,
+  CreateAppointmentPayload,
   Alert,
   ShopSchedule,
   HolidayRange,
@@ -141,7 +142,7 @@ export const getAppointmentsByBarber = async (barberId: string): Promise<Appoint
   apiRequest('/appointments', { query: { barberId } });
 export const getAppointmentsByDate = async (date: string): Promise<Appointment[]> =>
   apiRequest('/appointments', { query: { date } });
-export const createAppointment = async (data: Omit<Appointment, 'id'>): Promise<Appointment> =>
+export const createAppointment = async (data: CreateAppointmentPayload): Promise<Appointment> =>
   apiRequest('/appointments', { method: 'POST', body: data });
 export const updateAppointment = async (id: string, data: Partial<Appointment>): Promise<Appointment> =>
   apiRequest(`/appointments/${id}`, { method: 'PATCH', body: data });

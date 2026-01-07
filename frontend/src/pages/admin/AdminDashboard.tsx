@@ -69,10 +69,7 @@ const AdminDashboard: React.FC = () => {
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
 
-  const revenueToday = todayAppointments.reduce((total, appointment) => {
-    const service = getService(appointment.serviceId);
-    return total + (service?.price || 0);
-  }, 0);
+  const revenueToday = todayAppointments.reduce((total, appointment) => total + (appointment.price || 0), 0);
 
   const weekCancelled = appointments.filter(a => 
     a.status === 'cancelled' &&
@@ -92,10 +89,7 @@ const AdminDashboard: React.FC = () => {
     const dayAppointments = appointments.filter((appointment) => 
       appointment.status !== 'cancelled' && isSameDay(parseISO(appointment.startDateTime), day)
     );
-    const total = dayAppointments.reduce((sum, appointment) => {
-      const service = getService(appointment.serviceId);
-      return sum + (service?.price || 0);
-    }, 0);
+    const total = dayAppointments.reduce((sum, appointment) => sum + (appointment.price || 0), 0);
     return {
       label: format(day, 'dd MMM', { locale: es }),
       value: total,
