@@ -175,7 +175,7 @@ const QuickAppointmentButton: React.FC = () => {
       setIsSubmitting(true);
       const appointmentDate = new Date(`${selectedDate}T${selectedTime}:00`);
       await createAppointment({
-        userId: useGuest ? `guest-${Date.now()}` : (selectedClientId as string),
+        userId: useGuest ? null : selectedClientId,
         barberId: selectedBarberId,
         serviceId: selectedServiceId,
         startDateTime: appointmentDate.toISOString(),

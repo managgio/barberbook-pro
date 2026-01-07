@@ -362,11 +362,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     setIsSubmitting(true);
 
     try {
-      const guestContact = [guestInfo.email.trim(), guestInfo.phone.trim()]
-        .filter(Boolean)
-        .join(' · ');
-
-      const userId = isGuest ? `guest-${Date.now()}` : (user as User).id;
+      const guestContact = [guestInfo.email.trim(), guestInfo.phone.trim()].filter(Boolean).join(' · ');
+      const userId = isGuest ? null : (user as User).id;
       await createAppointment({
         userId,
         serviceId: booking.serviceId,
