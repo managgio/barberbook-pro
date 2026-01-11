@@ -19,9 +19,13 @@ import {
   addDays, 
   addWeeks, 
   subWeeks,
+  addMinutes,
+  differenceInMinutes,
   parseISO,
   isSameDay,
   startOfDay,
+  setHours,
+  setMinutes,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -29,7 +33,11 @@ import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 9); // 9:00 - 20:00
+const START_HOUR = 9;
+const END_HOUR = 20;
+const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR);
+const HOUR_HEIGHT = 60;
+const MINUTES_IN_DAY_VIEW = HOURS.length * 60;
 
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
@@ -80,14 +88,74 @@ const AdminCalendar: React.FC = () => {
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
 
-  const getAppointmentsForSlot = (day: Date, hour: number) => {
-    return appointments.filter(apt => {
+  const getAppointmentsForDay = (day: Date) => {
+    return appointments.filter((apt) => {
       const aptDate = parseISO(apt.startDateTime);
-      const aptHour = aptDate.getHours();
       const sameDay = isSameDay(aptDate, day);
-      const sameHour = aptHour === hour || (aptHour === hour - 0.5);
       const matchesBarber = selectedBarberId === 'all' || apt.barberId === selectedBarberId;
-      return sameDay && sameHour && matchesBarber && apt.status !== 'cancelled';
+      return sameDay && matchesBarber && apt.status !== 'cancelled';
+    });
+  };
+
+  const getAppointmentDuration = (apt: Appointment) => {
+    const service = getService(apt.serviceId);
+    return service?.duration ?? 30;
+  };
+
+  const buildDayEvents = (day: Date) => {
+    const dayStart = setMinutes(setHours(startOfDay(day), START_HOUR), 0);
+    const dayEvents = getAppointmentsForDay(day)
+      .map((apt) => {
+        const start = parseISO(apt.startDateTime);
+        const duration = getAppointmentDuration(apt);
+        const end = addMinutes(start, duration);
+        const startMinutes = Math.max(0, differenceInMinutes(start, dayStart));
+        const endMinutes = Math.min(MINUTES_IN_DAY_VIEW, differenceInMinutes(end, dayStart));
+        if (endMinutes <= 0 || startMinutes >= MINUTES_IN_DAY_VIEW) {
+          return null;
+        }
+        return {
+          appointment: apt,
+          start,
+          end,
+          startMinutes,
+          endMinutes,
+        };
+      })
+      .filter((event): event is NonNullable<typeof event> => !!event)
+      .sort((a, b) => a.startMinutes - b.startMinutes || a.endMinutes - b.endMinutes);
+
+    const groups: Array<{ events: typeof dayEvents; maxEnd: number }> = [];
+    dayEvents.forEach((event) => {
+      const lastGroup = groups[groups.length - 1];
+      if (!lastGroup || event.startMinutes >= lastGroup.maxEnd) {
+        groups.push({ events: [event], maxEnd: event.endMinutes });
+        return;
+      }
+      lastGroup.events.push(event);
+      lastGroup.maxEnd = Math.max(lastGroup.maxEnd, event.endMinutes);
+    });
+
+    return groups.flatMap((group) => {
+      const columnsEnd: number[] = [];
+      const withColumns = group.events.map((event) => {
+        let columnIndex = columnsEnd.findIndex((end) => event.startMinutes >= end);
+        if (columnIndex === -1) {
+          columnIndex = columnsEnd.length;
+          columnsEnd.push(event.endMinutes);
+        } else {
+          columnsEnd[columnIndex] = event.endMinutes;
+        }
+        return {
+          ...event,
+          column: columnIndex,
+        };
+      });
+      const totalColumns = columnsEnd.length;
+      return withColumns.map((event) => ({
+        ...event,
+        columns: totalColumns,
+      }));
     });
   };
 
@@ -140,7 +208,10 @@ const AdminCalendar: React.FC = () => {
         <CardContent className="p-0 overflow-x-auto">
           <div className="min-w-[800px]">
             {/* Days Header */}
-            <div className="grid grid-cols-8 border-b border-border">
+            <div
+              className="grid border-b border-border"
+              style={{ gridTemplateColumns: '64px repeat(7, minmax(0, 1fr))' }}
+            >
               <div className="p-3 text-center text-sm text-muted-foreground">Hora</div>
               {weekDays.map((day) => (
                 <div 
@@ -163,39 +234,76 @@ const AdminCalendar: React.FC = () => {
               ))}
             </div>
 
-            {/* Time Slots */}
-            {HOURS.map((hour) => (
-              <div key={hour} className="grid grid-cols-8 border-b border-border">
-                <div className="p-2 text-center text-sm text-muted-foreground border-r border-border">
-                  {hour}:00
-                </div>
-                {weekDays.map((day) => {
-                  const dayAppointments = getAppointmentsForSlot(day, hour);
-                  return (
-                    <div 
-                      key={`${day.toISOString()}-${hour}`} 
-                      className="min-h-[60px] p-1 border-l border-border hover:bg-secondary/30 transition-colors"
-                    >
-                      {dayAppointments.map((apt) => {
-                        const service = getService(apt.serviceId);
-                        return (
-                          <button
-                            key={apt.id}
-                            onClick={() => setSelectedAppointment(apt)}
-                            className={cn(
-                              'w-full text-left p-1.5 rounded text-xs text-white truncate mb-1 transition-opacity hover:opacity-80',
-                              barberColors[apt.barberId] || 'bg-primary/80'
-                            )}
-                          >
-                            {format(parseISO(apt.startDateTime), 'HH:mm')} - {service?.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+            {/* Time Grid */}
+            <div
+              className="grid"
+              style={{ gridTemplateColumns: '64px repeat(7, minmax(0, 1fr))' }}
+            >
+              <div className="border-r border-border">
+                {HOURS.map((hour, index) => (
+                  <div
+                    key={hour}
+                    className={cn(
+                      'p-2 text-center text-sm text-muted-foreground',
+                      index < HOURS.length - 1 && 'border-b border-border'
+                    )}
+                    style={{ height: HOUR_HEIGHT }}
+                  >
+                    {hour}:00
+                  </div>
+                ))}
               </div>
-            ))}
+              {weekDays.map((day) => {
+                const dayEvents = buildDayEvents(day);
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={cn(
+                      'relative border-l border-border',
+                      isSameDay(day, new Date()) && 'bg-primary/5'
+                    )}
+                    style={{ height: HOUR_HEIGHT * HOURS.length }}
+                  >
+                    {HOURS.map((hour, index) => (
+                      <div
+                        key={`${day.toISOString()}-${hour}`}
+                        className={cn(
+                          'absolute left-0 right-0 border-b border-border',
+                          index === 0 && 'border-t border-border'
+                        )}
+                        style={{ top: index * HOUR_HEIGHT }}
+                      />
+                    ))}
+                    {dayEvents.map((event) => {
+                      const service = getService(event.appointment.serviceId);
+                      const startLabel = format(event.start, 'HH:mm');
+                      const endLabel = format(event.end, 'HH:mm');
+                      const columnWidth = 100 / event.columns;
+                      return (
+                        <button
+                          key={event.appointment.id}
+                          onClick={() => setSelectedAppointment(event.appointment)}
+                          title={`${startLabel} - ${endLabel} · ${service?.name || 'Servicio'}`}
+                          className={cn(
+                            'absolute rounded text-[11px] leading-tight text-white px-2 py-1 overflow-hidden transition-opacity hover:opacity-80',
+                            barberColors[event.appointment.barberId] || 'bg-primary/80'
+                          )}
+                          style={{
+                            top: event.startMinutes * (HOUR_HEIGHT / 60),
+                            height: Math.max(18, (event.endMinutes - event.startMinutes) * (HOUR_HEIGHT / 60)),
+                            left: `calc(${event.column * columnWidth}% + 4px)`,
+                            width: `calc(${columnWidth}% - 8px)`,
+                          }}
+                        >
+                          <div className="font-semibold">{startLabel} - {endLabel}</div>
+                          <div className="truncate">{service?.name || 'Servicio'}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </CardContent>
       </Card>
