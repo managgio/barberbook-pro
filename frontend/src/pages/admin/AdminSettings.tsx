@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
 import { SiteSettings } from '@/data/types';
-import { getSiteSettings, updateSiteSettings } from '@/data/api';
+import { getServices, getSiteSettings, updateSiteSettings } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
 import {
@@ -98,17 +98,32 @@ const AdminSettings: React.FC = () => {
         payload.socials[key as keyof SiteSettings['socials']] = value?.trim() || '';
       });
 
+      if (payload.services.categoriesEnabled) {
+        const servicesData = await getServices();
+        const missingCategory = servicesData.filter((service) => !service.categoryId);
+        if (missingCategory.length > 0) {
+          toast({
+            title: 'No se pudo guardar',
+            description: 'Asigna una categoría a todos los servicios o desactiva la categorización.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
       setPhoneParts(normalizePhoneParts(updated.contact.phone));
+      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
       toast({
         title: 'Configuración actualizada',
         description: fromSchedule ? 'Horario guardado.' : 'Los cambios se han guardado correctamente.',
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Revisa los campos e intenta nuevamente.';
       toast({
         title: 'Error al guardar',
-        description: 'Revisa los campos e intenta nuevamente.',
+        description: message,
         variant: 'destructive',
       });
     } finally {

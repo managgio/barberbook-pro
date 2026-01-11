@@ -125,7 +125,7 @@ const AuthPage: React.FC = () => {
               alt="Le Blond Hair Salon logo"
               className="w-14 h-14 rounded-xl shadow-glow object-contain"
             />
-            <span className="text-3xl font-bold text-foreground">Le Blond</span>
+            <span className="text-3xl font-bold text-foreground">{settings.branding.shortName}</span>
           </Link>
           
           <h1 className="text-4xl font-bold text-foreground mb-4">
@@ -134,7 +134,7 @@ const AuthPage: React.FC = () => {
           </h1>
           
           <p className="text-muted-foreground text-lg max-w-md">
-            Reserva tu cita en segundos y disfruta de la experiencia de Le Blond Hair Salon.
+            Reserva tu cita en segundos y disfruta de la experiencia de {settings.branding.name}.
           </p>
 
           <div className="mt-12 grid grid-cols-3 gap-6">
@@ -162,7 +162,7 @@ const AuthPage: React.FC = () => {
               alt="Le Blond Hair Salon logo"
               className="w-10 h-10 rounded-lg object-contain shadow-sm"
             />
-            <span className="text-xl font-bold text-foreground">Le Blond</span>
+            <span className="text-xl font-bold text-foreground">{settings.branding.shortName}</span>
           </Link>
 
           <div className="flex justify-end mb-4">

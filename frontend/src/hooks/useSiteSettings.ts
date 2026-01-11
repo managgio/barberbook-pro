@@ -23,5 +23,17 @@ export const useSiteSettings = () => {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const handleUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<SiteSettings>;
+      if (customEvent.detail) {
+        setSettings(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('site-settings-updated', handleUpdate);
+    return () => window.removeEventListener('site-settings-updated', handleUpdate);
+  }, []);
+
   return { settings, isLoading, refresh };
 };

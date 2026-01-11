@@ -51,7 +51,13 @@ const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promis
     if (skip404 && response.status === 404) {
       return undefined as T;
     }
-    const message = await response.text();
+    let message = await response.text();
+    try {
+      const parsed = JSON.parse(message) as { message?: string; error?: string };
+      message = parsed.message || parsed.error || message;
+    } catch {
+      // Keep raw message when it's not JSON.
+    }
     throw new Error(message || `API request failed (${response.status})`);
   }
 
