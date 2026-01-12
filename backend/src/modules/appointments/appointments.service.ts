@@ -167,7 +167,9 @@ export class AppointmentsService {
     if (endDate && dateOnly > endDate) return [];
 
     const schedule = await this.schedulesService.getBarberSchedule(barberId);
-    const dayKey = new Date(date).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() as keyof ShopSchedule;
+    const dayKey = new Date(`${dateOnly}T12:00:00`)
+      .toLocaleDateString('en-US', { weekday: 'long' })
+      .toLowerCase() as keyof ShopSchedule;
     const daySchedule = (schedule || DEFAULT_SHOP_SCHEDULE)[dayKey];
     if (!daySchedule || daySchedule.closed) return [];
 

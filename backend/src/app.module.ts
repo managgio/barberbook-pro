@@ -14,6 +14,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { SettingsModule } from './modules/settings/settings.module';
 import { ServiceCategoriesModule } from './modules/service-categories/service-categories.module';
 import { OffersModule } from './modules/offers/offers.module';
+import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { OffersModule } from './modules/offers/offers.module';
     SettingsModule,
     ServiceCategoriesModule,
     OffersModule,
+    AiAssistantModule,
   ],
 })
 export class AppModule {}

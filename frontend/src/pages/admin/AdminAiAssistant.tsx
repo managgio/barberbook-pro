@@ -1,0 +1,466 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Bot, Send, Mic, Square, Volume2, Sparkles } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Skeleton } from '@/components/common/Skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/AuthContext';
+import { getAiAssistantSession, postAiAssistantChat, postAiAssistantTranscribe } from '@/data/api';
+import { AiChatResponse } from '@/data/types';
+import { cn } from '@/lib/utils';
+import { dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt?: string;
+}
+
+const STORAGE_KEY = 'ai-assistant-session-id';
+
+const AdminAiAssistant: React.FC = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const loadedSessionRef = useRef<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const supportsAudio = typeof window !== 'undefined'
+    && 'MediaRecorder' in window
+    && 'mediaDevices' in navigator
+    && typeof navigator.mediaDevices?.getUserMedia === 'function';
+  const supportsSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  const getSupportedMimeType = () => {
+    if (typeof MediaRecorder === 'undefined') return '';
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/mpeg',
+    ];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+  };
+
+  const getFileExtension = (mimeType: string) => {
+    if (mimeType.includes('mp4')) return 'mp4';
+    if (mimeType.includes('mpeg')) return 'mp3';
+    return 'webm';
+  };
+
+  useEffect(() => {
+    const initialSessionId = localStorage.getItem(STORAGE_KEY);
+    if (initialSessionId) {
+      setSessionId(initialSessionId);
+    }
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isSending, isRecording, isTranscribing]);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      if (!user || !sessionId) return;
+      if (loadedSessionRef.current === sessionId) return;
+      loadedSessionRef.current = sessionId;
+      setIsLoadingHistory(true);
+      try {
+        const session = await getAiAssistantSession({
+          sessionId,
+          adminUserId: user.id,
+          role: user.role,
+        });
+        setMessages(session.messages.map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          createdAt: message.createdAt,
+        })));
+      } catch (error) {
+        loadedSessionRef.current = null;
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+    loadSession();
+  }, [sessionId, user]);
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+    };
+  }, []);
+
+  const persistSession = (newSessionId: string) => {
+    setSessionId(newSessionId);
+    localStorage.setItem(STORAGE_KEY, newSessionId);
+  };
+
+  const handleResponse = (response: AiChatResponse) => {
+    if (response.sessionId && response.sessionId !== sessionId) {
+      persistSession(response.sessionId);
+    }
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: response.assistantMessage,
+      },
+    ]);
+    if (response.actions?.appointmentsChanged) {
+      dispatchAppointmentsUpdated({ source: 'ai-assistant' });
+    }
+    if (response.actions?.holidaysChanged) {
+      dispatchHolidaysUpdated({ source: 'ai-assistant' });
+    }
+  };
+
+  const sendMessage = async (prompt: string) => {
+    const trimmed = prompt.trim();
+    if (!trimmed || !user) return;
+    if (user.role !== 'admin') {
+      toast({
+        title: 'Acceso restringido',
+        description: 'Solo los administradores pueden usar el asistente.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSending(true);
+    setMessages((prev) => [
+      ...prev,
+      { id: `user-${Date.now()}`, role: 'user', content: trimmed },
+    ]);
+    setInput('');
+
+    try {
+      const response = await postAiAssistantChat({
+        message: trimmed,
+        sessionId,
+        adminUserId: user.id,
+        role: user.role,
+      });
+      handleResponse(response);
+    } catch (error) {
+      toast({
+        title: 'Error del asistente',
+        description: error instanceof Error ? error.message : 'No se pudo completar la solicitud.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const stopSpeaking = () => {
+    if (!supportsSpeech) return;
+    window.speechSynthesis.cancel();
+    setSpeakingMessageId(null);
+  };
+
+  const speakMessage = (text: string, messageId: string) => {
+    if (!supportsSpeech) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.onend = () => {
+      setSpeakingMessageId((current) => (current === messageId ? null : current));
+    };
+    utterance.onerror = () => {
+      setSpeakingMessageId(null);
+    };
+    stopSpeaking();
+    setSpeakingMessageId(messageId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopRecording = async () => {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+    setIsRecording(false);
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    const blob = await new Promise<Blob>((resolve) => {
+      const finalize = () => {
+        recorder.removeEventListener('stop', finalize);
+        resolve(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }));
+      };
+      recorder.addEventListener('stop', finalize);
+      if (recorder.state === 'recording') {
+        try {
+          recorder.requestData();
+        } catch {
+          // Ignore requestData errors for unsupported implementations.
+        }
+        recorder.stop();
+      } else {
+        finalize();
+      }
+    });
+    chunksRef.current = [];
+    if (blob.size === 0) {
+      toast({
+        title: 'Audio vacío',
+        description: 'No se detectó audio para transcribir.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!user) return;
+    setIsTranscribing(true);
+    try {
+      const extension = getFileExtension(blob.type);
+      const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blob.type });
+      const response = await postAiAssistantTranscribe({
+        file,
+        adminUserId: user.id,
+        role: user.role,
+      });
+      if (!response.text.trim()) {
+        toast({
+          title: 'Sin texto',
+          description: 'No pude transcribir el audio. Intenta de nuevo.',
+        });
+        return;
+      }
+      await sendMessage(response.text);
+    } catch (error) {
+      toast({
+        title: 'Error al transcribir',
+        description: error instanceof Error ? error.message : 'No se pudo transcribir el audio.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const startRecording = async () => {
+    if (!supportsAudio) {
+      toast({
+        title: 'Audio no disponible',
+        description: 'Tu navegador no soporta grabación de audio.',
+      });
+      return;
+    }
+    if (isRecording) {
+      await stopRecording();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getSupportedMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      recorder.start(1000);
+      recorderRef.current = recorder;
+      setRecordingSeconds(0);
+      setIsRecording(true);
+      timerRef.current = window.setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (error) {
+      toast({
+        title: 'Permiso denegado',
+        description: 'No se pudo acceder al micrófono.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleSubmit = () => {
+    if (isSending) return;
+    sendMessage(input);
+  };
+
+  const applyTemplate = (template: string) => {
+    setInput(template);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+          <Sparkles className="w-5 h-5" />
+        </div>
+        <div>
+          <CardTitle>Asistente IA</CardTitle>
+          <p className="text-sm text-muted-foreground">Citas y festivos en segundos.</p>
+        </div>
+      </div>
+
+      <Card variant="elevated" className="flex flex-1 flex-col min-h-0 overflow-hidden">
+        <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4 py-6">
+          {isLoadingHistory && messages.length === 0 ? (
+            <div className="space-y-3">
+              <Skeleton className="h-10 w-2/3" />
+              <Skeleton className="h-10 w-1/2" />
+              <Skeleton className="h-10 w-3/4" />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground">
+              <Bot className="w-10 h-10 mb-3" />
+              <p className="text-sm">Escribe una solicitud o usa un atajo.</p>
+            </div>
+          ) : (
+            messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={cn(
+                  'max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+                  msg.role === 'user'
+                    ? 'ml-auto bg-primary text-primary-foreground'
+                    : 'bg-secondary text-foreground'
+                )}
+              >
+                <p className="whitespace-pre-line">{msg.content}</p>
+                {msg.role === 'assistant' && supportsSpeech && (
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                      onClick={() => speakMessage(msg.content, msg.id)}
+                      disabled={speakingMessageId === msg.id}
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                      Escuchar
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                      onClick={stopSpeaking}
+                      disabled={!speakingMessageId}
+                    >
+                      <Square className="w-3.5 h-3.5" />
+                      Detener
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          {isSending && (
+            <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-secondary text-foreground text-sm">
+              Pensando...
+            </div>
+          )}
+          {isTranscribing && (
+            <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-secondary text-foreground text-sm">
+              Transcribiendo audio...
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </CardContent>
+        <div className="border-t border-border p-4 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() =>
+                applyTemplate('Crea una cita para [cliente] el [fecha] a las [hora] con [servicio] y [barbero].')
+              }
+              disabled={isSending || isTranscribing || isRecording}
+            >
+              Crear cita
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() =>
+                applyTemplate('Crea un festivo para [barbero o local] del [fecha inicio] al [fecha fin].')
+              }
+              disabled={isSending || isTranscribing || isRecording}
+            >
+              Crear festivo
+            </Button>
+          </div>
+          <div className="flex gap-3 items-end">
+            <Button
+              type="button"
+              variant={isRecording ? 'destructive' : 'outline'}
+              size="icon"
+              className="h-12 w-12"
+              onClick={startRecording}
+              disabled={!supportsAudio || isSending || isTranscribing}
+              aria-pressed={isRecording}
+              aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
+            >
+              {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </Button>
+            <Textarea
+              ref={inputRef}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Describe la cita o el festivo..."
+              className="min-h-[48px] resize-none"
+              disabled={isRecording}
+            />
+            <Button
+              onClick={handleSubmit}
+              disabled={isSending || isRecording || isTranscribing || !input.trim()}
+              className="h-12 px-4"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {isRecording
+                ? `Grabando audio… ${Math.min(recordingSeconds, 599)}s`
+                : ' '}
+            </span>
+            {isRecording && (
+              <button
+                type="button"
+                className="text-xs text-foreground underline"
+                onClick={stopRecording}
+              >
+                Detener
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+export default AdminAiAssistant;

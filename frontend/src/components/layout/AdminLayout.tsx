@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import AdminSidebar from './AdminSidebar';
 import { cn } from '@/lib/utils';
+import AiAssistantFloatingButton from '@/components/admin/AiAssistantFloatingButton';
 import QuickAppointmentButton from '@/components/admin/QuickAppointmentButton';
 
 const AdminLayout: React.FC = () => {
@@ -18,6 +19,7 @@ const AdminLayout: React.FC = () => {
       >
         <Outlet />
       </main>
+      <AiAssistantFloatingButton />
       <QuickAppointmentButton />
     </div>
   );

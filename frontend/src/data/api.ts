@@ -11,6 +11,8 @@ import {
   HolidayRange,
   AdminRole,
   SiteSettings,
+  AiChatResponse,
+  AiChatSessionResponse,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -22,6 +24,7 @@ type RequestOptions = {
   body?: unknown;
   query?: QueryParams;
   skip404?: boolean;
+  headers?: Record<string, string>;
 };
 
 const buildUrl = (path: string, query?: QueryParams) => {
@@ -37,12 +40,13 @@ const buildUrl = (path: string, query?: QueryParams) => {
 };
 
 const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
-  const { method = 'GET', body, query, skip404 } = options;
+  const { method = 'GET', body, query, skip404, headers } = options;
   const url = buildUrl(path.startsWith('http') ? path : `${API_BASE}${path}`, query);
   const response = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
+      ...(headers || {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -210,3 +214,66 @@ export const addBarberHolidayRange = async (barberId: string, range: HolidayRang
   apiRequest(`/holidays/barbers/${barberId}`, { method: 'POST', body: range });
 export const removeBarberHolidayRange = async (barberId: string, range: HolidayRange): Promise<HolidayRange[]> =>
   apiRequest(`/holidays/barbers/${barberId}`, { method: 'DELETE', body: range });
+
+export const postAiAssistantChat = async (payload: {
+  message: string;
+  sessionId?: string | null;
+  adminUserId: string;
+  role?: string;
+}): Promise<AiChatResponse> =>
+  apiRequest('/admin/ai-assistant/chat', {
+    method: 'POST',
+    body: { message: payload.message, sessionId: payload.sessionId || undefined },
+    headers: {
+      'x-admin-user-id': payload.adminUserId,
+      ...(payload.role ? { 'x-user-role': payload.role } : {}),
+    },
+  });
+
+export const getAiAssistantSession = async (payload: {
+  sessionId: string;
+  adminUserId: string;
+  role?: string;
+}): Promise<AiChatSessionResponse> =>
+  apiRequest(`/admin/ai-assistant/session/${payload.sessionId}`, {
+    headers: {
+      'x-admin-user-id': payload.adminUserId,
+      ...(payload.role ? { 'x-user-role': payload.role } : {}),
+    },
+  });
+
+export const postAiAssistantTranscribe = async (payload: {
+  file: File;
+  adminUserId: string;
+  role?: string;
+}): Promise<{ text: string }> => {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  const url = buildUrl(`${API_BASE}/admin/ai-assistant/transcribe`);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'x-admin-user-id': payload.adminUserId,
+      ...(payload.role ? { 'x-user-role': payload.role } : {}),
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let message = await response.text();
+    try {
+      const parsed = JSON.parse(message) as { message?: string; error?: string };
+      message = parsed.message || parsed.error || message;
+    } catch {
+      // Keep raw message when it's not JSON.
+    }
+    throw new Error(message || `API request failed (${response.status})`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json() as Promise<{ text: string }>;
+  }
+
+  return { text: '' };
+};

@@ -9,6 +9,7 @@ import { getServices, getBarbers, getAvailableSlots, updateAppointment, getServi
 import { Appointment, Barber, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
 interface AppointmentEditorDialogProps {
   open: boolean;
@@ -157,6 +158,9 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         barberId: form.barberId,
         startDateTime: dateTime,
       });
+      if (context === 'admin') {
+        dispatchAppointmentsUpdated({ source: 'appointment-editor' });
+      }
       toast({ title: 'Cita actualizada', description: 'Los cambios han sido guardados.' });
       onSaved?.(updated);
       onClose();

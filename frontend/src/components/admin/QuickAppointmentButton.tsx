@@ -9,6 +9,7 @@ import { Barber, Service, ServiceCategory, User } from '@/data/types';
 import { Plus, Search, Loader2, UserCircle2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
@@ -183,6 +184,7 @@ const QuickAppointmentButton: React.FC = () => {
         guestName: useGuest ? guestName : undefined,
         guestContact: useGuest ? guestContact : undefined,
       });
+      dispatchAppointmentsUpdated({ source: 'quick-appointment' });
       toast({
         title: 'Cita creada',
         description: 'La reserva se ha registrado correctamente.',

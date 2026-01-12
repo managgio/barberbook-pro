@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
@@ -32,24 +33,35 @@ const AdminSearch: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    const [appts, barbersData, servicesData, usersData] = await Promise.all([
-      getAppointments(),
-      getBarbers(),
-      getServices(),
-      getUsers(),
-    ]);
-    setAppointments(appts);
-    setBarbers(barbersData);
-    setServices(servicesData);
-    setClients(usersData.filter((user) => user.role === 'client'));
-    setIsLoading(false);
-  };
+  const loadData = useCallback(async (withLoading = true) => {
+    if (withLoading) setIsLoading(true);
+    try {
+      const [appts, barbersData, servicesData, usersData] = await Promise.all([
+        getAppointments(),
+        getBarbers(),
+        getServices(),
+        getUsers(),
+      ]);
+      setAppointments(appts);
+      setBarbers(barbersData);
+      setServices(servicesData);
+      setClients(usersData.filter((user) => user.role === 'client'));
+    } finally {
+      if (withLoading) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void loadData(false);
+    };
+    window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+    return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+  }, [loadData]);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -272,6 +284,7 @@ const AdminSearch: React.FC = () => {
                   await deleteAppointment(deleteTarget.id);
                   toast({ title: 'Cita eliminada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
+                  dispatchAppointmentsUpdated({ source: 'admin-search' });
                   await loadData();
                 } catch (error) {
                   toast({ title: 'Error', description: 'No se pudo eliminar la cita.', variant: 'destructive' });

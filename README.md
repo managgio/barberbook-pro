@@ -76,6 +76,12 @@ npm run start:dev
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`
 - Twilio (SMS): `TWILIO_AUTH_SID` (o `TWILIO_ACCOUNT_SID`), `TWILIO_ACCOUNT_TOKEN` (auth token), `TWILIO_MESSAGING_SERVICE_SID`
 - Email (avisos): `EMAIL`, `PASSWORD` y opcional `EMAIL_HOST` (default `smtp.gmail.com`), `EMAIL_PORT` (default `587`)
+- Asistente IA: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`
+
+### Asistente IA (Admin)
+
+- Endpoint: `POST /api/admin/ai-assistant/chat`
+- Capacidades y tools actuales: `backend/src/modules/ai-assistant/AI_ASSISTANT_CAPABILITIES.md`
 
 ## Uso de Git en el monorepo
 

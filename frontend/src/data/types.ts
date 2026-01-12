@@ -204,3 +204,25 @@ export interface HolidayRange {
   start: string;
   end: string;
 }
+
+export interface AiChatResponse {
+  sessionId: string;
+  assistantMessage: string;
+  actions?: {
+    appointmentsChanged?: boolean;
+    holidaysChanged?: boolean;
+  };
+}
+
+export interface AiChatSessionMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface AiChatSessionResponse {
+  sessionId: string;
+  summary: string;
+  messages: AiChatSessionMessage[];
+}
