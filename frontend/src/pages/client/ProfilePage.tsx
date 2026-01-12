@@ -25,6 +25,9 @@ const ProfilePage: React.FC = () => {
     email: user?.notificationPrefs?.email ?? true,
     whatsapp: user?.notificationPrefs?.whatsapp ?? true,
   });
+  const [prefersBarberSelection, setPrefersBarberSelection] = useState(
+    user?.prefersBarberSelection ?? true,
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +42,7 @@ const ProfilePage: React.FC = () => {
         email: formData.email,
         phone: formData.phone,
         notificationPrefs,
+        prefersBarberSelection,
       });
 
       toast({
@@ -192,6 +196,36 @@ const ProfilePage: React.FC = () => {
                 }
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card variant="elevated">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              Preferencias de reserva
+            </CardTitle>
+            <CardDescription>
+              Decide si quieres elegir barbero al pedir tu cita.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between py-2">
+              <div className="space-y-0.5">
+                <Label htmlFor="barber-select-pref">Elegir barbero</Label>
+                <p className="text-sm text-muted-foreground">
+                  Si lo desactivas, asignaremos automáticamente a un barbero disponible.
+                </p>
+              </div>
+              <Switch
+                id="barber-select-pref"
+                checked={prefersBarberSelection}
+                onCheckedChange={setPrefersBarberSelection}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Podrás cambiar esta decisión en cada reserva.
+            </p>
           </CardContent>
         </Card>
 

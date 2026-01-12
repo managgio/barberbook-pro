@@ -48,6 +48,7 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
   const notificationPrefs =
     existing?.notificationPrefs ||
     { email: true, whatsapp: true };
+  const prefersBarberSelection = existing?.prefersBarberSelection ?? true;
 
   const payload: Partial<User> = {
     firebaseUid: firebaseUser.uid,
@@ -59,6 +60,7 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     adminRoleId: existing?.adminRoleId ?? null,
     isSuperAdmin: existing?.isSuperAdmin,
     notificationPrefs,
+    prefersBarberSelection,
   };
 
   if (existing) {
@@ -72,6 +74,7 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     phone: payload.phone,
     role: (payload.role || 'client') as UserRole,
     notificationPrefs: payload.notificationPrefs || notificationPrefs,
+    prefersBarberSelection,
     avatar: payload.avatar,
     adminRoleId: payload.adminRoleId ?? null,
     isSuperAdmin: payload.isSuperAdmin,
@@ -178,6 +181,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (data.notificationPrefs) {
       payload.notificationEmail = data.notificationPrefs.email;
       payload.notificationWhatsapp = data.notificationPrefs.whatsapp;
+    }
+    if (data.prefersBarberSelection !== undefined) {
+      payload.prefersBarberSelection = data.prefersBarberSelection;
     }
 
     const updated = await updateUser(user.id, payload);

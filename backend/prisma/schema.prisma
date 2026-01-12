@@ -55,6 +55,7 @@ model User {
   role                UserRole    @default(client)
   notificationEmail   Boolean     @default(true)
   notificationWhatsapp Boolean    @default(false)
+  prefersBarberSelection Boolean  @default(true)
   avatar              String?
   isSuperAdmin        Boolean     @default(false)
   adminRoleId         String?

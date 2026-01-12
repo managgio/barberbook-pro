@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -21,10 +21,9 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
-import { AdminRole, AdminSectionKey } from '@/data/types';
-import { getAdminRoles } from '@/data/api';
-import { useToast } from '@/hooks/use-toast';
+import { AdminSectionKey } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 
 interface NavItem {
   href: string;
@@ -54,51 +53,17 @@ interface AdminSidebarProps {
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { toast } = useToast();
   const { settings } = useSiteSettings();
-  const [roles, setRoles] = useState<AdminRole[]>([]);
-  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+  const { isLoading, canAccessSection } = useAdminPermissions();
 
   const isActive = (path: string) => {
     if (path === '/admin') return location.pathname === '/admin';
     return location.pathname.startsWith(path);
   };
 
-  useEffect(() => {
-    const loadRoles = async () => {
-      setIsLoadingRoles(true);
-      try {
-        const data = await getAdminRoles();
-        setRoles(data);
-      } catch (error) {
-        toast({
-          title: 'Error',
-          description: 'No se pudieron cargar los roles.',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsLoadingRoles(false);
-      }
-    };
-    loadRoles();
-  }, [toast]);
-
-  const currentRole = useMemo(
-    () => roles.find((role) => role.id === user?.adminRoleId),
-    [roles, user?.adminRoleId]
-  );
-
-  const canAccessSection = (section: AdminSectionKey) => {
-    if (!user) return false;
-    if (user.isSuperAdmin) return true;
-    if (user.role !== 'admin') return false;
-    if (!user.adminRoleId) return false;
-    return currentRole?.permissions.includes(section) ?? false;
-  };
-
   const visibleNavItems = navItems.filter((item) => canAccessSection(item.section));
   const showNoAccessMessage =
-    user?.role === 'admin' && !user?.isSuperAdmin && (!user?.adminRoleId || visibleNavItems.length === 0) && !isLoadingRoles;
+    user?.role === 'admin' && !user?.isSuperAdmin && (!user?.adminRoleId || visibleNavItems.length === 0) && !isLoading;
 
   return (
     <aside
@@ -142,7 +107,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
 
       {/* Navigation */}
       <nav className={cn('flex-1 p-4 space-y-1 overflow-y-auto overflow-x-visible', collapsed && 'px-2')}>
-        {isLoadingRoles && !user?.isSuperAdmin && (
+        {isLoading && !user?.isSuperAdmin && (
           <p className="text-xs text-muted-foreground px-2">Cargando accesos...</p>
         )}
         {showNoAccessMessage && (

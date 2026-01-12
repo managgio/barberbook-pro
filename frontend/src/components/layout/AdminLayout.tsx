@@ -4,9 +4,16 @@ import AdminSidebar from './AdminSidebar';
 import { cn } from '@/lib/utils';
 import AiAssistantFloatingButton from '@/components/admin/AiAssistantFloatingButton';
 import QuickAppointmentButton from '@/components/admin/QuickAppointmentButton';
+import { AdminPermissionsProvider, useAdminPermissions } from '@/context/AdminPermissionsContext';
 
-const AdminLayout: React.FC = () => {
+const AdminLayoutContent: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const { canAccessSection } = useAdminPermissions();
+
+  const showFloatingActions =
+    canAccessSection('calendar') ||
+    canAccessSection('search') ||
+    canAccessSection('clients');
 
   return (
     <div className="min-h-screen bg-background">
@@ -19,10 +26,20 @@ const AdminLayout: React.FC = () => {
       >
         <Outlet />
       </main>
-      <AiAssistantFloatingButton />
-      <QuickAppointmentButton />
+      {showFloatingActions && (
+        <>
+          <AiAssistantFloatingButton />
+          <QuickAppointmentButton />
+        </>
+      )}
     </div>
   );
 };
+
+const AdminLayout: React.FC = () => (
+  <AdminPermissionsProvider>
+    <AdminLayoutContent />
+  </AdminPermissionsProvider>
+);
 
 export default AdminLayout;

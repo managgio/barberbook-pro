@@ -17,6 +17,7 @@ import {
 import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval, subDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
+import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import {
   ResponsiveContainer,
   LineChart,
@@ -39,6 +40,7 @@ const AdminDashboard: React.FC = () => {
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [revenueRange, setRevenueRange] = useState(7);
+  const { canAccessSection } = useAdminPermissions();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -155,10 +157,12 @@ const AdminDashboard: React.FC = () => {
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Citas de hoy</CardTitle>
-            <Link to="/admin/calendar" className="text-sm text-primary hover:underline flex items-center">
-              Ver calendario
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </Link>
+            {canAccessSection('calendar') && (
+              <Link to="/admin/calendar" className="text-sm text-primary hover:underline flex items-center">
+                Ver calendario
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </Link>
+            )}
           </CardHeader>
           <CardContent>
             {isLoading ? (

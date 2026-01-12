@@ -10,6 +10,7 @@ import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
+import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -193,7 +194,10 @@ const AdminClients: React.FC = () => {
                           className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
                         >
                           <div>
-                            <p className="font-medium text-foreground">{getService(apt.serviceId)?.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-foreground">{getService(apt.serviceId)?.name}</p>
+                              <AppointmentNoteIndicator note={apt.notes} variant="icon" />
+                            </div>
                             <p className="text-sm text-muted-foreground">
                               {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: es })} · {getBarber(apt.barberId)?.name}
                             </p>

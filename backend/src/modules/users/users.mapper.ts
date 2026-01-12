@@ -11,6 +11,7 @@ export const mapUser = (user: User) => ({
     email: user.notificationEmail,
     whatsapp: user.notificationWhatsapp,
   },
+  prefersBarberSelection: user.prefersBarberSelection,
   avatar: user.avatar || undefined,
   isSuperAdmin: user.isSuperAdmin,
   adminRoleId: user.adminRoleId || null,

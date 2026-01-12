@@ -36,7 +36,7 @@ const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
           userName: { type: 'string', description: 'Nombre del cliente.' },
           userEmail: { type: 'string', description: 'Email del cliente (opcional).' },
           userPhone: { type: 'string', description: 'Teléfono del cliente (opcional).' },
-          notes: { type: 'string', description: 'Notas internas.' },
+          notes: { type: 'string', description: 'Comentario del cliente.' },
         },
         additionalProperties: false,
       },

@@ -11,6 +11,7 @@ export interface User {
     email: boolean;
     whatsapp: boolean;
   };
+  prefersBarberSelection?: boolean;
   avatar?: string;
   isSuperAdmin?: boolean;
   adminRoleId?: string | null;
@@ -187,6 +188,7 @@ export interface BookingState {
   serviceId: string | null;
   barberId: string | null;
   dateTime: string | null;
+  notes?: string;
 }
 
 export interface CreateAppointmentPayload {

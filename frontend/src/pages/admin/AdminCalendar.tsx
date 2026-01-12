@@ -12,6 +12,7 @@ import {
   Clock,
   User as UserIcon,
   Scissors,
+  MessageSquare,
 } from 'lucide-react';
 import { 
   format, 
@@ -30,6 +31,7 @@ import {
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
+import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -297,7 +299,7 @@ const AdminCalendar: React.FC = () => {
                           onClick={() => setSelectedAppointment(event.appointment)}
                           title={`${startLabel} - ${endLabel} · ${service?.name || 'Servicio'}`}
                           className={cn(
-                            'absolute rounded text-[11px] leading-tight text-white px-2 py-1 overflow-hidden transition-opacity hover:opacity-80',
+                            'relative absolute rounded text-[11px] leading-tight text-white px-2 py-1 overflow-hidden transition-opacity hover:opacity-80',
                             barberColors[event.appointment.barberId] || 'bg-primary/80'
                           )}
                           style={{
@@ -307,6 +309,11 @@ const AdminCalendar: React.FC = () => {
                             width: `calc(${columnWidth}% - 8px)`,
                           }}
                         >
+                          <AppointmentNoteIndicator
+                            note={event.appointment.notes}
+                            variant="icon"
+                            className="absolute right-1 top-1 border-white/40 bg-white/20 text-white/90"
+                          />
                           <div className="font-semibold">{startLabel} - {endLabel}</div>
                           <div className="truncate">{service?.name || 'Servicio'}</div>
                         </button>
@@ -379,6 +386,18 @@ const AdminCalendar: React.FC = () => {
                   </p>
                 </div>
               </div>
+
+              {selectedAppointment.notes?.trim() && (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                    <MessageSquare className="h-4 w-4" />
+                    Comentario del cliente
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                    {selectedAppointment.notes}
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center justify-between pt-2">
                 <span className={cn(

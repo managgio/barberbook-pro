@@ -29,6 +29,10 @@ export class CreateUserDto {
   notificationWhatsapp?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  prefersBarberSelection?: boolean;
+
+  @IsOptional()
   @IsString()
   avatar?: string;
 

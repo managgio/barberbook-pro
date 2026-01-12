@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
 import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer } from '@/data/types';
 import { 
   Check, 
@@ -18,7 +19,7 @@ import {
   Loader2,
   CheckCircle,
 } from 'lucide-react';
-import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter } from 'date-fns';
+import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter, isWithinInterval, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -55,6 +56,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     dateTime: null,
   });
   const [guestInfo, setGuestInfo] = useState({ name: '', email: '', phone: '' });
+  const [appointmentNote, setAppointmentNote] = useState('');
+  const [selectBarber, setSelectBarber] = useState(true);
+  const [preferenceInitialized, setPreferenceInitialized] = useState(false);
+  const [slotsByBarber, setSlotsByBarber] = useState<Record<string, string[]>>({});
+  const [barberWeeklyLoad, setBarberWeeklyLoad] = useState<Record<string, number>>({});
+  const slotsRequestRef = useRef(0);
+  const weeklyLoadRequestRef = useRef(0);
 
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(new Date()));
@@ -89,6 +97,25 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     };
     fetchData();
   }, [searchParams, toast]);
+
+  useEffect(() => {
+    if (preferenceInitialized) return;
+    const barberParam = searchParams.get('barber');
+    if (barberParam) {
+      setSelectBarber(true);
+      setPreferenceInitialized(true);
+      return;
+    }
+    if (user) {
+      setSelectBarber(user.prefersBarberSelection ?? true);
+      setPreferenceInitialized(true);
+      return;
+    }
+    if (isGuest) {
+      setSelectBarber(true);
+      setPreferenceInitialized(true);
+    }
+  }, [isGuest, preferenceInitialized, searchParams, user]);
 
   useEffect(() => {
     if (booking.barberId) {
@@ -151,22 +178,113 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     [services],
   );
 
+  const getService = () => services.find(s => s.id === booking.serviceId);
+  const getBarber = () => barbers.find(b => b.id === booking.barberId);
+  const availableBarbers = useMemo(
+    () => barbers.filter((barber) => barber.isActive !== false),
+    [barbers],
+  );
+  const canPickSlots = selectBarber ? !!booking.barberId : true;
+  const assignedBarber = useMemo(
+    () => barbers.find((barber) => barber.id === booking.barberId) || null,
+    [barbers, booking.barberId],
+  );
+
   const fetchSlots = useCallback(async () => {
-    if (!booking.barberId || !booking.serviceId) return;
+    if (!booking.serviceId) return;
+    const requestId = ++slotsRequestRef.current;
     setIsSlotsLoading(true);
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    const slots = await getAvailableSlots(booking.barberId, dateStr, {
-      serviceId: booking.serviceId,
-    });
-    setAvailableSlots(slots);
-    setIsSlotsLoading(false);
-  }, [booking.barberId, booking.serviceId, selectedDate]);
+    try {
+      if (selectBarber) {
+        if (!booking.barberId) {
+          if (requestId === slotsRequestRef.current) {
+            setAvailableSlots([]);
+            setSlotsByBarber({});
+          }
+          return;
+        }
+        const slots = await getAvailableSlots(booking.barberId, dateStr, {
+          serviceId: booking.serviceId,
+        });
+        if (requestId !== slotsRequestRef.current) return;
+        setAvailableSlots(slots);
+        setSlotsByBarber({});
+      } else {
+        if (availableBarbers.length === 0) {
+          if (requestId === slotsRequestRef.current) {
+            setAvailableSlots([]);
+            setSlotsByBarber({});
+          }
+          return;
+        }
+        const results = await Promise.all(
+          availableBarbers.map((barber) =>
+            getAvailableSlots(barber.id, dateStr, { serviceId: booking.serviceId }),
+          ),
+        );
+        if (requestId !== slotsRequestRef.current) return;
+        const nextMap: Record<string, string[]> = {};
+        availableBarbers.forEach((barber, index) => {
+          nextMap[barber.id] = results[index] || [];
+        });
+        const merged = Array.from(new Set(results.flat())).sort();
+        setSlotsByBarber(nextMap);
+        setAvailableSlots(merged);
+      }
+    } catch (error) {
+      if (requestId === slotsRequestRef.current) {
+        setAvailableSlots([]);
+        setSlotsByBarber({});
+      }
+    } finally {
+      if (requestId === slotsRequestRef.current) {
+        setIsSlotsLoading(false);
+      }
+    }
+  }, [availableBarbers, booking.barberId, booking.serviceId, selectedDate, selectBarber]);
+
+  const fetchWeeklyLoad = useCallback(async () => {
+    const requestId = ++weeklyLoadRequestRef.current;
+    if (!booking.serviceId || availableBarbers.length === 0) {
+      setBarberWeeklyLoad({});
+      return;
+    }
+    try {
+      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
+      const appts = await getAppointments();
+      const counts = availableBarbers.reduce<Record<string, number>>((acc, barber) => {
+        acc[barber.id] = 0;
+        return acc;
+      }, {});
+      appts.forEach((appointment) => {
+        if (appointment.status === 'cancelled') return;
+        const date = parseISO(appointment.startDateTime);
+        if (!isWithinInterval(date, { start: weekStart, end: weekEnd })) return;
+        if (counts[appointment.barberId] !== undefined) {
+          counts[appointment.barberId] += 1;
+        }
+      });
+      if (requestId !== weeklyLoadRequestRef.current) return;
+      setBarberWeeklyLoad(counts);
+    } catch (error) {
+      if (requestId === weeklyLoadRequestRef.current) {
+        setBarberWeeklyLoad({});
+      }
+    }
+  }, [availableBarbers, booking.serviceId, selectedDate]);
 
   useEffect(() => {
-    if (booking.barberId && booking.serviceId && currentStep === 1) {
-      fetchSlots();
-    }
-  }, [booking.barberId, booking.serviceId, selectedDate, currentStep, fetchSlots]);
+    if (!booking.serviceId || currentStep !== 1) return;
+    if (selectBarber && !booking.barberId) return;
+    fetchSlots();
+  }, [booking.barberId, booking.serviceId, selectedDate, currentStep, fetchSlots, selectBarber]);
+
+  useEffect(() => {
+    if (selectBarber || !booking.serviceId || currentStep !== 1) return;
+    fetchWeeklyLoad();
+  }, [selectBarber, booking.serviceId, selectedDate, currentStep, fetchWeeklyLoad]);
 
   const handleSelectService = (serviceId: string) => {
     setBooking({
@@ -177,6 +295,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
     setAvailableSlots([]);
+    setSlotsByBarber({});
+    setBarberWeeklyLoad({});
     setCurrentStep(1);
   };
 
@@ -252,11 +372,22 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
     setAvailableSlots([]);
+    setSlotsByBarber({});
   };
 
-  const getService = () => services.find(s => s.id === booking.serviceId);
-  const getBarber = () => barbers.find(b => b.id === booking.barberId);
-  const availableBarbers = barbers.filter((barber) => barber.isActive !== false);
+  const handleBarberSelectionToggle = (checked: boolean) => {
+    setSelectBarber(checked);
+    setBooking((prev) => ({
+      ...prev,
+      barberId: checked ? prev.barberId : null,
+      dateTime: null,
+    }));
+    setAvailableSlots([]);
+    setSlotsByBarber({});
+    if (checked) {
+      setBarberWeeklyLoad({});
+    }
+  };
 
   const isOfferActiveOnDate = (offer?: AppliedOffer | null, date?: Date | null) => {
     if (!offer || !date) return false;
@@ -370,6 +501,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         barberId: booking.barberId,
         startDateTime: booking.dateTime,
         status: 'confirmed',
+        notes: appointmentNote.trim() ? appointmentNote.trim() : undefined,
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
       });
@@ -403,6 +535,30 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     const [hours, minutes] = slot.split(':');
     const dateTime = new Date(selectedDate);
     dateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    if (!selectBarber) {
+      const eligibleBarbers = availableBarbers.filter((barber) =>
+        slotsByBarber[barber.id]?.includes(slot),
+      );
+      if (eligibleBarbers.length === 0) {
+        toast({
+          title: 'No hay barberos disponibles',
+          description: 'Elige otro horario para asignarte un barbero disponible.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const chosen = [...eligibleBarbers].sort((a, b) => {
+        const loadDiff = (barberWeeklyLoad[a.id] ?? 0) - (barberWeeklyLoad[b.id] ?? 0);
+        if (loadDiff !== 0) return loadDiff;
+        return a.name.localeCompare(b.name);
+      })[0];
+      setBooking((prev) => ({
+        ...prev,
+        barberId: chosen.id,
+        dateTime: dateTime.toISOString(),
+      }));
+      return;
+    }
     setBooking((prev) => ({ ...prev, dateTime: dateTime.toISOString() }));
   };
 
@@ -564,51 +720,85 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           {/* Step 1: Select Barber & Schedule */}
           {currentStep === 1 && (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground mb-1">Elige tu barbero y horario</h2>
-                <p className="text-sm text-muted-foreground">
-                  Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.
-                </p>
-              </div>
-              <div className="grid gap-6 lg:grid-cols-[280px,1fr]">
-                <div className="space-y-4">
-                  <p className="text-sm font-medium text-muted-foreground">Selecciona a tu estilista preferido</p>
-                  <div className="space-y-3 pr-1 max-h-[420px] overflow-y-auto">
-                    {availableBarbers.length > 0 ? (
-                      availableBarbers.map((barber) => (
-                        <button
-                          key={barber.id}
-                          onClick={() => handleSelectBarber(barber.id)}
-                          className={cn(
-                            'w-full rounded-2xl border p-3 flex items-center gap-3 text-left transition-all',
-                            booking.barberId === barber.id
-                              ? 'border-primary bg-primary/5 shadow-glow'
-                              : 'border-border bg-card hover:border-primary/40'
-                          )}
-                        >
-                          <img 
-                            src={barber.photo || defaultAvatar} 
-                            alt={barber.name}
-                            className="w-14 h-14 rounded-xl object-cover"
-                          />
-                          <div className="flex-1">
-                            <p className="font-semibold text-foreground">{barber.name}</p>
-                            <p className="text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Disponible desde {new Date(barber.startDate).toLocaleDateString()}
-                              {barber.endDate && ` · hasta ${new Date(barber.endDate).toLocaleDateString()}`}
-                            </p>
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No hay barberos activos disponibles.</p>
-                    )}
-                  </div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground mb-1">
+                    {selectBarber ? 'Elige tu barbero y horario' : 'Elige tu horario'}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {selectBarber
+                      ? 'Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.'
+                      : 'Selecciona el día y la hora; asignaremos automáticamente a un barbero disponible.'}
+                  </p>
                 </div>
+                <div className="flex items-center gap-3 rounded-full border border-border bg-secondary/40 px-4 py-2">
+                  <span className="text-xs font-medium text-muted-foreground">Elegir barbero</span>
+                  <Switch checked={selectBarber} onCheckedChange={handleBarberSelectionToggle} />
+                </div>
+              </div>
+
+              {!selectBarber && (
+                <div className="rounded-2xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                  <p>
+                    Barbero asignado: {!assignedBarber?.name ? 'A determinar' : ''}
+                  </p>
+                  {assignedBarber && booking.dateTime && (
+                    <div className="mt-3 flex items-center gap-3 rounded-xl border border-border/60 bg-background/70 p-3 text-foreground">
+                      <img
+                        src={assignedBarber.photo || defaultAvatar}
+                        alt={assignedBarber.name}
+                        className="w-12 h-12 rounded-xl object-cover"
+                      />
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Barbero asignado</p>
+                        <p className="font-semibold text-foreground">{assignedBarber.name}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className={cn('grid gap-6', selectBarber && 'lg:grid-cols-[280px,1fr]')}>
+                {selectBarber && (
+                  <div className="space-y-4">
+                    <p className="text-sm font-medium text-muted-foreground">Selecciona a tu estilista preferido</p>
+                    <div className="space-y-3 pr-1 max-h-[420px] overflow-y-auto">
+                      {availableBarbers.length > 0 ? (
+                        availableBarbers.map((barber) => (
+                          <button
+                            key={barber.id}
+                            onClick={() => handleSelectBarber(barber.id)}
+                            className={cn(
+                              'w-full rounded-2xl border p-3 flex items-center gap-3 text-left transition-all',
+                              booking.barberId === barber.id
+                                ? 'border-primary bg-primary/5 shadow-glow'
+                                : 'border-border bg-card hover:border-primary/40'
+                            )}
+                          >
+                            <img 
+                              src={barber.photo || defaultAvatar} 
+                              alt={barber.name}
+                              className="w-14 h-14 rounded-xl object-cover"
+                            />
+                            <div className="flex-1">
+                              <p className="font-semibold text-foreground">{barber.name}</p>
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Disponible desde {new Date(barber.startDate).toLocaleDateString()}
+                                {barber.endDate && ` · hasta ${new Date(barber.endDate).toLocaleDateString()}`}
+                              </p>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No hay barberos activos disponibles.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-5 rounded-3xl border border-border bg-muted/5 p-3 sm:p-4">
-                  {booking.barberId ? (
+                  {canPickSlots ? (
                     <>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -653,7 +843,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                 disabled={isPast}
                                 onClick={() => {
                                   setSelectedDate(startOfDay(date));
-                                  setBooking((prev) => ({ ...prev, dateTime: null }));
+                                  setBooking((prev) => ({
+                                    ...prev,
+                                    dateTime: null,
+                                    barberId: selectBarber ? prev.barberId : null,
+                                  }));
+                                  setAvailableSlots([]);
+                                  setSlotsByBarber({});
+                                  setBarberWeeklyLoad({});
                                 }}
                                 className={cn(
                                   'rounded-lg px-0 py-1.5 text-center text-xs transition-all border flex flex-col items-center justify-center min-h-[52px]',
@@ -831,6 +1028,28 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     </p>
                   </div>
                 </div>
+                <hr className="border-border" />
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="appointment-note">Comentario para la cita</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {appointmentNote.length}/250
+                    </span>
+                  </div>
+                  <Textarea
+                    id="appointment-note"
+                    placeholder="¿Algo que debamos tener en cuenta?"
+                    maxLength={250}
+                    value={appointmentNote}
+                    onChange={(e) => setAppointmentNote(e.target.value)}
+                    className="min-h-[110px] resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    El comentario lo verá tu barbero para preparar la cita.
+                  </p>
+                </div>
+
                 <hr className="border-border" />
 
                 {isGuest && (
