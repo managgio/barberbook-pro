@@ -1,5 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bot, Send, Mic, Square, Volume2, Sparkles } from 'lucide-react';
+import {
+  Bot,
+  Send,
+  Mic,
+  Square,
+  Volume2,
+  Sparkles,
+  CalendarCheck,
+  CalendarPlus,
+  Headphones,
+  Wand2,
+  ArrowLeft,
+  BookOpen,
+} from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,6 +43,7 @@ const AdminAiAssistant: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [activeView, setActiveView] = useState<'chat' | 'guide'>('chat');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -314,18 +329,189 @@ const AdminAiAssistant: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-          <Sparkles className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <CardTitle>Asistente IA</CardTitle>
+            <p className="text-sm text-muted-foreground">Citas y festivos en segundos.</p>
+          </div>
         </div>
-        <div>
-          <CardTitle>Asistente IA</CardTitle>
-          <p className="text-sm text-muted-foreground">Citas y festivos en segundos.</p>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={() => setActiveView('guide')}
+          disabled={activeView === 'guide'}
+        >
+          <BookOpen className="h-4 w-4 mr-2" />
+          Guia rapida
+        </Button>
       </div>
 
-      <Card variant="elevated" className="flex flex-1 flex-col min-h-0 overflow-hidden">
-        <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4 py-6">
+      {activeView === 'guide' ? (
+        <Card variant="glass" className="flex flex-1 flex-col border-primary/10 bg-gradient-to-br from-primary/5 via-card to-card">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="mt-0.5"
+                  onClick={() => setActiveView('chat')}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <Wand2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Guia rapida del asistente</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Ejemplos, variantes y funciones para sacarle todo el partido.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-3">
+              <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
+                Citas nuevas
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
+                Festivos local o barberos
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
+                Audio y escucha
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Accordion
+              type="single"
+              collapsible
+              defaultValue="citas"
+              className="rounded-xl border border-border/60 bg-card/40 px-4"
+            >
+              <AccordionItem value="citas" className="border-border/60">
+                <AccordionTrigger className="text-sm">Citas: que pedir y como pedirlo</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-center">
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Pide citas nuevas con fecha, hora, servicio y barbero. Si falta algo, el asistente te lo pide.
+                      </p>
+                      <div className="space-y-2 text-xs text-muted-foreground">
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Crea una cita para Marta el viernes a las 18:30 con barba y barbero Juan.
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Reserva para Luis el 12 de enero a las 10:00 con corte clasico.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-primary/10 via-card to-secondary/20">
+                      <div className="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-primary/10" />
+                      <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-background/80 px-3 py-2 shadow-sm">
+                        <CalendarCheck className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-medium text-foreground">Cita confirmada</span>
+                      </div>
+                      <div className="absolute top-5 left-5 h-2 w-16 rounded-full bg-primary/40" />
+                      <div className="absolute top-9 left-5 h-2 w-10 rounded-full bg-primary/20" />
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="festivos" className="border-border/60">
+                <AccordionTrigger className="text-sm">Festivos flexibles: local, barberos y rangos</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-center">
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Puedes crear festivos para el local o para uno o varios barberos. Si no dices el alcance,
+                        se entiende local. Tambien puedes mezclar varios festivos en un solo mensaje.
+                      </p>
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                          local / salon / barberia
+                        </span>
+                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                          para Alejandro y Pablo
+                        </span>
+                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                          y otro / ademas
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-xs text-muted-foreground">
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Crea un festivo para el local el 13 de enero.
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Festivo del 15 al 18 para Alejandro y Pablo.
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Crea un festivo para el salon el 5 y otro del 8 al 10 para Ana.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-secondary/30 via-card to-primary/10">
+                      <div className="absolute -left-6 -bottom-6 h-20 w-20 rounded-full bg-secondary/40" />
+                      <div className="absolute top-4 left-4 flex items-center gap-2 rounded-lg bg-background/80 px-3 py-2 shadow-sm">
+                        <CalendarPlus className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-medium text-foreground">Festivo creado</span>
+                      </div>
+                      <div className="absolute top-14 left-4 h-2 w-20 rounded-full bg-primary/30" />
+                      <div className="absolute top-[4.1rem] left-4 h-2 w-12 rounded-full bg-primary/15" />
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="audio" className="border-border/60">
+                <AccordionTrigger className="text-sm">Audio y escucha: manos libres</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-center">
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Pulsa el microfono para dictar. El mensaje se transcribe y se envia como texto. Ademas,
+                        puedes escuchar cualquier respuesta del asistente.
+                      </p>
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                          Dictado rapido
+                        </span>
+                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                          Transcripcion automatica
+                        </span>
+                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                          Escuchar respuesta
+                        </span>
+                      </div>
+                    </div>
+                    <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-primary/10 via-card to-secondary/20">
+                      <div className="absolute -right-6 bottom-0 h-20 w-20 rounded-full bg-primary/10" />
+                      <div className="absolute top-4 left-4 flex items-center gap-2 rounded-lg bg-background/80 px-3 py-2 shadow-sm">
+                        <Headphones className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-medium text-foreground">Escucha activa</span>
+                      </div>
+                      <div className="absolute bottom-5 left-4 flex items-end gap-1">
+                        <div className="h-2 w-1 rounded-full bg-primary/30" />
+                        <div className="h-4 w-1 rounded-full bg-primary/50" />
+                        <div className="h-6 w-1 rounded-full bg-primary/70" />
+                        <div className="h-3 w-1 rounded-full bg-primary/40" />
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card variant="elevated" className="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4 py-6">
           {isLoadingHistory && messages.length === 0 ? (
             <div className="space-y-3">
               <Skeleton className="h-10 w-2/3" />
@@ -385,80 +571,81 @@ const AdminAiAssistant: React.FC = () => {
             </div>
           )}
           <div ref={bottomRef} />
-        </CardContent>
-        <div className="border-t border-border p-4 space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-              onClick={() =>
-                applyTemplate('Crea una cita para [cliente] el [fecha] a las [hora] con [servicio] y [barbero].')
-              }
-              disabled={isSending || isTranscribing || isRecording}
-            >
-              Crear cita
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-              onClick={() =>
-                applyTemplate('Crea un festivo para [barbero o local] del [fecha inicio] al [fecha fin].')
-              }
-              disabled={isSending || isTranscribing || isRecording}
-            >
-              Crear festivo
-            </Button>
-          </div>
-          <div className="flex gap-3 items-end">
-            <Button
-              type="button"
-              variant={isRecording ? 'destructive' : 'outline'}
-              size="icon"
-              className="h-12 w-12"
-              onClick={startRecording}
-              disabled={!supportsAudio || isSending || isTranscribing}
-              aria-pressed={isRecording}
-              aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
-            >
-              {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </Button>
-            <Textarea
-              ref={inputRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Describe la cita o el festivo..."
-              className="min-h-[48px] resize-none"
-              disabled={isRecording}
-            />
-            <Button
-              onClick={handleSubmit}
-              disabled={isSending || isRecording || isTranscribing || !input.trim()}
-              className="h-12 px-4"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              {isRecording
-                ? `Grabando audio… ${Math.min(recordingSeconds, 599)}s`
-                : ' '}
-            </span>
-            {isRecording && (
-              <button
-                type="button"
-                className="text-xs text-foreground underline"
-                onClick={stopRecording}
+          </CardContent>
+          <div className="border-t border-border p-4 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  applyTemplate('Crea una cita para [cliente] el [fecha] a las [hora] con [servicio] y [barbero].')
+                }
+                disabled={isSending || isTranscribing || isRecording}
               >
-                Detener
-              </button>
-            )}
+                Crear cita
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  applyTemplate('Crea un festivo para [barbero o local] del [fecha inicio] al [fecha fin].')
+                }
+                disabled={isSending || isTranscribing || isRecording}
+              >
+                Crear festivo
+              </Button>
+            </div>
+            <div className="flex gap-3 items-end">
+              <Button
+                type="button"
+                variant={isRecording ? 'destructive' : 'outline'}
+                size="icon"
+                className="h-12 w-12"
+                onClick={startRecording}
+                disabled={!supportsAudio || isSending || isTranscribing}
+                aria-pressed={isRecording}
+                aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
+              >
+                {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </Button>
+              <Textarea
+                ref={inputRef}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Describe la cita o el festivo..."
+                className="min-h-[48px] resize-none"
+                disabled={isRecording}
+              />
+              <Button
+                onClick={handleSubmit}
+                disabled={isSending || isRecording || isTranscribing || !input.trim()}
+                className="h-12 px-4"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                {isRecording
+                  ? `Grabando audio… ${Math.min(recordingSeconds, 599)}s`
+                  : ' '}
+              </span>
+              {isRecording && (
+                <button
+                  type="button"
+                  className="text-xs text-foreground underline"
+                  onClick={stopRecording}
+                >
+                  Detener
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
     </div>
   );
 };

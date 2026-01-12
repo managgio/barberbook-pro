@@ -72,9 +72,8 @@ export class AiAssistantService {
       messages.push({ role: msg.role as 'user' | 'assistant', content: msg.content });
     });
 
-    const toolDefs = this.toolsRegistry.getTools();
+    const toolDefs = this.getToolDefinitions(message);
     let assistantMessage = '';
-    let shortCircuitMessage: string | null = null;
     let appointmentsChanged = false;
     let holidaysChanged = false;
     const lastAssistantMessage = [...recentMessages].reverse().find((msg) => msg.role === 'assistant')?.content ?? '';
@@ -102,6 +101,11 @@ export class AiAssistantService {
             content: responseMessage.content ?? '',
             tool_calls: responseMessage.tool_calls,
           });
+
+          const holidaySuccessMessages: string[] = [];
+          const holidayNeedsInfoMessages: string[] = [];
+          const holidayErrorMessages: string[] = [];
+          let appointmentMessage: string | null = null;
 
           for (const toolCall of responseMessage.tool_calls) {
             const toolName = toolCall.function.name as AiToolName;
@@ -134,17 +138,27 @@ export class AiAssistantService {
             });
 
             if (toolName === 'create_appointment') {
-              shortCircuitMessage = this.buildCreateAppointmentFallback(toolResult as AiCreateAppointmentResult);
+              appointmentMessage = this.buildCreateAppointmentFallback(toolResult as AiCreateAppointmentResult);
               if ((toolResult as AiCreateAppointmentResult).status === 'created') {
                 appointmentsChanged = true;
               }
             }
 
             if (toolName === 'add_barber_holiday' || toolName === 'add_shop_holiday') {
-              if ((toolResult as AiHolidayActionResult).status === 'added') {
+              const holidayResult = toolResult as AiHolidayActionResult;
+              if (holidayResult.status === 'added') {
                 holidaysChanged = true;
               }
-              shortCircuitMessage = this.buildHolidayResponse(toolResult as AiHolidayActionResult);
+              const holidayMessage = this.buildHolidayResponse(holidayResult);
+              if (holidayMessage) {
+                if (holidayResult.status === 'needs_info') {
+                  holidayNeedsInfoMessages.push(holidayMessage);
+                } else if (holidayResult.status === 'error') {
+                  holidayErrorMessages.push(holidayMessage);
+                } else {
+                  holidaySuccessMessages.push(holidayMessage);
+                }
+              }
             }
 
             messages.push({
@@ -160,14 +174,17 @@ export class AiAssistantService {
               toolName,
               toolPayload: toolResult,
             });
-
-            if (shortCircuitMessage) {
-              break;
-            }
           }
 
-          if (shortCircuitMessage) {
-            assistantMessage = shortCircuitMessage;
+          const responseParts = [
+            ...(appointmentMessage ? [appointmentMessage] : []),
+            ...holidaySuccessMessages,
+            ...holidayErrorMessages,
+            ...holidayNeedsInfoMessages,
+          ];
+
+          if (responseParts.length) {
+            assistantMessage = responseParts.join(' ');
             break;
           }
 
@@ -372,24 +389,65 @@ export class AiAssistantService {
       .replace(/[\u0300-\u036f]/g, '');
   }
 
-  private detectForcedTool(message: string, lastAssistantMessage?: string): AiToolName | null {
+  private getIntentSignals(message: string) {
     const normalized = this.normalizeIntentText(message);
-    if (!normalized) return null;
-
-    const wantsAppointment = /\b(cita|reserv|agendar|programar)\b/.test(normalized);
-    const wantsHoliday = /\b(festiv|vacaci|cerrad|no laborable)\b/.test(normalized);
-
-    if (wantsAppointment) {
-      return 'create_appointment';
+    if (!normalized) {
+      return {
+        normalized,
+        wantsHoliday: false,
+        wantsAppointment: false,
+        isShop: false,
+        hasBarberScope: false,
+        hasMultiHolidayMarkers: false,
+      };
     }
 
-    if (wantsHoliday) {
-      const isShop = /\b(local|barberia|negocio|tienda)\b/.test(normalized);
-      const mentionsBarber = /\b(barber|peluquer|estilista|trabajador(?:a)?)\b/.test(normalized);
-      if (isShop) return 'add_shop_holiday';
-      if (mentionsBarber) return 'add_barber_holiday';
-      if (/\bpara\s+[a-z]/.test(normalized)) return 'add_barber_holiday';
+    const wantsHoliday = /\b(festiv[a-z]*|vacaci[a-z]*|cerrad[a-z]*|cerrar|cierre|no laborable)\b/.test(
+      normalized,
+    );
+    const wantsAppointment = /\b(cita|reserv|agendar|programar)\b/.test(normalized);
+    const isShop = /\b(local|salon|barberia|negocio|tienda)\b/.test(normalized);
+    const mentionsBarber = /\b(barber|barbero|barbera|peluquer|estilista|trabajador(?:a)?|emplead(?:o|a)?)\b/.test(
+      normalized,
+    );
+    const hasNamedBarber = /\bpara\s+(?!el\b|la\b|los\b|las\b|un\b|una\b|unos\b|unas\b|dia\b|fecha\b|rango\b|semana\b|mes\b|local\b|salon\b|barberia\b|negocio\b|tienda\b)[a-z]/.test(
+      normalized,
+    );
+    const hasMultiHolidayMarkers = /\b(y otro|y otra|ademas|además)\b/.test(normalized);
+
+    return {
+      normalized,
+      wantsHoliday,
+      wantsAppointment,
+      isShop,
+      hasBarberScope: mentionsBarber || hasNamedBarber,
+      hasMultiHolidayMarkers,
+    };
+  }
+
+  private getToolDefinitions(message: string) {
+    const tools = this.toolsRegistry.getTools();
+    const intent = this.getIntentSignals(message);
+    if (intent.wantsHoliday && !intent.wantsAppointment) {
+      return tools.filter((tool) => tool.function.name !== 'create_appointment');
+    }
+    return tools;
+  }
+
+  private detectForcedTool(message: string, lastAssistantMessage?: string): AiToolName | null {
+    const intent = this.getIntentSignals(message);
+    const { normalized } = intent;
+    if (!normalized) return null;
+
+    if (intent.wantsHoliday) {
+      if (intent.isShop && intent.hasBarberScope) return null;
+      if (intent.hasBarberScope && intent.hasMultiHolidayMarkers) return null;
+      if (intent.hasBarberScope) return 'add_barber_holiday';
       return 'add_shop_holiday';
+    }
+
+    if (intent.wantsAppointment) {
+      return 'create_appointment';
     }
 
     if (!lastAssistantMessage) return null;
@@ -399,8 +457,8 @@ export class AiAssistantService {
     if (/\bcita\b/.test(lastNormalized)) {
       return 'create_appointment';
     }
-    if (/\bfestiv|vacaci\b/.test(lastNormalized)) {
-      const isShop = /\b(local|barberia|negocio|tienda)\b/.test(lastNormalized);
+    if (/\b(festiv[a-z]*|vacaci[a-z]*|cerrad[a-z]*|cerrar|cierre)\b/.test(lastNormalized)) {
+      const isShop = /\b(local|salon|barberia|negocio|tienda)\b/.test(lastNormalized);
       return isShop ? 'add_shop_holiday' : 'add_barber_holiday';
     }
 

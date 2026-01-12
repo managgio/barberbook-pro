@@ -24,6 +24,7 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 - "Crea una cita para Luis el viernes que viene a las 10:30 con barba y barbero Sergio"
 - "Añade festivo el 5 de mayo"
 - "Festivo para Alejandro Ruiz del 10 al 12 de junio"
+- "Crea un festivo para el local el 12 de enero y otro del 15 al 18 para Juan y Pedro"
 
 ## Reglas de seguridad
 - Sin acceso directo a MySQL desde el modelo

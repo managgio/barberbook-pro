@@ -46,7 +46,7 @@ const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'add_shop_holiday',
-      description: 'Añade un festivo general del negocio.',
+      description: 'Añade un festivo general del negocio (local/salón).',
       parameters: {
         type: 'object',
         properties: {
@@ -71,6 +71,11 @@ const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
             type: 'array',
             items: { type: 'string' },
             description: 'IDs internos de barberos.',
+          },
+          barberNames: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Nombres de barberos.',
           },
           barberName: { type: 'string', description: 'Nombre del barbero.' },
           allBarbers: { type: 'boolean', description: 'Aplicar a todos los barberos activos.' },
@@ -151,6 +156,65 @@ export class AiToolsRegistry {
     const dateText = typeof args.dateText === 'string' ? args.dateText.trim() : '';
     const rawText = typeof args.rawText === 'string' ? args.rawText.trim() : '';
     const barberNameInput = typeof args.barberName === 'string' ? args.barberName.trim() : '';
+    const barberNamesInput = Array.isArray(args.barberNames)
+      ? (args.barberNames.filter((name) => typeof name === 'string') as string[]).map((name) => name.trim())
+      : [];
+
+    const normalizeValue = (value: string) =>
+      value
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    const splitNameList = (value: string) =>
+      value
+        .split(/\s*(?:,|\s+y\s+|\s+e\s+)\s*/i)
+        .map((part) => part.trim())
+        .filter(Boolean);
+    const stripArticles = (value: string) => value.replace(/^(el|la|los|las|un|una|unos|unas)\s+/i, '').trim();
+    const blockedNames = new Set([
+      'local',
+      'salon',
+      'barberia',
+      'negocio',
+      'tienda',
+      'dia',
+      'fecha',
+      'rango',
+      'semana',
+      'mes',
+      'manana',
+      'festivo',
+      'vacaciones',
+      'cierre',
+    ]);
+    const isValidNameCandidate = (value: string) => {
+      const cleaned = stripArticles(value);
+      if (!cleaned) return false;
+      const normalized = normalizeValue(cleaned);
+      if (!/[a-z]/.test(normalized)) return false;
+      if (blockedNames.has(normalized)) return false;
+      return true;
+    };
+    const extractNamesFromText = (text: string) => {
+      if (!text) return [];
+      const namePattern = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’.-]+";
+      const multiNamePattern = `${namePattern}(?:\\s+${namePattern}){0,3}`;
+      const listPattern = `${multiNamePattern}(?:\\s*(?:,|y|e)\\s*${multiNamePattern})*`;
+      const matches: string[] = [];
+      const barberMatch = text.match(
+        new RegExp(`\\b(?:barber[oa]|barbero|barbera|peluquer[oa]|trabajador(?:a)?|emplead(?:o|a)?)\\s+(${listPattern})`, 'i'),
+      );
+      const paraMatch = text.match(
+        new RegExp(
+          `\\bpara\\s+(${listPattern})(?=\\s+para\\b|\\s+el\\b|\\s+del\\b|\\s+desde\\b|\\s+hasta\\b|\\s+al\\b|\\s+a\\s+las\\b|\\s+en\\b|\\s*$)`,
+          'i',
+        ),
+      );
+      if (barberMatch?.[1]) matches.push(barberMatch[1]);
+      if (paraMatch?.[1]) matches.push(paraMatch[1]);
+      return matches.flatMap(splitNameList).map(stripArticles).filter(isValidNameCandidate);
+    };
 
     let startDate = isValidDateString(startDateInput) ? startDateInput : '';
     let endDate = isValidDateString(endDateInput) ? endDateInput : '';
@@ -176,7 +240,13 @@ export class AiToolsRegistry {
       ? (args.barberIds.filter((id) => typeof id === 'string') as string[])
       : [];
     const barberIdsInput = [...barberIds];
-    const allBarbers = args.allBarbers === true;
+    let allBarbers = args.allBarbers === true;
+    if (!allBarbers && rawText) {
+      const normalizedRaw = normalizeValue(rawText);
+      if (/\b(todos|todas)\s+los\s+barber(os|as)\b/.test(normalizedRaw) || /\btodo\s+el\s+equipo\b/.test(normalizedRaw)) {
+        allBarbers = true;
+      }
+    }
 
     if (allBarbers) {
       const barbers = await this.prisma.barber.findMany({
@@ -194,64 +264,52 @@ export class AiToolsRegistry {
       barberIds = existing.map((barber) => barber.id);
     }
 
-    if (barberIds.length === 0 && barberIdsInput.length > 0) {
-      const nameCandidates = barberIdsInput.map((value) => value.trim()).filter(Boolean);
-      if (nameCandidates.length > 0) {
-        const matches = await this.prisma.barber.findMany({
-          where: {
-            OR: nameCandidates.map((name) => ({ name: { contains: name } })),
-          },
-          take: 5,
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true, isActive: true },
-        });
-        if (matches.length === 1) {
-          barberIds = [matches[0].id];
-        } else if (matches.length > 1) {
-          return {
-            status: 'needs_info',
-            scope: 'barber',
-            missing: ['barberIds'],
-            options: { barbers: matches },
-          };
-        }
-      }
-    }
-
     if (barberIds.length === 0) {
-      let barberName = barberNameInput;
-      if (!barberName && rawText) {
-        const namePattern = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’.-]+";
-        const multiNamePattern = `${namePattern}(?:\\s+${namePattern}){0,3}`;
-        const barberMatch = rawText.match(
-          new RegExp(`\\b(?:barber[oa]|peluquer[oa]|trabajador(?:a)?)\\s+(${multiNamePattern})`, 'i'),
-        );
-        const paraMatch = rawText.match(
-          new RegExp(
-            `\\bpara\\s+(${multiNamePattern})(?=\\s+para\\b|\\s+el\\b|\\s+del\\b|\\s+desde\\b|\\s+hasta\\b|\\s+al\\b|\\s+a\\s+las\\b|\\s*$)`,
-            'i',
-          ),
-        );
-        barberName = barberMatch?.[1] || paraMatch?.[1] || '';
+      const nameCandidates = new Set<string>();
+      if (barberIdsInput.length > 0) {
+        barberIdsInput.map((value) => value.trim()).filter(Boolean).forEach((value) => nameCandidates.add(value));
       }
+      if (barberNameInput) {
+        splitNameList(barberNameInput).forEach((name) => nameCandidates.add(name));
+      }
+      barberNamesInput.filter(Boolean).forEach((name) => {
+        splitNameList(name).forEach((part) => nameCandidates.add(part));
+      });
+      extractNamesFromText(rawText).forEach((name) => nameCandidates.add(name));
 
-      if (barberName) {
-        const matches = await this.prisma.barber.findMany({
-          where: { name: { contains: barberName } },
-          take: 5,
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true, isActive: true },
-        });
-        if (matches.length === 1) {
-          barberIds = [matches[0].id];
-        } else if (matches.length > 1) {
+      const filteredCandidates = Array.from(nameCandidates)
+        .map(stripArticles)
+        .filter(isValidNameCandidate);
+
+      if (filteredCandidates.length > 0) {
+        const resolvedIds = new Set<string>();
+        const ambiguousMatches: { id: string; name: string; isActive: boolean }[] = [];
+        for (const candidate of filteredCandidates) {
+          const matches = await this.prisma.barber.findMany({
+            where: { name: { contains: candidate } },
+            take: 5,
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true, isActive: true },
+          });
+          if (matches.length === 1) {
+            resolvedIds.add(matches[0].id);
+          } else if (matches.length > 1) {
+            matches.forEach((match) => ambiguousMatches.push(match));
+          }
+        }
+
+        if (ambiguousMatches.length > 0) {
+          const uniqueMatches = new Map<string, { id: string; name: string; isActive: boolean }>();
+          ambiguousMatches.forEach((match) => uniqueMatches.set(match.id, match));
           return {
             status: 'needs_info',
             scope: 'barber',
             missing: ['barberIds'],
-            options: { barbers: matches },
+            options: { barbers: Array.from(uniqueMatches.values()).sort((a, b) => a.name.localeCompare(b.name)) },
           };
         }
+
+        barberIds = Array.from(resolvedIds);
       }
     }
 
