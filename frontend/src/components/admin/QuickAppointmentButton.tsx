@@ -156,6 +156,7 @@ const QuickAppointmentButton: React.FC = () => {
   const handleSelectClient = (clientId: string) => {
     setSelectedClientId(clientId);
     setUseGuest(false);
+    setClientSearch('');
   };
 
   const canCreate = useMemo(() => {
@@ -180,7 +181,7 @@ const QuickAppointmentButton: React.FC = () => {
         barberId: selectedBarberId,
         serviceId: selectedServiceId,
         startDateTime: appointmentDate.toISOString(),
-        status: 'confirmed',
+        status: 'scheduled',
         guestName: useGuest ? guestName : undefined,
         guestContact: useGuest ? guestContact : undefined,
       });
@@ -214,20 +215,22 @@ const QuickAppointmentButton: React.FC = () => {
       </Button>
 
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Crear nueva cita</DialogTitle>
-            <DialogDescription>
-              Registra una cita manual para clientes habituales o visitas sin cuenta.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-3xl p-0 max-h-[85vh] flex flex-col gap-0">
+          <div className="sticky top-0 z-10 border-b bg-background px-6 py-4">
+            <DialogHeader>
+              <DialogTitle>Crear nueva cita</DialogTitle>
+              <DialogDescription>
+                Registra una cita manual para clientes habituales o visitas sin cuenta.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
           {isLoadingData ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-6 overflow-y-auto px-6 py-4">
               {/* Client selection */}
               <div className="space-y-3">
                 <Label className="text-base text-foreground block">Cliente</Label>
@@ -274,35 +277,36 @@ const QuickAppointmentButton: React.FC = () => {
                         className="pl-9"
                       />
                     </div>
-                    <div className="max-h-48 overflow-y-auto rounded-2xl border border-border divide-y divide-border/60">
-                      {filteredClients.length === 0 ? (
-                        <p className="text-sm text-muted-foreground px-4 py-3">
-                          No se encontraron clientes
+                    {clientSearch.trim().length > 0 ? (
+                      <div className="max-h-48 overflow-y-auto rounded-2xl border border-border divide-y divide-border/60">
+                        {filteredClients.length === 0 ? (
+                          <p className="text-sm text-muted-foreground px-4 py-3">
+                            No se encontraron clientes
+                          </p>
+                        ) : (
+                          filteredClients.map((client) => (
+                            <button
+                              key={client.id}
+                              type="button"
+                              onClick={() => handleSelectClient(client.id)}
+                              className="w-full text-left px-4 py-3 hover:bg-secondary/40 transition-colors"
+                            >
+                              <p className="font-medium">{client.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {client.email} {client.phone ? `· ${client.phone}` : ''}
+                              </p>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    ) : selectedClientId ? (
+                      <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3">
+                        <p className="text-xs text-muted-foreground mb-1">Cliente seleccionado</p>
+                        <p className="font-medium text-foreground">
+                          {clients.find((client) => client.id === selectedClientId)?.name}
                         </p>
-                      ) : (
-                        filteredClients.map((client) => (
-                          <button
-                            key={client.id}
-                            type="button"
-                            onClick={() => handleSelectClient(client.id)}
-                            className={cn(
-                              'w-full text-left px-4 py-3 hover:bg-secondary/40 transition-colors',
-                              selectedClientId === client.id && 'bg-primary/10 text-primary'
-                            )}
-                          >
-                            <p className="font-medium">{client.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {client.email} {client.phone ? `· ${client.phone}` : ''}
-                            </p>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                    {selectedClientId && (
-                      <p className="text-xs text-muted-foreground">
-                        Cliente seleccionado: {clients.find((c) => c.id === selectedClientId)?.name}
-                      </p>
-                    )}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2">

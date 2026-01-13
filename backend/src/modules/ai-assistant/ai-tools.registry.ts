@@ -451,7 +451,7 @@ export class AiToolsRegistry {
       barberId: barberResult.barber.id,
       serviceId: serviceResult.service.id,
       startDateTime: startDateTime.toISOString(),
-      status: 'confirmed',
+      status: 'scheduled',
       userId: userResult.userId ?? undefined,
       guestName: userResult.guestName ?? undefined,
       guestContact: userResult.guestContact ?? undefined,

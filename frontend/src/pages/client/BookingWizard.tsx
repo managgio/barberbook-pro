@@ -500,7 +500,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         serviceId: booking.serviceId,
         barberId: booking.barberId,
         startDateTime: booking.dateTime,
-        status: 'confirmed',
+        status: 'scheduled',
         notes: appointmentNote.trim() ? appointmentNote.trim() : undefined,
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
@@ -513,7 +513,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           title: '¡Cita reservada!',
           description: isGuest
             ? 'Hemos registrado tu cita. Te contactaremos para confirmar cualquier detalle.'
-            : 'Tu cita ha sido confirmada correctamente.',
+            : 'Tu cita ha sido programada correctamente.',
         });
         if (isGuest) {
           navigate('/');
@@ -570,7 +570,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           <div className="w-24 h-24 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="w-12 h-12 text-green-500" />
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">¡Reserva confirmada!</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-2">¡Reserva programada!</h2>
           <p className="text-muted-foreground">
             {isGuest
               ? 'Para cambios o cancelaciones, contáctanos directamente.'

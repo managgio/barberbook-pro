@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -13,6 +13,7 @@ import { computeServicePricing, isOfferActiveNow } from '../services/services.pr
 
 const DEFAULT_SERVICE_DURATION = 30;
 const SLOT_INTERVAL_MINUTES = 15;
+const CONFIRMATION_GRACE_MS = 60 * 1000;
 
 const startOfDay = (date: string) => new Date(`${date}T00:00:00`);
 const endOfDay = (date: string) => new Date(`${date}T23:59:59.999`);
@@ -45,13 +46,19 @@ export class AppointmentsService {
     const appointments = await this.prisma.appointment.findMany({
       where,
       orderBy: { startDateTime: 'asc' },
+      include: { service: true },
     });
+    await this.syncAppointmentStatuses(appointments);
     return appointments.map(mapAppointment);
   }
 
   async findOne(id: string) {
-    const appointment = await this.prisma.appointment.findUnique({ where: { id } });
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: { service: true },
+    });
     if (!appointment) throw new NotFoundException('Appointment not found');
+    await this.syncAppointmentStatuses([appointment]);
     return mapAppointment(appointment);
   }
 
@@ -86,7 +93,7 @@ export class AppointmentsService {
         serviceId: data.serviceId,
         startDateTime,
         price: new Prisma.Decimal(price),
-        status: data.status || 'confirmed',
+        status: data.status || 'scheduled',
         notes: data.notes,
         guestName: data.guestName,
         guestContact: data.guestContact,
@@ -103,6 +110,23 @@ export class AppointmentsService {
     try {
       const current = await this.prisma.appointment.findUnique({ where: { id } });
       if (!current) throw new NotFoundException('Appointment not found');
+      if ((current.status === 'no_show' || current.status === 'cancelled') && data.status === 'completed') {
+        throw new BadRequestException('Appointment marked as no-show or cancelled cannot be completed.');
+      }
+      if (current.status === 'completed' && data.status === 'scheduled') {
+        throw new BadRequestException('Completed appointment cannot be set to scheduled.');
+      }
+
+      const nextServiceId = data.serviceId ?? current.serviceId;
+      const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
+      if (data.status === 'completed') {
+        const duration = await this.getServiceDuration(nextServiceId);
+        const endTime = new Date(nextStartDateTime.getTime() + duration * 60 * 1000);
+        const confirmationThreshold = new Date(endTime.getTime() + CONFIRMATION_GRACE_MS);
+        if (new Date() < confirmationThreshold) {
+          throw new BadRequestException('Appointment cannot be completed before it ends.');
+        }
+      }
 
       const startChanged =
         data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
@@ -116,8 +140,6 @@ export class AppointmentsService {
         reminderSent = false;
       }
 
-      const nextServiceId = data.serviceId ?? current.serviceId;
-      const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
       const shouldRecalculatePrice = data.serviceId !== undefined || data.startDateTime !== undefined;
       const price = shouldRecalculatePrice
         ? new Prisma.Decimal(await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime))
@@ -150,6 +172,14 @@ export class AppointmentsService {
   async remove(id: string) {
     await this.prisma.appointment.delete({ where: { id } });
     return { success: true };
+  }
+
+  async syncStatusesForAllAppointments() {
+    const appointments = await this.prisma.appointment.findMany({
+      where: { status: { in: ['scheduled'] } },
+      include: { service: true },
+    });
+    return this.syncAppointmentStatuses(appointments);
   }
 
   async getAvailableSlots(
@@ -234,5 +264,40 @@ export class AppointmentsService {
       phone: phoneCandidate || null,
       name: user?.name || guestName || null,
     };
+  }
+
+  private async syncAppointmentStatuses(
+    appointments: Array<{ id: string; status: AppointmentStatus; startDateTime: Date; service?: { duration?: number | null } | null }>,
+  ) {
+    const now = new Date();
+    const updates: Promise<unknown>[] = [];
+    let updatedCount = 0;
+
+    appointments.forEach((appointment) => {
+      if (appointment.status === 'cancelled' || appointment.status === 'completed' || appointment.status === 'no_show') {
+        return;
+      }
+
+      const duration = appointment.service?.duration ?? DEFAULT_SERVICE_DURATION;
+      const endTime = new Date(appointment.startDateTime.getTime() + duration * 60 * 1000);
+      const confirmationThreshold = new Date(endTime.getTime() + CONFIRMATION_GRACE_MS);
+      const nextStatus = now >= confirmationThreshold ? 'completed' : 'scheduled';
+
+      if (appointment.status !== nextStatus) {
+        appointment.status = nextStatus;
+        updatedCount += 1;
+        updates.push(
+          this.prisma.appointment.update({
+            where: { id: appointment.id },
+            data: { status: nextStatus },
+          }),
+        );
+      }
+    });
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
+    return updatedCount;
   }
 }

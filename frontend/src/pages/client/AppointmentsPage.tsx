@@ -3,7 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getAppointmentsByUser, getBarbers, getServices, deleteAppointment } from '@/data/api';
+import { getAppointmentsByUser, getBarbers, getServices, updateAppointment } from '@/data/api';
 import { Appointment, Barber, Service } from '@/data/types';
 import { Calendar, Clock, MapPin, User, CalendarPlus, Pencil, Trash2 } from 'lucide-react';
 import { format, isPast, parseISO } from 'date-fns';
@@ -16,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { getAppointmentStatusBadgeClass, getAppointmentStatusLabel, isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 
 const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
@@ -52,11 +53,20 @@ const AppointmentsPage: React.FC = () => {
   }, [user, loadData]);
 
   const upcomingAppointments = appointments
-    .filter(a => !isPast(parseISO(a.startDateTime)) && a.status === 'confirmed')
+    .filter(
+      (appointment) =>
+        !isPast(parseISO(appointment.startDateTime)) && isAppointmentUpcomingStatus(appointment.status),
+    )
     .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
 
   const pastAppointments = appointments
-    .filter(a => isPast(parseISO(a.startDateTime)) || a.status === 'completed')
+    .filter(
+      (appointment) =>
+        isPast(parseISO(appointment.startDateTime)) ||
+        appointment.status === 'completed' ||
+        appointment.status === 'cancelled' ||
+        appointment.status === 'no_show',
+    )
     .sort((a, b) => new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime());
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
@@ -126,15 +136,12 @@ const AppointmentsPage: React.FC = () => {
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                appointment.status === 'confirmed' 
-                  ? 'bg-primary/10 text-primary' 
-                  : appointment.status === 'completed'
-                  ? 'bg-green-500/10 text-green-500'
-                  : 'bg-muted text-muted-foreground'
-              }`}>
-                {appointment.status === 'confirmed' ? 'Confirmada' : 
-                 appointment.status === 'completed' ? 'Completada' : 'Cancelada'}
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-medium ${getAppointmentStatusBadgeClass(
+                  appointment.status,
+                )}`}
+              >
+                {getAppointmentStatusLabel(appointment.status)}
               </span>
               <div className="text-right">
                 {hadOffer && (
@@ -267,7 +274,7 @@ const AppointmentsPage: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita será eliminada permanentemente.
+              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -278,7 +285,7 @@ const AppointmentsPage: React.FC = () => {
                 if (!deleteTarget) return;
                 setIsDeleting(true);
                 try {
-                  await deleteAppointment(deleteTarget.id);
+                  await updateAppointment(deleteTarget.id, { status: 'cancelled' });
                   toast({ title: 'Cita cancelada', description: 'Tu cita ha sido cancelada correctamente.' });
                   setDeleteTarget(null);
                   await loadData();
@@ -290,7 +297,7 @@ const AppointmentsPage: React.FC = () => {
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? 'Cancelando...' : 'Cancelar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

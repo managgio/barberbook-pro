@@ -18,9 +18,10 @@ enum BarberRole {
 }
 
 enum AppointmentStatus {
-  confirmed
+  scheduled
   completed
   cancelled
+  no_show
 }
 
 enum AlertType {
@@ -122,7 +123,7 @@ model Appointment {
   service       Service            @relation(fields: [serviceId], references: [id])
   startDateTime DateTime
   price         Decimal            @db.Decimal(10, 2)
-  status        AppointmentStatus  @default(confirmed)
+  status        AppointmentStatus  @default(scheduled)
   notes         String?
   guestName     String?
   guestContact  String?

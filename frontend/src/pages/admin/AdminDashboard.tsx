@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog,
@@ -19,24 +19,36 @@ import { getAppointments, getBarbers, getServices, updateSiteSettings } from '@/
 import { Appointment, Barber, Service } from '@/data/types';
 import {
   Calendar,
-  TrendingUp,
   ArrowRight,
   Clock,
   DollarSign,
   AlertTriangle,
+  UserX,
+  HelpCircle,
   QrCode,
   Share2,
   Download,
   Loader2,
   RefreshCcw,
 } from 'lucide-react';
-import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval, subDays, isSameDay } from 'date-fns';
+import {
+  format,
+  isToday,
+  parseISO,
+  startOfWeek,
+  endOfWeek,
+  isWithinInterval,
+  subDays,
+  isSameDay,
+  eachDayOfInterval,
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import { useToast } from '@/hooks/use-toast';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
+import { isAppointmentActive, isAppointmentRevenueStatus } from '@/lib/appointmentStatus';
 import {
   ResponsiveContainer,
   LineChart,
@@ -45,6 +57,12 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  Legend,
 } from 'recharts';
 
 const rangeOptions = [
@@ -55,6 +73,26 @@ const rangeOptions = [
 
 const QR_FOLDER = 'qr-stickers';
 const QR_SIZE = 768;
+const SERVICE_MIX_COLORS = ['#22c55e', '#0ea5e9', '#f97316', '#eab308', '#14b8a6', '#94a3b8'];
+
+const InfoDialog: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <Dialog>
+    <DialogTrigger asChild>
+      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+      </Button>
+    </DialogTrigger>
+    <DialogContent className="max-w-lg">
+      <DialogHeader>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>Guía rápida para aprovechar esta gráfica.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 text-sm text-muted-foreground">
+        {children}
+      </div>
+    </DialogContent>
+  </Dialog>
+);
 
 const AdminDashboard: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -85,26 +123,106 @@ const AdminDashboard: React.FC = () => {
     fetchData();
   }, []);
 
-  const todayAppointments = appointments.filter(a => 
-    isToday(parseISO(a.startDateTime)) && a.status === 'confirmed'
+  const todayAppointments = appointments.filter(
+    (appointment) =>
+      isToday(parseISO(appointment.startDateTime)) && isAppointmentActive(appointment.status),
   );
 
   const weekStart = startOfWeek(new Date(), { locale: es });
   const weekEnd = endOfWeek(new Date(), { locale: es });
-  const weekAppointments = appointments.filter(a => 
-    isWithinInterval(parseISO(a.startDateTime), { start: weekStart, end: weekEnd }) &&
-    a.status !== 'cancelled'
-  );
+  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const weekdayLabels = weekDays.map((day) => format(day, 'EEE', { locale: es }));
 
-  const getBarber = (id: string) => barbers.find(b => b.id === id);
-  const getService = (id: string) => services.find(s => s.id === id);
+  const getBarber = (id: string) => barbers.find((barber) => barber.id === id);
+  const getService = (id: string) => services.find((service) => service.id === id);
+  const revenueToday = appointments
+    .filter(
+      (appointment) =>
+        isToday(parseISO(appointment.startDateTime)) && isAppointmentRevenueStatus(appointment.status),
+    )
+    .reduce((total, appointment) => total + (appointment.price || 0), 0);
 
-  const revenueToday = todayAppointments.reduce((total, appointment) => total + (appointment.price || 0), 0);
-
-  const weekCancelled = appointments.filter(a => 
-    a.status === 'cancelled' &&
-    isWithinInterval(parseISO(a.startDateTime), { start: weekStart, end: weekEnd })
+  const weekCancelled = appointments.filter(
+    (appointment) =>
+      appointment.status === 'cancelled' &&
+      isWithinInterval(parseISO(appointment.startDateTime), { start: weekStart, end: weekEnd }),
   ).length;
+  const weekNoShow = appointments.filter(
+    (appointment) =>
+      appointment.status === 'no_show' &&
+      isWithinInterval(parseISO(appointment.startDateTime), { start: weekStart, end: weekEnd }),
+  ).length;
+
+  const occupancyHours = Array.from({ length: 12 }).map((_, index) => 9 + index);
+  const occupancyMatrix = occupancyHours.map(() => weekDays.map(() => 0));
+  appointments.forEach((appointment) => {
+    if (!isAppointmentActive(appointment.status)) return;
+    const startDate = parseISO(appointment.startDateTime);
+    if (!isWithinInterval(startDate, { start: weekStart, end: weekEnd })) return;
+    const dayIndex = weekDays.findIndex((day) => isSameDay(day, startDate));
+    if (dayIndex === -1) return;
+    const hourIndex = occupancyHours.indexOf(startDate.getHours());
+    if (hourIndex === -1) return;
+    occupancyMatrix[hourIndex][dayIndex] += 1;
+  });
+  const maxOccupancy = Math.max(1, ...occupancyMatrix.flat());
+
+  const serviceMixRangeDays = 30;
+  const serviceMixStart = subDays(new Date(), serviceMixRangeDays - 1);
+  const serviceMixAppointments = appointments.filter(
+    (appointment) =>
+      isAppointmentRevenueStatus(appointment.status) &&
+      isWithinInterval(parseISO(appointment.startDateTime), { start: serviceMixStart, end: new Date() }),
+  );
+  const serviceMixCounts = serviceMixAppointments.reduce<Record<string, number>>((acc, appointment) => {
+    const serviceName = getService(appointment.serviceId)?.name || 'Servicio eliminado';
+    acc[serviceName] = (acc[serviceName] || 0) + 1;
+    return acc;
+  }, {});
+  const serviceMixEntries = Object.entries(serviceMixCounts)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+  const topServiceMix = serviceMixEntries.slice(0, 5);
+  const otherServiceCount = serviceMixEntries.slice(5).reduce((sum, item) => sum + item.value, 0);
+  const serviceMixData = otherServiceCount > 0 ? [...topServiceMix, { name: 'Otros', value: otherServiceCount }] : topServiceMix;
+  const serviceMixTotal = serviceMixData.reduce((sum, item) => sum + item.value, 0);
+
+  const ticketRangeDays = 14;
+  const ticketDays = Array.from({ length: ticketRangeDays }).map((_, index) =>
+    subDays(new Date(), ticketRangeDays - 1 - index),
+  );
+  const ticketData = ticketDays.map((day) => {
+    const dayAppointments = serviceMixAppointments.filter((appointment) =>
+      isSameDay(parseISO(appointment.startDateTime), day),
+    );
+    const total = dayAppointments.reduce((sum, appointment) => sum + (appointment.price || 0), 0);
+    const average = dayAppointments.length > 0 ? total / dayAppointments.length : 0;
+    return {
+      label: format(day, 'dd MMM', { locale: es }),
+      value: Number(average.toFixed(2)),
+    };
+  });
+  const ticketAverage = ticketData.reduce((sum, item) => sum + item.value, 0) / (ticketData.length || 1);
+
+  const lossRangeDays = 30;
+  const lossStart = subDays(new Date(), lossRangeDays - 1);
+  const lossWeekdayData = weekdayLabels.map((label) => ({
+    label,
+    no_show: 0,
+    cancelled: 0,
+  }));
+  appointments.forEach((appointment) => {
+    if (appointment.status !== 'no_show' && appointment.status !== 'cancelled') return;
+    const startDate = parseISO(appointment.startDateTime);
+    if (!isWithinInterval(startDate, { start: lossStart, end: new Date() })) return;
+    const dayIndex = Number(format(startDate, 'i')) - 1;
+    if (dayIndex < 0 || dayIndex > 6) return;
+    if (appointment.status === 'no_show') {
+      lossWeekdayData[dayIndex].no_show += 1;
+    } else {
+      lossWeekdayData[dayIndex].cancelled += 1;
+    }
+  });
 
   const currencyFormatter = new Intl.NumberFormat('es-ES', {
     style: 'currency',
@@ -285,8 +403,9 @@ const AdminDashboard: React.FC = () => {
     subDays(new Date(), revenueRange - 1 - index)
   );
   const revenueData = selectedDays.map((day) => {
-    const dayAppointments = appointments.filter((appointment) => 
-      appointment.status !== 'cancelled' && isSameDay(parseISO(appointment.startDateTime), day)
+    const dayAppointments = appointments.filter(
+      (appointment) =>
+        isAppointmentRevenueStatus(appointment.status) && isSameDay(parseISO(appointment.startDateTime), day),
     );
     const total = dayAppointments.reduce((sum, appointment) => sum + (appointment.price || 0), 0);
     return {
@@ -448,21 +567,21 @@ const AdminDashboard: React.FC = () => {
             color: 'text-primary',
           },
           { 
-            label: 'Citas esta semana', 
-            value: weekAppointments.length, 
-            icon: TrendingUp,
-            color: 'text-green-500',
-          },
-          { 
             label: 'Ingresos hoy', 
             value: currencyFormatter.format(revenueToday), 
             icon: DollarSign,
-            color: 'text-amber-500',
+            color: 'text-green-500',
           },
           { 
             label: 'Cancelaciones semana', 
             value: weekCancelled, 
             icon: AlertTriangle,
+            color: 'text-rose-500',
+          },
+          { 
+            label: 'Ausencias semana', 
+            value: weekNoShow, 
+            icon: UserX,
             color: 'text-rose-500',
           },
         ].map((stat, index) => (
@@ -484,7 +603,7 @@ const AdminDashboard: React.FC = () => {
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Today's Appointments */}
-        <Card variant="elevated">
+        <Card variant="elevated" className="h-[420px] flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Citas de hoy</CardTitle>
             {canAccessSection('calendar') && (
@@ -494,11 +613,13 @@ const AdminDashboard: React.FC = () => {
               </Link>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 overflow-hidden">
             {isLoading ? (
-              <ListSkeleton count={3} />
+              <div className="h-full flex items-center justify-center">
+                <ListSkeleton count={3} />
+              </div>
             ) : todayAppointments.length > 0 ? (
-              <div className="space-y-3">
+              <div className="h-full overflow-y-auto pr-1 space-y-3">
                 {todayAppointments.map((appointment) => {
                   const barber = getBarber(appointment.barberId);
                   const service = getService(appointment.serviceId);
@@ -522,7 +643,7 @@ const AdminDashboard: React.FC = () => {
                 })}
               </div>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
+              <div className="h-full flex items-center justify-center text-muted-foreground">
                 No hay citas programadas para hoy
               </div>
             )}
@@ -530,13 +651,13 @@ const AdminDashboard: React.FC = () => {
         </Card>
 
         {/* Revenue chart */}
-        <Card variant="elevated">
+        <Card variant="elevated" className="h-[420px] flex flex-col">
           <CardHeader className="flex flex-col gap-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>Ingresos últimos {revenueRange} días</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Seguimiento diario de ingresos estimados según citas confirmadas.
+                  Seguimiento diario de ingresos estimados según citas completadas.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -553,7 +674,7 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="h-[320px]">
+          <CardContent className="flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={revenueData} margin={{ top: 16, right: 8, bottom: 0, left: 0 }}>
                 <defs>
@@ -592,6 +713,240 @@ const AdminDashboard: React.FC = () => {
                 />
               </LineChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card variant="elevated" className="min-w-0">
+          <CardHeader className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle>Mix de servicios</CardTitle>
+              <InfoDialog title="Mix de servicios">
+                <p>
+                  El gráfico de queso muestra qué servicios se han pedido más en los últimos 30 días.
+                  Las porciones grandes son los más elegidos y "Otros" agrupa lo menos frecuente.
+                </p>
+                <p>
+                  El número del centro es el total de citas completadas en ese periodo.
+                </p>
+                <p>
+                  La línea de ticket medio enseña el gasto promedio por cita en los últimos 14 días.
+                  Si sube, cada cliente deja más; si baja, revisa precios, promos o el tipo de servicio.
+                </p>
+                <p>
+                  Úsalo para decidir qué servicios potenciar, ajustar precios o diseñar ofertas.
+                </p>
+              </InfoDialog>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Distribución de servicios (30 días) y ticket medio.
+            </p>
+          </CardHeader>
+          <CardContent className="h-[620px] md:h-[320px]">
+            {serviceMixData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-muted-foreground">
+                No hay datos suficientes para mostrar.
+              </div>
+            ) : (
+              <div className="grid h-full gap-10 md:gap-4 md:grid-cols-[1.1fr_0.9fr]">
+                <div className="flex flex-col">
+                  <div className="relative h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={serviceMixData}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={48}
+                          outerRadius={72}
+                          paddingAngle={3}
+                        >
+                          {serviceMixData.map((entry, index) => (
+                            <Cell key={`cell-${entry.name}`} fill={SERVICE_MIX_COLORS[index % SERVICE_MIX_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
+                          itemStyle={{ color: '#fff', fontSize: '12px', lineHeight: '1.4' }}
+                          labelStyle={{ color: '#fff', fontSize: '12px', lineHeight: '1.4' }}
+                          wrapperStyle={{ zIndex: 20 }}
+                          formatter={(value: number) => `${value} citas`}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-xs text-muted-foreground">Servicios</span>
+                      <span className="text-lg font-semibold text-foreground">{serviceMixTotal}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    {serviceMixData.map((item, index) => (
+                      <div key={item.name} className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: SERVICE_MIX_COLORS[index % SERVICE_MIX_COLORS.length] }}
+                        />
+                        <span className="truncate">{item.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Ticket medio (14 días)</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {currencyFormatter.format(ticketAverage || 0)}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={ticketData} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted-foreground) / 0.2)" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tickFormatter={(value) => `${Math.round(value)}€`}
+                          tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <RechartsTooltip
+                          contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
+                          formatter={(value: number) => [currencyFormatter.format(value), 'Ticket medio']}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#22c55e"
+                          strokeWidth={2}
+                          dot={{ r: 3, fill: '#22c55e' }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card variant="elevated">
+          <CardHeader className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle>Ausencias y cancelaciones</CardTitle>
+              <InfoDialog title="Ausencias y cancelaciones">
+                <p>
+                  Cada barra corresponde a un día de la semana. Cuanto más alta, más incidencias.
+                </p>
+                <p>
+                  "Ausencias" son clientes que no se presentan; "Canceladas" son citas anuladas.
+                </p>
+                <p>
+                  Si un día destaca, puedes reforzar recordatorios, pedir señal o ajustar el
+                  horario de ese día para reducir pérdidas.
+                </p>
+              </InfoDialog>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Distribución por día de la semana (últimos 30 días).
+            </p>
+          </CardHeader>
+          <CardContent className="h-[320px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={lossWeekdayData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted-foreground) / 0.2)" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <RechartsTooltip
+                  contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
+                  formatter={(value: number, name: string) => [value, name === 'no_show' ? 'Ausencias' : 'Canceladas']}
+                />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
+                <Bar dataKey="no_show" name="Ausencias" fill="hsl(var(--destructive))" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="cancelled" name="Canceladas" fill="hsl(var(--muted-foreground) / 0.4)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6">
+        <Card variant="elevated">
+          <CardHeader className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle>Ocupación semanal</CardTitle>
+              <InfoDialog title="Ocupación semanal">
+                <p>
+                  Las columnas son los días y las filas son las horas. Cuanto más intenso el color,
+                  más citas hay en esa franja.
+                </p>
+                <p>
+                  Te ayuda a ver de un vistazo las horas punta y los huecos reales.
+                </p>
+                <p>
+                  Úsalo para ajustar horarios del equipo, abrir huecos en horas flojas o lanzar
+                  ofertas en tramos con baja ocupación.
+                </p>
+              </InfoDialog>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Mapa de intensidad por franja horaria en la semana actual.
+            </p>
+          </CardHeader>
+          <CardContent className="h-[320px] min-w-0 overflow-hidden">
+            <div className="h-full w-full min-w-0 overflow-x-auto overflow-y-auto">
+              <div className="min-w-auto space-y-2">
+                <div className="grid grid-cols-[44px_repeat(7,minmax(48px,1fr))] gap-2 text-xs text-muted-foreground">
+                  <div />
+                  {weekdayLabels.map((label) => (
+                    <div key={label} className="text-center">
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  {occupancyHours.map((hour, rowIndex) => (
+                    <div key={hour} className="grid grid-cols-[44px_repeat(7,minmax(48px,1fr))] gap-2 items-center">
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {hour.toString().padStart(2, '0')}:00
+                      </span>
+                      {weekDays.map((day, colIndex) => {
+                        const value = occupancyMatrix[rowIndex][colIndex];
+                        const intensity = value / maxOccupancy;
+                        return (
+                          <div
+                            key={`${day.toISOString()}-${hour}`}
+                            className="h-6 rounded-md border border-border/60"
+                            style={{
+                              backgroundColor: `hsl(var(--primary) / ${0.12 + intensity * 0.75})`,
+                            }}
+                            title={`${format(day, 'EEEE', { locale: es })} · ${hour
+                              .toString()
+                              .padStart(2, '0')}:00 · ${value} citas`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

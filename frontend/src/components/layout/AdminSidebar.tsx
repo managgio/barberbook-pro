@@ -56,6 +56,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   const { settings } = useSiteSettings();
   const { isLoading, canAccessSection } = useAdminPermissions();
 
+  const shouldAutoClose = () =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+
+  const handleNavClick = () => {
+    if (!collapsed && shouldAutoClose()) {
+      onToggle();
+    }
+  };
+
   const isActive = (path: string) => {
     if (path === '/admin') return location.pathname === '/admin';
     return location.pathname.startsWith(path);
@@ -119,6 +128,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           const link = (
             <Link
               to={item.href}
+              onClick={handleNavClick}
               className={cn(
                 'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 isActive(item.href)

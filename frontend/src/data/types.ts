@@ -42,7 +42,7 @@ export interface Service {
   appliedOffer?: AppliedOffer | null;
 }
 
-export type AppointmentStatus = 'confirmed' | 'completed' | 'cancelled';
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
 
 export interface Appointment {
   id: string;

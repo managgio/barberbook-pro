@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
-import { Appointment, Barber, Service, ServiceCategory } from '@/data/types';
+import { Appointment, AppointmentStatus, Barber, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -36,6 +36,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const isAdminContext = context === 'admin';
+  const isNoShowLocked = appointment?.status === 'no_show' || appointment?.status === 'cancelled';
 
   const [form, setForm] = useState({
     serviceId: '',
@@ -43,6 +45,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     date: '',
     time: '',
     notes: '',
+    status: 'scheduled' as AppointmentStatus,
   });
 
   const loadInitialData = async () => {
@@ -71,6 +74,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         date: initialDate,
         time: initialTime,
         notes: appointment.notes || '',
+        status: appointment.status,
       });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo cargar la información.', variant: 'destructive' });
@@ -160,7 +164,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         serviceId: form.serviceId,
         barberId: form.barberId,
         startDateTime: dateTime,
-        notes: form.notes.trim(),
+        ...(isAdminContext ? {} : { notes: form.notes.trim() }),
+        ...(isAdminContext ? { status: form.status } : {}),
       });
       if (context === 'admin') {
         dispatchAppointmentsUpdated({ source: 'appointment-editor' });
@@ -343,22 +348,36 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="appointment-notes">Comentario del cliente</Label>
-                <span className="text-xs text-muted-foreground">
-                  {form.notes.length}/250
-                </span>
+            {isAdminContext ? (
+              appointment.notes?.trim() ? (
+                <div className="space-y-2">
+                  <Label htmlFor="appointment-notes">Comentario del cliente</Label>
+                  <Textarea
+                    id="appointment-notes"
+                    value={appointment.notes}
+                    readOnly
+                    className="min-h-[110px] resize-none bg-muted/40"
+                  />
+                </div>
+              ) : null
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="appointment-notes">Comentario del cliente</Label>
+                  <span className="text-xs text-muted-foreground">
+                    {form.notes.length}/250
+                  </span>
+                </div>
+                <Textarea
+                  id="appointment-notes"
+                  value={form.notes}
+                  maxLength={250}
+                  onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Añade o edita el comentario del cliente"
+                  className="min-h-[110px] resize-none"
+                />
               </div>
-              <Textarea
-                id="appointment-notes"
-                value={form.notes}
-                maxLength={250}
-                onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-                placeholder="Añade o edita el comentario del cliente"
-                className="min-h-[110px] resize-none"
-              />
-            </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" type="button" onClick={onClose} disabled={isSaving}>

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAppointments, getBarbers, getServices, getUsers, deleteAppointment } from '@/data/api';
+import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, Service, User } from '@/data/types';
 import { Search, Calendar, Clock, User, Pencil, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -13,6 +13,7 @@ import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
+import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
@@ -62,6 +63,13 @@ const AdminSearch: React.FC = () => {
     };
     window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
     return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+  }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadData(false);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [loadData]);
 
   useEffect(() => {
@@ -208,16 +216,18 @@ const AdminSearch: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          apt.status === 'confirmed' 
-                            ? 'bg-primary/10 text-primary' 
-                            : apt.status === 'completed'
-                            ? 'bg-green-500/10 text-green-500'
-                            : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {apt.status === 'confirmed' ? 'Confirmada' : 
-                           apt.status === 'completed' ? 'Completada' : 'Cancelada'}
-                        </span>
+                        <AppointmentStatusPicker
+                          appointment={apt}
+                          serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
+                          onStatusUpdated={(updated) => {
+                            setAppointments((prev) =>
+                              prev.map((appointment) =>
+                                appointment.id === updated.id ? updated : appointment,
+                              ),
+                            );
+                            dispatchAppointmentsUpdated({ source: 'admin-search' });
+                          }}
+                        />
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-2">
@@ -274,9 +284,9 @@ const AdminSearch: React.FC = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar cita?</AlertDialogTitle>
+            <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita será eliminada permanentemente.
+              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -287,20 +297,20 @@ const AdminSearch: React.FC = () => {
                 if (!deleteTarget) return;
                 setIsDeleting(true);
                 try {
-                  await deleteAppointment(deleteTarget.id);
-                  toast({ title: 'Cita eliminada', description: 'La cita ha sido cancelada.' });
+                  await updateAppointment(deleteTarget.id, { status: 'cancelled' });
+                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
                   dispatchAppointmentsUpdated({ source: 'admin-search' });
                   await loadData();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo eliminar la cita.', variant: 'destructive' });
+                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? 'Cancelando...' : 'Cancelar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -32,7 +32,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
 
     const appointments = await this.prisma.appointment.findMany({
       where: {
-        status: 'confirmed',
+        status: 'scheduled',
         reminderSent: false,
         startDateTime: {
           gte: windowStart,

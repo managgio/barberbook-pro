@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { getAppointments, getBarbers, getServices, getUsers, deleteAppointment } from '@/data/api';
+import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, Service, User } from '@/data/types';
 import { 
   ChevronLeft, 
@@ -32,6 +32,7 @@ import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
+import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -85,6 +86,13 @@ const AdminCalendar: React.FC = () => {
     };
     window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
     return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+  }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadData(false);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [loadData]);
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
@@ -400,17 +408,19 @@ const AdminCalendar: React.FC = () => {
               )}
 
               <div className="flex items-center justify-between pt-2">
-                <span className={cn(
-                  'px-3 py-1 rounded-full text-xs font-medium',
-                  selectedAppointment.status === 'confirmed' 
-                    ? 'bg-primary/10 text-primary' 
-                    : selectedAppointment.status === 'completed'
-                    ? 'bg-green-500/10 text-green-500'
-                    : 'bg-muted text-muted-foreground'
-                )}>
-                  {selectedAppointment.status === 'confirmed' ? 'Confirmada' : 
-                   selectedAppointment.status === 'completed' ? 'Completada' : 'Cancelada'}
-                </span>
+                <AppointmentStatusPicker
+                  appointment={selectedAppointment}
+                  serviceDurationMinutes={getService(selectedAppointment.serviceId)?.duration ?? 30}
+                  onStatusUpdated={(updated) => {
+                    setAppointments((prev) =>
+                      prev.map((appointment) =>
+                        appointment.id === updated.id ? updated : appointment,
+                      ),
+                    );
+                    setSelectedAppointment(updated);
+                    dispatchAppointmentsUpdated({ source: 'admin-calendar' });
+                  }}
+                />
                 <span className="text-xl font-bold text-primary">
                   {getService(selectedAppointment.serviceId)?.price}€
                 </span>
@@ -430,7 +440,7 @@ const AdminCalendar: React.FC = () => {
                   Editar
                 </Button>
                 <Button variant="ghost" className="text-destructive" onClick={() => setDeleteTarget(selectedAppointment)}>
-                  Eliminar
+                  Cancelar
                 </Button>
               </div>
             </div>
@@ -458,7 +468,7 @@ const AdminCalendar: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita será eliminada permanentemente.
+              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -469,21 +479,21 @@ const AdminCalendar: React.FC = () => {
                 if (!deleteTarget) return;
                 setIsDeleting(true);
                 try {
-                  await deleteAppointment(deleteTarget.id);
-                  toast({ title: 'Cita eliminada', description: 'La cita ha sido cancelada.' });
+                  await updateAppointment(deleteTarget.id, { status: 'cancelled' });
+                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
                   setSelectedAppointment(null);
                   dispatchAppointmentsUpdated({ source: 'admin-calendar' });
                   await loadData();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo eliminar la cita.', variant: 'destructive' });
+                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? 'Cancelando...' : 'Cancelar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

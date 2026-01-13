@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getAppointments, getBarbers, getServices, getUsers, deleteAppointment } from '@/data/api';
+import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, Service, User } from '@/data/types';
 import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -11,6 +11,7 @@ import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
+import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -59,6 +60,13 @@ const AdminClients: React.FC = () => {
     return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
   }, [loadData]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadData(false);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
   const filteredClients = clients.filter(client => {
     const haystack = `${client.name} ${client.email || ''} ${client.phone || ''}`.toLowerCase();
     return haystack.includes(searchTerm.toLowerCase());
@@ -81,6 +89,9 @@ const AdminClients: React.FC = () => {
     () => (selectedClient ? getClientAppointments(selectedClient.id) : []),
     [selectedClient, getClientAppointments]
   );
+
+  const whatsappNumber = selectedClient?.phone ? selectedClient.phone.replace(/\D/g, '') : '';
+  const whatsappLink = whatsappNumber ? `https://wa.me/${whatsappNumber}` : '';
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
@@ -124,8 +135,8 @@ const AdminClients: React.FC = () => {
                     key={client.id}
                     onClick={() => setSelectedClientId(client.id)}
                     className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      selectedClient?.id === client.id 
-                        ? 'bg-primary/10 border border-primary/30' 
+                      selectedClient?.id === client.id
+                        ? 'bg-primary/10 border border-primary/30'
                         : 'hover:bg-secondary'
                     }`}
                   >
@@ -169,14 +180,36 @@ const AdminClients: React.FC = () => {
                     </div>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-3 pt-2">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Mail className="w-4 h-4" />
-                      {selectedClient.email || 'Sin email'}
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="w-4 h-4" />
-                      {selectedClient.phone || 'Sin teléfono'}
-                    </div>
+                    {selectedClient.email ? (
+                      <a
+                        href={`mailto:${selectedClient.email}`}
+                        className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Mail className="w-4 h-4" />
+                        {selectedClient.email}
+                      </a>
+                    ) : (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Mail className="w-4 h-4" />
+                        Sin email
+                      </div>
+                    )}
+                    {whatsappLink ? (
+                      <a
+                        href={whatsappLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Phone className="w-4 h-4" />
+                        {selectedClient.phone}
+                      </a>
+                    ) : (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Phone className="w-4 h-4" />
+                        Sin teléfono
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -203,16 +236,18 @@ const AdminClients: React.FC = () => {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              apt.status === 'confirmed' 
-                                ? 'bg-primary/10 text-primary' 
-                                : apt.status === 'completed'
-                                ? 'bg-green-500/10 text-green-500'
-                                : 'bg-muted text-muted-foreground'
-                            }`}>
-                              {apt.status === 'confirmed' ? 'Confirmada' : 
-                               apt.status === 'completed' ? 'Completada' : 'Cancelada'}
-                            </span>
+                            <AppointmentStatusPicker
+                              appointment={apt}
+                              serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
+                              onStatusUpdated={(updated) => {
+                                setAppointments((prev) =>
+                                  prev.map((appointment) =>
+                                    appointment.id === updated.id ? updated : appointment,
+                                  ),
+                                );
+                                dispatchAppointmentsUpdated({ source: 'admin-clients' });
+                              }}
+                            />
                             <Button
                               size="icon"
                               variant="ghost"
@@ -270,9 +305,9 @@ const AdminClients: React.FC = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar cita?</AlertDialogTitle>
+            <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita será eliminada permanentemente.
+              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -283,20 +318,20 @@ const AdminClients: React.FC = () => {
                 if (!deleteTarget) return;
                 setIsDeleting(true);
                 try {
-                  await deleteAppointment(deleteTarget.id);
-                  toast({ title: 'Cita eliminada', description: 'La cita ha sido cancelada.' });
+                  await updateAppointment(deleteTarget.id, { status: 'cancelled' });
+                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
                   dispatchAppointmentsUpdated({ source: 'admin-clients' });
                   await loadData();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo eliminar la cita.', variant: 'destructive' });
+                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? 'Cancelando...' : 'Cancelar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
