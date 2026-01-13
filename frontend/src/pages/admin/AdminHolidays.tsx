@@ -151,7 +151,7 @@ const AdminHolidays: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
+      <div className="pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Festivos</h1>
         <p className="text-muted-foreground mt-1">
           Administra los días no laborables generales y por barbero.

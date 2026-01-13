@@ -184,7 +184,7 @@ const AdminCalendar: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
+        <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Calendario</h1>
           <p className="text-muted-foreground mt-1">
             Gestiona las citas de la barbería.

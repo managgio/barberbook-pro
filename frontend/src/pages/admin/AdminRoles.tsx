@@ -297,7 +297,7 @@ const AdminRoles: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Roles y permisos</h1>
         <p className="text-muted-foreground">
           Define qué secciones del panel puede ver cada administrador y asigna roles personalizados.

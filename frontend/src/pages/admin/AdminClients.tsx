@@ -88,7 +88,7 @@ const AdminClients: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
+      <div className="pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Clientes</h1>
         <p className="text-muted-foreground mt-1">
           Busca clientes y consulta su historial de citas.

@@ -218,7 +218,7 @@ const AdminSettings: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
+        <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Configuración general</h1>
           <p className="text-muted-foreground mt-1">
             Ajusta los datos públicos del sitio, las estadísticas destacadas y el horario de apertura.

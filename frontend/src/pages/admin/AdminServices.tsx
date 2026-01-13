@@ -448,7 +448,7 @@ const AdminServices: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
+        <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Servicios</h1>
           <p className="text-muted-foreground mt-1">
             Diseña la carta de servicios y cómo se presentan a los clientes.

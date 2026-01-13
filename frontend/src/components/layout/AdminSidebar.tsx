@@ -68,8 +68,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 bottom-0 bg-sidebar border-r border-sidebar-border flex flex-col z-40 transition-all duration-300',
-        collapsed ? 'w-20' : 'w-64'
+        'fixed inset-y-0 left-0 bg-sidebar border-r border-sidebar-border flex flex-col z-40 w-64 transform transition-all duration-300',
+        collapsed ? '-translate-x-full md:translate-x-0 md:w-20' : 'translate-x-0 md:w-64'
       )}
     >
       {/* Header */}
@@ -96,7 +96,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           variant="ghost"
           size="icon"
           className={cn(
-            'transition-all duration-300',
+            'hidden md:inline-flex transition-all duration-300',
             collapsed ? 'absolute top-3 -right-5' : 'absolute top-4 -right-4 bg-background shadow-lg border rounded-full'
           )}
           onClick={onToggle}
