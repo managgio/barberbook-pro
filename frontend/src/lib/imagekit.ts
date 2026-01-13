@@ -43,7 +43,17 @@ export const uploadToImageKit = async (
   formData.append('signature', auth.signature);
   formData.append('publicKey', auth.publicKey);
   formData.append('useUniqueFileName', 'true');
-  const targetFolder = folder || auth.folder;
+  const resolveFolder = (baseFolder?: string, overrideFolder?: string) => {
+    const normalizedOverride = overrideFolder?.trim();
+    if (!normalizedOverride) return baseFolder;
+    if (normalizedOverride.startsWith('/') || !baseFolder) {
+      return normalizedOverride.startsWith('/') ? normalizedOverride : `/${normalizedOverride}`;
+    }
+    const normalizedBase = baseFolder.replace(/\/+$/, '');
+    const normalizedChild = normalizedOverride.replace(/^\/+/, '');
+    return `${normalizedBase}/${normalizedChild}`;
+  };
+  const targetFolder = resolveFolder(auth.folder, folder);
   if (targetFolder) {
     formData.append('folder', targetFolder);
   }

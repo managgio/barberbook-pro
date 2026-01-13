@@ -6,9 +6,6 @@ import {
   Square,
   Volume2,
   Sparkles,
-  CalendarCheck,
-  CalendarPlus,
-  Headphones,
   Wand2,
   ArrowLeft,
   BookOpen,
@@ -366,9 +363,6 @@ const AdminAiAssistant: React.FC = () => {
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                  <Wand2 className="w-5 h-5" />
-                </div>
                 <div>
                   <CardTitle className="text-lg">Guia rapida del asistente</CardTitle>
                   <p className="text-sm text-muted-foreground">
@@ -399,28 +393,17 @@ const AdminAiAssistant: React.FC = () => {
               <AccordionItem value="citas" className="border-border/60">
                 <AccordionTrigger className="text-sm">Citas: que pedir y como pedirlo</AccordionTrigger>
                 <AccordionContent>
-                  <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-center">
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Pide citas nuevas con fecha, hora, servicio y barbero. Si falta algo, el asistente te lo pide.
-                      </p>
-                      <div className="space-y-2 text-xs text-muted-foreground">
-                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Crea una cita para Marta el viernes a las 18:30 con barba y barbero Juan.
-                        </div>
-                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Reserva para Luis el 12 de enero a las 10:00 con corte clasico.
-                        </div>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Pide citas nuevas con fecha, hora, servicio y barbero. Si falta algo, el asistente te lo pide.
+                    </p>
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Crea una cita para Marta Sancho el viernes a las 18:30 con servicio corte clasico y barbero Juan.
                       </div>
-                    </div>
-                    <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-primary/10 via-card to-secondary/20">
-                      <div className="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-primary/10" />
-                      <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-background/80 px-3 py-2 shadow-sm">
-                        <CalendarCheck className="h-4 w-4 text-primary" />
-                        <span className="text-xs font-medium text-foreground">Cita confirmada</span>
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Reserva para el cliente Luis Martínez el 12 de enero a las 10:00 con corte clásico y con peluquero Alejandro.
                       </div>
-                      <div className="absolute top-5 left-5 h-2 w-16 rounded-full bg-primary/40" />
-                      <div className="absolute top-9 left-5 h-2 w-10 rounded-full bg-primary/20" />
                     </div>
                   </div>
                 </AccordionContent>
@@ -428,43 +411,21 @@ const AdminAiAssistant: React.FC = () => {
               <AccordionItem value="festivos" className="border-border/60">
                 <AccordionTrigger className="text-sm">Festivos flexibles: local, barberos y rangos</AccordionTrigger>
                 <AccordionContent>
-                  <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-center">
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Puedes crear festivos para el local o para uno o varios barberos. Si no dices el alcance,
-                        se entiende local. Tambien puedes mezclar varios festivos en un solo mensaje.
-                      </p>
-                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                          local / salon / barberia
-                        </span>
-                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                          para Alejandro y Pablo
-                        </span>
-                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                          y otro / ademas
-                        </span>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Puedes crear festivos para el local o para uno o varios barberos. Si no dices el alcance,
+                      se entiende local. Tambien puedes mezclar varios festivos en un solo mensaje.
+                    </p>
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Crea un festivo para el local el martes que viene.
                       </div>
-                      <div className="space-y-2 text-xs text-muted-foreground">
-                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Crea un festivo para el local el 13 de enero.
-                        </div>
-                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Festivo del 15 al 18 para Alejandro y Pablo.
-                        </div>
-                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Crea un festivo para el salon el 5 y otro del 8 al 10 para Ana.
-                        </div>
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Festivo del 15 al 18 de este mes para Alejandro y Pablo.
                       </div>
-                    </div>
-                    <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-secondary/30 via-card to-primary/10">
-                      <div className="absolute -left-6 -bottom-6 h-20 w-20 rounded-full bg-secondary/40" />
-                      <div className="absolute top-4 left-4 flex items-center gap-2 rounded-lg bg-background/80 px-3 py-2 shadow-sm">
-                        <CalendarPlus className="h-4 w-4 text-primary" />
-                        <span className="text-xs font-medium text-foreground">Festivo creado</span>
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Crea un festivo para el salon el 5 y otro del 8 al 10 de marzo para Ana.
                       </div>
-                      <div className="absolute top-14 left-4 h-2 w-20 rounded-full bg-primary/30" />
-                      <div className="absolute top-[4.1rem] left-4 h-2 w-12 rounded-full bg-primary/15" />
                     </div>
                   </div>
                 </AccordionContent>
@@ -472,36 +433,21 @@ const AdminAiAssistant: React.FC = () => {
               <AccordionItem value="audio" className="border-border/60">
                 <AccordionTrigger className="text-sm">Audio y escucha: manos libres</AccordionTrigger>
                 <AccordionContent>
-                  <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-center">
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Pulsa el microfono para dictar. El mensaje se transcribe y se envia como texto. Ademas,
-                        puedes escuchar cualquier respuesta del asistente.
-                      </p>
-                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                          Dictado rapido
-                        </span>
-                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                          Transcripcion automatica
-                        </span>
-                        <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                          Escuchar respuesta
-                        </span>
-                      </div>
-                    </div>
-                    <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-primary/10 via-card to-secondary/20">
-                      <div className="absolute -right-6 bottom-0 h-20 w-20 rounded-full bg-primary/10" />
-                      <div className="absolute top-4 left-4 flex items-center gap-2 rounded-lg bg-background/80 px-3 py-2 shadow-sm">
-                        <Headphones className="h-4 w-4 text-primary" />
-                        <span className="text-xs font-medium text-foreground">Escucha activa</span>
-                      </div>
-                      <div className="absolute bottom-5 left-4 flex items-end gap-1">
-                        <div className="h-2 w-1 rounded-full bg-primary/30" />
-                        <div className="h-4 w-1 rounded-full bg-primary/50" />
-                        <div className="h-6 w-1 rounded-full bg-primary/70" />
-                        <div className="h-3 w-1 rounded-full bg-primary/40" />
-                      </div>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Pulsa el microfono para dictar. El mensaje se transcribe y se envia como texto. Ademas,
+                      puedes escuchar cualquier respuesta del asistente.
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                        Dictado rapido
+                      </span>
+                      <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                        Transcripcion automatica
+                      </span>
+                      <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
+                        Escuchar respuesta
+                      </span>
                     </div>
                   </div>
                 </AccordionContent>

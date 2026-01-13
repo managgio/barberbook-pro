@@ -71,4 +71,5 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   services: {
     categoriesEnabled: false,
   },
+  qrSticker: null,
 };

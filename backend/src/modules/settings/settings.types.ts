@@ -16,6 +16,13 @@ export type SocialLinks = {
   linkedin?: string;
 };
 
+export type QrSticker = {
+  url: string;
+  imageUrl: string;
+  imageFileId: string;
+  createdAt: string;
+};
+
 export type SiteSettings = {
   branding: {
     name: string;
@@ -38,6 +45,7 @@ export type SiteSettings = {
   services: {
     categoriesEnabled: boolean;
   };
+  qrSticker: QrSticker | null;
 };
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -75,6 +83,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   services: {
     categoriesEnabled: false,
   },
+  qrSticker: null,
 };
 
 export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings => ({
@@ -90,6 +99,7 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
     ...DEFAULT_SITE_SETTINGS.services,
     ...(data?.services ?? {}),
   },
+  qrSticker: data?.qrSticker ?? null,
 });
 
 export const cloneSettings = (settings: SiteSettings): SiteSettings =>

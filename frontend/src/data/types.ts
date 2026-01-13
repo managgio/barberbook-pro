@@ -104,6 +104,13 @@ export interface SocialLinks {
   linkedin?: string;
 }
 
+export interface QrSticker {
+  url: string;
+  imageUrl: string;
+  imageFileId: string;
+  createdAt: string;
+}
+
 export interface ServiceCategory {
   id: string;
   name: string;
@@ -134,6 +141,7 @@ export interface SiteSettings {
   services: {
     categoriesEnabled: boolean;
   };
+  qrSticker: QrSticker | null;
 }
 
 export type DiscountType = 'percentage' | 'amount';
