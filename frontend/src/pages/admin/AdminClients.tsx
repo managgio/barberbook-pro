@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, Service, User } from '@/data/types';
-import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle } from 'lucide-react';
+import { format, parseISO, subMonths, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
@@ -13,6 +13,7 @@ import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
@@ -89,6 +90,15 @@ const AdminClients: React.FC = () => {
     () => (selectedClient ? getClientAppointments(selectedClient.id) : []),
     [selectedClient, getClientAppointments]
   );
+  const recentNoShows = useMemo(() => {
+    if (!selectedClient) return 0;
+    const twoMonthsAgo = subMonths(new Date(), 2);
+    return selectedClientAppointments.filter((apt) => {
+      if (apt.status !== 'no_show') return false;
+      const start = parseISO(apt.startDateTime);
+      return isAfter(start, twoMonthsAgo);
+    }).length;
+  }, [selectedClient, selectedClientAppointments]);
 
   const whatsappNumber = selectedClient?.phone ? selectedClient.phone.replace(/\D/g, '') : '';
   const whatsappLink = whatsappNumber ? `https://wa.me/${whatsappNumber}` : '';
@@ -169,7 +179,26 @@ const AdminClients: React.FC = () => {
             {selectedClient ? (
               <div className="space-y-6">
                 {/* Client Info */}
-                <div className="p-4 bg-secondary/50 rounded-lg space-y-3">
+                <div className="p-4 bg-secondary/50 rounded-lg space-y-3 relative">
+                  {recentNoShows > 0 && (
+                    <div className="absolute top-3 right-3 rounded-full bg-destructive/10 text-destructive text-xs font-semibold px-2 py-1 inline-flex items-center gap-1">
+                      {recentNoShows} inasistencia{recentNoShows > 1 ? 's' : ''}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                            aria-label="Info sobre el rango de datos"
+                          >
+                            <HelpCircle className="w-3.5 h-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left" className="text-xs">
+                          Datos de los últimos 2 meses.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                       <UserIcon className="w-6 h-6 text-primary" />

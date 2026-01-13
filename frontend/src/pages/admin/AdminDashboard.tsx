@@ -15,8 +15,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { getAppointments, getBarbers, getServices, updateSiteSettings } from '@/data/api';
-import { Appointment, Barber, Service } from '@/data/types';
+import { getAppointments, getBarbers, getServices, getUsers, updateSiteSettings } from '@/data/api';
+import { Appointment, Barber, Service, User } from '@/data/types';
 import {
   Calendar,
   ArrowRight,
@@ -98,6 +98,7 @@ const AdminDashboard: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [revenueRange, setRevenueRange] = useState(7);
   const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
@@ -110,14 +111,16 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [appts, barbersData, servicesData] = await Promise.all([
+      const [appts, barbersData, servicesData, usersData] = await Promise.all([
         getAppointments(),
         getBarbers(),
         getServices(),
+        getUsers(),
       ]);
       setAppointments(appts);
       setBarbers(barbersData);
       setServices(servicesData);
+      setUsers(usersData);
       setIsLoading(false);
     };
     fetchData();
@@ -135,6 +138,7 @@ const AdminDashboard: React.FC = () => {
 
   const getBarber = (id: string) => barbers.find((barber) => barber.id === id);
   const getService = (id: string) => services.find((service) => service.id === id);
+  const getClient = (id: string | null) => users.find((user) => user.id === id);
   const revenueToday = appointments
     .filter(
       (appointment) =>
@@ -624,6 +628,9 @@ const AdminDashboard: React.FC = () => {
                   const barber = getBarber(appointment.barberId);
                   const service = getService(appointment.serviceId);
                   const time = format(parseISO(appointment.startDateTime), 'HH:mm');
+                  const clientName =
+                    appointment.guestName ||
+                    (appointment.userId ? getClient(appointment.userId)?.name : undefined);
                   
                   return (
                     <div 
@@ -635,6 +642,9 @@ const AdminDashboard: React.FC = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-foreground truncate">{service?.name}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          Cliente: {clientName || 'Sin nombre'}
+                        </p>
                         <p className="text-sm text-muted-foreground">con {barber?.name}</p>
                       </div>
                       <span className="text-lg font-semibold text-primary">{time}</span>

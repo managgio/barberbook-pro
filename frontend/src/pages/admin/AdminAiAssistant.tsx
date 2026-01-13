@@ -30,6 +30,7 @@ interface ChatMessage {
 }
 
 const STORAGE_KEY = 'ai-assistant-session-id';
+const SEND_COMMAND = 'enviar';
 
 const AdminAiAssistant: React.FC = () => {
   const { user } = useAuth();
@@ -48,6 +49,8 @@ const AdminAiAssistant: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const loadedSessionRef = useRef<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const autoStopRef = useRef(false);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const supportsAudio = typeof window !== 'undefined'
@@ -55,6 +58,8 @@ const AdminAiAssistant: React.FC = () => {
     && 'mediaDevices' in navigator
     && typeof navigator.mediaDevices?.getUserMedia === 'function';
   const supportsSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const supportsVoiceCommand = typeof window !== 'undefined'
+    && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   const getSupportedMimeType = () => {
     if (typeof MediaRecorder === 'undefined') return '';
@@ -72,6 +77,19 @@ const AdminAiAssistant: React.FC = () => {
     if (mimeType.includes('mpeg')) return 'mp3';
     return 'webm';
   };
+
+  const normalizeCommandText = (text: string) =>
+    text.trim().toLowerCase().replace(/[.,!?;:]+$/g, '');
+
+  const isSendCommand = (text: string) => {
+    const normalized = normalizeCommandText(text);
+    if (!normalized) return false;
+    const parts = normalized.split(/\s+/);
+    return parts[parts.length - 1] === SEND_COMMAND;
+  };
+
+  const stripSendCommand = (text: string) =>
+    text.replace(new RegExp(`(?:\\s|^)${SEND_COMMAND}[\\s.,!?;:]*$`, 'i'), '').trim();
 
   useEffect(() => {
     const initialSessionId = localStorage.getItem(STORAGE_KEY);
@@ -110,12 +128,6 @@ const AdminAiAssistant: React.FC = () => {
     };
     loadSession();
   }, [sessionId, user]);
-
-  useEffect(() => {
-    return () => {
-      stopSpeaking();
-    };
-  }, []);
 
   const persistSession = (newSessionId: string) => {
     setSessionId(newSessionId);
@@ -201,9 +213,31 @@ const AdminAiAssistant: React.FC = () => {
     window.speechSynthesis.speak(utterance);
   };
 
+  const stopVoiceCommandListener = () => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    try {
+      recognition.stop();
+    } catch {
+      // Ignore stop errors for unsupported implementations.
+    }
+    recognitionRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+      stopVoiceCommandListener();
+    };
+  }, []);
+
   const stopRecording = async () => {
     const recorder = recorderRef.current;
     if (!recorder) return;
+    stopVoiceCommandListener();
     setIsRecording(false);
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
@@ -254,7 +288,15 @@ const AdminAiAssistant: React.FC = () => {
         });
         return;
       }
-      await sendMessage(response.text);
+      const cleaned = stripSendCommand(response.text);
+      if (!cleaned.trim()) {
+        toast({
+          title: 'Sin texto',
+          description: 'No detecte contenido antes de "enviar".',
+        });
+        return;
+      }
+      await sendMessage(cleaned);
     } catch (error) {
       toast({
         title: 'Error al transcribir',
@@ -264,6 +306,37 @@ const AdminAiAssistant: React.FC = () => {
     } finally {
       setIsTranscribing(false);
     }
+  };
+
+  const startVoiceCommandListener = () => {
+    if (!supportsVoiceCommand) return;
+    stopVoiceCommandListener();
+    const SpeechRecognitionConstructor =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionConstructor) return;
+    const recognition = new SpeechRecognitionConstructor();
+    recognition.lang = 'es-ES';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (event: any) => {
+      const results = event.results;
+      if (!results || results.length === 0) return;
+      const lastResult = results[results.length - 1];
+      const transcript = lastResult?.[0]?.transcript ?? '';
+      if (!isSendCommand(transcript)) return;
+      if (autoStopRef.current) return;
+      autoStopRef.current = true;
+      stopVoiceCommandListener();
+      void stopRecording();
+    };
+    recognition.onerror = () => {
+      stopVoiceCommandListener();
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
   };
 
   const startRecording = async () => {
@@ -283,6 +356,7 @@ const AdminAiAssistant: React.FC = () => {
       const mimeType = getSupportedMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       chunksRef.current = [];
+      autoStopRef.current = false;
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
@@ -295,6 +369,7 @@ const AdminAiAssistant: React.FC = () => {
       recorderRef.current = recorder;
       setRecordingSeconds(0);
       setIsRecording(true);
+      startVoiceCommandListener();
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds((prev) => prev + 1);
       }, 1000);
@@ -435,7 +510,8 @@ const AdminAiAssistant: React.FC = () => {
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Pulsa el microfono para dictar. El mensaje se transcribe y se envia como texto. Ademas,
+                      Pulsa el microfono para dictar. Di "enviar" al final para enviar sin tocar el boton. El mensaje
+                      se transcribe y se envia como texto. Ademas,
                       puedes escuchar cualquier respuesta del asistente.
                     </p>
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">

@@ -396,12 +396,12 @@ const LandingPage: React.FC = () => {
             <p>
               © {currentYear} by{' '}
               <a
-                href="https://clmonreal.vercel.app"
+                href="https://managgio.vercel.app"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-muted-foreground underline-offset-4 hover:text-primary hover:underline transition-colors"
               >
-                Carlos López
+                Managgio
               </a>. Todos los derechos reservados.
             </p>
           </div>
