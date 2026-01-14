@@ -316,6 +316,12 @@ export class AiAssistantService {
       if (result.reason === 'barber_inactive') {
         return 'Ese barbero no está activo. Indícame otro barbero disponible.';
       }
+      if (result.reason === 'user_ambiguous' && result.options?.users?.length) {
+        const options = result.options.users
+          .slice(0, 3)
+          .map((user) => `${user.name} (${user.email})`);
+        return `Hay varios clientes con ese nombre. Indica el cliente por nombre completo o email. Opciones: ${options.join(', ')}.`;
+      }
       const missingLabels = new Set<string>();
       (result.missing ?? []).forEach((missing) => {
         if (missing === 'date') missingLabels.add('fecha');

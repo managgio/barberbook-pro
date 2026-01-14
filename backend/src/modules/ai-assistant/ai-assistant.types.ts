@@ -26,6 +26,7 @@ export interface AiCreateAppointmentResult {
   options?: {
     barbers?: { id: string; name: string }[];
     services?: { id: string; name: string; duration: number }[];
+    users?: { id: string; name: string; email: string }[];
   };
   appointmentId?: string;
   startDateTime?: string;

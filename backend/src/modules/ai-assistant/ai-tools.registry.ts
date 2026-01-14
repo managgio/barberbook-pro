@@ -646,7 +646,7 @@ export class AiToolsRegistry {
         name: { contains: userName },
         role: 'client',
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, email: true },
       take: 3,
     });
 
@@ -667,7 +667,11 @@ export class AiToolsRegistry {
       result: {
         status: 'needs_info',
         missing: ['userEmail'],
+        reason: 'user_ambiguous',
         matchCount: users.length,
+        options: {
+          users,
+        },
       },
     };
   }
