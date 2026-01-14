@@ -61,6 +61,36 @@ npm run prisma:seed     # datos de ejemplo que sustituyen los mocks del frontend
 npm run start:dev
 ```
 
+### Base de datos local con Docker (MySQL)
+
+En desarrollo puedes levantar MySQL con Docker desde la raiz del repo.
+
+```sh
+docker compose up -d
+```
+
+La configuracion por defecto coincide con `backend/.env`:
+
+- `DATABASE_URL="mysql://prisma:password@127.0.0.1:3306/leblond"`
+
+Para parar el contenedor:
+
+```sh
+docker compose down
+```
+
+#### Backup y restore
+
+Scripts sencillos en `scripts/` para exportar o importar datos:
+
+```sh
+# Crear dump
+./scripts/db_dump.sh ./db_dump.sql
+
+# Restaurar dump
+./scripts/db_restore.sh ./db_dump.sql
+```
+
 ### Dependencias principales
 
 - NestJS (REST API con validación y CORS)
