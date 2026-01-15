@@ -41,9 +41,7 @@ npm run dev
 
 - Copia `frontend/.env.example` a `frontend/.env.local` y rellena:
   - `VITE_API_BASE_URL` (URL del backend, por defecto `http://localhost:3000/api`)
-  - `VITE_IMAGEKIT_PUBLIC_KEY`
-  - `VITE_IMAGEKIT_URL_ENDPOINT`
-- El backend expone `/api/imagekit/sign` para firmar subidas; ya no se firma en el dev server de Vite.
+- El backend expone `/api/imagekit/sign` para firmar subidas; las credenciales viven en el backend.
 
 ## Backend (NestJS + Prisma + MySQL)
 
@@ -96,7 +94,7 @@ Scripts sencillos en `scripts/` para exportar o importar datos:
 - NestJS (REST API con validación y CORS)
 - Prisma ORM (MySQL) con seed inicial (usuarios, barberos, servicios, citas, festivos y horarios)
 - ImageKit (firma de subidas desde `/api/imagekit/sign`)
-- Superadmin configurable por email (env `SUPER_ADMIN_EMAIL` en backend y `VITE_SUPER_ADMIN_EMAIL` en frontend)
+- Superadmin configurable por email (env `SUPER_ADMIN_EMAIL` en backend)
 - Notificaciones: correo al crear/editar citas y recordatorio SMS 24h antes (Twilio)
 
 ### Variables de entorno clave (backend)

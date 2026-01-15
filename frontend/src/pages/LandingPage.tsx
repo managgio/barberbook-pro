@@ -19,19 +19,26 @@ import {
   Youtube,
   Music2,
 } from 'lucide-react';
-import heroBackground from '@/assets/img/mainImage.webp';
-import heroImage from '@/assets/img/portada.png';
-import letreroImage from '@/assets/img/letrero.png';
-import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 import { Barber, Service } from '@/data/types';
 import { getBarbers, getServices } from '@/data/api';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
+import { useTenant } from '@/context/TenantContext';
+
+const heroBackgroundFallback = '/placeholder.svg';
+const heroImageFallback = '/placeholder.svg';
+const signImageFallback = '/placeholder.svg';
 
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const { settings } = useSiteSettings();
+  const { tenant } = useTenant();
+  const leBlondLogo = '/leBlondLogo.png';
+  const logoUrl = tenant?.config?.branding?.logoUrl || leBlondLogo;
+  const heroBackgroundUrl = tenant?.config?.branding?.heroBackgroundUrl || heroBackgroundFallback;
+  const heroImageUrl = tenant?.config?.branding?.heroImageUrl || heroImageFallback;
+  const signImageUrl = tenant?.config?.branding?.signImageUrl || signImageFallback;
   const currentYear = new Date().getFullYear();
   const experienceYears = Math.max(0, currentYear - settings.stats.experienceStartYear);
   const formatYearlyBookings = (value: number) => {
@@ -87,7 +94,7 @@ const LandingPage: React.FC = () => {
         <div className="absolute inset-0">
           <div
             className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${heroBackground})` }}
+            style={{ backgroundImage: `url(${heroBackgroundUrl})` }}
           />
           <div className="absolute inset-0 bg-black/95" />
         </div>
@@ -142,9 +149,9 @@ const LandingPage: React.FC = () => {
             <div className="flex-1 w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
               <div className="relative w-full max-w-xl mx-auto">
                 <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-[36px]" />
-                <img 
-                  src={heroImage} 
-                  alt="Experiencia premium en Le Blond Hair Salon" 
+                <img
+                  src={heroImageUrl}
+                  alt={`Experiencia premium en ${settings.branding.name}`}
                   className="relative w-full rounded-[36px] border border-white/10 shadow-2xl object-cover"
                 />
                 <div className="absolute left-6 right-auto bottom-6 bg-background/80 backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl border border-border/60">
@@ -289,7 +296,7 @@ const LandingPage: React.FC = () => {
         <div className="absolute inset-0">
           <div
             className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${letreroImage})`, backgroundPosition: 'top center' }}
+            style={{ backgroundImage: `url(${signImageUrl})`, backgroundPosition: 'top center' }}
           />
           <div className="absolute inset-0 bg-card/80" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl" />
@@ -321,8 +328,8 @@ const LandingPage: React.FC = () => {
             <div>
               <Link to="/" className="flex items-center gap-2 mb-4">
                 <img
-                  src={leBlondLogo}
-                  alt="Le Blond Hair Salon logo"
+                  src={logoUrl}
+                  alt={`${settings.branding.shortName} logo`}
                   className="w-10 h-10 rounded-lg object-contain shadow-sm"
                 />
                 <span className="text-xl font-bold text-foreground">{settings.branding.name}</span>

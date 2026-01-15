@@ -1,14 +1,30 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { User, LogOut } from 'lucide-react';
-import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import LocationSwitcher from '@/components/common/LocationSwitcher';
+import { useTenant } from '@/context/TenantContext';
+import { cn } from '@/lib/utils';
 
 const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const { settings } = useSiteSettings();
+  const { tenant, locations } = useTenant();
+  const location = useLocation();
+  const leBlondLogo = '/leBlondLogo.png';
+  const logoUrl = tenant?.config?.branding?.logoUrl || leBlondLogo;
+  const isLanding = location.pathname === '/';
+  const hasMultipleLocations = locations.length > 1;
+  const brandNameClass = cn(
+    'text-xl font-bold text-foreground',
+    isLanding && hasMultipleLocations ? 'hidden sm:inline' : 'inline'
+  );
+  const userBadgeClass = cn(
+    'flex items-center gap-2 pl-[.3rem] pr-3 py-1 rounded-full border border-primary/20 bg-primary/5',
+    isLanding && hasMultipleLocations ? 'hidden sm:flex' : 'flex'
+  );
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
@@ -17,18 +33,19 @@ const Navbar: React.FC = () => {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
             <img
-              src={leBlondLogo}
-              alt="Le Blond Hair Salon logo"
+              src={logoUrl}
+              alt={`${settings.branding.shortName} logo`}
               className="w-10 h-10 object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105"
             />
-            <span className="text-xl font-bold text-foreground">{settings.branding.shortName}</span>
+            <span className={brandNameClass}>{settings.branding.shortName}</span>
           </Link>
 
           {/* Auth Section */}
           <div className="flex items-center gap-3">
+            <LocationSwitcher />
             {isAuthenticated && user ? (
               <>
-                <div className="flex items-center gap-2 pl-[.3rem] pr-3 py-1 rounded-full border border-primary/20 bg-primary/5">
+                <div className={userBadgeClass}>
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <User className="w-4 h-4 text-primary" />
                   </div>

@@ -6,9 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
-import heroImage from '@/assets/img/mainImage.webp';
+import managgioLogo from '@/assets/img/managgio/logo.png';
+import managgioHero from '@/assets/img/managgio/fondo-managgio.png';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import { useTenant } from '@/context/TenantContext';
 
 const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -25,6 +26,19 @@ const AuthPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { settings } = useSiteSettings();
+  const { tenant } = useTenant();
+  const isPlatform = Boolean(tenant?.isPlatform);
+  const isLocalEnv = typeof window !== 'undefined'
+    && (import.meta.env.DEV
+      || window.location.hostname === 'localhost'
+      || window.location.hostname === '127.0.0.1'
+      || window.location.hostname.endsWith('.localhost'));
+  const leBlondLogo = '/leBlondLogo.png';
+  const heroImageFallback = '/placeholder.svg';
+  const heroImage = isPlatform
+    ? managgioHero
+    : tenant?.config?.branding?.heroBackgroundUrl || heroImageFallback;
+  const brandLogo = tenant?.config?.branding?.logoUrl || leBlondLogo;
   const experienceYears = Math.max(0, new Date().getFullYear() - settings.stats.experienceStartYear);
   const formatYearlyBookings = (value: number) => {
     if (value >= 10000) return `${(value / 1000).toFixed(0)}K`;
@@ -35,9 +49,14 @@ const AuthPage: React.FC = () => {
   // Redirect if already authenticated
   React.useEffect(() => {
     if (isAuthenticated && user) {
-      navigate(user.role === 'admin' ? '/admin' : '/app');
+      if (user.isPlatformAdmin && isPlatform) {
+        navigate('/platform');
+        return;
+      }
+      const hasAdminAccess = Boolean(user.isSuperAdmin || user.isLocalAdmin || user.role === 'admin' || user.isPlatformAdmin);
+      navigate(hasAdminAccess ? '/admin' : '/app');
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, user, navigate, isPlatform]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,34 +140,54 @@ const AuthPage: React.FC = () => {
         <div className="relative z-10 flex flex-col justify-center px-12">
           <Link to="/" className="flex items-center gap-3 mb-8">
             <img
-              src={leBlondLogo}
-              alt="Le Blond Hair Salon logo"
+              src={isPlatform ? managgioLogo : brandLogo}
+              alt={isPlatform ? 'Managgio logo' : `${settings.branding.shortName} logo`}
               className="w-14 h-14 rounded-xl shadow-glow object-contain"
             />
-            <span className="text-3xl font-bold text-foreground">{settings.branding.shortName}</span>
+            <span className="text-3xl font-bold text-foreground">
+              {isPlatform ? 'Managgio' : settings.branding.shortName}
+            </span>
           </Link>
           
           <h1 className="text-4xl font-bold text-foreground mb-4">
-            Tu estilo,<br />
-            <span className="text-gradient">tu momento.</span>
+            {isPlatform ? 'Acceso plataforma' : 'Tu estilo,'}
+            <br />
+            <span className="text-gradient">{isPlatform ? 'Managgio' : 'tu momento.'}</span>
           </h1>
           
           <p className="text-muted-foreground text-lg max-w-md">
-            Reserva tu cita en segundos y disfruta de la experiencia de {settings.branding.name}.
+            {isPlatform
+              ? 'Gestiona marcas, locales y configuraciones desde la consola central.'
+              : `Reserva tu cita en segundos y disfruta de la experiencia de ${settings.branding.name}.`}
           </p>
 
-          <div className="mt-12 grid grid-cols-3 gap-6">
-            {[
-              { value: `${experienceYears}+`, label: 'Años de experiencia' },
-              { value: `${formatYearlyBookings(settings.stats.yearlyBookings)}+`, label: 'Clientes satisfechos' },
-              { value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
-            ].map((stat) => (
-              <div key={stat.label}>
-                <p className="text-2xl font-bold text-primary">{stat.value}</p>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
-              </div>
-            ))}
-          </div>
+          {isPlatform ? (
+            <div className="mt-10 space-y-3 text-sm text-muted-foreground">
+              {[
+                'Gestión centralizada de marcas y locales',
+                'Configuraciones multi-tenant en tiempo real',
+                'Control de permisos por local y rol',
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-primary" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-12 grid grid-cols-3 gap-6">
+              {[
+                { value: `${experienceYears}+`, label: 'Años de experiencia' },
+                { value: `${formatYearlyBookings(settings.stats.yearlyBookings)}+`, label: 'Clientes satisfechos' },
+                { value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
+              ].map((stat) => (
+                <div key={stat.label}>
+                  <p className="text-2xl font-bold text-primary">{stat.value}</p>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -158,18 +197,22 @@ const AuthPage: React.FC = () => {
           {/* Mobile Logo */}
           <Link to="/" className="lg:hidden flex items-center gap-2 justify-center mb-8">
             <img
-              src={leBlondLogo}
-              alt="Le Blond Hair Salon logo"
+              src={isPlatform ? managgioLogo : brandLogo}
+              alt={isPlatform ? 'Managgio logo' : `${settings.branding.shortName} logo`}
               className="w-10 h-10 rounded-lg object-contain shadow-sm"
             />
-            <span className="text-xl font-bold text-foreground">{settings.branding.shortName}</span>
+            <span className="text-xl font-bold text-foreground">
+              {isPlatform ? 'Managgio' : settings.branding.shortName}
+            </span>
           </Link>
 
-          <div className="flex justify-end mb-4">
-            <Link to="/" className="text-xs uppercase tracking-wide text-primary hover:underline">
-              ← Volver al inicio
-            </Link>
-          </div>
+          {!isPlatform && (
+            <div className="flex justify-end mb-4">
+              <Link to="/" className="text-xs uppercase tracking-wide text-primary hover:underline">
+                ← Volver al inicio
+              </Link>
+            </div>
+          )}
 
           {/* Tab Switcher */}
           <div className="flex bg-secondary rounded-lg p-1 mb-8">
@@ -293,25 +336,29 @@ const AuthPage: React.FC = () => {
           </form>
 
           {/* Demo hint */}
-          <div className="mt-6 space-y-3">
-            <div className="flex flex-col gap-4 text-center">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">¿Solo quieres una cita rápida?</p>
-                <Button variant="outline" asChild>
-                  <Link to="/book">Reserva sin registrarte</Link>
-                </Button>
+          {!isPlatform && (
+            <div className="mt-6 space-y-3">
+              <div className="flex flex-col gap-4 text-center">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">¿Solo quieres una cita rápida?</p>
+                  <Button variant="outline" asChild>
+                    <Link to="/book">Reserva sin registrarte</Link>
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-6 space-y-3">
-            <div className="p-4 rounded-lg bg-secondary/50 border border-border">
-              <p className="text-xs text-muted-foreground text-center">
-                Autenticación real con Firebase. Inicia sesión con Google o crea tu cuenta con email y contraseña.
-                Si usas <code className="text-primary">admin@barberia.com</code> se asignará el rol de administrador automáticamente.
-              </p>
+          {!isPlatform && isLocalEnv && (
+            <div className="mt-6 space-y-3">
+              <div className="p-4 rounded-lg bg-secondary/50 border border-border">
+                <p className="text-xs text-muted-foreground text-center">
+                  Autenticación real con Firebase. Inicia sesión con Google o crea tu cuenta con email y contraseña.
+                  Si usas <code className="text-primary">admin@barberia.com</code> se asignará el rol de administrador automáticamente.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Footer left empty intentionally */}
         </div>

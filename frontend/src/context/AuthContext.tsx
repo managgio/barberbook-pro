@@ -10,7 +10,9 @@ import {
   updateProfile as updateFirebaseProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { auth, googleProvider } from '@/lib/firebaseConfig';
+import { getFirebaseAuth, googleProvider } from '@/lib/firebaseConfig';
+import { setAdminUserId } from '@/lib/authStorage';
+import { useTenant } from './TenantContext';
 
 interface AuthContextType {
   user: User | null;
@@ -59,12 +61,22 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     role: existing?.role ?? 'client',
     adminRoleId: existing?.adminRoleId ?? null,
     isSuperAdmin: existing?.isSuperAdmin,
+    isPlatformAdmin: existing?.isPlatformAdmin,
     notificationPrefs,
     prefersBarberSelection,
   };
 
   if (existing) {
-    return updateUser(existing.id, payload);
+    const updatePayload: Partial<User> = {
+      firebaseUid: payload.firebaseUid,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      avatar: payload.avatar,
+      notificationPrefs: payload.notificationPrefs,
+      prefersBarberSelection: payload.prefersBarberSelection,
+    };
+    return updateUser(existing.id, updatePayload);
   }
 
   return createUser({
@@ -78,6 +90,7 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     avatar: payload.avatar,
     adminRoleId: payload.adminRoleId ?? null,
     isSuperAdmin: payload.isSuperAdmin,
+    isPlatformAdmin: payload.isPlatformAdmin,
   });
 };
 
@@ -102,10 +115,16 @@ const getFriendlyError = (error: unknown) => {
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { isReady: tenantReady, currentLocationId } = useTenant();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!tenantReady) {
+      setIsLoading(true);
+      return;
+    }
+    const auth = getFirebaseAuth();
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setIsLoading(true);
       if (!firebaseUser) {
@@ -126,10 +145,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [tenantReady]);
+
+  useEffect(() => {
+    if (!tenantReady) return;
+    const auth = getFirebaseAuth();
+    if (!auth.currentUser) return;
+    setIsLoading(true);
+    mapFirebaseUserToProfile(auth.currentUser)
+      .then((profile) => setUser(profile))
+      .catch((error) => {
+        console.error('Error al refrescar el usuario por local', error);
+      })
+      .finally(() => setIsLoading(false));
+  }, [tenantReady, currentLocationId]);
+
+  useEffect(() => {
+    if (!user) {
+      setAdminUserId(null);
+      return;
+    }
+    const hasAdminAccess = user.isSuperAdmin || user.isPlatformAdmin || user.isLocalAdmin;
+    setAdminUserId(hasAdminAccess ? user.id : null);
+  }, [user]);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      const auth = getFirebaseAuth();
       const credential = await signInWithEmailAndPassword(auth, email, password);
       const profile = await mapFirebaseUserToProfile(credential.user);
       setUser(profile);
@@ -141,6 +183,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
+      const auth = getFirebaseAuth();
       const credential = await signInWithPopup(auth, googleProvider);
       const profile = await mapFirebaseUserToProfile(credential.user);
       setUser(profile);
@@ -152,6 +195,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      const auth = getFirebaseAuth();
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       if (auth.currentUser) {
         await updateFirebaseProfile(auth.currentUser, { displayName: name });
@@ -165,6 +209,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    const auth = getFirebaseAuth();
     await signOut(auth);
     setUser(null);
   };
@@ -188,6 +233,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const updated = await updateUser(user.id, payload);
     setUser(updated);
+    const auth = getFirebaseAuth();
     if (auth.currentUser && data.name) {
       await updateFirebaseProfile(auth.currentUser, { displayName: data.name });
     }

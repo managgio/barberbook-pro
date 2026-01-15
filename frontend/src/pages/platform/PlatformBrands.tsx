@@ -1,0 +1,1296 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  createPlatformBrand,
+  createPlatformLocation,
+  deletePlatformBrand,
+  deletePlatformLocation,
+  getPlatformBrandAdmins,
+  getPlatformBrand,
+  getPlatformBrandConfig,
+  getPlatformBrands,
+  getPlatformLocationConfig,
+  assignPlatformBrandAdmin,
+  removePlatformBrandAdmin,
+  updatePlatformBrand,
+  updatePlatformBrandConfig,
+  updatePlatformLocation,
+  updatePlatformLocationConfig,
+} from '@/data/api';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Building2, Image as ImageIcon, MapPin, Plus, Save, Settings2, Trash2, UserPlus, Users } from 'lucide-react';
+import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
+
+const updateNestedValue = (source: Record<string, any>, path: string[], value: any) => {
+  const result = { ...source };
+  let cursor: Record<string, any> = result;
+  path.forEach((key, index) => {
+    if (index === path.length - 1) {
+      cursor[key] = value;
+      return;
+    }
+    cursor[key] = cursor[key] && typeof cursor[key] === 'object' ? { ...cursor[key] } : {};
+    cursor = cursor[key];
+  });
+  return result;
+};
+
+const normalizeHexInput = (value: string) => {
+  const raw = value.trim().toLowerCase();
+  if (!raw) return '';
+  return raw.startsWith('#') ? raw : `#${raw}`;
+};
+
+const normalizeImagekitFolder = (value?: string, subdomain?: string | null) => {
+  const normalized = value?.trim().replace(/^\/+|\/+$/g, '');
+  if (!normalized) return '';
+  if (!subdomain) return normalized;
+  const marker = `${subdomain}/`;
+  const index = normalized.indexOf(marker);
+  if (index !== -1) {
+    return normalized.slice(index + marker.length);
+  }
+  if (normalized === subdomain || normalized.endsWith(`/${subdomain}`)) {
+    return '';
+  }
+  if (normalized.startsWith(`${subdomain}/`)) {
+    return normalized.slice(subdomain.length + 1);
+  }
+  return normalized;
+};
+
+const buildImagekitPreview = (prefix: string, subdomain?: string | null, suffix?: string) => {
+  const normalizePart = (value?: string | null) => (value || '').trim().replace(/^\/+|\/+$/g, '');
+  const parts = [prefix, subdomain, suffix].map(normalizePart).filter(Boolean);
+  return parts.length ? `/${parts.join('/')}` : '';
+};
+
+const colorPickerValue = (value?: string) => {
+  const normalized = value ? normalizeHexInput(value) : '';
+  return normalized || '#000000';
+};
+
+const BRAND_FILE_ID_FIELDS = ['logoFileId', 'heroBackgroundFileId', 'heroImageFileId', 'signImageFileId'] as const;
+type BrandFileIdField = typeof BRAND_FILE_ID_FIELDS[number];
+
+type BrandAssetKey = 'logo' | 'heroBackground' | 'heroImage' | 'signImage';
+
+const BRAND_ASSET_META: Record<BrandAssetKey, {
+  label: string;
+  description: string;
+  urlField: string;
+  fileIdField: BrandFileIdField;
+  folder?: string;
+  previewClass: string;
+  imageClass: string;
+}> = {
+  logo: {
+    label: 'Logo del cliente',
+    description: 'Navbar, login y panel admin del cliente.',
+    urlField: 'logoUrl',
+    fileIdField: 'logoFileId',
+    previewClass: 'h-16 w-16',
+    imageClass: 'object-contain',
+  },
+  heroBackground: {
+    label: 'Fondo hero (mainImage)',
+    description: 'Reemplaza mainImage.webp en la cabecera.',
+    urlField: 'heroBackgroundUrl',
+    fileIdField: 'heroBackgroundFileId',
+    folder: 'landing',
+    previewClass: 'h-16 w-28',
+    imageClass: 'object-cover',
+  },
+  heroImage: {
+    label: 'Imagen principal (portada)',
+    description: 'Reemplaza portada.png en la cabecera.',
+    urlField: 'heroImageUrl',
+    fileIdField: 'heroImageFileId',
+    folder: 'landing',
+    previewClass: 'h-20 w-16',
+    imageClass: 'object-cover',
+  },
+  signImage: {
+    label: 'Letrero (CTA)',
+    description: 'Reemplaza letrero.png en la sección CTA.',
+    urlField: 'signImageUrl',
+    fileIdField: 'signImageFileId',
+    folder: 'landing',
+    previewClass: 'h-16 w-28',
+    imageClass: 'object-cover',
+  },
+};
+
+const PlatformBrands: React.FC = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const imagekitPrefix = import.meta.env.VITE_IMAGEKIT_FOLDER_PREFIX || 'IMAGEKIT_FOLDER';
+  const [brands, setBrands] = useState<any[]>([]);
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [brandQuery, setBrandQuery] = useState('');
+  const [brandForm, setBrandForm] = useState({ name: '', subdomain: '', customDomain: '', isActive: true });
+  const [brandConfig, setBrandConfig] = useState<Record<string, any>>({});
+  const [locationConfig, setLocationConfig] = useState<Record<string, any>>({});
+  const [adminOverview, setAdminOverview] = useState<any | null>(null);
+  const [adminForm, setAdminForm] = useState({
+    email: '',
+    localId: '',
+    applyToAll: false,
+  });
+  const [applyThemeToAll, setApplyThemeToAll] = useState(false);
+  const [uploadingAsset, setUploadingAsset] = useState<BrandAssetKey | null>(null);
+  const [persistedBrandFileIds, setPersistedBrandFileIds] = useState<Record<BrandFileIdField, string | null>>({
+    logoFileId: null,
+    heroBackgroundFileId: null,
+    heroImageFileId: null,
+    signImageFileId: null,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isAdminSaving, setIsAdminSaving] = useState(false);
+  const [createBrandOpen, setCreateBrandOpen] = useState(false);
+  const [createLocationOpen, setCreateLocationOpen] = useState(false);
+  const [editLocationOpen, setEditLocationOpen] = useState(false);
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [newBrandForm, setNewBrandForm] = useState({ name: '', subdomain: '', customDomain: '', isActive: true });
+  const [newLocationForm, setNewLocationForm] = useState({ name: '', slug: '', isActive: true });
+  const [editLocationForm, setEditLocationForm] = useState({ name: '', slug: '', isActive: true });
+
+  const selectedBrand = useMemo(
+    () => brands.find((brand) => brand.id === selectedBrandId) || null,
+    [brands, selectedBrandId],
+  );
+  const filteredBrands = useMemo(() => {
+    const query = brandQuery.trim().toLowerCase();
+    if (!query) return brands;
+    return brands.filter((brand) => {
+      const name = brand.name?.toLowerCase() || '';
+      const subdomain = brand.subdomain?.toLowerCase() || '';
+      const customDomain = brand.customDomain?.toLowerCase() || '';
+      return name.includes(query) || subdomain.includes(query) || customDomain.includes(query);
+    });
+  }, [brands, brandQuery]);
+  const adminLocations = useMemo(() => adminOverview?.locations || [], [adminOverview]);
+  const adminCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    adminLocations.forEach((location: any) => {
+      location.admins?.forEach((admin: any) => {
+        if (admin.isPlatformAdmin) return;
+        counts.set(admin.userId, (counts.get(admin.userId) || 0) + 1);
+      });
+    });
+    return counts;
+  }, [adminLocations]);
+
+  const loadBrands = async () => {
+    if (!user?.id) return;
+    setIsLoading(true);
+    try {
+      const data = await getPlatformBrands(user.id);
+      setBrands(data);
+      if (!selectedBrandId && data.length) {
+        setSelectedBrandId(data[0].id);
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudieron cargar las marcas.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadBrandDetails = async (brandId: string) => {
+    if (!user?.id) return;
+    try {
+      const [brand, config, admins] = await Promise.all([
+        getPlatformBrand(user.id, brandId),
+        getPlatformBrandConfig(user.id, brandId),
+        getPlatformBrandAdmins(user.id, brandId),
+      ]);
+      setBrandForm({
+        name: brand.name,
+        subdomain: brand.subdomain,
+        customDomain: brand.customDomain || '',
+        isActive: brand.isActive,
+      });
+      const normalizedBrandConfig = config || {};
+      if (normalizedBrandConfig.imagekit?.folder) {
+        normalizedBrandConfig.imagekit = {
+          ...normalizedBrandConfig.imagekit,
+          folder: normalizeImagekitFolder(normalizedBrandConfig.imagekit.folder as string, brand.subdomain),
+        };
+      }
+      setBrandConfig(normalizedBrandConfig);
+      setPersistedBrandFileIds({
+        logoFileId: config?.branding?.logoFileId || null,
+        heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
+        heroImageFileId: config?.branding?.heroImageFileId || null,
+        signImageFileId: config?.branding?.signImageFileId || null,
+      });
+      setAdminOverview(admins || null);
+      const defaultLocation = brand.defaultLocationId || brand.locations?.[0]?.id || null;
+      setSelectedLocationId(defaultLocation);
+      setAdminForm((prev) => ({
+        ...prev,
+        localId: defaultLocation || brand.locations?.[0]?.id || '',
+        applyToAll: false,
+      }));
+      if (defaultLocation) {
+        const locationCfg = await getPlatformLocationConfig(user.id, defaultLocation);
+        const normalizedLocationCfg = locationCfg || {};
+        if (normalizedLocationCfg.imagekit?.folder) {
+          normalizedLocationCfg.imagekit = {
+            ...normalizedLocationCfg.imagekit,
+            folder: normalizeImagekitFolder(normalizedLocationCfg.imagekit.folder as string, brand.subdomain),
+          };
+        }
+        setLocationConfig(normalizedLocationCfg);
+      } else {
+        setLocationConfig({});
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo cargar la marca.', variant: 'destructive' });
+    }
+  };
+
+  useEffect(() => {
+    loadBrands();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (selectedBrandId) {
+      loadBrandDetails(selectedBrandId);
+    }
+  }, [selectedBrandId]);
+
+  useEffect(() => {
+    const loadLocationConfig = async () => {
+      if (!user?.id || !selectedLocationId || !selectedBrand) return;
+      const config = await getPlatformLocationConfig(user.id, selectedLocationId);
+      const normalizedConfig = config || {};
+      if (normalizedConfig.imagekit?.folder) {
+        normalizedConfig.imagekit = {
+          ...normalizedConfig.imagekit,
+          folder: normalizeImagekitFolder(normalizedConfig.imagekit.folder as string, selectedBrand.subdomain),
+        };
+      }
+      setLocationConfig(normalizedConfig);
+    };
+    loadLocationConfig();
+  }, [selectedLocationId, selectedBrand, user?.id]);
+
+  useEffect(() => {
+    if (adminForm.applyToAll || adminForm.localId) return;
+    const fallback = selectedLocationId || adminLocations[0]?.id || '';
+    if (fallback) {
+      setAdminForm((prev) => ({ ...prev, localId: fallback }));
+    }
+  }, [adminForm.applyToAll, adminForm.localId, adminLocations, selectedLocationId]);
+
+  const handleSaveBrand = async () => {
+    if (!user?.id || !selectedBrand) return;
+    setIsSaving(true);
+    try {
+      await updatePlatformBrand(user.id, selectedBrand.id, {
+        name: brandForm.name,
+        subdomain: brandForm.subdomain,
+        customDomain: brandForm.customDomain || null,
+        isActive: brandForm.isActive,
+        defaultLocationId: selectedLocationId,
+      });
+      await updatePlatformBrandConfig(user.id, selectedBrand.id, brandConfig);
+      if (selectedLocationId) {
+        await updatePlatformLocationConfig(user.id, selectedLocationId, locationConfig);
+      }
+      if (applyThemeToAll && selectedBrand.locations?.length) {
+        const targetColor = locationConfig?.theme?.primary;
+        if (targetColor) {
+          await Promise.all(
+            selectedBrand.locations.map(async (location: any) => {
+              const existing = await getPlatformLocationConfig(user.id, location.id);
+              const next = updateNestedValue(existing || {}, ['theme', 'primary'], targetColor);
+              await updatePlatformLocationConfig(user.id, location.id, next);
+            }),
+          );
+        }
+      }
+      const currentFileIds = BRAND_FILE_ID_FIELDS.reduce((acc, field) => {
+        acc[field] = (brandConfig?.branding?.[field] as string | undefined) || null;
+        return acc;
+      }, {} as Record<BrandFileIdField, string | null>);
+
+      await Promise.all(
+        BRAND_FILE_ID_FIELDS.map(async (field) => {
+          const previous = persistedBrandFileIds[field];
+          const next = currentFileIds[field];
+          if (!previous || previous === next) return;
+          try {
+            await deleteFromImageKit(previous, { subdomainOverride: selectedBrand.subdomain });
+          } catch (cleanupError) {
+            console.error(cleanupError);
+            toast({
+              title: 'Aviso',
+              description: 'No se pudo borrar una imagen anterior en storage.',
+              variant: 'destructive',
+            });
+          }
+        }),
+      );
+      setPersistedBrandFileIds(currentFileIds);
+      await loadBrands();
+      toast({ title: 'Actualizado', description: 'Marca y configuración guardadas.' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo guardar la marca.', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateBrand = async () => {
+    if (!user?.id) return;
+    setIsSaving(true);
+    try {
+      const created = await createPlatformBrand(user.id, {
+        name: newBrandForm.name,
+        subdomain: newBrandForm.subdomain,
+        customDomain: newBrandForm.customDomain || null,
+        isActive: newBrandForm.isActive,
+      });
+      setCreateBrandOpen(false);
+      setNewBrandForm({ name: '', subdomain: '', customDomain: '', isActive: true });
+      await loadBrands();
+      setSelectedBrandId(created.id);
+      toast({ title: 'Marca creada', description: 'Ya puedes configurar sus locales y credenciales.' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo crear la marca.', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateBrandingFields = (updates: Record<string, string>) => {
+    setBrandConfig((prev) => {
+      let next = { ...prev };
+      Object.entries(updates).forEach(([field, value]) => {
+        next = updateNestedValue(next, ['branding', field], value);
+      });
+      return next;
+    });
+  };
+
+  const handleBrandAssetUpload = async (file: File | null, assetKey: BrandAssetKey) => {
+    if (!file || !user?.id || !selectedBrand) return;
+    const asset = BRAND_ASSET_META[assetKey];
+    const previousFileId = (brandConfig?.branding?.[asset.fileIdField] as string | undefined) || '';
+    const persistedFileId = persistedBrandFileIds[asset.fileIdField];
+    setUploadingAsset(assetKey);
+    try {
+      const fileName = `brand-${assetKey}-${selectedBrand.subdomain || selectedBrand.id}-${Date.now()}`;
+      const { url, fileId } = await uploadToImageKit(file, fileName, asset.folder, {
+        subdomainOverride: selectedBrand.subdomain,
+      });
+      updateBrandingFields({
+        [asset.urlField]: url,
+        [asset.fileIdField]: fileId,
+      });
+      if (previousFileId && previousFileId !== fileId && previousFileId !== persistedFileId) {
+        try {
+          await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
+        } catch (cleanupError) {
+          console.error(cleanupError);
+          toast({
+            title: 'Aviso',
+            description: 'No se pudo borrar la imagen anterior en storage.',
+            variant: 'destructive',
+          });
+        }
+      }
+      toast({ title: 'Imagen subida', description: 'Guarda los cambios para aplicarla.' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo subir la imagen.', variant: 'destructive' });
+    } finally {
+      setUploadingAsset(null);
+    }
+  };
+
+  const handleRemoveBrandAsset = (assetKey: BrandAssetKey) => {
+    const asset = BRAND_ASSET_META[assetKey];
+    updateBrandingFields({
+      [asset.urlField]: '',
+      [asset.fileIdField]: '',
+    });
+    toast({ title: 'Imagen eliminada', description: 'Guarda los cambios para aplicar.' });
+  };
+
+  const handleDeleteBrand = async () => {
+    if (!user?.id || !selectedBrand) return;
+    if (!window.confirm('¿Seguro que quieres eliminar esta marca?')) return;
+    try {
+      await deletePlatformBrand(user.id, selectedBrand.id);
+      setSelectedBrandId(null);
+      await loadBrands();
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo eliminar la marca.', variant: 'destructive' });
+    }
+  };
+
+  const handleCreateLocation = async () => {
+    if (!user?.id || !selectedBrand) return;
+    try {
+      const location = await createPlatformLocation(user.id, selectedBrand.id, {
+        name: newLocationForm.name,
+        slug: newLocationForm.slug || null,
+        isActive: newLocationForm.isActive,
+      });
+      setCreateLocationOpen(false);
+      setNewLocationForm({ name: '', slug: '', isActive: true });
+      await loadBrands();
+      setSelectedLocationId(location.id);
+      await loadBrandDetails(selectedBrand.id);
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo crear el local.', variant: 'destructive' });
+    }
+  };
+
+  const handleUpdateLocation = async (localId: string, payload: { name?: string; slug?: string | null; isActive?: boolean }) => {
+    if (!user?.id) return;
+    try {
+      await updatePlatformLocation(user.id, localId, payload);
+      await loadBrands();
+      if (selectedBrand) {
+        await loadBrandDetails(selectedBrand.id);
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo actualizar el local.', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteLocation = async (localId: string) => {
+    if (!user?.id) return;
+    if (!window.confirm('¿Seguro que quieres eliminar este local?')) return;
+    try {
+      await deletePlatformLocation(user.id, localId);
+      await loadBrands();
+      if (selectedBrand) {
+        await loadBrandDetails(selectedBrand.id);
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo eliminar el local.', variant: 'destructive' });
+    }
+  };
+
+  const handleAssignAdmin = async () => {
+    if (!user?.id || !selectedBrand) return;
+    const email = adminForm.email.trim().toLowerCase();
+    if (!email) {
+      toast({ title: 'Falta email', description: 'Introduce el email del admin.', variant: 'destructive' });
+      return;
+    }
+    const applyToAll = adminForm.applyToAll;
+    const localId = applyToAll ? undefined : adminForm.localId || selectedLocationId || undefined;
+    if (!applyToAll && !localId) {
+      toast({ title: 'Selecciona un local', description: 'Elige un local o aplica a todos.', variant: 'destructive' });
+      return;
+    }
+
+    setIsAdminSaving(true);
+    try {
+      await assignPlatformBrandAdmin(user.id, selectedBrand.id, {
+        email,
+        applyToAll,
+        localId,
+        adminRoleId: null,
+      });
+      toast({ title: 'Admin asignado', description: 'El acceso se ha actualizado.' });
+      setAdminForm((prev) => ({
+        ...prev,
+        email: '',
+      }));
+      await loadBrandDetails(selectedBrand.id);
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo asignar el admin.', variant: 'destructive' });
+    } finally {
+      setIsAdminSaving(false);
+    }
+  };
+
+  const handleRemoveAdmin = async (payload: { userId: string; localId?: string; removeFromAll?: boolean }) => {
+    if (!user?.id || !selectedBrand) return;
+    setIsAdminSaving(true);
+    try {
+      await removePlatformBrandAdmin(user.id, selectedBrand.id, payload);
+      toast({ title: 'Admin eliminado', description: 'El acceso se ha revocado.' });
+      await loadBrandDetails(selectedBrand.id);
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo eliminar el admin.', variant: 'destructive' });
+    } finally {
+      setIsAdminSaving(false);
+    }
+  };
+
+  const renderBrandAssetInput = (assetKey: BrandAssetKey, className = '') => {
+    const asset = BRAND_ASSET_META[assetKey];
+    const urlValue = (brandConfig?.branding?.[asset.urlField] as string | undefined) || '';
+    const isUploading = uploadingAsset === assetKey;
+    const isAnyUpload = Boolean(uploadingAsset);
+
+    return (
+      <div key={assetKey} className={`${className} space-y-2`}>
+        <Label>{asset.label}</Label>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div
+            className={`${asset.previewClass} rounded-xl border border-border/60 bg-muted/40 flex items-center justify-center overflow-hidden`}
+          >
+            {urlValue ? (
+              <img
+                src={urlValue}
+                alt={asset.label}
+                className={`h-full w-full ${asset.imageClass}`}
+              />
+            ) : (
+              <ImageIcon className="h-6 w-6 text-muted-foreground" />
+            )}
+          </div>
+          <div className="flex-1 space-y-2">
+            <Input
+              type="file"
+              accept="image/*"
+              disabled={isAnyUpload}
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                event.target.value = '';
+                handleBrandAssetUpload(file, assetKey);
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRemoveBrandAsset(assetKey)}
+                disabled={isAnyUpload}
+              >
+                Quitar imagen
+              </Button>
+              {isUploading && (
+                <span className="text-xs text-muted-foreground self-center">Subiendo...</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">{asset.description}</p>
+      </div>
+    );
+  };
+
+  if (isLoading) {
+    return <div className="text-muted-foreground">Cargando marcas...</div>;
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[320px_1fr] animate-fade-in h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-3rem)] md:h-[calc(100dvh-4rem)] overflow-hidden">
+      <Card className="border border-border/60 bg-card/70 h-full flex flex-col overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-semibold">Marcas</CardTitle>
+          <Button size="sm" onClick={() => setCreateBrandOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nueva
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3 overflow-y-auto flex-1">
+          {brands.length > 10 && (
+            <div className="space-y-2">
+              <Input
+                value={brandQuery}
+                onChange={(e) => setBrandQuery(e.target.value)}
+                placeholder="Buscar marca..."
+              />
+            </div>
+          )}
+          {filteredBrands.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Sin resultados.</p>
+          ) : (
+            filteredBrands.map((brand) => (
+            <button
+              key={brand.id}
+              onClick={() => setSelectedBrandId(brand.id)}
+              className={`w-full text-left rounded-xl border px-4 py-3 transition ${
+                selectedBrandId === brand.id
+                  ? 'border-primary/50 bg-primary/10'
+                  : 'border-border/60 hover:border-primary/40 hover:bg-card/80'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">{brand.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {brand.customDomain || `${brand.subdomain}.managgio.com`}
+                  </div>
+                </div>
+                <div className={`text-xs px-2 py-1 rounded-full ${brand.isActive ? 'bg-emerald-500/15 text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+                  {brand.isActive ? 'Activo' : 'Inactivo'}
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                <MapPin className="h-3 w-3" />
+                {brand.locations?.length || 0} locales
+              </div>
+            </button>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {selectedBrand ? (
+        <Card className="border border-border/60 bg-card/70 h-full flex flex-col overflow-hidden">
+          <CardHeader className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-primary" />
+                {selectedBrand.name}
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={handleDeleteBrand}>
+                <Trash2 className="h-4 w-4 mr-1" />
+                Eliminar
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">Gestiona datos generales, locales y credenciales.</p>
+          </CardHeader>
+          <CardContent className="flex-1 overflow-y-auto">
+            <Tabs defaultValue="datos" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="datos">Datos</TabsTrigger>
+                <TabsTrigger value="locales">Locales</TabsTrigger>
+                <TabsTrigger value="admins">Admins</TabsTrigger>
+                <TabsTrigger value="config">Config</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="datos" className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Nombre comercial</Label>
+                    <Input value={brandForm.name} onChange={(e) => setBrandForm((prev) => ({ ...prev, name: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Subdominio</Label>
+                    <Input value={brandForm.subdomain} onChange={(e) => setBrandForm((prev) => ({ ...prev, subdomain: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Dominio personalizado</Label>
+                    <Input
+                      value={brandForm.customDomain}
+                      placeholder="www.ejemplo.com"
+                      onChange={(e) => setBrandForm((prev) => ({ ...prev, customDomain: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Local por defecto</Label>
+                    <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona local" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectedBrand.locations?.map((location: any) => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={brandForm.isActive}
+                      onCheckedChange={(checked) => setBrandForm((prev) => ({ ...prev, isActive: checked }))}
+                    />
+                    <span className="text-sm text-muted-foreground">Marca activa</span>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveBrand} disabled={isSaving}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Guardar cambios
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="locales" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold">Locales</h3>
+                    <p className="text-sm text-muted-foreground">Añade o ajusta locales por marca.</p>
+                  </div>
+                  <Button size="sm" onClick={() => setCreateLocationOpen(true)}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Nuevo local
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  {selectedBrand.locations?.map((location: any) => (
+                    <div key={location.id} className="border border-border/60 rounded-xl p-4 flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-semibold">{location.name}</div>
+                          <div className="text-xs text-muted-foreground">{location.slug || 'sin slug'}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedLocationId(location.id);
+                              setEditingLocationId(location.id);
+                              setEditLocationForm({
+                                name: location.name,
+                                slug: location.slug || '',
+                                isActive: location.isActive,
+                              });
+                              setEditLocationOpen(true);
+                            }}
+                          >
+                            Editar
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteLocation(location.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="admins" className="space-y-6">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Users className="h-4 w-4 text-primary" />
+                  Administración por local
+                </div>
+                <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+                  <Card className="border border-border/60 bg-card/80">
+                    <CardHeader>
+                      <CardTitle className="text-base">Asignar admin</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Email del usuario</Label>
+                        <Input
+                          value={adminForm.email}
+                          onChange={(e) => setAdminForm((prev) => ({ ...prev, email: e.target.value }))}
+                          placeholder="cliente@marca.com"
+                        />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={adminForm.applyToAll}
+                          onCheckedChange={(checked) =>
+                            setAdminForm((prev) => ({ ...prev, applyToAll: checked }))
+                          }
+                        />
+                        <span className="text-sm text-muted-foreground">Asignar a todos los locales</span>
+                      </div>
+                      {!adminForm.applyToAll ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label>Local</Label>
+                            <Select
+                              value={adminForm.localId || undefined}
+                              onValueChange={(value) => setAdminForm((prev) => ({ ...prev, localId: value }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona local" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {adminLocations.map((location: any) => (
+                                  <SelectItem key={location.id} value={location.id}>
+                                    {location.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          La asignación global da acceso a todos los locales.
+                        </p>
+                      )}
+                      <Button onClick={handleAssignAdmin} disabled={isAdminSaving}>
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Asignar admin
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-4">
+                    {adminLocations.length === 0 ? (
+                      <Card className="border border-border/60 bg-card/70">
+                        <CardContent className="text-sm text-muted-foreground">
+                          No hay locales disponibles para asignar admins.
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      adminLocations.map((location: any) => (
+                        <Card key={location.id} className="border border-border/60 bg-card/70">
+                          <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                              <CardTitle className="text-base">{location.name}</CardTitle>
+                              <p className="text-xs text-muted-foreground">{location.slug || 'sin slug'}</p>
+                            </div>
+                            <div className={`text-xs px-2 py-1 rounded-full ${location.isActive ? 'bg-emerald-500/15 text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+                              {location.isActive ? 'Activo' : 'Inactivo'}
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            {location.admins?.filter((admin: any) => !admin.isPlatformAdmin).length ? (
+                              location.admins
+                                .filter((admin: any) => !admin.isPlatformAdmin)
+                                .map((admin: any) => (
+                                <div key={admin.userId} className="flex items-center justify-between gap-4 border border-border/50 rounded-xl px-3 py-2">
+                                  <div>
+                                    <div className="text-sm font-semibold text-foreground">{admin.name}</div>
+                                    <div className="text-xs text-muted-foreground">{admin.email}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {admin.adminRoleName || 'Acceso total'}
+                                    </div>
+                                    {admin.isSuperAdmin && (
+                                      <span className="text-[10px] uppercase tracking-widest text-primary">Superadmin</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleRemoveAdmin({ userId: admin.userId, localId: location.id })}
+                                      disabled={isAdminSaving}
+                                    >
+                                      Quitar
+                                    </Button>
+                                    {adminCounts.get(admin.userId) && adminCounts.get(admin.userId)! > 1 ? (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleRemoveAdmin({ userId: admin.userId, removeFromAll: true })}
+                                        disabled={isAdminSaving}
+                                      >
+                                        Quitar todos
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-xs text-muted-foreground">Sin admins asignados.</p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="config" className="space-y-6">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Settings2 className="h-4 w-4 text-primary" />
+                  Configuración por marca y local
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <Card className="border border-border/60 bg-card/80">
+                    <CardHeader>
+                      <CardTitle className="text-base">Brand config</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">General</p>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Superadmin email</Label>
+                            <Input
+                              value={brandConfig.superAdminEmail || ''}
+                              onChange={(e) => setBrandConfig((prev) => ({ ...prev, superAdminEmail: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Brand short name</Label>
+                            <Input
+                              value={brandConfig.branding?.shortName || ''}
+                              onChange={(e) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['branding', 'shortName'], e.target.value))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Brand name</Label>
+                            <Input
+                              value={brandConfig.branding?.name || ''}
+                              onChange={(e) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['branding', 'name'], e.target.value))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Color corporativo</Label>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                              <Input
+                                type="color"
+                                value={colorPickerValue(brandConfig.theme?.primary)}
+                                onChange={(e) =>
+                                  setBrandConfig((prev) =>
+                                    updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
+                                  )
+                                }
+                                className="h-10 w-full sm:w-16 p-1"
+                              />
+                              <Input
+                                value={brandConfig.theme?.primary || ''}
+                                placeholder="#fcbc23"
+                                onChange={(e) =>
+                                  setBrandConfig((prev) =>
+                                    updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
+                                  )
+                                }
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Las variantes se calculan automáticamente a partir del color base.
+                            </p>
+                          </div>
+                          {renderBrandAssetInput('logo', 'md:col-span-2')}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
+                        <div className="grid gap-4">
+                          {renderBrandAssetInput('heroBackground')}
+                          {renderBrandAssetInput('heroImage')}
+                          {renderBrandAssetInput('signImage')}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">ImageKit</p>
+                        <div className="space-y-2">
+                          <Label>Subcarpeta (opcional)</Label>
+                          <Input
+                            value={brandConfig.imagekit?.folder || ''}
+                            placeholder="landing"
+                            onChange={(e) =>
+                              setBrandConfig((prev) => updateNestedValue(prev, ['imagekit', 'folder'], e.target.value))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Se antepone automáticamente el prefijo global y el subdominio de la marca.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Ruta final:{' '}
+                            <span className="font-mono text-foreground">
+                              {buildImagekitPreview(
+                                imagekitPrefix,
+                                selectedBrand?.subdomain,
+                                brandConfig.imagekit?.folder || '',
+                              )}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Email SMTP</p>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Usuario</Label>
+                            <Input
+                              value={brandConfig.email?.user || ''}
+                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'user'], e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Password</Label>
+                            <Input
+                              type="password"
+                              value={brandConfig.email?.password || ''}
+                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'password'], e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Host</Label>
+                            <Input
+                              value={brandConfig.email?.host || ''}
+                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'host'], e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Puerto</Label>
+                            <Input
+                              value={brandConfig.email?.port || ''}
+                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'port'], e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>From name</Label>
+                            <Input
+                              value={brandConfig.email?.fromName || ''}
+                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'fromName'], e.target.value))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Twilio</p>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Account SID</Label>
+                            <Input
+                              value={brandConfig.twilio?.accountSid || ''}
+                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'accountSid'], e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Auth token</Label>
+                            <Input
+                              type="password"
+                              value={brandConfig.twilio?.authToken || ''}
+                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'authToken'], e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Messaging service SID</Label>
+                            <Input
+                              value={brandConfig.twilio?.messagingServiceSid || ''}
+                              onChange={(e) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'messagingServiceSid'], e.target.value))
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-border/60 bg-card/80">
+                    <CardHeader>
+                      <CardTitle className="text-base">Local config</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Local a configurar</Label>
+                        <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona local" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectedBrand?.locations?.map((location: any) => (
+                              <SelectItem key={location.id} value={location.id}>
+                                {location.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Cambia de local aquí para editar su color e ImageKit.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Color local (opcional)</Label>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Input
+                            type="color"
+                            value={colorPickerValue(locationConfig.theme?.primary)}
+                            onChange={(e) =>
+                              setLocationConfig((prev) =>
+                                updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
+                              )
+                            }
+                            className="h-10 w-full sm:w-16 p-1"
+                          />
+                          <Input
+                            value={locationConfig.theme?.primary || ''}
+                            placeholder="#fcbc23"
+                            onChange={(e) =>
+                              setLocationConfig((prev) =>
+                                updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
+                              )
+                            }
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Si se define, sobrescribe el color de la marca.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Subcarpeta local (opcional)</Label>
+                        <Input
+                          value={locationConfig.imagekit?.folder || ''}
+                          placeholder="landing"
+                          onChange={(e) =>
+                            setLocationConfig((prev) => updateNestedValue(prev, ['imagekit', 'folder'], e.target.value))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Ruta final:{' '}
+                          <span className="font-mono text-foreground">
+                            {buildImagekitPreview(
+                              imagekitPrefix,
+                              selectedBrand?.subdomain,
+                              locationConfig.imagekit?.folder || '',
+                            )}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Nota</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Si se define, sobrescribe el de la marca. El prefijo global y el subdominio se añaden automáticamente.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 pt-2">
+                        <Switch
+                          checked={applyThemeToAll}
+                          onCheckedChange={(checked) => setApplyThemeToAll(checked)}
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          Aplicar este color a todos los locales de la marca
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveBrand} disabled={isSaving}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Guardar cambios
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border border-border/60 bg-card/70 flex items-center justify-center h-full">
+          <CardContent className="text-muted-foreground">Selecciona una marca para editar.</CardContent>
+        </Card>
+      )}
+
+      <Dialog open={createBrandOpen} onOpenChange={setCreateBrandOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nueva marca</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre</Label>
+              <Input value={newBrandForm.name} onChange={(e) => setNewBrandForm((prev) => ({ ...prev, name: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Subdominio</Label>
+              <Input value={newBrandForm.subdomain} onChange={(e) => setNewBrandForm((prev) => ({ ...prev, subdomain: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Dominio personalizado</Label>
+              <Input value={newBrandForm.customDomain} onChange={(e) => setNewBrandForm((prev) => ({ ...prev, customDomain: e.target.value }))} />
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={newBrandForm.isActive}
+                onCheckedChange={(checked) => setNewBrandForm((prev) => ({ ...prev, isActive: checked }))}
+              />
+              <span className="text-sm text-muted-foreground">Marca activa</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCreateBrand} disabled={isSaving}>
+              Crear marca
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createLocationOpen} onOpenChange={setCreateLocationOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nuevo local</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre</Label>
+              <Input value={newLocationForm.name} onChange={(e) => setNewLocationForm((prev) => ({ ...prev, name: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Slug</Label>
+              <Input value={newLocationForm.slug} onChange={(e) => setNewLocationForm((prev) => ({ ...prev, slug: e.target.value }))} />
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={newLocationForm.isActive}
+                onCheckedChange={(checked) => setNewLocationForm((prev) => ({ ...prev, isActive: checked }))}
+              />
+              <span className="text-sm text-muted-foreground">Local activo</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCreateLocation}>Crear local</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editLocationOpen} onOpenChange={setEditLocationOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar local</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre</Label>
+              <Input
+                value={editLocationForm.name}
+                onChange={(e) => setEditLocationForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Slug</Label>
+              <Input
+                value={editLocationForm.slug}
+                onChange={(e) => setEditLocationForm((prev) => ({ ...prev, slug: e.target.value }))}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={editLocationForm.isActive}
+                onCheckedChange={(checked) => setEditLocationForm((prev) => ({ ...prev, isActive: checked }))}
+              />
+              <span className="text-sm text-muted-foreground">Local activo</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                if (!editingLocationId) return;
+                handleUpdateLocation(editingLocationId, {
+                  name: editLocationForm.name,
+                  slug: editLocationForm.slug || null,
+                  isActive: editLocationForm.isActive,
+                });
+                setEditLocationOpen(false);
+              }}
+            >
+              Guardar cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default PlatformBrands;

@@ -300,7 +300,7 @@ const AdminBarbers: React.FC = () => {
       } else if (pendingPhoto) {
         const blob = await cropAndCompress(pendingPhoto.dataUrl, pendingPhoto.zoom);
         const fileName = `barber-${Date.now()}.webp`;
-        const { url, fileId } = await uploadToImageKit(blob, fileName);
+        const { url, fileId } = await uploadToImageKit(blob, fileName, 'barbers');
         updatedPhoto = url;
         updatedPhotoFileId = fileId;
 

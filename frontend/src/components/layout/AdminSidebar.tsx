@@ -20,10 +20,11 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import leBlondLogo from '@/assets/img/leBlongLogo-2.png';
 import { AdminSectionKey } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
+import LocationSwitcher from '@/components/common/LocationSwitcher';
+import { useTenant } from '@/context/TenantContext';
 
 interface NavItem {
   href: string;
@@ -54,6 +55,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { settings } = useSiteSettings();
+  const { tenant } = useTenant();
+  const leBlondLogo = '/leBlondLogo.png';
+  const logoUrl = tenant?.config?.branding?.logoUrl || leBlondLogo;
   const { isLoading, canAccessSection } = useAdminPermissions();
 
   const shouldAutoClose = () =>
@@ -72,7 +76,11 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
 
   const visibleNavItems = navItems.filter((item) => canAccessSection(item.section));
   const showNoAccessMessage =
-    user?.role === 'admin' && !user?.isSuperAdmin && (!user?.adminRoleId || visibleNavItems.length === 0) && !isLoading;
+    user?.role === 'admin' &&
+    !user?.isSuperAdmin &&
+    !user?.isPlatformAdmin &&
+    (!user?.adminRoleId || visibleNavItems.length === 0) &&
+    !isLoading;
 
   return (
     <aside
@@ -90,8 +98,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
       >
         <Link to="/" className={cn('flex items-center gap-3 group', collapsed && 'justify-center')}>
           <img
-            src={leBlondLogo}
-            alt="Le Blond Hair Salon logo"
+            src={logoUrl}
+            alt={`${settings.branding.shortName} logo`}
             className="w-10 h-10 rounded-lg object-contain shadow-sm"
           />
           {!collapsed && (
@@ -113,10 +121,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           {collapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
         </Button>
       </div>
+      {!collapsed && (
+        <div className="px-4 pt-3">
+          <LocationSwitcher compact className="w-full" />
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className={cn('flex-1 p-4 space-y-1 overflow-y-auto overflow-x-visible', collapsed && 'px-2')}>
-        {isLoading && !user?.isSuperAdmin && (
+        {isLoading && !user?.isSuperAdmin && !user?.isPlatformAdmin && (
           <p className="text-xs text-muted-foreground px-2">Cargando accesos...</p>
         )}
         {showNoAccessMessage && (
@@ -124,7 +137,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
             No tienes permisos asignados. Contacta con el superadmin.
           </p>
         )}
-        {(user?.isSuperAdmin ? navItems : visibleNavItems).map((item) => {
+        {(user?.isSuperAdmin || user?.isPlatformAdmin ? navItems : visibleNavItems).map((item) => {
           const link = (
             <Link
               to={item.href}

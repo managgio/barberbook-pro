@@ -14,7 +14,59 @@ export interface User {
   prefersBarberSelection?: boolean;
   avatar?: string;
   isSuperAdmin?: boolean;
+  isPlatformAdmin?: boolean;
+  isLocalAdmin?: boolean;
   adminRoleId?: string | null;
+}
+
+export interface Brand {
+  id: string;
+  name: string;
+  subdomain: string;
+  customDomain?: string | null;
+  defaultLocationId?: string | null;
+  isActive?: boolean;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  slug?: string | null;
+  isActive?: boolean;
+}
+
+export interface FirebaseWebConfig {
+  apiKey?: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  measurementId?: string;
+}
+
+export interface TenantBootstrap {
+  brand: Brand | null;
+  locations: Location[];
+  currentLocalId: string;
+  isPlatform?: boolean;
+  config?: {
+    branding?: {
+      name?: string;
+      shortName?: string;
+      logoUrl?: string;
+      logoFileId?: string;
+      heroBackgroundUrl?: string;
+      heroBackgroundFileId?: string;
+      heroImageUrl?: string;
+      heroImageFileId?: string;
+      signImageUrl?: string;
+      signImageFileId?: string;
+    } | null;
+    theme?: {
+      primary?: string;
+    } | null;
+  };
 }
 
 export interface Barber {

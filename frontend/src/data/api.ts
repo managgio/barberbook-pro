@@ -13,7 +13,10 @@ import {
   SiteSettings,
   AiChatResponse,
   AiChatSessionResponse,
+  TenantBootstrap,
 } from './types';
+import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
+import { getAdminUserId } from '@/lib/authStorage';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -42,10 +45,16 @@ const buildUrl = (path: string, query?: QueryParams) => {
 const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const { method = 'GET', body, query, skip404, headers } = options;
   const url = buildUrl(path.startsWith('http') ? path : `${API_BASE}${path}`, query);
+  const localId = getStoredLocalId();
+  const tenantOverride = getTenantSubdomainOverride();
+  const adminUserId = getAdminUserId();
   const response = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
+      ...(localId ? { 'x-local-id': localId } : {}),
+      ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
+      ...(adminUserId ? { 'x-admin-user-id': adminUserId } : {}),
       ...(headers || {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -90,6 +99,10 @@ export const updateUser = async (id: string, data: Partial<User>): Promise<User>
   apiRequest(`/users/${id}`, { method: 'PATCH', body: data });
 export const deleteUser = async (id: string): Promise<void> =>
   apiRequest(`/users/${id}`, { method: 'DELETE' });
+
+// Tenant API
+export const getTenantBootstrap = async (): Promise<TenantBootstrap> =>
+  apiRequest('/tenant/bootstrap');
 
 // Barbers API
 export const getBarbers = async (): Promise<Barber[]> => apiRequest('/barbers');
@@ -227,6 +240,8 @@ export const postAiAssistantChat = async (payload: {
     headers: {
       'x-admin-user-id': payload.adminUserId,
       ...(payload.role ? { 'x-user-role': payload.role } : {}),
+      ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
+      ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
     },
   });
 
@@ -239,6 +254,8 @@ export const getAiAssistantSession = async (payload: {
     headers: {
       'x-admin-user-id': payload.adminUserId,
       ...(payload.role ? { 'x-user-role': payload.role } : {}),
+      ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
+      ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
     },
   });
 
@@ -255,6 +272,8 @@ export const postAiAssistantTranscribe = async (payload: {
     headers: {
       'x-admin-user-id': payload.adminUserId,
       ...(payload.role ? { 'x-user-role': payload.role } : {}),
+      ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
+      ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
     },
     body: formData,
   });
@@ -277,3 +296,139 @@ export const postAiAssistantTranscribe = async (payload: {
 
   return { text: '' };
 };
+
+// Platform Admin API
+type PlatformAdminHeaders = { 'x-admin-user-id': string };
+
+const withPlatformHeaders = (adminUserId: string): PlatformAdminHeaders => ({
+  'x-admin-user-id': adminUserId,
+});
+
+export const getPlatformBrands = async (adminUserId: string): Promise<any[]> =>
+  apiRequest('/platform/brands', {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformBrand = async (adminUserId: string, brandId: string): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}`, {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const createPlatformBrand = async (
+  adminUserId: string,
+  data: { name: string; subdomain: string; customDomain?: string | null; isActive?: boolean },
+): Promise<any> =>
+  apiRequest('/platform/brands', {
+    method: 'POST',
+    body: data,
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const updatePlatformBrand = async (
+  adminUserId: string,
+  brandId: string,
+  data: Partial<{ name: string; subdomain: string; customDomain?: string | null; isActive?: boolean; defaultLocationId?: string | null }>,
+): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}`, {
+    method: 'PATCH',
+    body: data,
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const deletePlatformBrand = async (adminUserId: string, brandId: string): Promise<void> =>
+  apiRequest(`/platform/brands/${brandId}`, {
+    method: 'DELETE',
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformLocations = async (adminUserId: string, brandId: string): Promise<any[]> =>
+  apiRequest(`/platform/brands/${brandId}/locations`, {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const createPlatformLocation = async (
+  adminUserId: string,
+  brandId: string,
+  data: { name: string; slug?: string | null; isActive?: boolean },
+): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/locations`, {
+    method: 'POST',
+    body: data,
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const updatePlatformLocation = async (
+  adminUserId: string,
+  localId: string,
+  data: Partial<{ name: string; slug?: string | null; isActive?: boolean }>,
+): Promise<any> =>
+  apiRequest(`/platform/locations/${localId}`, {
+    method: 'PATCH',
+    body: data,
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const deletePlatformLocation = async (adminUserId: string, localId: string): Promise<void> =>
+  apiRequest(`/platform/locations/${localId}`, {
+    method: 'DELETE',
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformBrandConfig = async (adminUserId: string, brandId: string): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/config`, {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const updatePlatformBrandConfig = async (
+  adminUserId: string,
+  brandId: string,
+  data: Record<string, unknown>,
+): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/config`, {
+    method: 'PATCH',
+    body: { data },
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformLocationConfig = async (adminUserId: string, localId: string): Promise<any> =>
+  apiRequest(`/platform/locations/${localId}/config`, {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const updatePlatformLocationConfig = async (
+  adminUserId: string,
+  localId: string,
+  data: Record<string, unknown>,
+): Promise<any> =>
+  apiRequest(`/platform/locations/${localId}/config`, {
+    method: 'PATCH',
+    body: { data },
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformBrandAdmins = async (adminUserId: string, brandId: string): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/admins`, {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const assignPlatformBrandAdmin = async (
+  adminUserId: string,
+  brandId: string,
+  data: { email: string; localId?: string; applyToAll?: boolean; adminRoleId?: string | null },
+): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/admins`, {
+    method: 'POST',
+    body: data,
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const removePlatformBrandAdmin = async (
+  adminUserId: string,
+  brandId: string,
+  data: { userId?: string; email?: string; localId?: string; removeFromAll?: boolean },
+): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/admins`, {
+    method: 'DELETE',
+    body: data,
+    headers: withPlatformHeaders(adminUserId),
+  });

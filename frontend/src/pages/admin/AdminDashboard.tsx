@@ -71,7 +71,6 @@ const rangeOptions = [
   { label: '30 días', value: 30 },
 ];
 
-const QR_FOLDER = 'qr-stickers';
 const QR_SIZE = 768;
 const SERVICE_MIX_COLORS = ['#22c55e', '#0ea5e9', '#f97316', '#eab308', '#14b8a6', '#94a3b8'];
 
@@ -272,7 +271,7 @@ const AdminDashboard: React.FC = () => {
         throw new Error('No se pudo generar el QR. Intenta de nuevo.');
       }
       const qrBlob = await qrResponse.blob();
-      const { url, fileId } = await uploadToImageKit(qrBlob, buildQrFileName(), QR_FOLDER);
+      const { url, fileId } = await uploadToImageKit(qrBlob, buildQrFileName());
       newFileId = fileId;
       const updated = await updateSiteSettings({
         ...settings,

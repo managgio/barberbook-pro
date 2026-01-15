@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useTenant } from '@/context/TenantContext';
 import { AdminRole, AdminSectionKey } from '@/data/types';
 import { getAdminRoles } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
@@ -14,13 +15,14 @@ const AdminPermissionsContext = createContext<AdminPermissionsContextValue | und
 
 export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { currentLocationId } = useTenant();
   const { toast } = useToast();
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
-    if (!user || user.role !== 'admin' || user.isSuperAdmin) {
+    if (!user || user.role !== 'admin' || !user.isLocalAdmin || user.isSuperAdmin || user.isPlatformAdmin) {
       setRoles([]);
       setIsLoading(false);
       return () => {
@@ -55,7 +57,7 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
     return () => {
       active = false;
     };
-  }, [toast, user]);
+  }, [toast, user, currentLocationId]);
 
   const currentRole = useMemo(
     () => roles.find((role) => role.id === user?.adminRoleId) || null,
@@ -65,9 +67,9 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
   const canAccessSection = useCallback(
     (section: AdminSectionKey) => {
       if (!user) return false;
-      if (user.isSuperAdmin) return true;
-      if (user.role !== 'admin') return false;
-      if (!user.adminRoleId) return false;
+      if (user.isSuperAdmin || user.isPlatformAdmin) return true;
+      if (user.role !== 'admin' || !user.isLocalAdmin) return false;
+      if (!user.adminRoleId) return true;
       return currentRole?.permissions.includes(section) ?? false;
     },
     [currentRole, user],
