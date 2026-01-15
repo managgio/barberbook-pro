@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type OpenAI from 'openai';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { HolidaysService } from '../holidays/holidays.service';
 import {
@@ -249,16 +250,18 @@ export class AiToolsRegistry {
     }
 
     if (allBarbers) {
+      const localId = getCurrentLocalId();
       const barbers = await this.prisma.barber.findMany({
-        where: { isActive: true },
+        where: { isActive: true, localId },
         select: { id: true },
       });
       barberIds = barbers.map((barber) => barber.id);
     }
 
     if (barberIds.length > 0) {
+      const localId = getCurrentLocalId();
       const existing = await this.prisma.barber.findMany({
-        where: { id: { in: barberIds } },
+        where: { id: { in: barberIds }, localId },
         select: { id: true, name: true, isActive: true },
       });
       barberIds = existing.map((barber) => barber.id);
@@ -286,7 +289,7 @@ export class AiToolsRegistry {
         const ambiguousMatches: { id: string; name: string; isActive: boolean }[] = [];
         for (const candidate of filteredCandidates) {
           const matches = await this.prisma.barber.findMany({
-            where: { name: { contains: candidate } },
+            where: { name: { contains: candidate }, localId: getCurrentLocalId() },
             take: 5,
             orderBy: { name: 'asc' },
             select: { id: true, name: true, isActive: true },
@@ -322,7 +325,7 @@ export class AiToolsRegistry {
     }
 
     const barberNames = await this.prisma.barber.findMany({
-      where: { id: { in: barberIds } },
+      where: { id: { in: barberIds }, localId: getCurrentLocalId() },
       select: { name: true },
       orderBy: { name: 'asc' },
     });
@@ -480,8 +483,9 @@ export class AiToolsRegistry {
     const barberName = typeof args.barberName === 'string' ? args.barberName.trim() : '';
 
     if (barberId) {
-      const barber = await this.prisma.barber.findUnique({
-        where: { id: barberId },
+      const localId = getCurrentLocalId();
+      const barber = await this.prisma.barber.findFirst({
+        where: { id: barberId, localId },
         select: { id: true, name: true, isActive: true },
       });
       if (!barber || barber.isActive === false) {
@@ -505,7 +509,7 @@ export class AiToolsRegistry {
     }
 
     const barbers = await this.prisma.barber.findMany({
-      where: { name: { contains: barberName }, isActive: true },
+      where: { name: { contains: barberName }, isActive: true, localId: getCurrentLocalId() },
       take: 5,
       orderBy: { name: 'asc' },
       select: { id: true, name: true },
@@ -517,7 +521,7 @@ export class AiToolsRegistry {
 
     if (barbers.length === 0) {
       const inactiveMatches = await this.prisma.barber.findMany({
-        where: { name: { contains: barberName }, isActive: false },
+        where: { name: { contains: barberName }, isActive: false, localId: getCurrentLocalId() },
         take: 1,
         select: { id: true, name: true },
       });
@@ -547,8 +551,9 @@ export class AiToolsRegistry {
     const serviceName = typeof args.serviceName === 'string' ? args.serviceName.trim() : '';
 
     if (serviceId) {
-      const service = await this.prisma.service.findUnique({
-        where: { id: serviceId },
+      const localId = getCurrentLocalId();
+      const service = await this.prisma.service.findFirst({
+        where: { id: serviceId, localId },
         select: { id: true, name: true, duration: true },
       });
       if (!service) {
@@ -568,7 +573,7 @@ export class AiToolsRegistry {
     }
 
     const services = await this.prisma.service.findMany({
-      where: { name: { contains: serviceName } },
+      where: { name: { contains: serviceName }, localId: getCurrentLocalId() },
       take: 5,
       orderBy: { name: 'asc' },
       select: { id: true, name: true, duration: true },

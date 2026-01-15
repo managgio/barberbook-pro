@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { mapAppointment } from './appointments.mapper';
@@ -29,12 +30,16 @@ export class AppointmentsService {
 
   private async getServiceDuration(serviceId?: string) {
     if (!serviceId) return DEFAULT_SERVICE_DURATION;
-    const service = await this.prisma.service.findUnique({ where: { id: serviceId } });
+    const localId = getCurrentLocalId();
+    const service = await this.prisma.service.findFirst({
+      where: { id: serviceId, localId },
+    });
     return service?.duration ?? DEFAULT_SERVICE_DURATION;
   }
 
   async findAll(filters?: { userId?: string; barberId?: string; date?: string }) {
-    const where: any = {};
+    const localId = getCurrentLocalId();
+    const where: any = { localId };
     if (filters?.userId) where.userId = filters.userId;
     if (filters?.barberId) where.barberId = filters.barberId;
     if (filters?.date) {
@@ -53,8 +58,9 @@ export class AppointmentsService {
   }
 
   async findOne(id: string) {
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id },
+    const localId = getCurrentLocalId();
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id, localId },
       include: { service: true },
     });
     if (!appointment) throw new NotFoundException('Appointment not found');
@@ -63,13 +69,16 @@ export class AppointmentsService {
   }
 
   private async calculateAppointmentPrice(serviceId: string, startDateTime: Date) {
-    const service = await this.prisma.service.findUnique({ where: { id: serviceId } });
+    const localId = getCurrentLocalId();
+    const service = await this.prisma.service.findFirst({
+      where: { id: serviceId, localId },
+    });
     if (!service) {
       throw new NotFoundException('Service not found');
     }
 
     const offers = await this.prisma.offer.findMany({
-      where: { active: true },
+      where: { active: true, localId },
       include: { categories: true, services: true },
     });
 
@@ -83,11 +92,13 @@ export class AppointmentsService {
   }
 
   async create(data: CreateAppointmentDto) {
+    const localId = getCurrentLocalId();
     const startDateTime = new Date(data.startDateTime);
     const price = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
 
     const appointment = await this.prisma.appointment.create({
       data: {
+        localId,
         userId: data.userId,
         barberId: data.barberId,
         serviceId: data.serviceId,
@@ -107,8 +118,9 @@ export class AppointmentsService {
   }
 
   async update(id: string, data: UpdateAppointmentDto) {
+    const localId = getCurrentLocalId();
     try {
-      const current = await this.prisma.appointment.findUnique({ where: { id } });
+      const current = await this.prisma.appointment.findFirst({ where: { id, localId } });
       if (!current) throw new NotFoundException('Appointment not found');
       if ((current.status === 'no_show' || current.status === 'cancelled') && data.status === 'completed') {
         throw new BadRequestException('Appointment marked as no-show or cancelled cannot be completed.');
@@ -170,13 +182,17 @@ export class AppointmentsService {
   }
 
   async remove(id: string) {
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.appointment.findFirst({ where: { id, localId } });
+    if (!existing) throw new NotFoundException('Appointment not found');
     await this.prisma.appointment.delete({ where: { id } });
     return { success: true };
   }
 
   async syncStatusesForAllAppointments() {
+    const localId = getCurrentLocalId();
     const appointments = await this.prisma.appointment.findMany({
-      where: { status: { in: ['scheduled'] } },
+      where: { status: { in: ['scheduled'] }, localId },
       include: { service: true },
     });
     return this.syncAppointmentStatuses(appointments);
@@ -187,7 +203,10 @@ export class AppointmentsService {
     date: string,
     options?: { serviceId?: string; appointmentIdToIgnore?: string },
   ): Promise<string[]> {
-    const barber = await this.prisma.barber.findUnique({ where: { id: barberId } });
+    const localId = getCurrentLocalId();
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, localId },
+    });
     const dateOnly = date.split('T')[0];
     if (!barber || barber.isActive === false) return [];
 
@@ -218,6 +237,7 @@ export class AppointmentsService {
 
     const appointments = await this.prisma.appointment.findMany({
       where: {
+        localId,
         barberId,
         status: { not: 'cancelled' },
         startDateTime: { gte: startOfDay(dateOnly), lte: endOfDay(dateOnly) },

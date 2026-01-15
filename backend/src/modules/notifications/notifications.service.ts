@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import twilio from 'twilio';
 import * as path from 'path';
 import * as fs from 'fs';
 import { SettingsService } from '../settings/settings.service';
 import { SiteSettings } from '../settings/settings.types';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
+import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
 
 interface ContactInfo {
   email?: string | null;
@@ -23,52 +24,69 @@ interface AppointmentInfo {
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly transporter: nodemailer.Transporter | null;
-  private readonly twilioClient: twilio.Twilio | null;
-  private readonly messagingServiceSid: string | null;
-  private settingsCache: SiteSettings | null = null;
+  private readonly transporterCache = new Map<string, nodemailer.Transporter | null>();
+  private readonly twilioCache = new Map<string, { client: twilio.Twilio; messagingServiceSid: string } | null>();
+  private settingsCache: Record<string, SiteSettings> = {};
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly settingsService: SettingsService,
-  ) {
-    const emailUser = this.configService.get<string>('EMAIL');
-    const emailPass = this.configService.get<string>('PASSWORD');
-    const emailHost = this.configService.get<string>('EMAIL_HOST') || 'smtp.gmail.com';
-    const emailPort = Number(this.configService.get<string>('EMAIL_PORT')) || 587;
+    private readonly tenantConfig: TenantConfigService,
+  ) {}
 
-    if (emailUser && emailPass) {
-      this.transporter = nodemailer.createTransport({
-        host: emailHost,
-        port: emailPort,
-        secure: emailPort === 465,
-        auth: {
-          user: emailUser,
-          pass: emailPass,
-        },
-      });
-    } else {
+  private async getTransporter() {
+    const brandId = getCurrentBrandId();
+    if (this.transporterCache.has(brandId)) {
+      return this.transporterCache.get(brandId) || null;
+    }
+
+    const config = await this.tenantConfig.getEffectiveConfig();
+    const emailConfig = config.email;
+    if (!emailConfig?.user || !emailConfig?.password) {
       this.logger.warn('Email credentials missing, email notifications disabled');
-      this.transporter = null;
+      this.transporterCache.set(brandId, null);
+      return null;
     }
 
-    const accountSid = this.configService.get<string>('TWILIO_AUTH_SID') || this.configService.get<string>('TWILIO_ACCOUNT_SID');
-    const authToken = this.configService.get<string>('TWILIO_ACCOUNT_TOKEN') || this.configService.get<string>('TWILIO_AUTH_TOKEN');
-    const messagingServiceSid = this.configService.get<string>('TWILIO_MESSAGING_SERVICE_SID');
+    const host = emailConfig.host || 'smtp.gmail.com';
+    const port = emailConfig.port || 587;
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user: emailConfig.user,
+        pass: emailConfig.password,
+      },
+    });
+    this.transporterCache.set(brandId, transporter);
+    return transporter;
+  }
 
-    if (accountSid && authToken && messagingServiceSid) {
-      this.twilioClient = twilio(accountSid, authToken);
-      this.messagingServiceSid = messagingServiceSid;
-    } else {
+  private async getTwilio() {
+    const brandId = getCurrentBrandId();
+    if (this.twilioCache.has(brandId)) {
+      return this.twilioCache.get(brandId) || null;
+    }
+    const config = await this.tenantConfig.getEffectiveConfig();
+    const twilioConfig = config.twilio;
+    if (!twilioConfig?.accountSid || !twilioConfig.authToken || !twilioConfig.messagingServiceSid) {
       this.logger.warn('Twilio credentials missing, SMS reminders disabled');
-      this.twilioClient = null;
-      this.messagingServiceSid = null;
+      this.twilioCache.set(brandId, null);
+      return null;
     }
+    const payload = {
+      client: twilio(twilioConfig.accountSid, twilioConfig.authToken),
+      messagingServiceSid: twilioConfig.messagingServiceSid,
+    };
+    this.twilioCache.set(brandId, payload);
+    return payload;
   }
 
   async sendAppointmentEmail(contact: ContactInfo, appointment: AppointmentInfo, action: 'creada' | 'actualizada' | 'cancelada') {
-    if (!this.transporter || !contact.email) return;
+    const transporter = await this.getTransporter();
+    if (!transporter || !contact.email) return;
     const settings = await this.getSettings();
+    const config = await this.tenantConfig.getEffectiveConfig();
     const formattedDate = appointment.date.toLocaleString('es-ES', {
       weekday: 'long',
       year: 'numeric',
@@ -95,10 +113,15 @@ export class NotificationsService {
         : 'Si necesitas cambiar algo, contáctanos.',
     );
 
-    const brandName = settings.branding.shortName || settings.branding.name || 'Le Blond Hair Salon';
+    const brandName =
+      settings.branding.shortName ||
+      settings.branding.name ||
+      config.branding?.shortName ||
+      config.branding?.name ||
+      'Le Blond Hair Salon';
     const brandColor = '#f472b6';
     const brandDark = '#0f0f12';
-    const contactEmail = settings.contact.email || this.configService.get<string>('EMAIL') || 'info@leblond.com';
+    const contactEmail = settings.contact.email || config.email?.user || 'info@leblond.com';
     const contactPhone = settings.contact.phone || '';
     const location = appointment.location || settings.location.label || 'Le Blond Hair Salon';
     const logoPath = this.resolveLogoPath();
@@ -174,8 +197,8 @@ export class NotificationsService {
     `;
 
     try {
-      await this.transporter.sendMail({
-        from: this.configService.get<string>('EMAIL'),
+      await transporter.sendMail({
+        from: `"${config.email?.fromName || brandName}" <${contactEmail}>`,
         to: contact.email,
         subject,
         text: textLines.join('\n'),
@@ -196,7 +219,8 @@ export class NotificationsService {
   }
 
   async sendReminderSms(contact: ContactInfo, appointment: AppointmentInfo) {
-    if (!this.twilioClient || !this.messagingServiceSid || !contact.phone) return;
+    const twilioConfig = await this.getTwilio();
+    if (!twilioConfig || !contact.phone) return;
     const formattedDate = appointment.date.toLocaleString('es-ES', {
       weekday: 'short',
       day: '2-digit',
@@ -207,8 +231,8 @@ export class NotificationsService {
     const message = `Recordatorio: cita ${formattedDate}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
 
     try {
-      await this.twilioClient.messages.create({
-        messagingServiceSid: this.messagingServiceSid,
+      await twilioConfig.client.messages.create({
+        messagingServiceSid: twilioConfig.messagingServiceSid,
         to: contact.phone,
         body: message,
       });
@@ -218,10 +242,11 @@ export class NotificationsService {
   }
 
   private async getSettings(): Promise<SiteSettings> {
-    if (!this.settingsCache) {
-      this.settingsCache = await this.settingsService.getSettings();
+    const key = getCurrentLocalId();
+    if (!this.settingsCache[key]) {
+      this.settingsCache[key] = await this.settingsService.getSettings();
     }
-    return this.settingsCache;
+    return this.settingsCache[key];
   }
 
   private resolveLogoPath(): string | null {

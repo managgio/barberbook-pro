@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateServiceCategoryDto } from './dto/create-service-category.dto';
 import { UpdateServiceCategoryDto } from './dto/update-service-category.dto';
 import { mapServiceCategory } from './service-categories.mapper';
@@ -10,7 +11,9 @@ export class ServiceCategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(withServices = true) {
+    const localId = getCurrentLocalId();
     const categories = await this.prisma.serviceCategory.findMany({
+      where: { localId },
       orderBy: [{ position: 'asc' }, { name: 'asc' }],
       include: withServices
         ? { services: { orderBy: { name: 'asc' }, include: { category: true } } }
@@ -20,8 +23,9 @@ export class ServiceCategoriesService {
   }
 
   async findOne(id: string, withServices = true) {
-    const category = await this.prisma.serviceCategory.findUnique({
-      where: { id },
+    const localId = getCurrentLocalId();
+    const category = await this.prisma.serviceCategory.findFirst({
+      where: { id, localId },
       include: withServices
         ? { services: { orderBy: { name: 'asc' }, include: { category: true } } }
         : undefined,
@@ -31,8 +35,10 @@ export class ServiceCategoriesService {
   }
 
   async create(data: CreateServiceCategoryDto) {
+    const localId = getCurrentLocalId();
     const created = await this.prisma.serviceCategory.create({
       data: {
+        localId,
         name: data.name,
         description: data.description ?? '',
         position: data.position ?? 0,
@@ -42,24 +48,29 @@ export class ServiceCategoriesService {
   }
 
   async update(id: string, data: UpdateServiceCategoryDto) {
-    try {
-      const updated = await this.prisma.serviceCategory.update({
-        where: { id },
-        data: {
-          name: data.name,
-          description: data.description ?? data.description,
-          position: data.position,
-        },
-      });
-      return mapServiceCategory(updated, { includeServices: false });
-    } catch (error) {
-      throw new NotFoundException('Category not found');
-    }
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.serviceCategory.findFirst({ where: { id, localId } });
+    if (!existing) throw new NotFoundException('Category not found');
+
+    const updated = await this.prisma.serviceCategory.update({
+      where: { id },
+      data: {
+        name: data.name,
+        description: data.description ?? data.description,
+        position: data.position,
+      },
+    });
+    return mapServiceCategory(updated, { includeServices: false });
   }
 
   async remove(id: string) {
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.serviceCategory.findFirst({ where: { id, localId } });
+    if (!existing) throw new NotFoundException('Category not found');
     const categoriesEnabled = await areServiceCategoriesEnabled(this.prisma);
-    const assignedServices = await this.prisma.service.count({ where: { categoryId: id } });
+    const assignedServices = await this.prisma.service.count({
+      where: { categoryId: id, localId },
+    });
 
     if (categoriesEnabled && assignedServices > 0) {
       throw new BadRequestException(

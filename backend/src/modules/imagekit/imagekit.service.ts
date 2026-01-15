@@ -1,16 +1,45 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { DEFAULT_BRAND_SUBDOMAIN } from '../../tenancy/tenant.constants';
+import { getCurrentBrandId, getTenantContext } from '../../tenancy/tenant.context';
 
 @Injectable()
 export class ImageKitService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly tenantConfig: TenantConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  signUpload() {
-    const privateKey = this.configService.get<string>('IMAGEKIT_PRIVATE_KEY');
-    const publicKey = this.configService.get<string>('IMAGEKIT_PUBLIC_KEY');
-    const urlEndpoint = this.configService.get<string>('IMAGEKIT_URL_ENDPOINT');
-    const folder = this.configService.get<string>('IMAGEKIT_FOLDER') || '/barbers';
+  async signUpload() {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    const privateKey = config.imagekit?.privateKey;
+    const publicKey = config.imagekit?.publicKey;
+    const urlEndpoint = config.imagekit?.urlEndpoint;
+    const folderPrefix = process.env.IMAGEKIT_FOLDER?.trim();
+    const contextSubdomain = getTenantContext().subdomain;
+    let brandSubdomain = contextSubdomain || null;
+    if (!brandSubdomain) {
+      const brand = await this.prisma.brand.findUnique({
+        where: { id: getCurrentBrandId() },
+        select: { subdomain: true },
+      });
+      brandSubdomain = brand?.subdomain || DEFAULT_BRAND_SUBDOMAIN;
+    }
+    const normalizePart = (value?: string | null) => (value || '').replace(/^\/+|\/+$/g, '');
+    const folderSuffix = normalizePart(config.imagekit?.folder?.trim());
+    const normalizedSubdomain = normalizePart(brandSubdomain);
+    const suffixHasSubdomain =
+      Boolean(folderSuffix && normalizedSubdomain) &&
+      (folderSuffix === normalizedSubdomain ||
+        folderSuffix.startsWith(`${normalizedSubdomain}/`) ||
+        folderSuffix.includes(`/${normalizedSubdomain}/`) ||
+        folderSuffix.endsWith(`/${normalizedSubdomain}`));
+    const parts = suffixHasSubdomain
+      ? [folderSuffix]
+      : [folderPrefix, brandSubdomain, folderSuffix].map(normalizePart).filter(Boolean);
+    const folder = parts.length ? `/${parts.join('/')}` : undefined;
 
     if (!privateKey || !publicKey || !urlEndpoint) {
       throw new InternalServerErrorException('ImageKit no está configurado');
@@ -24,7 +53,8 @@ export class ImageKitService {
   }
 
   async deleteFile(fileId: string) {
-    const privateKey = this.configService.get<string>('IMAGEKIT_PRIVATE_KEY');
+    const config = await this.tenantConfig.getEffectiveConfig();
+    const privateKey = config.imagekit?.privateKey;
     if (!privateKey) {
       throw new InternalServerErrorException('ImageKit no está configurado');
     }

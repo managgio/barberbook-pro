@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { DEFAULT_SHOP_SCHEDULE } from '../src/modules/schedules/schedule.types';
+import { DEFAULT_BRAND_ID, DEFAULT_LOCAL_ID, DEFAULT_BRAND_SUBDOMAIN, PLATFORM_ADMIN_EMAILS } from '../src/tenancy/tenant.constants';
+import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from '../src/tenancy/tenant-config.defaults';
 
 const prisma = new PrismaClient();
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
@@ -7,12 +9,14 @@ const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com'
 const adminRoles = [
   {
     id: 'role-manager',
+    localId: DEFAULT_LOCAL_ID,
     name: 'Manager',
     description: 'Control del día a día del salón.',
     permissions: ['dashboard', 'calendar', 'search', 'clients', 'services', 'barbers'],
   },
   {
     id: 'role-frontdesk',
+    localId: DEFAULT_LOCAL_ID,
     name: 'Recepción',
     description: 'Solo operaciones básicas de agenda.',
     permissions: ['dashboard', 'calendar', 'search', 'clients'],
@@ -58,6 +62,7 @@ const users = [
 const barbers = [
   {
     id: 'barber-1',
+    localId: DEFAULT_LOCAL_ID,
     name: 'Miguel Ángel',
     specialty: 'Cortes clásicos',
     role: 'admin' as const,
@@ -69,6 +74,7 @@ const barbers = [
   },
   {
     id: 'barber-2',
+    localId: DEFAULT_LOCAL_ID,
     name: 'Alejandro Ruiz',
     specialty: 'Degradados & Fades',
     role: 'worker' as const,
@@ -80,6 +86,7 @@ const barbers = [
   },
   {
     id: 'barber-3',
+    localId: DEFAULT_LOCAL_ID,
     name: 'David Fernández',
     specialty: 'Barba & Afeitado',
     role: 'worker' as const,
@@ -91,6 +98,7 @@ const barbers = [
   },
   {
     id: 'barber-4',
+    localId: DEFAULT_LOCAL_ID,
     name: 'Pablo Martín',
     specialty: 'Estilos urbanos',
     role: 'worker' as const,
@@ -103,18 +111,19 @@ const barbers = [
 ];
 
 const services = [
-  { id: 'service-1', name: 'Corte clásico', description: 'Corte tradicional con tijera y máquina, incluye lavado.', price: 18, duration: 30 },
-  { id: 'service-2', name: 'Degradado fade', description: 'Corte con degradado profesional, varios estilos disponibles.', price: 22, duration: 45 },
-  { id: 'service-3', name: 'Arreglo de barba', description: 'Perfilado y recorte de barba con acabado perfecto.', price: 12, duration: 20 },
-  { id: 'service-4', name: 'Afeitado clásico', description: 'Afeitado tradicional con navaja y toalla caliente.', price: 20, duration: 35 },
-  { id: 'service-5', name: 'Corte + Barba', description: 'Combo completo: corte de pelo y arreglo de barba.', price: 28, duration: 60 },
-  { id: 'service-6', name: 'Tratamiento capilar', description: 'Tratamiento hidratante y nutritivo para el cabello.', price: 15, duration: 45 },
+  { id: 'service-1', localId: DEFAULT_LOCAL_ID, name: 'Corte clásico', description: 'Corte tradicional con tijera y máquina, incluye lavado.', price: 18, duration: 30 },
+  { id: 'service-2', localId: DEFAULT_LOCAL_ID, name: 'Degradado fade', description: 'Corte con degradado profesional, varios estilos disponibles.', price: 22, duration: 45 },
+  { id: 'service-3', localId: DEFAULT_LOCAL_ID, name: 'Arreglo de barba', description: 'Perfilado y recorte de barba con acabado perfecto.', price: 12, duration: 20 },
+  { id: 'service-4', localId: DEFAULT_LOCAL_ID, name: 'Afeitado clásico', description: 'Afeitado tradicional con navaja y toalla caliente.', price: 20, duration: 35 },
+  { id: 'service-5', localId: DEFAULT_LOCAL_ID, name: 'Corte + Barba', description: 'Combo completo: corte de pelo y arreglo de barba.', price: 28, duration: 60 },
+  { id: 'service-6', localId: DEFAULT_LOCAL_ID, name: 'Tratamiento capilar', description: 'Tratamiento hidratante y nutritivo para el cabello.', price: 15, duration: 45 },
 ];
 const servicePriceMap = Object.fromEntries(services.map((service) => [service.id, service.price]));
 
 const alerts = [
   {
     id: 'alert-1',
+    localId: DEFAULT_LOCAL_ID,
     title: '¡Felices Fiestas!',
     message: 'Durante las fiestas navideñas tendremos horario especial. Consulta disponibilidad.',
     active: true,
@@ -122,6 +131,7 @@ const alerts = [
   },
   {
     id: 'alert-2',
+    localId: DEFAULT_LOCAL_ID,
     title: 'Nuevo servicio',
     message: 'Ya disponible nuestro tratamiento capilar premium.',
     active: false,
@@ -130,39 +140,107 @@ const alerts = [
 ];
 
 const generalHolidays = [
-  { start: '2025-01-01', end: '2025-01-01' },
-  { start: '2025-01-06', end: '2025-01-06' },
-  { start: '2025-03-18', end: '2025-03-19' },
-  { start: '2025-12-24', end: '2025-12-26' },
+  { localId: DEFAULT_LOCAL_ID, start: '2025-01-01', end: '2025-01-01' },
+  { localId: DEFAULT_LOCAL_ID, start: '2025-01-06', end: '2025-01-06' },
+  { localId: DEFAULT_LOCAL_ID, start: '2025-03-18', end: '2025-03-19' },
+  { localId: DEFAULT_LOCAL_ID, start: '2025-12-24', end: '2025-12-26' },
 ];
 
-const holidaysByBarber: Record<string, { start: string; end: string }[]> = {
-  'barber-1': [{ start: '2025-12-20', end: '2025-12-21' }],
-  'barber-2': [{ start: '2025-12-22', end: '2025-12-23' }],
-  'barber-3': [{ start: '2025-12-18', end: '2025-12-19' }],
-  'barber-4': [{ start: '2025-12-17', end: '2025-12-17' }],
+const holidaysByBarber: Record<string, { localId: string; start: string; end: string }[]> = {
+  'barber-1': [{ localId: DEFAULT_LOCAL_ID, start: '2025-12-20', end: '2025-12-21' }],
+  'barber-2': [{ localId: DEFAULT_LOCAL_ID, start: '2025-12-22', end: '2025-12-23' }],
+  'barber-3': [{ localId: DEFAULT_LOCAL_ID, start: '2025-12-18', end: '2025-12-19' }],
+  'barber-4': [{ localId: DEFAULT_LOCAL_ID, start: '2025-12-17', end: '2025-12-17' }],
 };
 
 async function main() {
   console.log('Seeding database...');
 
+  await prisma.aiChatMessage.deleteMany();
+  await prisma.aiChatSession.deleteMany();
+  await prisma.aiBusinessFact.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.barberHoliday.deleteMany();
   await prisma.generalHoliday.deleteMany();
   await prisma.barberSchedule.deleteMany();
   await prisma.shopSchedule.deleteMany();
+  await prisma.siteSettings.deleteMany();
   await prisma.alert.deleteMany();
+  await prisma.offer.deleteMany();
+  await prisma.serviceCategory.deleteMany();
   await prisma.service.deleteMany();
   await prisma.barber.deleteMany();
+  await prisma.locationStaff.deleteMany();
+  await prisma.brandUser.deleteMany();
   await prisma.user.deleteMany();
   await prisma.adminRole.deleteMany();
+  await prisma.location.deleteMany();
+  await prisma.brand.deleteMany();
+
+  await prisma.brand.create({
+    data: {
+      id: DEFAULT_BRAND_ID,
+      name: 'LeBlond',
+      subdomain: DEFAULT_BRAND_SUBDOMAIN,
+      defaultLocationId: DEFAULT_LOCAL_ID,
+      isActive: true,
+      locations: {
+        create: {
+          id: DEFAULT_LOCAL_ID,
+          name: 'LeBlond',
+          slug: DEFAULT_BRAND_SUBDOMAIN,
+          isActive: true,
+        },
+      },
+    },
+  });
+
+  await prisma.brandConfig.create({
+    data: {
+      brandId: DEFAULT_BRAND_ID,
+      data: buildBrandConfigFromEnv(),
+    },
+  });
+
+  await prisma.locationConfig.create({
+    data: {
+      localId: DEFAULT_LOCAL_ID,
+      data: buildLocationConfigFromEnv(),
+    },
+  });
 
   for (const role of adminRoles) {
     await prisma.adminRole.create({ data: role });
   }
 
   for (const user of users) {
-    await prisma.user.create({ data: user });
+    await prisma.user.create({
+      data: {
+        ...user,
+        isPlatformAdmin: PLATFORM_ADMIN_EMAILS.includes(user.email.toLowerCase()),
+      },
+    });
+  }
+
+  for (const user of users) {
+    await prisma.brandUser.create({
+      data: {
+        brandId: DEFAULT_BRAND_ID,
+        userId: user.id,
+      },
+    });
+  }
+
+  for (const user of users) {
+    if (user.role === 'admin' || user.isSuperAdmin) {
+      await prisma.locationStaff.create({
+        data: {
+          localId: DEFAULT_LOCAL_ID,
+          userId: user.id,
+          adminRoleId: user.adminRoleId ?? null,
+        },
+      });
+    }
   }
 
   for (const barber of barbers) {
@@ -190,6 +268,7 @@ async function main() {
   const appointments = [
     {
       id: 'apt-1',
+      localId: DEFAULT_LOCAL_ID,
       userId: 'user-1',
       barberId: 'barber-1',
       serviceId: 'service-2',
@@ -200,6 +279,7 @@ async function main() {
     },
     {
       id: 'apt-2',
+      localId: DEFAULT_LOCAL_ID,
       userId: 'user-1',
       barberId: 'barber-2',
       serviceId: 'service-5',
@@ -210,6 +290,7 @@ async function main() {
     },
     {
       id: 'apt-3',
+      localId: DEFAULT_LOCAL_ID,
       userId: 'user-3',
       barberId: 'barber-1',
       serviceId: 'service-1',
@@ -220,6 +301,7 @@ async function main() {
     },
     {
       id: 'apt-4',
+      localId: DEFAULT_LOCAL_ID,
       userId: 'user-3',
       barberId: 'barber-3',
       serviceId: 'service-3',
@@ -234,7 +316,7 @@ async function main() {
     await prisma.alert.create({ data: alert });
   }
 
-  await prisma.shopSchedule.create({ data: { id: 1, data: DEFAULT_SHOP_SCHEDULE } });
+  await prisma.shopSchedule.create({ data: { localId: DEFAULT_LOCAL_ID, data: DEFAULT_SHOP_SCHEDULE } });
 
   for (const appointment of appointments) {
     await prisma.appointment.create({ data: appointment });
@@ -243,6 +325,7 @@ async function main() {
   for (const range of generalHolidays) {
     await prisma.generalHoliday.create({
       data: {
+        localId: range.localId,
         start: new Date(range.start),
         end: new Date(range.end),
       },
@@ -253,6 +336,7 @@ async function main() {
     for (const range of ranges) {
       await prisma.barberHoliday.create({
         data: {
+          localId: range.localId,
           barberId,
           start: new Date(range.start),
           end: new Date(range.end),

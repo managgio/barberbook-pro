@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { NotificationsService } from './notifications.service';
 
 const REMINDER_OFFSET_MS = 24 * 60 * 60 * 1000; // 24h
@@ -32,6 +33,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
 
     const appointments = await this.prisma.appointment.findMany({
       where: {
+        localId: getCurrentLocalId(),
         status: 'scheduled',
         reminderSent: false,
         startDateTime: {

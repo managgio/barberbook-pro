@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ServiceCategoriesService } from './service-categories.service';
 import { CreateServiceCategoryDto } from './dto/create-service-category.dto';
 import { UpdateServiceCategoryDto } from './dto/update-service-category.dto';
+import { AdminEndpoint } from '../../auth/admin.decorator';
 
 @Controller('service-categories')
 export class ServiceCategoriesController {
@@ -20,16 +21,19 @@ export class ServiceCategoriesController {
   }
 
   @Post()
+  @AdminEndpoint()
   create(@Body() data: CreateServiceCategoryDto) {
     return this.serviceCategoriesService.create(data);
   }
 
   @Patch(':id')
+  @AdminEndpoint()
   update(@Param('id') id: string, @Body() data: UpdateServiceCategoryDto) {
     return this.serviceCategoriesService.update(id, data);
   }
 
   @Delete(':id')
+  @AdminEndpoint()
   remove(@Param('id') id: string) {
     return this.serviceCategoriesService.remove(id);
   }

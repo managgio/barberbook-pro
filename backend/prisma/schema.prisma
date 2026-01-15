@@ -59,26 +59,129 @@ model User {
   prefersBarberSelection Boolean  @default(true)
   avatar              String?
   isSuperAdmin        Boolean     @default(false)
+  isPlatformAdmin     Boolean     @default(false)
   adminRoleId         String?
   adminRole           AdminRole?  @relation(fields: [adminRoleId], references: [id])
   appointments        Appointment[]
   barber              Barber?
+  brandMemberships    BrandUser[]
+  localStaffRoles     LocationStaff[]
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 }
 
+model Brand {
+  id        String     @id @default(cuid())
+  name      String
+  subdomain String     @unique
+  customDomain String? @unique
+  defaultLocationId String?   @unique
+  defaultLocation Location? @relation("BrandDefaultLocation", fields: [defaultLocationId], references: [id])
+  isActive  Boolean    @default(true)
+  locations Location[]
+  users     BrandUser[]
+  config    BrandConfig?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Location {
+  id        String    @id @default(cuid())
+  brandId   String
+  brand     Brand     @relation(fields: [brandId], references: [id])
+  defaultForBrand Brand? @relation("BrandDefaultLocation")
+  name      String
+  slug      String?
+  isActive  Boolean   @default(true)
+  adminRoles AdminRole[]
+  staffRoles LocationStaff[]
+  barbers   Barber[]
+  services  Service[]
+  appointments Appointment[]
+  alerts    Alert[]
+  generalHolidays GeneralHoliday[]
+  barberHolidays BarberHoliday[]
+  shopSchedule ShopSchedule?
+  siteSettings SiteSettings?
+  barberSchedules BarberSchedule[]
+  serviceCategories ServiceCategory[]
+  offers    Offer[]
+  aiChatSessions AiChatSession[]
+  aiChatMessages AiChatMessage[]
+  aiBusinessFacts AiBusinessFact[]
+  config    LocationConfig?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([brandId])
+  @@unique([brandId, slug])
+}
+
 model AdminRole {
   id          String   @id @default(cuid())
+  localId     String
+  local       Location @relation(fields: [localId], references: [id])
   name        String
   description String?
   permissions Json
   users       User[]
+  staffRoles  LocationStaff[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([localId])
+}
+
+model BrandUser {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([brandId, userId])
+  @@index([userId])
+}
+
+model LocationStaff {
+  id          String    @id @default(cuid())
+  localId     String
+  local       Location  @relation(fields: [localId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adminRoleId String?
+  adminRole   AdminRole? @relation(fields: [adminRoleId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([localId, userId])
+  @@index([userId])
+  @@index([adminRoleId])
+}
+
+model BrandConfig {
+  id        String   @id @default(cuid())
+  brandId   String   @unique
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LocationConfig {
+  id        String   @id @default(cuid())
+  localId   String   @unique
+  local     Location @relation(fields: [localId], references: [id], onDelete: Cascade)
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Barber {
   id          String           @id @default(cuid())
+  localId     String
+  local       Location         @relation(fields: [localId], references: [id])
   name        String
   photo       String?          @db.Text
   photoFileId String?
@@ -95,10 +198,14 @@ model Barber {
   holidays    BarberHoliday[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+
+  @@index([localId])
 }
 
 model Service {
   id          String        @id @default(cuid())
+  localId     String
+  local       Location      @relation(fields: [localId], references: [id])
   name        String
   description String
   price       Decimal       @db.Decimal(10, 2)
@@ -111,10 +218,13 @@ model Service {
   updatedAt   DateTime      @updatedAt
 
   @@index([categoryId])
+  @@index([localId])
 }
 
 model Appointment {
   id            String             @id @default(cuid())
+  localId       String
+  local         Location           @relation(fields: [localId], references: [id])
   userId        String?
   user          User?              @relation(fields: [userId], references: [id])
   barberId      String
@@ -130,10 +240,14 @@ model Appointment {
   reminderSent  Boolean            @default(false)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
+
+  @@index([localId])
 }
 
 model Alert {
   id        String    @id @default(cuid())
+  localId   String
+  local     Location  @relation(fields: [localId], references: [id])
   title     String
   message   String
   active    Boolean   @default(true)
@@ -142,46 +256,66 @@ model Alert {
   endDate   DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@index([localId])
 }
 
 model GeneralHoliday {
   id        Int      @id @default(autoincrement())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id])
   start     DateTime
   end       DateTime
   createdAt DateTime @default(now())
+
+  @@index([localId])
 }
 
 model BarberHoliday {
   id        Int      @id @default(autoincrement())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id])
   barberId  String
   barber    Barber   @relation(fields: [barberId], references: [id])
   start     DateTime
   end       DateTime
   createdAt DateTime @default(now())
+
+  @@index([localId])
 }
 
 model ShopSchedule {
-  id        Int      @id @default(1)
+  id        Int      @id @default(autoincrement())
+  localId   String   @unique
+  local     Location @relation(fields: [localId], references: [id])
   data      Json
   updatedAt DateTime @updatedAt
 }
 
 model SiteSettings {
-  id        Int      @id @default(1)
+  id        Int      @id @default(autoincrement())
+  localId   String   @unique
+  local     Location @relation(fields: [localId], references: [id])
   data      Json
   updatedAt DateTime @updatedAt
 }
 
 model BarberSchedule {
   id        Int      @id @default(autoincrement())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id])
   barberId  String   @unique
   barber    Barber   @relation(fields: [barberId], references: [id])
   data      Json
   updatedAt DateTime @updatedAt
+
+  @@index([localId])
 }
 
 model ServiceCategory {
   id          String    @id @default(cuid())
+  localId     String
+  local       Location  @relation(fields: [localId], references: [id])
   name        String
   description String?
   position    Int       @default(0)
@@ -189,10 +323,14 @@ model ServiceCategory {
   offers      Offer[]   @relation("OfferCategories")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([localId])
 }
 
 model Offer {
   id            String           @id @default(cuid())
+  localId       String
+  local         Location         @relation(fields: [localId], references: [id])
   name          String
   description   String?
   discountType  DiscountType
@@ -205,10 +343,14 @@ model Offer {
   services      Service[]        @relation("ServiceOffers")
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
+
+  @@index([localId])
 }
 
 model AiChatSession {
   id            String         @id @default(uuid())
+  localId       String         @map("local_id")
+  local         Location       @relation(fields: [localId], references: [id])
   adminUserId   String         @map("admin_user_id")
   title         String?
   summary       String         @db.Text
@@ -219,11 +361,14 @@ model AiChatSession {
 
   @@index([adminUserId])
   @@index([lastMessageAt])
+  @@index([localId])
   @@map("ai_chat_sessions")
 }
 
 model AiChatMessage {
   id          String        @id @default(uuid())
+  localId     String        @map("local_id")
+  local       Location      @relation(fields: [localId], references: [id])
   sessionId   String        @map("session_id")
   session     AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   role        AiChatRole
@@ -233,14 +378,19 @@ model AiChatMessage {
   createdAt   DateTime      @default(now()) @map("created_at")
 
   @@index([sessionId, createdAt])
+  @@index([localId])
   @@map("ai_chat_messages")
 }
 
 model AiBusinessFact {
   id        String   @id @default(uuid())
-  key       String   @unique
+  localId   String   @map("local_id")
+  local     Location @relation(fields: [localId], references: [id])
+  key       String
   value     String   @db.Text
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([localId, key])
+  @@index([localId])
   @@map("ai_business_facts")
 }

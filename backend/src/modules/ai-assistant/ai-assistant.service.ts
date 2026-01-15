@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import OpenAI, { toFile } from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { AiMemoryService } from './ai-memory.service';
 import { AiToolsRegistry } from './ai-tools.registry';
 import { AI_SYSTEM_PROMPT, buildSummaryPrompt } from './ai-assistant.prompt';
@@ -25,13 +26,13 @@ export interface AiChatResult {
 @Injectable()
 export class AiAssistantService {
   private readonly logger = new Logger(AiAssistantService.name);
-  private client: OpenAI | null = null;
+  private readonly clientCache = new Map<string, OpenAI>();
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly memory: AiMemoryService,
     private readonly toolsRegistry: AiToolsRegistry,
+    private readonly tenantConfig: TenantConfigService,
   ) {}
 
   async chat(adminUserId: string, message: string, sessionId?: string | null): Promise<AiChatResult> {
@@ -81,13 +82,13 @@ export class AiAssistantService {
 
     try {
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        const completion = await this.getClient().chat.completions.create({
-          model: this.getModel(),
+        const completion = await (await this.getClient()).chat.completions.create({
+          model: await this.getModel(),
           messages,
           tools: toolDefs,
           tool_choice: forcedTool ? { type: 'function', function: { name: forcedTool } } : 'auto',
-          temperature: this.getTemperature(),
-          max_tokens: this.getMaxTokens(),
+          temperature: await this.getTemperature(),
+          max_tokens: await this.getMaxTokens(),
         });
 
         const responseMessage = completion.choices[0]?.message;
@@ -266,9 +267,9 @@ export class AiAssistantService {
       type: file.mimetype || 'audio/webm',
     });
 
-    const response = await this.getClient().audio.transcriptions.create({
+    const response = await (await this.getClient()).audio.transcriptions.create({
       file: audioFile,
-      model: this.getTranscriptionModel(),
+      model: await this.getTranscriptionModel(),
       language: 'es',
       temperature: 0,
     });
@@ -479,8 +480,8 @@ export class AiAssistantService {
     const prompt = buildSummaryPrompt(previousSummary, transcript);
 
     try {
-      const completion = await this.getClient().chat.completions.create({
-        model: this.getModel(),
+      const completion = await (await this.getClient()).chat.completions.create({
+        model: await this.getModel(),
         messages: [
           { role: 'system', content: 'Eres un asistente que resume conversaciones de negocio.' },
           { role: 'user', content: prompt },
@@ -533,42 +534,66 @@ export class AiAssistantService {
 
   private async ensureAdminUser(adminUserId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: adminUserId } });
-    if (!user || user.role !== 'admin') {
+    if (!user) {
+      throw new BadRequestException('Usuario admin inválido.');
+    }
+    if (user.isSuperAdmin || user.isPlatformAdmin) {
+      return;
+    }
+    const localId = getCurrentLocalId();
+    const staff = await this.prisma.locationStaff.findUnique({
+      where: {
+        localId_userId: {
+          localId,
+          userId: adminUserId,
+        },
+      },
+    });
+    if (!staff) {
       throw new BadRequestException('Usuario admin inválido.');
     }
   }
 
-  private getClient() {
-    if (this.client) return this.client;
-    const provider = this.configService.get<string>('AI_PROVIDER') || 'openai';
+  private async getClient() {
+    const brandId = getCurrentBrandId();
+    if (this.clientCache.has(brandId)) {
+      return this.clientCache.get(brandId) as OpenAI;
+    }
+    const config = await this.tenantConfig.getBrandConfig(brandId);
+    const provider = config.ai?.provider || 'openai';
     if (provider !== 'openai') {
       throw new BadRequestException('Proveedor IA no soportado.');
     }
-    const apiKey = this.configService.get<string>('AI_API_KEY');
+    const apiKey = config.ai?.apiKey;
     if (!apiKey) {
       throw new BadRequestException('Falta AI_API_KEY en el entorno.');
     }
-    this.client = new OpenAI({ apiKey });
-    return this.client;
+    const client = new OpenAI({ apiKey });
+    this.clientCache.set(brandId, client);
+    return client;
   }
 
-  private getModel() {
-    return this.configService.get<string>('AI_MODEL') || 'gpt-4o-mini';
+  private async getModel() {
+    const config = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
+    return config.ai?.model || 'gpt-4o-mini';
   }
 
-  private getMaxTokens() {
-    const raw = this.configService.get<string>('AI_MAX_TOKENS');
-    const parsed = raw ? Number(raw) : 800;
+  private async getMaxTokens() {
+    const config = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
+    const raw = config.ai?.maxTokens ?? 800;
+    const parsed = typeof raw === 'string' ? Number(raw) : raw;
     return Number.isFinite(parsed) ? parsed : 800;
   }
 
-  private getTemperature() {
-    const raw = this.configService.get<string>('AI_TEMPERATURE');
-    const parsed = raw ? Number(raw) : 0.3;
+  private async getTemperature() {
+    const config = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
+    const raw = config.ai?.temperature ?? 0.3;
+    const parsed = typeof raw === 'string' ? Number(raw) : raw;
     return Number.isFinite(parsed) ? parsed : 0.3;
   }
 
-  private getTranscriptionModel() {
-    return this.configService.get<string>('AI_TRANSCRIPTION_MODEL') || 'whisper-1';
+  private async getTranscriptionModel() {
+    const config = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
+    return config.ai?.transcriptionModel || 'whisper-1';
   }
 }

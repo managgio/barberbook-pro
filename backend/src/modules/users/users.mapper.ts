@@ -1,6 +1,9 @@
 import { User } from '@prisma/client';
 
-export const mapUser = (user: User) => ({
+export const mapUser = (
+  user: User,
+  options?: { adminRoleId?: string | null; isPlatformAdmin?: boolean; isLocalAdmin?: boolean },
+) => ({
   id: user.id,
   firebaseUid: user.firebaseUid || undefined,
   name: user.name,
@@ -14,5 +17,7 @@ export const mapUser = (user: User) => ({
   prefersBarberSelection: user.prefersBarberSelection,
   avatar: user.avatar || undefined,
   isSuperAdmin: user.isSuperAdmin,
-  adminRoleId: user.adminRoleId || null,
+  isPlatformAdmin: options?.isPlatformAdmin ?? user.isPlatformAdmin,
+  isLocalAdmin: options?.isLocalAdmin ?? false,
+  adminRoleId: options?.adminRoleId ?? user.adminRoleId ?? null,
 });

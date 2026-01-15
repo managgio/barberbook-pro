@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateAlertDto } from './dto/create-alert.dto';
 import { UpdateAlertDto } from './dto/update-alert.dto';
 import { mapAlert } from './alerts.mapper';
@@ -15,14 +16,20 @@ export class AlertsService {
   }
 
   async findAll() {
-    const alerts = await this.prisma.alert.findMany({ orderBy: { createdAt: 'desc' } });
+    const localId = getCurrentLocalId();
+    const alerts = await this.prisma.alert.findMany({
+      where: { localId },
+      orderBy: { createdAt: 'desc' },
+    });
     return alerts.map(mapAlert);
   }
 
   async findActive() {
     const now = new Date();
+    const localId = getCurrentLocalId();
     const alerts = await this.prisma.alert.findMany({
       where: {
+        localId,
         active: true,
         OR: [{ startDate: null }, { startDate: { lte: now } }],
         AND: [{ OR: [{ endDate: null }, { endDate: { gte: now } }] }],
@@ -34,8 +41,10 @@ export class AlertsService {
 
   async create(data: CreateAlertDto) {
     this.validateDates(data);
+    const localId = getCurrentLocalId();
     const created = await this.prisma.alert.create({
       data: {
+        localId,
         title: data.title,
         message: data.message,
         active: data.active ?? true,
@@ -49,25 +58,28 @@ export class AlertsService {
 
   async update(id: string, data: UpdateAlertDto) {
     this.validateDates(data);
-    try {
-      const updated = await this.prisma.alert.update({
-        where: { id },
-        data: {
-          title: data.title,
-          message: data.message,
-          active: data.active,
-          type: data.type,
-          startDate: data.startDate ? new Date(data.startDate) : null,
-          endDate: data.endDate ? new Date(data.endDate) : null,
-        },
-      });
-      return mapAlert(updated);
-    } catch (error) {
-      throw new NotFoundException('Alert not found');
-    }
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.alert.findFirst({ where: { id, localId } });
+    if (!existing) throw new NotFoundException('Alert not found');
+
+    const updated = await this.prisma.alert.update({
+      where: { id },
+      data: {
+        title: data.title,
+        message: data.message,
+        active: data.active,
+        type: data.type,
+        startDate: data.startDate ? new Date(data.startDate) : null,
+        endDate: data.endDate ? new Date(data.endDate) : null,
+      },
+    });
+    return mapAlert(updated);
   }
 
   async remove(id: string) {
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.alert.findFirst({ where: { id, localId } });
+    if (!existing) throw new NotFoundException('Alert not found');
     await this.prisma.alert.delete({ where: { id } });
     return { success: true };
   }

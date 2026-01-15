@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { mapService } from './services.mapper';
@@ -11,13 +12,15 @@ export class ServicesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
+    const localId = getCurrentLocalId();
     const [services, offers] = await Promise.all([
       this.prisma.service.findMany({
+        where: { localId },
         orderBy: { name: 'asc' },
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true },
+        where: { active: true, localId },
         include: { categories: true, services: true },
       }),
     ]);
@@ -27,13 +30,14 @@ export class ServicesService {
   }
 
   async findOne(id: string) {
+    const localId = getCurrentLocalId();
     const [service, offers] = await Promise.all([
-      this.prisma.service.findUnique({
-        where: { id },
+      this.prisma.service.findFirst({
+        where: { id, localId },
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true },
+        where: { active: true, localId },
         include: { categories: true, services: true },
       }),
     ]);
@@ -42,17 +46,22 @@ export class ServicesService {
   }
 
   private async assertCategoryExists(categoryId: string) {
-    const category = await this.prisma.serviceCategory.findUnique({ where: { id: categoryId } });
+    const localId = getCurrentLocalId();
+    const category = await this.prisma.serviceCategory.findFirst({
+      where: { id: categoryId, localId },
+    });
     if (!category) throw new NotFoundException('Category not found');
   }
 
   private async resolveCategoryId(id: string, incomingCategoryId: string | null | undefined) {
-    const existing = await this.prisma.service.findUnique({ where: { id } });
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.service.findFirst({ where: { id, localId } });
     if (!existing) throw new NotFoundException('Service not found');
     return incomingCategoryId === undefined ? existing.categoryId : incomingCategoryId;
   }
 
   async create(data: CreateServiceDto) {
+    const localId = getCurrentLocalId();
     const categoriesEnabled = await areServiceCategoriesEnabled(this.prisma);
     const categoryId = data.categoryId ?? null;
 
@@ -67,6 +76,7 @@ export class ServicesService {
     const [created, offers] = await Promise.all([
       this.prisma.service.create({
         data: {
+          localId,
           name: data.name,
           description: data.description || '',
           price: data.price,
@@ -76,7 +86,7 @@ export class ServicesService {
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true },
+        where: { active: true, localId },
         include: { categories: true, services: true },
       }),
     ]);
@@ -84,6 +94,7 @@ export class ServicesService {
   }
 
   async update(id: string, data: UpdateServiceDto) {
+    const localId = getCurrentLocalId();
     const categoriesEnabled = await areServiceCategoriesEnabled(this.prisma);
     const categoryId = await this.resolveCategoryId(id, data.categoryId);
 
@@ -102,7 +113,7 @@ export class ServicesService {
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true },
+        where: { active: true, localId },
         include: { categories: true, services: true },
       }),
     ]);
@@ -110,6 +121,9 @@ export class ServicesService {
   }
 
   async remove(id: string) {
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.service.findFirst({ where: { id, localId } });
+    if (!existing) throw new NotFoundException('Service not found');
     await this.prisma.service.delete({ where: { id } });
     return { success: true };
   }

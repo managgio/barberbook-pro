@@ -43,4 +43,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isSuperAdmin?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPlatformAdmin?: boolean;
 }

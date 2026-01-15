@@ -5,24 +5,41 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { mapUser } from './users.mapper';
 import { User } from '@prisma/client';
 import { Prisma } from '@prisma/client';
-import { getAdminAuth } from '../../lib/firebaseAdmin';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
+import { PLATFORM_ADMIN_EMAILS } from '../../tenancy/tenant.constants';
+import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
+import { FirebaseAdminService } from '../firebase/firebase-admin.service';
 
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantConfig: TenantConfigService,
+    private readonly firebaseAdmin: FirebaseAdminService,
+  ) {}
 
-  private applySuperAdminFlag<T extends Partial<CreateUserDto | UpdateUserDto>>(data: T): T {
-    if (data.email && data.email.toLowerCase() === SUPER_ADMIN_EMAIL) {
+  private async applySuperAdminFlag<T extends Partial<CreateUserDto | UpdateUserDto>>(data: T): Promise<T> {
+    const email = data.email?.toLowerCase();
+    if (!email) return data;
+
+    const brandConfig = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
+    const brandSuperAdminEmail = brandConfig.superAdminEmail?.toLowerCase() || SUPER_ADMIN_EMAIL;
+    const isBrandSuperAdmin = email === brandSuperAdminEmail;
+    const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(email);
+
+    if (isBrandSuperAdmin || isPlatformAdmin) {
       return {
         ...data,
         role: 'admin',
-        isSuperAdmin: true,
+        isSuperAdmin: isBrandSuperAdmin || data.isSuperAdmin || false,
+        isPlatformAdmin: isPlatformAdmin || data.isPlatformAdmin || false,
         adminRoleId: null,
       } as T;
     }
+
     return data;
   }
 
@@ -34,29 +51,142 @@ export class UsersService {
     };
   }
 
+  private shouldSyncLocalStaff(data: Partial<CreateUserDto | UpdateUserDto>) {
+    return (
+      data.role !== undefined ||
+      data.adminRoleId !== undefined ||
+      data.isSuperAdmin !== undefined ||
+      data.isPlatformAdmin !== undefined
+    );
+  }
+
+  private async ensureBrandMembership(userId: string) {
+    const brandId = getCurrentBrandId();
+    await this.prisma.brandUser.upsert({
+      where: {
+        brandId_userId: {
+          brandId,
+          userId,
+        },
+      },
+      update: {},
+      create: {
+        brandId,
+        userId,
+      },
+    });
+  }
+
+  private async syncLocalStaffRole(user: Pick<User, 'id' | 'role' | 'isSuperAdmin' | 'isPlatformAdmin' | 'adminRoleId'>) {
+    const localId = getCurrentLocalId();
+    const isAdmin = user.role === 'admin' || user.isSuperAdmin || user.isPlatformAdmin;
+    if (!isAdmin) {
+      await this.prisma.locationStaff.deleteMany({
+        where: { userId: user.id, localId },
+      });
+      return;
+    }
+    await this.prisma.locationStaff.upsert({
+      where: {
+        localId_userId: {
+          localId,
+          userId: user.id,
+        },
+      },
+      update: { adminRoleId: user.adminRoleId ?? null },
+      create: {
+        localId,
+        userId: user.id,
+        adminRoleId: user.adminRoleId ?? null,
+      },
+    });
+  }
+
   async findAll() {
-    const users = await this.prisma.user.findMany();
-    return users.map(mapUser);
+    const brandId = getCurrentBrandId();
+    const localId = getCurrentLocalId();
+    const users = await this.prisma.user.findMany({
+      where: { brandMemberships: { some: { brandId } } },
+      include: {
+        localStaffRoles: {
+          where: { localId },
+          select: { adminRoleId: true },
+          take: 1,
+        },
+      },
+    });
+    return users.map((user) =>
+      mapUser(user, {
+        adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+        isLocalAdmin: user.localStaffRoles.length > 0,
+      }),
+    );
   }
 
   async findOne(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const brandId = getCurrentBrandId();
+    const localId = getCurrentLocalId();
+    const user = await this.prisma.user.findFirst({
+      where: { id, brandMemberships: { some: { brandId } } },
+      include: {
+        localStaffRoles: {
+          where: { localId },
+          select: { adminRoleId: true },
+          take: 1,
+        },
+      },
+    });
     if (!user) throw new NotFoundException('User not found');
-    return mapUser(user);
+    return mapUser(user, {
+      adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+      isLocalAdmin: user.localStaffRoles.length > 0,
+    });
   }
 
   async findByEmail(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    return user ? mapUser(user) : null;
+    const brandId = getCurrentBrandId();
+    const localId = getCurrentLocalId();
+    const user = await this.prisma.user.findFirst({
+      where: { email: email.toLowerCase(), brandMemberships: { some: { brandId } } },
+      include: {
+        localStaffRoles: {
+          where: { localId },
+          select: { adminRoleId: true },
+          take: 1,
+        },
+      },
+    });
+    return user
+      ? mapUser(user, {
+          adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+          isLocalAdmin: user.localStaffRoles.length > 0,
+        })
+      : null;
   }
 
   async findByFirebaseUid(firebaseUid: string) {
-    const user = await this.prisma.user.findUnique({ where: { firebaseUid } });
-    return user ? mapUser(user) : null;
+    const brandId = getCurrentBrandId();
+    const localId = getCurrentLocalId();
+    const user = await this.prisma.user.findFirst({
+      where: { firebaseUid, brandMemberships: { some: { brandId } } },
+      include: {
+        localStaffRoles: {
+          where: { localId },
+          select: { adminRoleId: true },
+          take: 1,
+        },
+      },
+    });
+    return user
+      ? mapUser(user, {
+          adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+          isLocalAdmin: user.localStaffRoles.length > 0,
+        })
+      : null;
   }
 
   async create(data: CreateUserDto) {
-    const payload = this.applySuperAdminFlag(data);
+    const payload = await this.applySuperAdminFlag(data);
     try {
       const created = await this.prisma.user.create({
         data: {
@@ -68,10 +198,23 @@ export class UsersService {
           avatar: payload.avatar,
           adminRoleId: payload.adminRoleId ?? null,
           isSuperAdmin: payload.isSuperAdmin ?? false,
+          isPlatformAdmin: payload.isPlatformAdmin ?? false,
           ...this.mapPrefs(payload, true),
         },
       });
-      return mapUser(created);
+      await this.ensureBrandMembership(created.id);
+      if (this.shouldSyncLocalStaff(payload)) {
+        await this.syncLocalStaffRole(created);
+      }
+      const localId = getCurrentLocalId();
+      const localStaff = await this.prisma.locationStaff.findUnique({
+        where: { localId_userId: { localId, userId: created.id } },
+        select: { adminRoleId: true },
+      });
+      return mapUser(created, {
+        adminRoleId: localStaff?.adminRoleId ?? null,
+        isLocalAdmin: Boolean(localStaff),
+      });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -94,17 +237,31 @@ export class UsersService {
             avatar: payload.avatar ?? existing.avatar,
             adminRoleId: payload.adminRoleId ?? existing.adminRoleId,
             isSuperAdmin: payload.isSuperAdmin ?? existing.isSuperAdmin,
+            isPlatformAdmin: payload.isPlatformAdmin ?? existing.isPlatformAdmin,
             ...this.mapPrefs(payload, false),
           },
         });
-        return mapUser(updated);
+        await this.ensureBrandMembership(updated.id);
+        if (this.shouldSyncLocalStaff(payload)) {
+          await this.syncLocalStaffRole(updated);
+        }
+        const localId = getCurrentLocalId();
+        const localStaff = await this.prisma.locationStaff.findUnique({
+          where: { localId_userId: { localId, userId: updated.id } },
+          select: { adminRoleId: true },
+        });
+        return mapUser(updated, {
+          adminRoleId: localStaff?.adminRoleId ?? null,
+          isLocalAdmin: Boolean(localStaff),
+        });
       }
       throw error;
     }
   }
 
   async update(id: string, data: UpdateUserDto) {
-    const payload = this.applySuperAdminFlag(data);
+    const payload = await this.applySuperAdminFlag(data);
+    const shouldSyncLocalRole = this.shouldSyncLocalStaff(payload);
     let updated: User;
     try {
       updated = await this.prisma.user.update({
@@ -118,13 +275,26 @@ export class UsersService {
           avatar: payload.avatar,
           adminRoleId: payload.adminRoleId,
           isSuperAdmin: payload.isSuperAdmin,
+          isPlatformAdmin: payload.isPlatformAdmin,
           ...this.mapPrefs(payload, false),
         },
       });
     } catch (error) {
       throw new NotFoundException('User not found');
     }
-    return mapUser(updated);
+    await this.ensureBrandMembership(updated.id);
+    if (shouldSyncLocalRole) {
+      await this.syncLocalStaffRole(updated);
+    }
+    const localId = getCurrentLocalId();
+    const localStaff = await this.prisma.locationStaff.findUnique({
+      where: { localId_userId: { localId, userId: updated.id } },
+      select: { adminRoleId: true },
+    });
+    return mapUser(updated, {
+      adminRoleId: localStaff?.adminRoleId ?? null,
+      isLocalAdmin: Boolean(localStaff),
+    });
   }
 
   async remove(id: string) {
@@ -132,13 +302,10 @@ export class UsersService {
     if (!existing) throw new NotFoundException('User not found');
 
     if (existing.firebaseUid) {
-      const adminAuth = getAdminAuth();
-      if (adminAuth) {
-        try {
-          await adminAuth.deleteUser(existing.firebaseUid);
-        } catch (error) {
-          this.logger?.warn?.(`No se pudo eliminar en Firebase Auth (${existing.firebaseUid}): ${error}`);
-        }
+      try {
+        await this.firebaseAdmin.deleteUser(existing.firebaseUid);
+      } catch (error) {
+        this.logger?.warn?.(`No se pudo eliminar en Firebase Auth (${existing.firebaseUid}): ${error}`);
       }
     }
 
