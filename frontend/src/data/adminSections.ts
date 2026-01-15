@@ -52,3 +52,16 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
     description: 'Datos generales, redes y horario de apertura.',
   },
 ];
+
+export const ADMIN_SECTION_KEYS: AdminSectionKey[] = ADMIN_SECTIONS.map((section) => section.key);
+
+export const ADMIN_REQUIRED_SECTIONS: AdminSectionKey[] = [
+  'dashboard',
+  'calendar',
+  'search',
+  'clients',
+  'services',
+  'barbers',
+  'holidays',
+  'settings',
+];

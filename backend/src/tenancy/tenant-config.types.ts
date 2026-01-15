@@ -38,6 +38,10 @@ export type TenantThemeConfig = {
   primary?: string;
 };
 
+export type TenantAdminSidebarConfig = {
+  hiddenSections?: string[];
+};
+
 export type BrandConfigData = {
   superAdminEmail?: string;
   imagekit?: TenantImageKitConfig;
@@ -45,6 +49,7 @@ export type BrandConfigData = {
   email?: TenantEmailConfig;
   firebaseAdmin?: TenantFirebaseAdminConfig;
   ai?: TenantAiConfig;
+  adminSidebar?: TenantAdminSidebarConfig;
   branding?: {
     name?: string;
     shortName?: string;
@@ -62,6 +67,7 @@ export type BrandConfigData = {
 
 export type LocationConfigData = {
   imagekit?: Pick<TenantImageKitConfig, 'folder'>;
+  adminSidebar?: TenantAdminSidebarConfig;
   theme?: TenantThemeConfig;
 };
 

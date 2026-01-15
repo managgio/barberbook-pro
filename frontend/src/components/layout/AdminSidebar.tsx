@@ -137,7 +137,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
             No tienes permisos asignados. Contacta con el superadmin.
           </p>
         )}
-        {(user?.isSuperAdmin || user?.isPlatformAdmin ? navItems : visibleNavItems).map((item) => {
+        {visibleNavItems.map((item) => {
           const link = (
             <Link
               to={item.href}

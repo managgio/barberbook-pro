@@ -29,6 +29,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Building2, Image as ImageIcon, MapPin, Plus, Save, Settings2, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
+import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS } from '@/data/adminSections';
+import { AdminSectionKey } from '@/data/types';
 
 const updateNestedValue = (source: Record<string, any>, path: string[], value: any) => {
   const result = { ...source };
@@ -128,6 +130,24 @@ const BRAND_ASSET_META: Record<BrandAssetKey, {
     previewClass: 'h-16 w-28',
     imageClass: 'object-cover',
   },
+};
+
+const ADMIN_SECTION_SET = new Set(ADMIN_SECTIONS.map((section) => section.key));
+
+const getAdminSidebarHiddenSections = (config: Record<string, any>): AdminSectionKey[] => {
+  const hidden = config?.adminSidebar?.hiddenSections;
+  if (!Array.isArray(hidden)) return [];
+  return hidden.filter((section): section is AdminSectionKey => {
+    const key = section as AdminSectionKey;
+    return ADMIN_SECTION_SET.has(key) && !ADMIN_REQUIRED_SECTIONS.includes(key);
+  });
+};
+
+const isAdminSectionRequired = (section: AdminSectionKey) => ADMIN_REQUIRED_SECTIONS.includes(section);
+
+const isAdminSectionVisible = (config: Record<string, any>, section: AdminSectionKey) => {
+  if (isAdminSectionRequired(section)) return true;
+  return !getAdminSidebarHiddenSections(config).includes(section);
 };
 
 const PlatformBrands: React.FC = () => {
@@ -295,6 +315,39 @@ const PlatformBrands: React.FC = () => {
       setAdminForm((prev) => ({ ...prev, localId: fallback }));
     }
   }, [adminForm.applyToAll, adminForm.localId, adminLocations, selectedLocationId]);
+
+  const isLocationSidebarOverride = Array.isArray(locationConfig?.adminSidebar?.hiddenSections);
+  const locationSidebarConfig = isLocationSidebarOverride ? locationConfig : brandConfig;
+
+  const updateSidebarVisibility = (
+    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    section: AdminSectionKey,
+    visible: boolean,
+  ) => {
+    setConfig((prev) => {
+      const hidden = new Set(getAdminSidebarHiddenSections(prev));
+      if (visible) {
+        hidden.delete(section);
+      } else {
+        hidden.add(section);
+      }
+      ADMIN_REQUIRED_SECTIONS.forEach((required) => hidden.delete(required));
+      return updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], Array.from(hidden));
+    });
+  };
+
+  const handleLocationSidebarOverride = (checked: boolean) => {
+    if (checked) {
+      const baseHidden = getAdminSidebarHiddenSections(brandConfig);
+      setLocationConfig((prev) => updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], baseHidden));
+      return;
+    }
+    setLocationConfig((prev) => {
+      if (!prev.adminSidebar) return prev;
+      const { adminSidebar, ...rest } = prev;
+      return rest;
+    });
+  };
 
   const handleSaveBrand = async () => {
     if (!user?.id || !selectedBrand) return;
@@ -666,10 +719,11 @@ const PlatformBrands: React.FC = () => {
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
             <Tabs defaultValue="datos" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
                 <TabsTrigger value="datos">Datos</TabsTrigger>
                 <TabsTrigger value="locales">Locales</TabsTrigger>
                 <TabsTrigger value="admins">Admins</TabsTrigger>
+                <TabsTrigger value="sidebar">Sidebar</TabsTrigger>
                 <TabsTrigger value="config">Config</TabsTrigger>
               </TabsList>
 
@@ -894,6 +948,130 @@ const PlatformBrands: React.FC = () => {
                       ))
                     )}
                   </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="sidebar" className="space-y-6">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Settings2 className="h-4 w-4 text-primary" />
+                  Visibilidad del sidebar admin
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <Card className="border border-border/60 bg-card/80">
+                    <CardHeader>
+                      <CardTitle className="text-base">Por marca</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-xs text-muted-foreground">
+                        Define las secciones visibles por defecto para todos los locales.
+                      </p>
+                      <div className="space-y-3">
+                        {ADMIN_SECTIONS.map((section) => {
+                          const isRequired = isAdminSectionRequired(section.key);
+                          const isVisible = isAdminSectionVisible(brandConfig, section.key);
+                          return (
+                            <div
+                              key={section.key}
+                              className="border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">{section.label}</div>
+                                <p className="text-xs text-muted-foreground">{section.description}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {isRequired && (
+                                  <span className="text-[10px] uppercase tracking-widest text-primary">Obligatorio</span>
+                                )}
+                                <Switch
+                                  checked={isVisible}
+                                  disabled={isRequired}
+                                  onCheckedChange={(checked) =>
+                                    updateSidebarVisibility(setBrandConfig, section.key, checked)
+                                  }
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-border/60 bg-card/80">
+                    <CardHeader>
+                      <CardTitle className="text-base">Por local</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {selectedBrand.locations?.length ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label>Local a configurar</Label>
+                            <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona local" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {selectedBrand.locations?.map((location: any) => (
+                                  <SelectItem key={location.id} value={location.id}>
+                                    {location.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Switch
+                              checked={isLocationSidebarOverride}
+                              onCheckedChange={handleLocationSidebarOverride}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              Personalizar visibilidad para este local
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Si está desactivado, el local hereda la configuración de la marca.
+                          </p>
+                          <div className="space-y-3">
+                            {ADMIN_SECTIONS.map((section) => {
+                              const isRequired = isAdminSectionRequired(section.key);
+                              const isVisible = isAdminSectionVisible(locationSidebarConfig, section.key);
+                              return (
+                                <div
+                                  key={section.key}
+                                  className="border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                  <div>
+                                    <div className="text-sm font-semibold text-foreground">{section.label}</div>
+                                    <p className="text-xs text-muted-foreground">{section.description}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {isRequired && (
+                                      <span className="text-[10px] uppercase tracking-widest text-primary">Obligatorio</span>
+                                    )}
+                                    <Switch
+                                      checked={isVisible}
+                                      disabled={!isLocationSidebarOverride || isRequired}
+                                      onCheckedChange={(checked) =>
+                                        updateSidebarVisibility(setLocationConfig, section.key, checked)
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Crea al menos un local para configurar su menú.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveBrand} disabled={isSaving}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Guardar cambios
+                  </Button>
                 </div>
               </TabsContent>
 

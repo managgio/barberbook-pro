@@ -63,6 +63,9 @@ export interface TenantBootstrap {
       signImageUrl?: string;
       signImageFileId?: string;
     } | null;
+    adminSidebar?: {
+      hiddenSections?: string[];
+    } | null;
     theme?: {
       primary?: string;
     } | null;

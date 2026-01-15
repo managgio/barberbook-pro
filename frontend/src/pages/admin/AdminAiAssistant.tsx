@@ -31,7 +31,6 @@ interface ChatMessage {
 
 const STORAGE_KEY = 'ai-assistant-session-id';
 const SEND_COMMAND = 'enviar';
-
 const AdminAiAssistant: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -50,7 +49,8 @@ const AdminAiAssistant: React.FC = () => {
   const loadedSessionRef = useRef<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<any>(null);
-  const autoStopRef = useRef(false);
+  const autoSendRef = useRef(false);
+  const stopInProgressRef = useRef(false);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const supportsAudio = typeof window !== 'undefined'
@@ -79,9 +79,9 @@ const AdminAiAssistant: React.FC = () => {
   };
 
   const normalizeCommandText = (text: string) =>
-    text.trim().toLowerCase().replace(/[.,!?;:]+$/g, '');
+    text.trim().toLowerCase().replace(/[.,!?;:]+/g, ' ');
 
-  const isSendCommand = (text: string) => {
+  const shouldAutoSend = (text: string) => {
     const normalized = normalizeCommandText(text);
     if (!normalized) return false;
     const parts = normalized.split(/\s+/);
@@ -90,6 +90,51 @@ const AdminAiAssistant: React.FC = () => {
 
   const stripSendCommand = (text: string) =>
     text.replace(new RegExp(`(?:\\s|^)${SEND_COMMAND}[\\s.,!?;:]*$`, 'i'), '').trim();
+
+  const stopVoiceCommandListener = () => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    try {
+      recognition.stop();
+    } catch {
+      // Ignore stop errors for unsupported implementations.
+    }
+    recognitionRef.current = null;
+  };
+
+  const startVoiceCommandListener = () => {
+    if (!supportsVoiceCommand) return;
+    stopVoiceCommandListener();
+    const SpeechRecognitionConstructor =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionConstructor) return;
+    const recognition = new SpeechRecognitionConstructor();
+    recognition.lang = 'es-ES';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (event: any) => {
+      const results = event.results;
+      if (!results || results.length === 0) return;
+      const lastResult = results[results.length - 1];
+      const transcript = lastResult?.[0]?.transcript ?? '';
+      if (!shouldAutoSend(transcript)) return;
+      if (autoSendRef.current || stopInProgressRef.current) return;
+      autoSendRef.current = true;
+      stopVoiceCommandListener();
+      void stopRecording();
+    };
+    recognition.onerror = () => {
+      stopVoiceCommandListener();
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
 
   useEffect(() => {
     const initialSessionId = localStorage.getItem(STORAGE_KEY);
@@ -213,20 +258,6 @@ const AdminAiAssistant: React.FC = () => {
     window.speechSynthesis.speak(utterance);
   };
 
-  const stopVoiceCommandListener = () => {
-    const recognition = recognitionRef.current;
-    if (!recognition) return;
-    recognition.onresult = null;
-    recognition.onerror = null;
-    recognition.onend = null;
-    try {
-      recognition.stop();
-    } catch {
-      // Ignore stop errors for unsupported implementations.
-    }
-    recognitionRef.current = null;
-  };
-
   useEffect(() => {
     return () => {
       stopSpeaking();
@@ -236,7 +267,10 @@ const AdminAiAssistant: React.FC = () => {
 
   const stopRecording = async () => {
     const recorder = recorderRef.current;
-    if (!recorder) return;
+    if (!recorder || stopInProgressRef.current) return;
+    stopInProgressRef.current = true;
+    const autoSendRequested = autoSendRef.current;
+    autoSendRef.current = false;
     stopVoiceCommandListener();
     setIsRecording(false);
     if (timerRef.current) {
@@ -244,36 +278,36 @@ const AdminAiAssistant: React.FC = () => {
       timerRef.current = null;
     }
 
-    const blob = await new Promise<Blob>((resolve) => {
-      const finalize = () => {
-        recorder.removeEventListener('stop', finalize);
-        resolve(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }));
-      };
-      recorder.addEventListener('stop', finalize);
-      if (recorder.state === 'recording') {
-        try {
-          recorder.requestData();
-        } catch {
-          // Ignore requestData errors for unsupported implementations.
-        }
-        recorder.stop();
-      } else {
-        finalize();
-      }
-    });
-    chunksRef.current = [];
-    if (blob.size === 0) {
-      toast({
-        title: 'Audio vacío',
-        description: 'No se detectó audio para transcribir.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!user) return;
-    setIsTranscribing(true);
     try {
+      const blob = await new Promise<Blob>((resolve) => {
+        const finalize = () => {
+          recorder.removeEventListener('stop', finalize);
+          resolve(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }));
+        };
+        recorder.addEventListener('stop', finalize);
+        if (recorder.state === 'recording') {
+          try {
+            recorder.requestData();
+          } catch {
+            // Ignore requestData errors for unsupported implementations.
+          }
+          recorder.stop();
+        } else {
+          finalize();
+        }
+      });
+      chunksRef.current = [];
+      if (blob.size === 0) {
+        toast({
+          title: 'Audio vacío',
+          description: 'No se detectó audio para transcribir.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (!user) return;
+      setIsTranscribing(true);
       const extension = getFileExtension(blob.type);
       const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blob.type });
       const response = await postAiAssistantTranscribe({
@@ -288,15 +322,29 @@ const AdminAiAssistant: React.FC = () => {
         });
         return;
       }
-      const cleaned = stripSendCommand(response.text);
+      const cleaned = response.text.trim();
       if (!cleaned.trim()) {
         toast({
           title: 'Sin texto',
-          description: 'No detecte contenido antes de "enviar".',
+          description: 'No se detecto texto util en el audio.',
         });
         return;
       }
-      await sendMessage(cleaned);
+      const wantsAutoSend = autoSendRequested || shouldAutoSend(cleaned);
+      const payload = wantsAutoSend ? stripSendCommand(cleaned) : cleaned;
+      if (!payload.trim()) {
+        toast({
+          title: 'Sin mensaje',
+          description: 'No se detecto contenido antes de "enviar".',
+        });
+        return;
+      }
+      if (wantsAutoSend) {
+        await sendMessage(payload);
+        return;
+      }
+      setInput((prev) => (prev.trim() ? `${prev}\n${payload}` : payload));
+      inputRef.current?.focus();
     } catch (error) {
       toast({
         title: 'Error al transcribir',
@@ -305,38 +353,8 @@ const AdminAiAssistant: React.FC = () => {
       });
     } finally {
       setIsTranscribing(false);
+      stopInProgressRef.current = false;
     }
-  };
-
-  const startVoiceCommandListener = () => {
-    if (!supportsVoiceCommand) return;
-    stopVoiceCommandListener();
-    const SpeechRecognitionConstructor =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionConstructor) return;
-    const recognition = new SpeechRecognitionConstructor();
-    recognition.lang = 'es-ES';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.onresult = (event: any) => {
-      const results = event.results;
-      if (!results || results.length === 0) return;
-      const lastResult = results[results.length - 1];
-      const transcript = lastResult?.[0]?.transcript ?? '';
-      if (!isSendCommand(transcript)) return;
-      if (autoStopRef.current) return;
-      autoStopRef.current = true;
-      stopVoiceCommandListener();
-      void stopRecording();
-    };
-    recognition.onerror = () => {
-      stopVoiceCommandListener();
-    };
-    recognition.onend = () => {
-      recognitionRef.current = null;
-    };
-    recognitionRef.current = recognition;
-    recognition.start();
   };
 
   const startRecording = async () => {
@@ -356,7 +374,7 @@ const AdminAiAssistant: React.FC = () => {
       const mimeType = getSupportedMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       chunksRef.current = [];
-      autoStopRef.current = false;
+      autoSendRef.current = false;
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
@@ -510,9 +528,9 @@ const AdminAiAssistant: React.FC = () => {
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Pulsa el microfono para dictar. Di "enviar" al final para enviar sin tocar el boton. El mensaje
-                      se transcribe y se envia como texto. Ademas,
-                      puedes escuchar cualquier respuesta del asistente.
+                      Pulsa el microfono para dictar y vuelve a pulsarlo para detener. Si dices "enviar" al final, el
+                      mensaje se enviara automaticamente. Si no, la transcripcion quedara en el campo de texto para
+                      revisarla y luego enviarla. Ademas, puedes escuchar cualquier respuesta del asistente.
                     </p>
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">

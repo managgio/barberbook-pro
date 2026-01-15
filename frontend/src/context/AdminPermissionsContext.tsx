@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { AdminRole, AdminSectionKey } from '@/data/types';
+import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTION_KEYS } from '@/data/adminSections';
 import { getAdminRoles } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,10 +16,23 @@ const AdminPermissionsContext = createContext<AdminPermissionsContextValue | und
 
 export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const { currentLocationId } = useTenant();
+  const { currentLocationId, tenant } = useTenant();
   const { toast } = useToast();
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const tenantHiddenSections = useMemo(() => {
+    const hidden = tenant?.config?.adminSidebar?.hiddenSections;
+    if (!Array.isArray(hidden)) return [];
+    return hidden.filter((section): section is AdminSectionKey => ADMIN_SECTION_KEYS.includes(section as AdminSectionKey));
+  }, [tenant?.config?.adminSidebar?.hiddenSections]);
+
+  const isSectionEnabledForTenant = useCallback(
+    (section: AdminSectionKey) => {
+      if (ADMIN_REQUIRED_SECTIONS.includes(section)) return true;
+      return !tenantHiddenSections.includes(section);
+    },
+    [tenantHiddenSections],
+  );
 
   useEffect(() => {
     let active = true;
@@ -67,12 +81,13 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
   const canAccessSection = useCallback(
     (section: AdminSectionKey) => {
       if (!user) return false;
+      if (!isSectionEnabledForTenant(section)) return false;
       if (user.isSuperAdmin || user.isPlatformAdmin) return true;
       if (user.role !== 'admin' || !user.isLocalAdmin) return false;
       if (!user.adminRoleId) return true;
       return currentRole?.permissions.includes(section) ?? false;
     },
-    [currentRole, user],
+    [currentRole, isSectionEnabledForTenant, user],
   );
 
   const value = useMemo(

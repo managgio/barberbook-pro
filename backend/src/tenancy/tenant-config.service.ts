@@ -55,9 +55,14 @@ export class TenantConfigService {
       this.getLocationConfig(),
     ]);
     const theme = mergeConfig(brandConfig.theme || {}, locationConfig.theme || {});
+    const adminSidebar = mergeConfig(
+      brandConfig.adminSidebar || {},
+      locationConfig.adminSidebar || {},
+    );
     return {
       branding: brandConfig.branding || null,
       theme: Object.keys(theme).length ? theme : null,
+      adminSidebar: Object.keys(adminSidebar).length ? adminSidebar : null,
     };
   }
 }
