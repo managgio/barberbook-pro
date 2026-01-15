@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { HolidaysService } from '../holidays/holidays.service';
+import { AlertsService } from '../alerts/alerts.service';
 import {
   formatTimeInTimeZone,
   getDateStringInTimeZone,
@@ -13,7 +14,14 @@ import {
   parseTimeFromText,
   toDateInTimeZone,
 } from './ai-assistant.utils';
-import { AiCreateAppointmentResult, AiHolidayActionResult, AiToolContext, AiToolName } from './ai-assistant.types';
+import { AlertType } from '@prisma/client';
+import {
+  AiCreateAlertResult,
+  AiCreateAppointmentResult,
+  AiHolidayActionResult,
+  AiToolContext,
+  AiToolName,
+} from './ai-assistant.types';
 
 const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
   {
@@ -89,6 +97,31 @@ const TOOL_DEFINITIONS: OpenAI.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'create_alert',
+      description: 'Crea una alerta para clientes con titulo, mensaje y tipo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Titulo conciso y claro.' },
+          message: { type: 'string', description: 'Mensaje algo mas descriptivo y cercano.' },
+          type: {
+            type: 'string',
+            enum: ['info', 'warning', 'success'],
+            description: 'Tipo de alerta (info, warning o success).',
+          },
+          active: { type: 'boolean', description: 'Si la alerta debe quedar activa.' },
+          startDate: { type: 'string', description: 'Fecha inicio YYYY-MM-DD (opcional).' },
+          endDate: { type: 'string', description: 'Fecha fin YYYY-MM-DD (opcional).' },
+          rawText: { type: 'string', description: 'Texto original del usuario.' },
+        },
+        required: ['title', 'message', 'type'],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 @Injectable()
@@ -97,6 +130,7 @@ export class AiToolsRegistry {
     private readonly prisma: PrismaService,
     private readonly appointmentsService: AppointmentsService,
     private readonly holidaysService: HolidaysService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   getTools() {
@@ -111,6 +145,8 @@ export class AiToolsRegistry {
         return this.addShopHoliday(args, context);
       case 'add_barber_holiday':
         return this.addBarberHoliday(args, context);
+      case 'create_alert':
+        return this.createAlert(args);
       default:
         throw new Error(`Tool no soportada: ${toolName}`);
     }
@@ -678,6 +714,50 @@ export class AiToolsRegistry {
           users,
         },
       },
+    };
+  }
+
+  private normalizeAlertType(input: string): AlertType | null {
+    const value = input.trim().toLowerCase();
+    if (!value) return null;
+    if (value === 'success' || value === 'exito' || value === 'éxito') return AlertType.success;
+    if (value === 'warning' || value === 'advertencia') return AlertType.warning;
+    if (value === 'info' || value === 'informacion' || value === 'información') return AlertType.info;
+    return null;
+  }
+
+  private async createAlert(args: Record<string, unknown>): Promise<AiCreateAlertResult> {
+    const title = typeof args.title === 'string' ? args.title.trim() : '';
+    const message = typeof args.message === 'string' ? args.message.trim() : '';
+    const typeRaw = typeof args.type === 'string' ? args.type : '';
+    const type = this.normalizeAlertType(typeRaw);
+    const active = typeof args.active === 'boolean' ? args.active : true;
+    const startDate = typeof args.startDate === 'string' ? args.startDate.trim() : '';
+    const endDate = typeof args.endDate === 'string' ? args.endDate.trim() : '';
+
+    if (!title || !message || !type) {
+      const missing: string[] = [];
+      if (!title) missing.push('title');
+      if (!message) missing.push('message');
+      if (!type) missing.push('type');
+      return { status: 'needs_info', missing };
+    }
+
+    const created = await this.alertsService.create({
+      title,
+      message,
+      type,
+      active,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    });
+
+    return {
+      status: 'created',
+      alertId: created.id,
+      title: created.title,
+      message: created.message,
+      type: created.type,
     };
   }
 }

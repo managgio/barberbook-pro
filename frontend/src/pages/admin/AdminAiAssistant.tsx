@@ -20,7 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getAiAssistantSession, postAiAssistantChat, postAiAssistantTranscribe } from '@/data/api';
 import { AiChatResponse } from '@/data/types';
 import { cn } from '@/lib/utils';
-import { dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
+import { dispatchAlertsUpdated, dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
 
 interface ChatMessage {
   id: string;
@@ -196,6 +196,9 @@ const AdminAiAssistant: React.FC = () => {
     }
     if (response.actions?.holidaysChanged) {
       dispatchHolidaysUpdated({ source: 'ai-assistant' });
+    }
+    if (response.actions?.alertsChanged) {
+      dispatchAlertsUpdated({ source: 'ai-assistant' });
     }
   };
 
@@ -472,6 +475,9 @@ const AdminAiAssistant: React.FC = () => {
                 Festivos local o barberos
               </span>
               <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
+                Alertas y avisos
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
                 Audio y escucha
               </span>
             </div>
@@ -518,6 +524,28 @@ const AdminAiAssistant: React.FC = () => {
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
                         Crea un festivo para el salon el 5 y otro del 8 al 10 de marzo para Ana.
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="alertas" className="border-border/60">
+                <AccordionTrigger className="text-sm">Alertas: anuncios, avisos y novedades</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Describe el tema de la alerta y el asistente redacta el titulo y el mensaje con el tono adecuado.
+                      Clasifica automaticamente si es exito, advertencia o informacion.
+                    </p>
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Crea una alerta para anunciar un nuevo servicio de color premium.
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Avisa del cierre del salon este sabado por la tarde.
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Alerta informativa para felicitar San Valentin a los clientes.
                       </div>
                     </div>
                   </div>
@@ -635,6 +663,17 @@ const AdminAiAssistant: React.FC = () => {
                 disabled={isSending || isTranscribing || isRecording}
               >
                 Crear festivo
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  applyTemplate('Crea una alerta para [motivo o anuncio] dirigida a los clientes.')
+                }
+                disabled={isSending || isTranscribing || isRecording}
+              >
+                Crear alerta
               </Button>
             </div>
             <div className="flex gap-3 items-end">

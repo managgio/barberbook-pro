@@ -1,4 +1,4 @@
-export type AiToolName = 'add_shop_holiday' | 'add_barber_holiday' | 'create_appointment';
+export type AiToolName = 'add_shop_holiday' | 'add_barber_holiday' | 'create_appointment' | 'create_alert';
 
 export interface AiToolContext {
   adminUserId: string;
@@ -38,4 +38,13 @@ export interface AiCreateAppointmentResult {
   guestName?: string;
   clientName?: string;
   matchCount?: number;
+}
+
+export interface AiCreateAlertResult {
+  status: 'created' | 'needs_info' | 'error';
+  missing?: string[];
+  alertId?: string;
+  title?: string;
+  message?: string;
+  type?: 'info' | 'warning' | 'success';
 }

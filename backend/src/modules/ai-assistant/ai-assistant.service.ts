@@ -7,7 +7,7 @@ import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { AiMemoryService } from './ai-memory.service';
 import { AiToolsRegistry } from './ai-tools.registry';
 import { AI_SYSTEM_PROMPT, buildSummaryPrompt } from './ai-assistant.prompt';
-import { AiCreateAppointmentResult, AiHolidayActionResult, AiToolName } from './ai-assistant.types';
+import { AiCreateAlertResult, AiCreateAppointmentResult, AiHolidayActionResult, AiToolName } from './ai-assistant.types';
 import { AI_TIME_ZONE, formatTimeInTimeZone, getDateStringInTimeZone } from './ai-assistant.utils';
 
 const MAX_HISTORY_MESSAGES = 16;
@@ -20,6 +20,7 @@ export interface AiChatResult {
   actions?: {
     appointmentsChanged?: boolean;
     holidaysChanged?: boolean;
+    alertsChanged?: boolean;
   };
 }
 
@@ -50,6 +51,7 @@ export class AiAssistantService {
     const recentMessages = await this.memory.getRecentMessages(session.id, MAX_HISTORY_MESSAGES);
 
     const now = new Date();
+    const alertPriority = this.hasAlertPriority(message);
     const nowDate = getDateStringInTimeZone(now, AI_TIME_ZONE);
     const nowTime = formatTimeInTimeZone(now, AI_TIME_ZONE);
 
@@ -73,12 +75,29 @@ export class AiAssistantService {
       messages.push({ role: msg.role as 'user' | 'assistant', content: msg.content });
     });
 
-    const toolDefs = this.getToolDefinitions(message);
+    if (alertPriority) {
+      const alertResult = await this.createAlertFromText(message, session.id, adminUserId, now);
+      const alertMessage = this.buildAlertResponse(alertResult);
+      const assistantMessage = alertMessage || 'Alerta creada.';
+      await this.memory.appendMessage({
+        sessionId: session.id,
+        role: 'assistant',
+        content: assistantMessage,
+      });
+      return {
+        sessionId: session.id,
+        assistantMessage,
+        actions: alertResult.status === 'created' ? { alertsChanged: true } : undefined,
+      };
+    }
+
+    let toolDefs = this.getToolDefinitions(message);
     let assistantMessage = '';
     let appointmentsChanged = false;
     let holidaysChanged = false;
+    let alertsChanged = false;
     const lastAssistantMessage = [...recentMessages].reverse().find((msg) => msg.role === 'assistant')?.content ?? '';
-    const forcedTool = this.detectForcedTool(message, lastAssistantMessage);
+    let forcedTool = this.detectForcedTool(message, lastAssistantMessage);
 
     try {
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -107,6 +126,7 @@ export class AiAssistantService {
           const holidayNeedsInfoMessages: string[] = [];
           const holidayErrorMessages: string[] = [];
           let appointmentMessage: string | null = null;
+          let alertMessage: string | null = null;
 
           for (const toolCall of responseMessage.tool_calls) {
             const toolName = toolCall.function.name as AiToolName;
@@ -145,6 +165,13 @@ export class AiAssistantService {
               }
             }
 
+            if (toolName === 'create_alert') {
+              alertMessage = this.buildAlertResponse(toolResult as AiCreateAlertResult);
+              if ((toolResult as AiCreateAlertResult).status === 'created') {
+                alertsChanged = true;
+              }
+            }
+
             if (toolName === 'add_barber_holiday' || toolName === 'add_shop_holiday') {
               const holidayResult = toolResult as AiHolidayActionResult;
               if (holidayResult.status === 'added') {
@@ -179,6 +206,7 @@ export class AiAssistantService {
 
           const responseParts = [
             ...(appointmentMessage ? [appointmentMessage] : []),
+            ...(alertMessage ? [alertMessage] : []),
             ...holidaySuccessMessages,
             ...holidayErrorMessages,
             ...holidayNeedsInfoMessages,
@@ -222,10 +250,11 @@ export class AiAssistantService {
       sessionId: session.id,
       assistantMessage,
       actions:
-        appointmentsChanged || holidaysChanged
+        appointmentsChanged || holidaysChanged || alertsChanged
           ? {
               ...(appointmentsChanged ? { appointmentsChanged } : {}),
               ...(holidaysChanged ? { holidaysChanged } : {}),
+              ...(alertsChanged ? { alertsChanged } : {}),
             }
           : undefined,
     };
@@ -389,11 +418,131 @@ export class AiAssistantService {
     return null;
   }
 
+  private buildAlertResponse(result: AiCreateAlertResult): string | null {
+    if (result.status === 'error') {
+      return 'No pude crear la alerta ahora mismo.';
+    }
+    if (result.status === 'needs_info') {
+      return 'Necesito un poco mas de detalle sobre la alerta para poder crearla.';
+    }
+    if (result.status === 'created') {
+      const title = result.title ? ` ${result.title}` : '';
+      return `Alerta creada.${title}`;
+    }
+    return null;
+  }
+
+  private pickAlertTypeFromText(text: string): 'success' | 'warning' | 'info' {
+    const normalized = this.normalizeIntentText(text);
+    if (/\b(cierre|cerrad|cerrar|cerrado|suspens|incidenc|importante|urgente)\b/.test(normalized)) {
+      return 'warning';
+    }
+    if (/\b(nuevo|nueva|incorpor|oferta|promo|servicio|barbero|barbera|equipo)\b/.test(normalized)) {
+      return 'success';
+    }
+    if (/\b(navidad|san valentin|san valent[iní]|feliz|felices|fiesta|festividad)\b/.test(normalized)) {
+      return 'info';
+    }
+    return 'info';
+  }
+
+  private extractAlertTopic(text: string) {
+    return text
+      .replace(/^[^a-z]*?(crea|crear|lanza|genera|publica|publicar)\s+una?\s+(alerta|aviso|anuncio)\s+(para|sobre|de)?\s*/i, '')
+      .replace(/[.?!]+$/g, '')
+      .trim();
+  }
+
+  private parseJsonObject(text: string) {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) return null;
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+
+  private async generateAlertDraft(text: string) {
+    const completion = await (await this.getClient()).chat.completions.create({
+      model: await this.getModel(),
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Redacta alertas para clientes. Devuelve solo JSON con keys title, message, type (success|warning|info). ' +
+            'Titulo conciso. Mensaje ligeramente mas descriptivo, cercano y formal. Puedes usar exclamaciones si encaja.',
+        },
+        { role: 'user', content: text },
+      ],
+      temperature: 0.3,
+      max_tokens: 200,
+    });
+
+    const content = completion.choices[0]?.message?.content?.trim() || '';
+    const parsed = this.parseJsonObject(content) as { title?: string; message?: string; type?: string } | null;
+    const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
+    const message = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+    const typeRaw = typeof parsed?.type === 'string' ? parsed.type.trim().toLowerCase() : '';
+    const type =
+      typeRaw === 'success' || typeRaw === 'warning' || typeRaw === 'info'
+        ? (typeRaw as 'success' | 'warning' | 'info')
+        : this.pickAlertTypeFromText(text);
+
+    if (title && message) {
+      return { title, message, type };
+    }
+
+    const topic = this.extractAlertTopic(text) || text.trim();
+    const trimmedTopic = topic.length > 70 ? `${topic.slice(0, 67)}...` : topic;
+    const fallbackTitle = trimmedTopic ? `Aviso: ${trimmedTopic}` : 'Aviso importante';
+    const fallbackMessage = trimmedTopic
+      ? `Queremos informarte de que ${trimmedTopic}.`
+      : 'Queremos informarte de una novedad importante.';
+    return { title: fallbackTitle, message: fallbackMessage, type };
+  }
+
+  private async createAlertFromText(text: string, sessionId: string, adminUserId: string, now: Date) {
+    const draft = await this.generateAlertDraft(text);
+    const toolResult = await this.toolsRegistry.execute(
+      'create_alert',
+      {
+        title: draft.title,
+        message: draft.message,
+        type: draft.type,
+        active: true,
+        rawText: text,
+      },
+      { adminUserId, timeZone: AI_TIME_ZONE, now },
+    );
+
+    await this.memory.appendMessage({
+      sessionId,
+      role: 'tool',
+      content: JSON.stringify(toolResult),
+      toolName: 'create_alert',
+      toolPayload: toolResult,
+    });
+
+    return toolResult as AiCreateAlertResult;
+  }
+
   private normalizeIntentText(value: string) {
     return value
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private hasAlertPriority(message: string) {
+    const normalized = this.normalizeIntentText(message);
+    const hasAlertKeyword = /(alerta|aviso|anuncio|comunicado|notificacion)/.test(normalized);
+    const hasAlertVerb = /(avisar|avisa|avise|anunciar|anuncia|anuncie|comunicar|comunica|comunique|informar|informa|informe)/.test(
+      normalized,
+    );
+    const mentionsClients = /(clientes|usuarios|publico|clientela)/.test(normalized);
+    return hasAlertKeyword || (hasAlertVerb && mentionsClients);
   }
 
   private getIntentSignals(message: string) {
@@ -403,6 +552,8 @@ export class AiAssistantService {
         normalized,
         wantsHoliday: false,
         wantsAppointment: false,
+        wantsAlert: false,
+        hasAlertKeyword: false,
         isShop: false,
         hasBarberScope: false,
         hasMultiHolidayMarkers: false,
@@ -413,6 +564,11 @@ export class AiAssistantService {
       normalized,
     );
     const wantsAppointment = /\b(cita|reserv|agendar|programar)\b/.test(normalized);
+    const hasDirectAlertKeyword = this.hasAlertPriority(message);
+    const hasMessageForClients = /\bmensaje\b/.test(normalized)
+      && /\b(clientes|usuarios|publico)\b/.test(normalized);
+    const hasAlertKeyword = hasDirectAlertKeyword || hasMessageForClients;
+    const wantsAlert = hasAlertKeyword;
     const isShop = /\b(local|salon|barberia|negocio|tienda)\b/.test(normalized);
     const mentionsBarber = /\b(barber|barbero|barbera|peluquer|estilista|trabajador(?:a)?|emplead(?:o|a)?)\b/.test(
       normalized,
@@ -426,6 +582,8 @@ export class AiAssistantService {
       normalized,
       wantsHoliday,
       wantsAppointment,
+      wantsAlert,
+      hasAlertKeyword,
       isShop,
       hasBarberScope: mentionsBarber || hasNamedBarber,
       hasMultiHolidayMarkers,
@@ -435,6 +593,9 @@ export class AiAssistantService {
   private getToolDefinitions(message: string) {
     const tools = this.toolsRegistry.getTools();
     const intent = this.getIntentSignals(message);
+    if (intent.hasAlertKeyword) {
+      return tools.filter((tool) => tool.function.name === 'create_alert');
+    }
     if (intent.wantsHoliday && !intent.wantsAppointment) {
       return tools.filter((tool) => tool.function.name !== 'create_appointment');
     }
@@ -445,6 +606,10 @@ export class AiAssistantService {
     const intent = this.getIntentSignals(message);
     const { normalized } = intent;
     if (!normalized) return null;
+
+    if (intent.hasAlertKeyword || this.hasAlertPriority(message)) {
+      return 'create_alert';
+    }
 
     if (intent.wantsHoliday) {
       if (intent.isShop && intent.hasBarberScope) return null;
@@ -461,6 +626,9 @@ export class AiAssistantService {
     const lastNormalized = this.normalizeIntentText(lastAssistantMessage);
     const askedForInfo = /\b(necesito|indicame|indícame|falta|faltan)\b/.test(lastNormalized);
     if (!askedForInfo) return null;
+    if (/\b(alert[a-z]*|avis[a-z]*|anunci[a-z]*|comunic[a-z]*|notificacion)\b/.test(lastNormalized)) {
+      return 'create_alert';
+    }
     if (/\bcita\b/.test(lastNormalized)) {
       return 'create_appointment';
     }

@@ -276,6 +276,7 @@ export interface AiChatResponse {
   actions?: {
     appointmentsChanged?: boolean;
     holidaysChanged?: boolean;
+    alertsChanged?: boolean;
   };
 }
 

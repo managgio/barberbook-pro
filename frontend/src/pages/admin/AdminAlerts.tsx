@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
+import { ADMIN_EVENTS } from '@/lib/adminEvents';
 
 const AdminAlerts: React.FC = () => {
   const { toast } = useToast();
@@ -35,15 +36,25 @@ const AdminAlerts: React.FC = () => {
     endDate: '',
   });
 
-  useEffect(() => {
-    fetchAlerts();
-  }, []);
-
   const fetchAlerts = async () => {
     const data = await getAlerts();
     setAlerts(data);
     setIsLoading(false);
   };
+
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void fetchAlerts();
+    };
+    window.addEventListener(ADMIN_EVENTS.alertsUpdated, handleRefresh);
+    return () => {
+      window.removeEventListener(ADMIN_EVENTS.alertsUpdated, handleRefresh);
+    };
+  }, []);
 
   const openCreateDialog = () => {
     setEditingAlert(null);

@@ -5,6 +5,7 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 ## Alcance general
 - Crear citas nuevas con validación de disponibilidad
 - Añadir festivos/vacaciones para el local o barberos
+- Crear alertas para clientes (titulo + mensaje + tipo)
 - Entrada por voz (transcripción automática)
 - Respuestas claras y directas
 
@@ -19,12 +20,18 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 3) add_barber_holiday
    - Añade vacaciones para uno o varios barberos (o todos)
 
+4) create_alert
+   - Crea alertas informativas/advertencia/exito con titulo y mensaje
+
 ## Ejemplos de preguntas válidas
 - "Crea una cita para Marta mañana a las 18:00 con corte clásico y barbero Juan"
 - "Crea una cita para Luis el viernes que viene a las 10:30 con barba y barbero Sergio"
 - "Añade festivo el 5 de mayo"
 - "Festivo para Alejandro Ruiz del 10 al 12 de junio"
 - "Crea un festivo para el local el 12 de enero y otro del 15 al 18 para Juan y Pedro"
+- "Crea una alerta para anunciar un nuevo servicio de color"
+- "Avisa del cierre del salon este viernes por la tarde"
+- "Alerta informativa por San Valentin para felicitar a los clientes"
 
 ## Reglas de seguridad
 - Sin acceso directo a MySQL desde el modelo
