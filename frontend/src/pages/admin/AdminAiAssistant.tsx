@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/common/Skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import { getAiAssistantSession, postAiAssistantChat, postAiAssistantTranscribe } from '@/data/api';
 import { AiChatResponse } from '@/data/types';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,8 @@ const SEND_COMMAND = 'enviar';
 const AdminAiAssistant: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { canAccessSection } = useAdminPermissions();
+  const canCreateAlerts = canAccessSection('alerts');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -198,6 +201,7 @@ const AdminAiAssistant: React.FC = () => {
       dispatchHolidaysUpdated({ source: 'ai-assistant' });
     }
     if (response.actions?.alertsChanged) {
+      if (!canCreateAlerts) return;
       dispatchAlertsUpdated({ source: 'ai-assistant' });
     }
   };
@@ -474,9 +478,11 @@ const AdminAiAssistant: React.FC = () => {
               <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
                 Festivos local o barberos
               </span>
-              <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
-                Alertas y avisos
-              </span>
+              {canCreateAlerts && (
+                <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
+                  Alertas y avisos
+                </span>
+              )}
               <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
                 Audio y escucha
               </span>
@@ -529,28 +535,30 @@ const AdminAiAssistant: React.FC = () => {
                   </div>
                 </AccordionContent>
               </AccordionItem>
-              <AccordionItem value="alertas" className="border-border/60">
-                <AccordionTrigger className="text-sm">Alertas: anuncios, avisos y novedades</AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Describe el tema de la alerta y el asistente redacta el titulo y el mensaje con el tono adecuado.
-                      Clasifica automaticamente si es exito, advertencia o informacion.
-                    </p>
-                    <div className="space-y-2 text-xs text-muted-foreground">
-                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea una alerta para anunciar un nuevo servicio de color premium.
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Avisa del cierre del salon este sabado por la tarde.
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Alerta informativa para felicitar San Valentin a los clientes.
+              {canCreateAlerts && (
+                <AccordionItem value="alertas" className="border-border/60">
+                  <AccordionTrigger className="text-sm">Alertas: anuncios, avisos y novedades</AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Describe el tema de la alerta y el asistente redacta el titulo y el mensaje con el tono adecuado.
+                        Clasifica automaticamente si es exito, advertencia o informacion.
+                      </p>
+                      <div className="space-y-2 text-xs text-muted-foreground">
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Crea una alerta para anunciar un nuevo servicio de color premium.
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Avisa del cierre del salon este sabado por la tarde.
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Alerta informativa para felicitar San Valentin a los clientes.
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                  </AccordionContent>
+                </AccordionItem>
+              )}
               <AccordionItem value="audio" className="border-border/60">
                 <AccordionTrigger className="text-sm">Audio y escucha: manos libres</AccordionTrigger>
                 <AccordionContent>
@@ -664,17 +672,19 @@ const AdminAiAssistant: React.FC = () => {
               >
                 Crear festivo
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                onClick={() =>
-                  applyTemplate('Crea una alerta para [motivo o anuncio] dirigida a los clientes.')
-                }
-                disabled={isSending || isTranscribing || isRecording}
-              >
-                Crear alerta
-              </Button>
+              {canCreateAlerts && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() =>
+                    applyTemplate('Crea una alerta para [motivo o anuncio] dirigida a los clientes.')
+                  }
+                  disabled={isSending || isTranscribing || isRecording}
+                >
+                  Crear alerta
+                </Button>
+              )}
             </div>
             <div className="flex gap-3 items-end">
               <Button

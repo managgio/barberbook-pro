@@ -51,6 +51,7 @@ export class AiAssistantService {
     const recentMessages = await this.memory.getRecentMessages(session.id, MAX_HISTORY_MESSAGES);
 
     const now = new Date();
+    const alertsEnabled = await this.isAlertsEnabledForTenant();
     const alertPriority = this.hasAlertPriority(message);
     const nowDate = getDateStringInTimeZone(now, AI_TIME_ZONE);
     const nowTime = formatTimeInTimeZone(now, AI_TIME_ZONE);
@@ -76,6 +77,18 @@ export class AiAssistantService {
     });
 
     if (alertPriority) {
+      if (!alertsEnabled) {
+        const assistantMessage = 'La seccion de alertas no esta disponible para este local.';
+        await this.memory.appendMessage({
+          sessionId: session.id,
+          role: 'assistant',
+          content: assistantMessage,
+        });
+        return {
+          sessionId: session.id,
+          assistantMessage,
+        };
+      }
       const alertResult = await this.createAlertFromText(message, session.id, adminUserId, now);
       const alertMessage = this.buildAlertResponse(alertResult);
       const assistantMessage = alertMessage || 'Alerta creada.';
@@ -92,12 +105,18 @@ export class AiAssistantService {
     }
 
     let toolDefs = this.getToolDefinitions(message);
+    if (!alertsEnabled) {
+      toolDefs = toolDefs.filter((tool) => tool.function.name !== 'create_alert');
+    }
     let assistantMessage = '';
     let appointmentsChanged = false;
     let holidaysChanged = false;
     let alertsChanged = false;
     const lastAssistantMessage = [...recentMessages].reverse().find((msg) => msg.role === 'assistant')?.content ?? '';
     let forcedTool = this.detectForcedTool(message, lastAssistantMessage);
+    if (!alertsEnabled && forcedTool === 'create_alert') {
+      forcedTool = null;
+    }
 
     try {
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -526,6 +545,12 @@ export class AiAssistantService {
     });
 
     return toolResult as AiCreateAlertResult;
+  }
+
+  private async isAlertsEnabledForTenant() {
+    const config = await this.tenantConfig.getPublicConfig();
+    const hidden = config?.adminSidebar?.hiddenSections || [];
+    return !hidden.includes('alerts');
   }
 
   private normalizeIntentText(value: string) {
