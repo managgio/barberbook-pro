@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { TenantBootstrap, Location } from '@/data/types';
-import { getTenantBootstrap } from '@/data/api';
+import { Location, SiteSettings, TenantBootstrap } from '@/data/types';
+import { getSiteSettings, getTenantBootstrap } from '@/data/api';
 import { getStoredLocalId, setStoredLocalId } from '@/lib/tenant';
 import { initFirebase } from '@/lib/firebaseConfig';
 import { applyTheme, MANAGGIO_PRIMARY } from '@/lib/theme';
+import managgioLogo from '@/assets/img/managgio/logo.png';
 
 interface TenantContextValue {
   tenant: TenantBootstrap | null;
@@ -23,6 +24,9 @@ type TenantError = {
 };
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
+const DEFAULT_FAVICON = managgioLogo;
+const PLATFORM_TITLE = 'Managgio | Plataforma';
+const PLATFORM_DESCRIPTION = 'Panel de plataforma para gestionar marcas, locales y credenciales en Managgio.';
 
 const resolveLocalId = (bootstrap: TenantBootstrap) => {
   const stored = getStoredLocalId();
@@ -64,6 +68,135 @@ const resolveTenantError = (error: unknown): TenantError => {
   };
 };
 
+const upsertMeta = (attr: 'name' | 'property', key: string, content: string) => {
+  if (typeof document === 'undefined') return;
+  const selector = `meta[${attr}="${key}"]`;
+  let element = document.head.querySelector(selector) as HTMLMetaElement | null;
+  if (!element) {
+    element = document.createElement('meta');
+    element.setAttribute(attr, key);
+    document.head.appendChild(element);
+  }
+  element.setAttribute('content', content);
+};
+
+const upsertLink = (rel: string, href: string, type?: string) => {
+  if (typeof document === 'undefined') return;
+  const selector = `link[rel="${rel}"]`;
+  let element = document.head.querySelector(selector) as HTMLLinkElement | null;
+  if (!element) {
+    element = document.createElement('link');
+    element.setAttribute('rel', rel);
+    document.head.appendChild(element);
+  }
+  element.setAttribute('href', href);
+  if (type) element.setAttribute('type', type);
+  else element.removeAttribute('type');
+};
+
+const removeMeta = (attr: 'name' | 'property', key: string) => {
+  if (typeof document === 'undefined') return;
+  const selector = `meta[${attr}="${key}"]`;
+  const element = document.head.querySelector(selector);
+  if (element) element.remove();
+};
+
+const resolveMetaText = (...values: Array<string | null | undefined>) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+};
+
+const resolveImageUrl = (source: string) => {
+  if (!source) return '';
+  if (/^https?:\/\//i.test(source) || source.startsWith('data:')) return source;
+  if (typeof window === 'undefined') return source;
+  return new URL(source, window.location.origin).toString();
+};
+
+const resolveIconType = (source: string) => {
+  const clean = source.toLowerCase();
+  if (clean.endsWith('.svg')) return 'image/svg+xml';
+  if (clean.endsWith('.png')) return 'image/png';
+  if (clean.endsWith('.jpg') || clean.endsWith('.jpeg')) return 'image/jpeg';
+  if (clean.endsWith('.ico')) return 'image/x-icon';
+  return undefined;
+};
+
+const resolveTwitterHandle = (value?: string) => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const handle = url.pathname.replace(/^\/+/, '').split('/')[0];
+      const clean = handle.replace(/^@+/, '');
+      return clean ? `@${clean}` : '';
+    } catch {
+      return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+    }
+  }
+  const clean = trimmed.replace(/^@+/, '');
+  return clean ? `@${clean}` : '';
+};
+
+const applyMeta = (payload: {
+  title: string;
+  description: string;
+  imageUrl: string;
+  author?: string;
+  twitterSite?: string;
+}) => {
+  if (typeof document === 'undefined') return;
+  const resolvedImage = resolveImageUrl(payload.imageUrl);
+  const iconType = resolveIconType(resolvedImage);
+  document.title = payload.title;
+  upsertMeta('name', 'description', payload.description);
+  if (payload.author) upsertMeta('name', 'author', payload.author);
+  upsertMeta('property', 'og:title', payload.title);
+  upsertMeta('property', 'og:description', payload.description);
+  upsertMeta('property', 'og:type', 'website');
+  upsertMeta('property', 'og:image', resolvedImage);
+  upsertMeta('name', 'twitter:title', payload.title);
+  upsertMeta('name', 'twitter:description', payload.description);
+  upsertMeta('name', 'twitter:image', resolvedImage);
+  upsertMeta('name', 'twitter:card', 'summary_large_image');
+  if (payload.twitterSite) upsertMeta('name', 'twitter:site', payload.twitterSite);
+  else removeMeta('name', 'twitter:site');
+  upsertLink('icon', resolvedImage, iconType);
+  upsertLink('apple-touch-icon', resolvedImage);
+};
+
+const buildTenantMeta = (bootstrap: TenantBootstrap, settings?: SiteSettings | null) => {
+  const isPlatform = Boolean(bootstrap.isPlatform);
+  if (isPlatform) {
+    return {
+      title: PLATFORM_TITLE,
+      description: PLATFORM_DESCRIPTION,
+      imageUrl: managgioLogo,
+      author: 'Managgio',
+    };
+  }
+
+  const branding = settings?.branding;
+  const brandName = resolveMetaText(branding?.name, bootstrap.config?.branding?.name, bootstrap.brand?.name, 'Managgio');
+  const tagline = resolveMetaText(branding?.tagline);
+  const description = resolveMetaText(branding?.description, tagline, `${brandName} · Gestión de citas y servicios.`);
+  const imageUrl = resolveMetaText(bootstrap.config?.branding?.logoUrl, DEFAULT_FAVICON);
+  const title = tagline ? `${brandName} | ${tagline}` : brandName;
+  const twitterSite = resolveTwitterHandle(settings?.socials?.x);
+
+  return {
+    title,
+    description,
+    imageUrl,
+    author: brandName,
+    twitterSite,
+  };
+};
+
 export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tenant, setTenant] = useState<TenantBootstrap | null>(null);
   const [currentLocationId, setCurrentLocationId] = useState<string | null>(null);
@@ -78,6 +211,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setStoredLocalId(resolvedLocalId);
       setTenant(bootstrap);
       setCurrentLocationId(resolvedLocalId);
+      applyMeta(buildTenantMeta(bootstrap));
       const tenantTheme = bootstrap.isPlatform ? MANAGGIO_PRIMARY : bootstrap.config?.theme?.primary;
       applyTheme(tenantTheme);
       if (bootstrap.isPlatform && typeof document !== 'undefined') {
@@ -91,6 +225,16 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         initFirebase(fallback);
       }
       setIsReady(true);
+      if (!bootstrap.isPlatform) {
+        void (async () => {
+          try {
+            const settings = await getSiteSettings();
+            applyMeta(buildTenantMeta(bootstrap, settings));
+          } catch (error) {
+            console.error('Error cargando metadatos del cliente', error);
+          }
+        })();
+      }
     } catch (error) {
       console.error('Error cargando tenant', error);
       setTenantError(resolveTenantError(error));
@@ -101,6 +245,17 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     refreshTenant();
   }, []);
+
+  useEffect(() => {
+    if (!tenant || tenant.isPlatform || typeof window === 'undefined') return;
+    const handleSettingsUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<SiteSettings>;
+      if (!customEvent.detail) return;
+      applyMeta(buildTenantMeta(tenant, customEvent.detail));
+    };
+    window.addEventListener('site-settings-updated', handleSettingsUpdate as EventListener);
+    return () => window.removeEventListener('site-settings-updated', handleSettingsUpdate as EventListener);
+  }, [tenant]);
 
   const selectLocation = (localId: string) => {
     if (!tenant) return;
