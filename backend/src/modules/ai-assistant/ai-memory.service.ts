@@ -3,6 +3,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { AI_TIME_ZONE, getDateStringInTimeZone, getDayBoundsInTimeZone } from './ai-assistant.utils';
 
+const MAX_STORED_MESSAGES = 80;
+
 @Injectable()
 export class AiMemoryService {
   private lastCleanupDay: string | null = null;
@@ -18,8 +20,17 @@ export class AiMemoryService {
     await this.prisma.aiChatMessage.deleteMany({
       where: { createdAt: { lt: start }, localId },
     });
+    await this.prisma.aiChatSession.deleteMany({
+      where: {
+        localId,
+        OR: [
+          { lastMessageAt: { lt: start } },
+          { lastMessageAt: null, createdAt: { lt: start } },
+        ],
+      },
+    });
     await this.prisma.aiChatSession.updateMany({
-      where: { lastMessageAt: { lt: start }, localId },
+      where: { localId },
       data: { summary: '' },
     });
     this.lastCleanupDay = dayKey;
@@ -32,7 +43,13 @@ export class AiMemoryService {
       const existing = await this.prisma.aiChatSession.findFirst({
         where: { id: sessionId, adminUserId, localId },
       });
-      if (existing) return existing;
+      if (existing) {
+        const dayKey = getDateStringInTimeZone(new Date(), AI_TIME_ZONE);
+        const { start } = getDayBoundsInTimeZone(dayKey, AI_TIME_ZONE);
+        if (existing.lastMessageAt && existing.lastMessageAt >= start) {
+          return existing;
+        }
+      }
     }
     const localId = getCurrentLocalId();
     return this.prisma.aiChatSession.create({
@@ -52,6 +69,9 @@ export class AiMemoryService {
     toolName?: string | null;
     toolPayload?: unknown | null;
   }) {
+    if (params.role === 'tool') {
+      return null;
+    }
     const message = await this.prisma.aiChatMessage.create({
       data: {
         localId: getCurrentLocalId(),
@@ -66,6 +86,7 @@ export class AiMemoryService {
       where: { id: params.sessionId, localId: getCurrentLocalId() },
       data: { lastMessageAt: new Date() },
     });
+    await this.trimSessionMessages(params.sessionId, MAX_STORED_MESSAGES);
     return message;
   }
 
@@ -84,6 +105,13 @@ export class AiMemoryService {
       where: { id: sessionId, adminUserId, localId: getCurrentLocalId() },
     });
     if (!session) return null;
+    if (session.lastMessageAt) {
+      const dayKey = getDateStringInTimeZone(new Date(), AI_TIME_ZONE);
+      const { start } = getDayBoundsInTimeZone(dayKey, AI_TIME_ZONE);
+      if (session.lastMessageAt < start) {
+        return null;
+      }
+    }
     const messages = await this.prisma.aiChatMessage.findMany({
       where: { sessionId, role: { in: ['user', 'assistant'] }, localId: getCurrentLocalId() },
       orderBy: { createdAt: 'asc' },
@@ -118,6 +146,24 @@ export class AiMemoryService {
       where: { localId: getCurrentLocalId() },
       orderBy: { updatedAt: 'desc' },
       take: limit,
+    });
+  }
+
+  private async trimSessionMessages(sessionId: string, keep = MAX_STORED_MESSAGES) {
+    const localId = getCurrentLocalId();
+    const keepIds = await this.prisma.aiChatMessage.findMany({
+      where: { sessionId, localId },
+      orderBy: { createdAt: 'desc' },
+      take: keep,
+      select: { id: true },
+    });
+    if (keepIds.length < keep) return;
+    await this.prisma.aiChatMessage.deleteMany({
+      where: {
+        sessionId,
+        localId,
+        id: { notIn: keepIds.map((entry) => entry.id) },
+      },
     });
   }
 }

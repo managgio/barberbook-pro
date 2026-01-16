@@ -1,12 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UsageMetricsService } from '../usage-metrics/usage-metrics.service';
 import { AssignBrandAdminDto } from './dto/assign-brand-admin.dto';
 import { RemoveBrandAdminDto } from './dto/remove-brand-admin.dto';
 
 @Injectable()
 export class PlatformAdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usageMetrics: UsageMetricsService,
+  ) {}
 
   async listBrands() {
     return this.prisma.brand.findMany({
@@ -322,5 +326,9 @@ export class PlatformAdminService {
       update: { data: payload },
       create: { localId, data: payload },
     });
+  }
+
+  async getUsageMetrics(windowDays: number) {
+    return this.usageMetrics.getPlatformMetrics(windowDays);
   }
 }

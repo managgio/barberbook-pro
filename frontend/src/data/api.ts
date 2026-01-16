@@ -14,6 +14,7 @@ import {
   AiChatResponse,
   AiChatSessionResponse,
   TenantBootstrap,
+  PlatformUsageMetrics,
 } from './types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
 import { getAdminUserId } from '@/lib/authStorage';
@@ -306,6 +307,11 @@ const withPlatformHeaders = (adminUserId: string): PlatformAdminHeaders => ({
 
 export const getPlatformBrands = async (adminUserId: string): Promise<any[]> =>
   apiRequest('/platform/brands', {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformMetrics = async (adminUserId: string, windowDays = 7): Promise<PlatformUsageMetrics> =>
+  apiRequest(`/platform/metrics?window=${windowDays}`, {
     headers: withPlatformHeaders(adminUserId),
   });
 

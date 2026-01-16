@@ -7,6 +7,7 @@ import { SettingsService } from '../settings/settings.service';
 import { SiteSettings } from '../settings/settings.types';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
+import { UsageMetricsService } from '../usage-metrics/usage-metrics.service';
 
 interface ContactInfo {
   email?: string | null;
@@ -31,6 +32,7 @@ export class NotificationsService {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly tenantConfig: TenantConfigService,
+    private readonly usageMetrics: UsageMetricsService,
   ) {}
 
   private async getTransporter() {
@@ -231,11 +233,25 @@ export class NotificationsService {
     const message = `Recordatorio: cita ${formattedDate}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
 
     try {
-      await twilioConfig.client.messages.create({
+      const result = await twilioConfig.client.messages.create({
         messagingServiceSid: twilioConfig.messagingServiceSid,
         to: contact.phone,
         body: message,
       });
+      const rawPrice = result.price ? Math.abs(Number(result.price)) : null;
+      const priceUnit = result.priceUnit?.toUpperCase();
+      const fallbackCost = this.getTwilioSmsCostUsd();
+      const costUsd = priceUnit && priceUnit !== 'USD'
+        ? fallbackCost
+        : (Number.isFinite(rawPrice) ? rawPrice : fallbackCost);
+      if (costUsd !== null || fallbackCost !== null) {
+        void this.usageMetrics.recordTwilioUsage({
+          costUsd,
+          messages: 1,
+        });
+      } else {
+        void this.usageMetrics.recordTwilioUsage({ messages: 1 });
+      }
     } catch (error) {
       this.logger.error(`Error sending SMS to ${contact.phone}: ${error}`);
     }
@@ -255,5 +271,11 @@ export class NotificationsService {
       return candidate;
     }
     return null;
+  }
+
+  private getTwilioSmsCostUsd() {
+    const raw = process.env.TWILIO_SMS_COST_USD || '';
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 }

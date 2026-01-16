@@ -47,6 +47,12 @@ enum AiChatRole {
   tool
 }
 
+enum ProviderUsageType {
+  openai
+  twilio
+  imagekit
+}
+
 model User {
   id                  String      @id @default(cuid())
   firebaseUid         String?     @unique
@@ -81,6 +87,7 @@ model Brand {
   locations Location[]
   users     BrandUser[]
   config    BrandConfig?
+  providerUsageDaily ProviderUsageDaily[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }
@@ -393,4 +400,26 @@ model AiBusinessFact {
   @@unique([localId, key])
   @@index([localId])
   @@map("ai_business_facts")
+}
+
+model ProviderUsageDaily {
+  id                String            @id @default(cuid())
+  provider          ProviderUsageType
+  brandId           String
+  brand             Brand             @relation(fields: [brandId], references: [id])
+  dateKey           String            @map("date_key")
+  costUsd           Decimal           @default(0) @db.Decimal(12, 6)
+  tokensInput       Int               @default(0) @map("tokens_input")
+  tokensOutput      Int               @default(0) @map("tokens_output")
+  tokensTotal       Int               @default(0) @map("tokens_total")
+  messagesCount     Int               @default(0) @map("messages_count")
+  storageUsedBytes  BigInt            @default(0) @map("storage_used_bytes")
+  storageLimitBytes BigInt            @default(0) @map("storage_limit_bytes")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  @@unique([provider, brandId, dateKey])
+  @@index([provider, dateKey])
+  @@index([brandId])
+  @@map("provider_usage_daily")
 }

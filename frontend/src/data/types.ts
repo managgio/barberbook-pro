@@ -292,3 +292,27 @@ export interface AiChatSessionResponse {
   summary: string;
   messages: AiChatSessionMessage[];
 }
+
+export interface PlatformUsageSeriesPoint {
+  dateKey: string;
+  costUsd: number;
+  tokensInput: number;
+  tokensOutput: number;
+  tokensTotal: number;
+  messagesCount: number;
+  storageUsedBytes: number;
+  storageLimitBytes: number;
+}
+
+export interface PlatformUsageMetrics {
+  windowDays: number;
+  range: { start: string; end: string };
+  thresholds: {
+    openaiDailyCostUsd: number | null;
+    twilioDailyCostUsd: number | null;
+    imagekitStorageBytes: number | null;
+  };
+  openai: { series: PlatformUsageSeriesPoint[] };
+  twilio: { series: PlatformUsageSeriesPoint[] };
+  imagekit: { series: PlatformUsageSeriesPoint[] };
+}

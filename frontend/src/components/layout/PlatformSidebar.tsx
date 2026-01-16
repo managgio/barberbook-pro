@@ -3,8 +3,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck, LayoutDashboard, Building2, LogOut, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/context/AuthContext';
-import managgioLogo from '@/assets/img/managgio/logo.png';
+import managgioLogo from '@/assets/img/managgio/logo-app.png';
 
 const navItems = [
   { href: '/platform', label: 'Resumen', icon: LayoutDashboard },
@@ -35,8 +36,8 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
     >
       <div className={cn('border-b border-sidebar-border relative', collapsed ? 'p-4' : 'p-5')}>
         <Link to="/platform" className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
-          <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center shadow-sm">
-            <img src={managgioLogo} alt="Managgio logo" className="w-8 h-8 object-contain" />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center">
+            <img src={managgioLogo} alt="Managgio logo" className="w-10 h-10 object-contain" />
           </div>
           {!collapsed && (
             <div>
@@ -60,22 +61,41 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
       </div>
 
       <nav className={cn('flex-1 p-4 space-y-1', collapsed && 'px-2')}>
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            to={item.href}
-            className={cn(
-              'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-              isActive(item.href)
-                ? 'bg-sidebar-accent text-primary'
-                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-              collapsed && 'justify-center'
-            )}
-          >
-            <item.icon className="w-5 h-5" />
-            {!collapsed && item.label}
-          </Link>
-        ))}
+        {navItems.map((item) => {
+          const link = (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                isActive(item.href)
+                  ? 'bg-sidebar-accent text-primary'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                collapsed && 'justify-center'
+              )}
+            >
+              <item.icon className="w-5 h-5" />
+              {!collapsed && item.label}
+            </Link>
+          );
+
+          if (!collapsed) {
+            return (
+              <React.Fragment key={item.href}>
+                {link}
+              </React.Fragment>
+            );
+          }
+
+          return (
+            <Tooltip key={item.href}>
+              <TooltipTrigger asChild>{link}</TooltipTrigger>
+              <TooltipContent side="right" align="center" className="text-xs">
+                {item.label}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
       </nav>
 
       <div className="p-4 border-t border-sidebar-border">

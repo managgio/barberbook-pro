@@ -9,6 +9,7 @@ import { AiToolsRegistry } from './ai-tools.registry';
 import { AI_SYSTEM_PROMPT, buildSummaryPrompt } from './ai-assistant.prompt';
 import { AiCreateAlertResult, AiCreateAppointmentResult, AiHolidayActionResult, AiToolName } from './ai-assistant.types';
 import { AI_TIME_ZONE, formatTimeInTimeZone, getDateStringInTimeZone } from './ai-assistant.utils';
+import { UsageMetricsService } from '../usage-metrics/usage-metrics.service';
 
 const MAX_HISTORY_MESSAGES = 16;
 const SUMMARY_EVERY_MESSAGES = 8;
@@ -34,6 +35,7 @@ export class AiAssistantService {
     private readonly memory: AiMemoryService,
     private readonly toolsRegistry: AiToolsRegistry,
     private readonly tenantConfig: TenantConfigService,
+    private readonly usageMetrics: UsageMetricsService,
   ) {}
 
   async chat(adminUserId: string, message: string, sessionId?: string | null): Promise<AiChatResult> {
@@ -118,17 +120,22 @@ export class AiAssistantService {
       forcedTool = null;
     }
 
+    const model = await this.getModel();
+    const temperature = await this.getTemperature();
+    const maxTokens = await this.getMaxTokens();
+
     try {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const completion = await (await this.getClient()).chat.completions.create({
-          model: await this.getModel(),
+          model,
           messages,
           tools: toolDefs,
           tool_choice: forcedTool ? { type: 'function', function: { name: forcedTool } } : 'auto',
-          temperature: await this.getTemperature(),
-          max_tokens: await this.getMaxTokens(),
+          temperature,
+          max_tokens: maxTokens,
         });
 
+        void this.trackOpenAiUsage(completion.usage, model);
         const responseMessage = completion.choices[0]?.message;
         if (!responseMessage) {
           throw new ServiceUnavailableException('No se recibió respuesta del modelo');
@@ -212,14 +219,6 @@ export class AiAssistantService {
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify(toolResult),
-            });
-
-            await this.memory.appendMessage({
-              sessionId: session.id,
-              role: 'tool',
-              content: JSON.stringify(toolResult),
-              toolName,
-              toolPayload: toolResult,
             });
           }
 
@@ -484,8 +483,9 @@ export class AiAssistantService {
   }
 
   private async generateAlertDraft(text: string) {
+    const model = await this.getModel();
     const completion = await (await this.getClient()).chat.completions.create({
-      model: await this.getModel(),
+      model,
       messages: [
         {
           role: 'system',
@@ -499,6 +499,7 @@ export class AiAssistantService {
       max_tokens: 200,
     });
 
+    void this.trackOpenAiUsage(completion.usage, model);
     const content = completion.choices[0]?.message?.content?.trim() || '';
     const parsed = this.parseJsonObject(content) as { title?: string; message?: string; type?: string } | null;
     const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
@@ -535,14 +536,6 @@ export class AiAssistantService {
       },
       { adminUserId, timeZone: AI_TIME_ZONE, now },
     );
-
-    await this.memory.appendMessage({
-      sessionId,
-      role: 'tool',
-      content: JSON.stringify(toolResult),
-      toolName: 'create_alert',
-      toolPayload: toolResult,
-    });
 
     return toolResult as AiCreateAlertResult;
   }
@@ -672,9 +665,10 @@ export class AiAssistantService {
     const transcript = recentMessages.map((msg) => `${msg.role}: ${msg.content}`);
     const prompt = buildSummaryPrompt(previousSummary, transcript);
 
+    const model = await this.getModel();
     try {
       const completion = await (await this.getClient()).chat.completions.create({
-        model: await this.getModel(),
+        model,
         messages: [
           { role: 'system', content: 'Eres un asistente que resume conversaciones de negocio.' },
           { role: 'user', content: prompt },
@@ -682,12 +676,30 @@ export class AiAssistantService {
         temperature: 0.2,
         max_tokens: 200,
       });
+      void this.trackOpenAiUsage(completion.usage, model);
       const summary = completion.choices[0]?.message?.content?.trim();
       if (summary) {
         await this.memory.updateSummary(sessionId, summary);
       }
     } catch (error) {
       this.logger.warn('No se pudo actualizar el resumen de la sesión.');
+    }
+  }
+
+  private async trackOpenAiUsage(
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number },
+    model?: string,
+  ) {
+    if (!usage || !model) return;
+    try {
+      await this.usageMetrics.recordOpenAiUsage({
+        model,
+        promptTokens: usage.prompt_tokens ?? 0,
+        completionTokens: usage.completion_tokens ?? 0,
+        totalTokens: usage.total_tokens ?? 0,
+      });
+    } catch (error) {
+      this.logger.warn('No se pudo registrar el uso de OpenAI.');
     }
   }
 

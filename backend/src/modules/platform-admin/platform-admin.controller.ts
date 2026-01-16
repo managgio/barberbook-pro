@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { PlatformAdminService } from './platform-admin.service';
 import { CreateBrandDto } from './dto/create-brand.dto';
@@ -17,6 +17,12 @@ export class PlatformAdminController {
   @Get('brands')
   listBrands() {
     return this.platformService.listBrands();
+  }
+
+  @Get('metrics')
+  getUsageMetrics(@Query('window') window?: string) {
+    const parsed = window ? Number(window) : 7;
+    return this.platformService.getUsageMetrics(Number.isFinite(parsed) ? parsed : 7);
   }
 
   @Get('brands/:id')
