@@ -3,7 +3,13 @@ import { Prisma, ProviderUsageType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { getCurrentBrandId } from '../../tenancy/tenant.context';
-import { AI_TIME_ZONE, addDays, getDateStringInTimeZone, parseDateString } from '../ai-assistant/ai-assistant.utils';
+import {
+  AI_TIME_ZONE,
+  addDays,
+  getDateStringInTimeZone,
+  getDayBoundsInTimeZone,
+  parseDateString,
+} from '../ai-assistant/ai-assistant.utils';
 
 type OpenAiUsageParams = {
   model: string;
@@ -49,6 +55,27 @@ export type PlatformUsageMetrics = {
   imagekit: { series: ProviderDailySeriesPoint[] };
 };
 
+type OpenAiBucketBase<T = unknown> = {
+  start_time: number;
+  end_time?: number | null;
+  results?: T[] | null;
+};
+
+type OpenAiCostResult = {
+  amount?: { value?: number; currency?: string | null } | null;
+  line_item?: string | null;
+};
+
+type OpenAiUsageResult = {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  input_audio_tokens?: number | null;
+  output_audio_tokens?: number | null;
+};
+
+type OpenAiCostBucket = OpenAiBucketBase<OpenAiCostResult>;
+type OpenAiUsageBucket = OpenAiBucketBase<OpenAiUsageResult>;
+
 const OPENAI_PRICING_USD_PER_1K: Record<string, { input: number; output: number }> = {
   'gpt-4o': { input: 0.005, output: 0.015 },
   'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
@@ -68,9 +95,12 @@ const toNumber = (value?: Prisma.Decimal | number | null) => {
   return typeof value === 'number' ? value : Number(value);
 };
 
+const OPENAI_ORG_CACHE_TTL_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class UsageMetricsService {
   private readonly logger = new Logger(UsageMetricsService.name);
+  private readonly openAiOrgCache = new Map<string, { fetchedAt: number; series: ProviderDailySeriesPoint[] }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -150,16 +180,15 @@ export class UsageMetricsService {
     }
   }
 
-  async getPlatformMetrics(windowDays: number): Promise<PlatformUsageMetrics> {
+  async getPlatformMetrics(
+    windowDays: number,
+    options?: { forceOpenAi?: boolean },
+  ): Promise<PlatformUsageMetrics> {
     const normalizedWindow = [7, 14, 30].includes(windowDays) ? windowDays : 7;
     const { dateKeys, start, end } = this.buildDateRange(normalizedWindow);
 
-    const [openaiRows, twilioRows, imagekitRows] = await Promise.all([
-      this.prisma.providerUsageDaily.groupBy({
-        by: ['dateKey'],
-        where: { provider: 'openai', dateKey: { in: dateKeys } },
-        _sum: { costUsd: true, tokensInput: true, tokensOutput: true, tokensTotal: true },
-      }),
+    const [openaiSeries, twilioRows, imagekitRows] = await Promise.all([
+      this.getOpenAiOrganizationSeries(dateKeys, options?.forceOpenAi),
       this.prisma.providerUsageDaily.groupBy({
         by: ['dateKey'],
         where: { provider: 'twilio', dateKey: { in: dateKeys } },
@@ -171,18 +200,6 @@ export class UsageMetricsService {
         _sum: { storageUsedBytes: true, storageLimitBytes: true },
       }),
     ]);
-
-    const openaiMap = new Map(
-      openaiRows.map((row) => [
-        row.dateKey,
-        {
-          costUsd: toNumber(row._sum.costUsd),
-          tokensInput: row._sum.tokensInput ?? 0,
-          tokensOutput: row._sum.tokensOutput ?? 0,
-          tokensTotal: row._sum.tokensTotal ?? 0,
-        },
-      ]),
-    );
 
     const twilioMap = new Map(
       twilioRows.map((row) => [
@@ -206,20 +223,6 @@ export class UsageMetricsService {
 
     let lastStorageUsed = 0;
     let lastStorageLimit = 0;
-
-    const openaiSeries = dateKeys.map((dateKey) => {
-      const row = openaiMap.get(dateKey);
-      return {
-        dateKey,
-        costUsd: row?.costUsd ?? 0,
-        tokensInput: row?.tokensInput ?? 0,
-        tokensOutput: row?.tokensOutput ?? 0,
-        tokensTotal: row?.tokensTotal ?? 0,
-        messagesCount: 0,
-        storageUsedBytes: 0,
-        storageLimitBytes: 0,
-      };
-    });
 
     const twilioSeries = dateKeys.map((dateKey) => {
       const row = twilioMap.get(dateKey);
@@ -265,6 +268,156 @@ export class UsageMetricsService {
       twilio: { series: twilioSeries },
       imagekit: { series: imagekitSeries },
     };
+  }
+
+  private async getOpenAiOrganizationSeries(
+    dateKeys: string[],
+    forceRefresh = false,
+  ): Promise<ProviderDailySeriesPoint[]> {
+    const baseRange = this.buildDateRange(30);
+    const cacheKey = baseRange.end;
+    const cached = this.openAiOrgCache.get(cacheKey);
+    if (cached && !forceRefresh && Date.now() - cached.fetchedAt < OPENAI_ORG_CACHE_TTL_MS) {
+      const requested = new Set(dateKeys);
+      return cached.series.filter((entry) => requested.has(entry.dateKey));
+    }
+
+    const adminKey = process.env.OPENAI_ADMIN_KEY;
+    if (!adminKey) {
+      this.logger.warn('Falta OPENAI_ADMIN_KEY para obtener costes y tokens reales.');
+      return dateKeys.map((dateKey) => ({
+        dateKey,
+        costUsd: 0,
+        tokensInput: 0,
+        tokensOutput: 0,
+        tokensTotal: 0,
+        messagesCount: 0,
+        storageUsedBytes: 0,
+        storageLimitBytes: 0,
+      }));
+    }
+
+    const range = this.buildOpenAiRange(baseRange.dateKeys);
+    const costBuckets = await this.fetchOpenAiCosts(range.start, range.end, adminKey, baseRange.dateKeys.length);
+
+    const costsByDate = new Map<string, number>();
+    for (const bucket of costBuckets) {
+      const dateKey = this.resolveBucketDate(bucket.start_time);
+      if (!dateKey) continue;
+      const cost = (bucket.results ?? []).reduce<number>((sum, entry) => {
+        if (!this.isAllowedOpenAiCostLineItem(entry?.line_item)) return sum;
+        const rawValue = entry?.amount?.value;
+        const numeric = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+        const normalized = Number.isFinite(numeric) ? numeric : 0;
+        return sum + normalized;
+      }, 0);
+      costsByDate.set(dateKey, cost);
+    }
+
+    const series = baseRange.dateKeys.map((dateKey) => {
+      const costUsd = costsByDate.get(dateKey) ?? 0;
+      return {
+        dateKey,
+        costUsd,
+        tokensInput: 0,
+        tokensOutput: 0,
+        tokensTotal: 0,
+        messagesCount: 0,
+        storageUsedBytes: 0,
+        storageLimitBytes: 0,
+      };
+    });
+    this.openAiOrgCache.set(cacheKey, { fetchedAt: Date.now(), series });
+    const requested = new Set(dateKeys);
+    return series.filter((entry) => requested.has(entry.dateKey));
+  }
+
+  private buildOpenAiRange(dateKeys: string[]) {
+    const startKey = dateKeys[0];
+    const lastKey = dateKeys[dateKeys.length - 1];
+    const nextKey = getDateStringInTimeZone(addDays(parseDateString(lastKey), 1), AI_TIME_ZONE);
+    const start = getDayBoundsInTimeZone(startKey, AI_TIME_ZONE).start;
+    const end = getDayBoundsInTimeZone(nextKey, AI_TIME_ZONE).start;
+    return { start, end };
+  }
+
+  private resolveBucketDate(startTime?: number | null) {
+    if (!startTime) return null;
+    const date = new Date(startTime * 1000);
+    return getDateStringInTimeZone(date, AI_TIME_ZONE);
+  }
+
+  private isAllowedOpenAiCostLineItem(lineItem?: string | null) {
+    if (!lineItem) return true;
+    const normalized = lineItem.toLowerCase();
+    return !normalized.includes('image');
+  }
+
+  private async fetchOpenAiCosts(start: Date, end: Date, adminKey: string, limit?: number) {
+    return this.fetchOpenAiBuckets<OpenAiCostBucket>(
+      'https://api.openai.com/v1/organization/costs',
+      start,
+      end,
+      adminKey,
+      limit,
+      ['line_item'],
+    );
+  }
+
+  private async fetchOpenAiCompletionsUsage(start: Date, end: Date, adminKey: string, limit?: number) {
+    return this.fetchOpenAiBuckets<OpenAiUsageBucket>(
+      'https://api.openai.com/v1/organization/usage/completions',
+      start,
+      end,
+      adminKey,
+      limit,
+    );
+  }
+
+  private async fetchOpenAiBuckets<T extends OpenAiBucketBase<any>>(
+    endpoint: string,
+    start: Date,
+    end: Date,
+    adminKey: string,
+    limit?: number,
+    groupBy?: string[],
+  ): Promise<T[]> {
+    const results: T[] = [];
+    const startTime = Math.floor(start.getTime() / 1000);
+    const endTime = Math.floor(end.getTime() / 1000);
+    const bucketLimit = limit ? Math.min(180, Math.max(1, limit)) : undefined;
+    let page: string | null = null;
+
+    try {
+      do {
+        const url = new URL(endpoint);
+        url.searchParams.set('start_time', String(startTime));
+        url.searchParams.set('end_time', String(endTime));
+        url.searchParams.set('bucket_width', '1d');
+        if (bucketLimit) url.searchParams.set('limit', String(bucketLimit));
+        (groupBy || []).forEach((value) => url.searchParams.append('group_by', value));
+        if (page) url.searchParams.set('page', page);
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${adminKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (!response.ok) {
+          const message = await response.text();
+          this.logger.warn(`OpenAI usage error: ${message || response.statusText}`);
+          break;
+        }
+        const data = await response.json();
+        const buckets = Array.isArray(data?.data) ? data.data : [];
+        results.push(...(buckets as T[]));
+        page = data?.next_page ?? null;
+      } while (page);
+    } catch (error) {
+      this.logger.warn('Error consultando OpenAI organization metrics.');
+    }
+
+    return results;
   }
 
   private buildDateRange(windowDays: number) {

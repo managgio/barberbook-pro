@@ -334,6 +334,6 @@ export class PlatformAdminService {
 
   async refreshUsageMetrics(windowDays: number) {
     await this.usageMetrics.refreshImageKitUsage();
-    return this.usageMetrics.getPlatformMetrics(windowDays);
+    return this.usageMetrics.getPlatformMetrics(windowDays, { forceOpenAi: true });
   }
 }

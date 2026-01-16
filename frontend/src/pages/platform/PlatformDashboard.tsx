@@ -30,8 +30,20 @@ const usageRanges = [
   { label: '30 días', value: 30 },
 ];
 
-const formatUsd = (value: number) =>
-  new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
+const USD_EUR_RATE = (() => {
+  const raw = Number(import.meta.env.VITE_USD_EUR_RATE);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+})();
+
+const toDisplayCurrency = (value: number) => (USD_EUR_RATE ? value * USD_EUR_RATE : value);
+const displayCurrencyCode = USD_EUR_RATE ? 'EUR' : 'USD';
+
+const formatMoney = (value: number, maximumFractionDigits = 2) =>
+  new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency: displayCurrencyCode,
+    maximumFractionDigits,
+  }).format(value);
 
 const formatNumber = (value: number) => new Intl.NumberFormat('es-ES').format(value);
 
@@ -211,24 +223,29 @@ const PlatformDashboard: React.FC = () => {
   const twilioSeries = usageMetrics?.twilio.series ?? [];
   const imagekitSeries = usageMetrics?.imagekit.series ?? [];
   const thresholds = usageMetrics?.thresholds;
-
-  const openaiSummary = useMemo(
-    () => summarizeSeries(openaiSeries, 'costUsd', thresholds?.openaiDailyCostUsd),
-    [openaiSeries, thresholds?.openaiDailyCostUsd],
-  );
-  const twilioSummary = useMemo(
-    () => summarizeSeries(twilioSeries, 'costUsd', thresholds?.twilioDailyCostUsd),
-    [twilioSeries, thresholds?.twilioDailyCostUsd],
-  );
-  const openaiTokensTotal = useMemo(
-    () => openaiSeries.reduce((acc, entry) => acc + (entry.tokensTotal || 0), 0),
+  const openaiThreshold = thresholds?.openaiDailyCostUsd ? toDisplayCurrency(thresholds.openaiDailyCostUsd) : null;
+  const twilioThreshold = thresholds?.twilioDailyCostUsd ? toDisplayCurrency(thresholds.twilioDailyCostUsd) : null;
+  const openaiSeriesDisplay = useMemo(
+    () => openaiSeries.map((entry) => ({ ...entry, costUsd: toDisplayCurrency(entry.costUsd) })),
     [openaiSeries],
   );
-  const twilioMessagesTotal = useMemo(
-    () => twilioSeries.reduce((acc, entry) => acc + (entry.messagesCount || 0), 0),
+  const twilioSeriesDisplay = useMemo(
+    () => twilioSeries.map((entry) => ({ ...entry, costUsd: toDisplayCurrency(entry.costUsd) })),
     [twilioSeries],
   );
-  const openaiCostPer1k = openaiTokensTotal > 0 ? openaiSummary.total / (openaiTokensTotal / 1000) : 0;
+
+  const openaiSummary = useMemo(
+    () => summarizeSeries(openaiSeriesDisplay, 'costUsd', openaiThreshold),
+    [openaiSeriesDisplay, openaiThreshold],
+  );
+  const twilioSummary = useMemo(
+    () => summarizeSeries(twilioSeriesDisplay, 'costUsd', twilioThreshold),
+    [twilioSeriesDisplay, twilioThreshold],
+  );
+  const twilioMessagesTotal = useMemo(
+    () => twilioSeriesDisplay.reduce((acc, entry) => acc + (entry.messagesCount || 0), 0),
+    [twilioSeriesDisplay],
+  );
   const twilioCostPerMessage = twilioMessagesTotal > 0 ? twilioSummary.total / twilioMessagesTotal : 0;
 
   const imagekitLatest = imagekitSeries[imagekitSeries.length - 1] || {
@@ -242,24 +259,23 @@ const PlatformDashboard: React.FC = () => {
 
   const openaiChartData = useMemo(
     () =>
-      openaiSeries.map((entry) => ({
+      openaiSeriesDisplay.map((entry) => ({
         dateKey: entry.dateKey,
         label: formatDateLabel(entry.dateKey),
         costUsd: entry.costUsd,
-        tokensTotal: entry.tokensTotal,
       })),
-    [openaiSeries],
+    [openaiSeriesDisplay],
   );
 
   const twilioChartData = useMemo(
     () =>
-      twilioSeries.map((entry) => ({
+      twilioSeriesDisplay.map((entry) => ({
         dateKey: entry.dateKey,
         label: formatDateLabel(entry.dateKey),
         costUsd: entry.costUsd,
         messagesCount: entry.messagesCount,
       })),
-    [twilioSeries],
+    [twilioSeriesDisplay],
   );
 
   const imagekitChartData = useMemo(
@@ -427,9 +443,9 @@ const PlatformDashboard: React.FC = () => {
                   <PhoneCall className="h-4 w-4 text-primary" />
                   <CardTitle className="text-base">Twilio · SMS</CardTitle>
                 </div>
-                {thresholds?.twilioDailyCostUsd ? (
-                  <Badge variant={twilioSummary.peakValue >= thresholds.twilioDailyCostUsd ? 'destructive' : 'secondary'}>
-                    Límite diario {formatUsd(thresholds.twilioDailyCostUsd)}
+                {twilioThreshold ? (
+                  <Badge variant={twilioSummary.peakValue >= twilioThreshold ? 'destructive' : 'secondary'}>
+                    Límite diario {formatMoney(twilioThreshold)}
                   </Badge>
                 ) : null}
               </div>
@@ -439,7 +455,7 @@ const PlatformDashboard: React.FC = () => {
               <div className="grid gap-3 md:grid-cols-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Gasto total</p>
-                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : formatUsd(twilioSummary.total)}</p>
+                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : formatMoney(twilioSummary.total)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Mensajes</p>
@@ -448,7 +464,7 @@ const PlatformDashboard: React.FC = () => {
                 <div>
                   <p className="text-xs text-muted-foreground">Coste/mensaje</p>
                   <p className="text-lg font-semibold">
-                    {isUsageLoading || twilioMessagesTotal === 0 ? '—' : formatUsd(twilioCostPerMessage)}
+                    {isUsageLoading || twilioMessagesTotal === 0 ? '—' : formatMoney(twilioCostPerMessage, 4)}
                   </p>
                 </div>
                 <div>
@@ -456,7 +472,7 @@ const PlatformDashboard: React.FC = () => {
                   <p className="text-sm font-semibold text-foreground">
                     {isUsageLoading || !twilioSummary.peakDate
                       ? '—'
-                      : `${formatUsd(twilioSummary.peakValue)} · ${formatDateLabel(twilioSummary.peakDate)}`}
+                      : `${formatMoney(twilioSummary.peakValue)} · ${formatDateLabel(twilioSummary.peakDate)}`}
                   </p>
                 </div>
                 <div>
@@ -476,7 +492,7 @@ const PlatformDashboard: React.FC = () => {
                       <YAxis yAxisId="messages" orientation="right" tickFormatter={(value) => formatCompact(Number(value))} />
                       <RechartsTooltip
                         formatter={(value, name) => {
-                          if (name === 'costUsd') return [formatUsd(Number(value)), 'Coste'];
+                          if (name === 'costUsd') return [formatMoney(Number(value)), 'Coste'];
                           if (name === 'messagesCount') return [formatNumber(Number(value)), 'Mensajes'];
                           return [value, name];
                         }}
@@ -497,10 +513,10 @@ const PlatformDashboard: React.FC = () => {
                         strokeWidth={2}
                         dot={false}
                       />
-                      {thresholds?.twilioDailyCostUsd ? (
+                      {twilioThreshold ? (
                         <ReferenceLine
                           yAxisId="cost"
-                          y={thresholds.twilioDailyCostUsd}
+                          y={twilioThreshold}
                           stroke="#ef4444"
                           strokeDasharray="4 4"
                         />
@@ -519,9 +535,9 @@ const PlatformDashboard: React.FC = () => {
                   <Brain className="h-4 w-4 text-primary" />
                   <CardTitle className="text-base">OpenAI · IA</CardTitle>
                 </div>
-                {thresholds?.openaiDailyCostUsd ? (
-                  <Badge variant={openaiSummary.peakValue >= thresholds.openaiDailyCostUsd ? 'destructive' : 'secondary'}>
-                    Límite diario {formatUsd(thresholds.openaiDailyCostUsd)}
+                {openaiThreshold ? (
+                  <Badge variant={openaiSummary.peakValue >= openaiThreshold ? 'destructive' : 'secondary'}>
+                    Límite diario {formatMoney(openaiThreshold)}
                   </Badge>
                 ) : null}
               </div>
@@ -531,24 +547,14 @@ const PlatformDashboard: React.FC = () => {
               <div className="grid gap-3 md:grid-cols-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Gasto total</p>
-                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : formatUsd(openaiSummary.total)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Tokens</p>
-                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : formatCompact(openaiTokensTotal)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Coste / 1k tokens</p>
-                  <p className="text-lg font-semibold">
-                    {isUsageLoading || openaiTokensTotal === 0 ? '—' : formatUsd(openaiCostPer1k)}
-                  </p>
+                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : formatMoney(openaiSummary.total)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Pico diario</p>
                   <p className="text-sm font-semibold text-foreground">
                     {isUsageLoading || !openaiSummary.peakDate
                       ? '—'
-                      : `${formatUsd(openaiSummary.peakValue)} · ${formatDateLabel(openaiSummary.peakDate)}`}
+                      : `${formatMoney(openaiSummary.peakValue)} · ${formatDateLabel(openaiSummary.peakDate)}`}
                   </p>
                 </div>
                 <div>
@@ -565,15 +571,9 @@ const PlatformDashboard: React.FC = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="label" />
                       <YAxis yAxisId="cost" tickFormatter={(value) => formatCompact(Number(value))} />
-                      <YAxis
-                        yAxisId="tokens"
-                        orientation="right"
-                        tickFormatter={(value) => formatCompact(Number(value))}
-                      />
                       <RechartsTooltip
                         formatter={(value, name) => {
-                          if (name === 'costUsd') return [formatUsd(Number(value)), 'Coste'];
-                          if (name === 'tokensTotal') return [formatNumber(Number(value)), 'Tokens'];
+                          if (name === 'costUsd') return [formatMoney(Number(value)), 'Coste'];
                           return [value, name];
                         }}
                         contentStyle={{
@@ -585,18 +585,10 @@ const PlatformDashboard: React.FC = () => {
                         labelStyle={{ color: 'hsl(var(--card-foreground))' }}
                       />
                       <Line yAxisId="cost" type="monotone" dataKey="costUsd" stroke="#22c55e" strokeWidth={2} dot={false} />
-                      <Line
-                        yAxisId="tokens"
-                        type="monotone"
-                        dataKey="tokensTotal"
-                        stroke="#8b5cf6"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      {thresholds?.openaiDailyCostUsd ? (
+                      {openaiThreshold ? (
                         <ReferenceLine
                           yAxisId="cost"
-                          y={thresholds.openaiDailyCostUsd}
+                          y={openaiThreshold}
                           stroke="#ef4444"
                           strokeDasharray="4 4"
                         />
