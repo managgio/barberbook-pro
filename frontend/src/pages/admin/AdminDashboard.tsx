@@ -884,7 +884,11 @@ const AdminDashboard: React.FC = () => {
                 />
                 <RechartsTooltip
                   contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
-                  formatter={(value: number, name: string) => [value, name === 'no_show' ? 'Ausencias' : 'Canceladas']}
+                  formatter={(value: number, name: string) => {
+                    if (name === 'no_show' || name === 'Ausencias') return [value, 'Ausencias'];
+                    if (name === 'cancelled' || name === 'Canceladas') return [value, 'Canceladas'];
+                    return [value, name];
+                  }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Bar dataKey="no_show" name="Ausencias" fill="hsl(var(--destructive))" radius={[6, 6, 0, 0]} />

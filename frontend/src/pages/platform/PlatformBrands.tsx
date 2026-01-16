@@ -178,6 +178,7 @@ const PlatformBrands: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isAdminSaving, setIsAdminSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'datos' | 'locales' | 'admins' | 'sidebar' | 'config'>('datos');
   const [createBrandOpen, setCreateBrandOpen] = useState(false);
   const [createLocationOpen, setCreateLocationOpen] = useState(false);
   const [editLocationOpen, setEditLocationOpen] = useState(false);
@@ -227,6 +228,12 @@ const PlatformBrands: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (selectedBrandId) {
+      setActiveTab('datos');
+    }
+  }, [selectedBrandId]);
 
   const loadBrandDetails = async (brandId: string) => {
     if (!user?.id) return;
@@ -704,7 +711,7 @@ const PlatformBrands: React.FC = () => {
 
       {selectedBrand ? (
         <Card className="border border-border/60 bg-card/70 h-full flex flex-col overflow-hidden">
-          <CardHeader className="flex flex-col gap-1">
+          <CardHeader className="flex flex-col gap-1 bg-card">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
                 <Building2 className="h-5 w-5 text-primary" />
@@ -718,14 +725,16 @@ const PlatformBrands: React.FC = () => {
             <p className="text-sm text-muted-foreground">Gestiona datos generales, locales y credenciales.</p>
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
-            <Tabs defaultValue="datos" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
-                <TabsTrigger value="datos">Datos</TabsTrigger>
-                <TabsTrigger value="locales">Locales</TabsTrigger>
-                <TabsTrigger value="admins">Admins</TabsTrigger>
-                <TabsTrigger value="sidebar">Sidebar</TabsTrigger>
-                <TabsTrigger value="config">Config</TabsTrigger>
-              </TabsList>
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-6">
+              <div className="sticky top-0 z-10 -mx-6 border-b border-border/60 bg-card px-6 py-3 shadow-[0_10px_24px_-20px_hsl(var(--background)/0.9)]">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
+                  <TabsTrigger value="datos">Datos</TabsTrigger>
+                  <TabsTrigger value="locales">Locales</TabsTrigger>
+                  <TabsTrigger value="admins">Admins</TabsTrigger>
+                  <TabsTrigger value="sidebar">Sidebar</TabsTrigger>
+                  <TabsTrigger value="config">Config</TabsTrigger>
+                </TabsList>
+              </div>
 
               <TabsContent value="datos" className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">

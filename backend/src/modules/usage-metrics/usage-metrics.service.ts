@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, ProviderUsageType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { getCurrentBrandId } from '../../tenancy/tenant.context';
 import { AI_TIME_ZONE, addDays, getDateStringInTimeZone, parseDateString } from '../ai-assistant/ai-assistant.utils';
 
@@ -73,6 +74,7 @@ export class UsageMetricsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly tenantConfig: TenantConfigService,
   ) {}
 
   async recordOpenAiUsage(params: OpenAiUsageParams) {
@@ -115,6 +117,37 @@ export class UsageMetricsService {
       storageUsedBytes: params.storageUsedBytes,
       storageLimitBytes: params.storageLimitBytes ?? null,
     });
+  }
+
+  async refreshImageKitUsage() {
+    const brands = await this.prisma.brand.findMany({ select: { id: true } });
+    if (!brands.length) return;
+
+    const usageCache = new Map<string, { used: number; limit: number | null }>();
+    const recordedKeys = new Set<string>();
+
+    for (const brand of brands) {
+      const config = await this.tenantConfig.getBrandConfig(brand.id);
+      const privateKey = config.imagekit?.privateKey;
+      if (!privateKey) continue;
+      if (recordedKeys.has(privateKey)) continue;
+
+      let usage: { used: number; limit: number | null } | null | undefined = usageCache.get(privateKey);
+      if (!usage) {
+        usage = await this.fetchImageKitUsage(privateKey);
+        if (usage) {
+          usageCache.set(privateKey, usage);
+        }
+      }
+
+      if (!usage) continue;
+      await this.recordImageKitUsage({
+        brandId: brand.id,
+        storageUsedBytes: usage.used,
+        storageLimitBytes: usage.limit,
+      });
+      recordedKeys.add(privateKey);
+    }
   }
 
   async getPlatformMetrics(windowDays: number): Promise<PlatformUsageMetrics> {
@@ -338,5 +371,90 @@ export class UsageMetricsService {
     const gb = parseNumber(process.env.IMAGEKIT_STORAGE_LIMIT_GB || '');
     if (!gb) return null;
     return gb * 1024 * 1024 * 1024;
+  }
+
+  private async fetchImageKitUsage(privateKey: string) {
+    try {
+      const today = new Date();
+      const endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const startDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const startKey = startDate.toISOString().slice(0, 10);
+      const endKey = endDate.toISOString().slice(0, 10);
+      const response = await fetch(
+        `https://api.imagekit.io/v1/accounts/usage?startDate=${startKey}&endDate=${endKey}`,
+        {
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${privateKey}:`).toString('base64')}`,
+          },
+        },
+      );
+      if (!response.ok) {
+        const message = await response.text();
+        this.logger.warn(`ImageKit usage error: ${message || response.statusText}`);
+        return null;
+      }
+      const data = await response.json();
+      const seriesCandidate = Array.isArray(data?.usage)
+        ? data.usage
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : null;
+      const payload = seriesCandidate?.length ? seriesCandidate[seriesCandidate.length - 1] : data;
+      const mediaLibraryBytes = this.pickNumber(
+        payload?.mediaLibraryStorageBytes,
+        payload?.mediaLibrary?.storageBytes,
+        payload?.mediaLibraryStorage,
+        payload?.mediaLibrary?.storage,
+      );
+      const cacheBytes = this.pickNumber(
+        payload?.originalCacheStorageBytes,
+        payload?.cacheStorageBytes,
+        payload?.originalCacheStorage,
+        payload?.cacheStorage,
+      );
+      let used = NaN;
+      if (Number.isFinite(mediaLibraryBytes) || Number.isFinite(cacheBytes)) {
+        used = (Number.isFinite(mediaLibraryBytes) ? mediaLibraryBytes : 0)
+          + (Number.isFinite(cacheBytes) ? cacheBytes : 0);
+      }
+      if (!Number.isFinite(used)) {
+        used = this.pickNumber(
+          payload?.storageUsed,
+          payload?.storageUsedBytes,
+          payload?.storage,
+          payload?.storage?.used,
+          payload?.storage?.total,
+          payload?.usage?.storage,
+          payload?.usage?.storageUsed,
+        );
+      }
+      if (!Number.isFinite(used)) {
+        this.logger.warn('ImageKit usage payload sin campo de almacenamiento reconocido.');
+        return null;
+      }
+      const limit = this.pickNumber(
+        payload?.storageLimit,
+        payload?.storageLimitBytes,
+        payload?.storage?.limit,
+        payload?.storage?.max,
+        payload?.usage?.storageLimit,
+      );
+      const fallbackLimit = this.getImagekitStorageLimitBytes();
+      return { used, limit: Number.isFinite(limit) ? limit : fallbackLimit ?? null };
+    } catch (error) {
+      this.logger.warn('No se pudo consultar el uso de ImageKit.');
+      return null;
+    }
+  }
+
+  private pickNumber(...candidates: Array<number | string | null | undefined>) {
+    for (const value of candidates) {
+      if (value === null || value === undefined) continue;
+      const parsed = typeof value === 'number' ? value : Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return NaN;
   }
 }

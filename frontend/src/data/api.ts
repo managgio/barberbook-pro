@@ -315,6 +315,12 @@ export const getPlatformMetrics = async (adminUserId: string, windowDays = 7): P
     headers: withPlatformHeaders(adminUserId),
   });
 
+export const refreshPlatformMetrics = async (adminUserId: string, windowDays = 7): Promise<PlatformUsageMetrics> =>
+  apiRequest(`/platform/metrics/refresh?window=${windowDays}`, {
+    method: 'POST',
+    headers: withPlatformHeaders(adminUserId),
+  });
+
 export const getPlatformBrand = async (adminUserId: string, brandId: string): Promise<any> =>
   apiRequest(`/platform/brands/${brandId}`, {
     headers: withPlatformHeaders(adminUserId),

@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Brain, Building2, ChevronLeft, ChevronRight, Image as ImageIcon, MapPin, PhoneCall, Sparkles } from 'lucide-react';
+import { Brain, Building2, ChevronLeft, ChevronRight, Image as ImageIcon, MapPin, PhoneCall, RefreshCcw, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { getPlatformBrands, getPlatformMetrics } from '@/data/api';
+import { getPlatformBrands, getPlatformMetrics, refreshPlatformMetrics } from '@/data/api';
 import { PlatformUsageMetrics, PlatformUsageSeriesPoint } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns';
@@ -113,21 +113,27 @@ const PlatformDashboard: React.FC = () => {
     load();
   }, [user?.id, toast]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    const loadUsage = async () => {
+  const loadUsage = useCallback(
+    async (forceRefresh = false) => {
+      if (!user?.id) return;
       setIsUsageLoading(true);
       try {
-        const data = await getPlatformMetrics(user.id, usageRange);
+        const data = forceRefresh
+          ? await refreshPlatformMetrics(user.id, usageRange)
+          : await getPlatformMetrics(user.id, usageRange);
         setUsageMetrics(data);
       } catch (error) {
         toast({ title: 'Error', description: 'No se pudieron cargar las métricas de consumo.', variant: 'destructive' });
       } finally {
         setIsUsageLoading(false);
       }
-    };
-    loadUsage();
-  }, [user?.id, usageRange, toast]);
+    },
+    [user?.id, usageRange, toast],
+  );
+
+  useEffect(() => {
+    void loadUsage();
+  }, [loadUsage]);
 
   const stats = useMemo(() => {
     const totalBrands = brands.length;
@@ -328,6 +334,15 @@ const PlatformDashboard: React.FC = () => {
                 {range.label}
               </Button>
             ))}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => loadUsage(true)}
+              disabled={isUsageLoading}
+            >
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              Recargar
+            </Button>
           </div>
         </div>
 

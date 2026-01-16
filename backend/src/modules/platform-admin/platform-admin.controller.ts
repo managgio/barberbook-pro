@@ -25,6 +25,12 @@ export class PlatformAdminController {
     return this.platformService.getUsageMetrics(Number.isFinite(parsed) ? parsed : 7);
   }
 
+  @Post('metrics/refresh')
+  refreshUsageMetrics(@Query('window') window?: string) {
+    const parsed = window ? Number(window) : 7;
+    return this.platformService.refreshUsageMetrics(Number.isFinite(parsed) ? parsed : 7);
+  }
+
   @Get('brands/:id')
   getBrand(@Param('id') id: string) {
     return this.platformService.getBrand(id);
