@@ -1,5 +1,6 @@
 import React from 'react';
 import Navbar from '@/components/layout/Navbar';
+import LegalFooter from '@/components/layout/LegalFooter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clock, MapPin, Phone, Instagram, Mail, Twitter, Linkedin, Youtube, Music2 } from 'lucide-react';
 import { ShopSchedule } from '@/data/types';
@@ -227,6 +228,7 @@ const HoursLocationPage: React.FC = () => {
           </div>
         </div>
       </main>
+      <LegalFooter />
     </div>
   );
 };

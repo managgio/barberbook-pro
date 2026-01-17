@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import managgioLogo from '@/assets/img/managgio/logo.png';
+import managgioLogo from '@/assets/img/managgio/logo-app.png';
 import managgioHero from '@/assets/img/managgio/fondo-managgio.png';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useTenant } from '@/context/TenantContext';
+import LegalFooter from '@/components/layout/LegalFooter';
 
 const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -121,7 +122,8 @@ const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex flex-col">
+      <div className="flex flex-1">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-card relative overflow-hidden">
         <div
@@ -360,9 +362,10 @@ const AuthPage: React.FC = () => {
             </div>
           )}
 
-          {/* Footer left empty intentionally */}
         </div>
       </div>
+      </div>
+      {!isPlatform && <LegalFooter />}
     </div>
   );
 };

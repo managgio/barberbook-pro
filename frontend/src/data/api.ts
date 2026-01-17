@@ -15,6 +15,9 @@ import {
   AiChatSessionResponse,
   TenantBootstrap,
   PlatformUsageMetrics,
+  LegalPolicyResponse,
+  LegalSettings,
+  PrivacyConsentStatus,
 } from './types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
 import { getAdminUserId } from '@/lib/authStorage';
@@ -172,6 +175,8 @@ export const updateAppointment = async (id: string, data: Partial<Appointment>):
   apiRequest(`/appointments/${id}`, { method: 'PATCH', body: data });
 export const deleteAppointment = async (id: string): Promise<void> =>
   apiRequest(`/appointments/${id}`, { method: 'DELETE' });
+export const anonymizeAppointment = async (id: string): Promise<Appointment> =>
+  apiRequest(`/appointments/${id}/anonymize`, { method: 'POST' });
 
 export const getAvailableSlots = async (
   barberId: string,
@@ -215,6 +220,13 @@ export const updateShopSchedule = async (schedule: ShopSchedule): Promise<ShopSc
 export const getSiteSettings = async (): Promise<SiteSettings> => apiRequest('/settings');
 export const updateSiteSettings = async (settings: SiteSettings): Promise<SiteSettings> =>
   apiRequest('/settings', { method: 'PUT', body: { settings } });
+
+// Legal public API
+export const getPrivacyPolicy = async (): Promise<LegalPolicyResponse> => apiRequest('/legal/privacy');
+export const getCookiePolicy = async (): Promise<LegalPolicyResponse> => apiRequest('/legal/cookies');
+export const getLegalNotice = async (): Promise<LegalPolicyResponse> => apiRequest('/legal/notice');
+export const getPrivacyConsentStatus = async (userId: string): Promise<PrivacyConsentStatus> =>
+  apiRequest('/legal/privacy/consent-status', { query: { userId } });
 
 // Holidays API
 export const getHolidaysGeneral = async (): Promise<HolidayRange[]> => apiRequest('/holidays/general');
@@ -415,6 +427,27 @@ export const updatePlatformLocationConfig = async (
   apiRequest(`/platform/locations/${localId}/config`, {
     method: 'PATCH',
     body: { data },
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformBrandLegalSettings = async (adminUserId: string, brandId: string): Promise<LegalSettings> =>
+  apiRequest(`/platform/brands/${brandId}/legal/settings`, {
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const updatePlatformBrandLegalSettings = async (
+  adminUserId: string,
+  brandId: string,
+  data: Partial<LegalSettings>,
+): Promise<LegalSettings> =>
+  apiRequest(`/platform/brands/${brandId}/legal/settings`, {
+    method: 'PUT',
+    body: data,
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const getPlatformBrandDpa = async (adminUserId: string, brandId: string): Promise<LegalPolicyResponse> =>
+  apiRequest(`/platform/brands/${brandId}/legal/dpa`, {
     headers: withPlatformHeaders(adminUserId),
   });
 

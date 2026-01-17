@@ -238,7 +238,9 @@ export type AdminSectionKey =
   | 'alerts'
   | 'holidays'
   | 'roles'
-  | 'settings';
+  | 'settings'
+  | 'legal'
+  | 'audit';
 
 export interface AdminRole {
   id: string;
@@ -263,6 +265,93 @@ export interface CreateAppointmentPayload {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  privacyConsentGiven?: boolean;
+}
+
+export interface LegalSection {
+  heading: string;
+  bodyMarkdown: string;
+}
+
+export interface LegalBusinessIdentity {
+  ownerName: string;
+  taxId?: string | null;
+  address?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  country?: string | null;
+}
+
+export interface SubProcessor {
+  name: string;
+  purpose: string;
+  country: string;
+  dataTypes: string;
+  link?: string | null;
+}
+
+export interface LegalAiDisclosure {
+  title: string;
+  bodyMarkdown: string;
+  providerNames: string[];
+}
+
+export interface LegalPolicyResponse {
+  title: string;
+  effectiveDate: string;
+  version: number;
+  sections: LegalSection[];
+  businessIdentity: LegalBusinessIdentity;
+  subProcessors?: SubProcessor[];
+  aiDisclosure?: LegalAiDisclosure | null;
+}
+
+export interface PrivacyConsentStatus {
+  required: boolean;
+  policyVersion: number;
+}
+
+export interface LegalCustomSections {
+  privacy?: LegalSection[];
+  cookies?: LegalSection[];
+  notice?: LegalSection[];
+  dpa?: LegalSection[];
+}
+
+export interface LegalSettings {
+  legalOwnerName?: string | null;
+  legalOwnerTaxId?: string | null;
+  legalOwnerAddress?: string | null;
+  legalContactEmail?: string | null;
+  legalContactPhone?: string | null;
+  country: string;
+  privacyPolicyVersion: number;
+  cookiePolicyVersion: number;
+  legalNoticeVersion: number;
+  aiDisclosureEnabled: boolean;
+  aiProviderNames: string[];
+  subProcessors: SubProcessor[];
+  optionalCustomSections?: LegalCustomSections;
+  retentionDays?: number | null;
+}
+
+export interface AuditLogActor {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface AuditLog {
+  id: string;
+  brandId: string;
+  locationId?: string | null;
+  actorUserId?: string | null;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  actorUser?: AuditLogActor | null;
 }
 
 export interface HolidayRange {

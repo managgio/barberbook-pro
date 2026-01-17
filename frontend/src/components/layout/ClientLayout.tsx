@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import Navbar from './Navbar';
+import LegalFooter from './LegalFooter';
 import { Calendar, User, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -52,6 +53,7 @@ const ClientLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+      <LegalFooter />
     </div>
   );
 };

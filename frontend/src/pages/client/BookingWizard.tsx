@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
+import { Checkbox } from '@/components/ui/checkbox';
+import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings, getPrivacyConsentStatus } from '@/data/api';
 import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer } from '@/data/types';
 import { 
   Check, 
@@ -49,6 +50,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [privacyConsent, setPrivacyConsent] = useState(false);
+  const [privacyConsentRequired, setPrivacyConsentRequired] = useState(true);
 
   const [booking, setBooking] = useState<BookingState>({
     serviceId: null,
@@ -97,6 +100,31 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     };
     fetchData();
   }, [searchParams, toast]);
+
+  useEffect(() => {
+    if (isGuest || !user?.id) {
+      setPrivacyConsentRequired(true);
+      setPrivacyConsent(false);
+      return;
+    }
+    let isMounted = true;
+    const loadStatus = async () => {
+      try {
+        const status = await getPrivacyConsentStatus(user.id);
+        if (!isMounted) return;
+        setPrivacyConsentRequired(status.required);
+        setPrivacyConsent(status.required ? false : true);
+      } catch (error) {
+        if (!isMounted) return;
+        setPrivacyConsentRequired(true);
+        setPrivacyConsent(false);
+      }
+    };
+    loadStatus();
+    return () => {
+      isMounted = false;
+    };
+  }, [isGuest, user?.id]);
 
   useEffect(() => {
     if (preferenceInitialized) return;
@@ -489,6 +517,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       });
       return;
     }
+    if (privacyConsentRequired && !privacyConsent) {
+      toast({
+        title: 'Falta consentimiento',
+        description: 'Debes aceptar la Política de Privacidad para continuar.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -504,6 +540,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         notes: appointmentNote.trim() ? appointmentNote.trim() : undefined,
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
+        privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
       });
 
       setShowSuccess(true);
@@ -1094,6 +1131,33 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </>
                 )}
 
+                {privacyConsentRequired && (
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="privacy-consent"
+                      checked={privacyConsent}
+                      onCheckedChange={(value) => setPrivacyConsent(Boolean(value))}
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="privacy-consent" className="text-sm leading-5 text-foreground">
+                        He leído y acepto la{' '}
+                        <a
+                          href="/legal/privacy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline underline-offset-4"
+                        >
+                          Política de Privacidad
+                        </a>
+                        .
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Necesitamos tu consentimiento para gestionar la reserva.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
               </div>
             </div>
           )}
@@ -1122,7 +1186,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             <Button 
               variant="glow" 
               onClick={handleConfirm} 
-              disabled={isSubmitting || (isGuest && (guestInfo.name.trim().length === 0 || guestInfo.email.trim().length === 0))}
+              disabled={
+                isSubmitting ||
+                !privacyConsent ||
+                (isGuest && (guestInfo.name.trim().length === 0 || guestInfo.email.trim().length === 0))
+              }
             >
               {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Confirmar reserva

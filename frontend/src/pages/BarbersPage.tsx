@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '@/components/layout/Navbar';
+import LegalFooter from '@/components/layout/LegalFooter';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getBarbers } from '@/data/api';
@@ -87,6 +88,7 @@ const BarbersPage: React.FC = () => {
           )}
         </div>
       </main>
+      <LegalFooter />
     </div>
   );
 };

@@ -344,6 +344,9 @@ const LandingPage: React.FC = () => {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/hours-location" className="hover:text-primary transition-colors">Horario y ubicación</Link></li>
                 <li><Link to="/auth" className="hover:text-primary transition-colors">Iniciar sesión</Link></li>
+                <li><Link to="/legal/notice" className="hover:text-primary transition-colors">Aviso legal</Link></li>
+                <li><Link to="/legal/privacy" className="hover:text-primary transition-colors">Política de privacidad</Link></li>
+                <li><Link to="/legal/cookies" className="hover:text-primary transition-colors">Política de cookies</Link></li>
               </ul>
             </div>
             

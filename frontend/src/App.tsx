@@ -13,6 +13,9 @@ import HoursLocationPage from "./pages/HoursLocationPage";
 import NotFound from "./pages/NotFound";
 import GuestBookingPage from "./pages/GuestBookingPage";
 import TenantError from "./pages/TenantError";
+import PrivacyPolicyPage from "./pages/legal/PrivacyPolicyPage";
+import CookiePolicyPage from "./pages/legal/CookiePolicyPage";
+import LegalNoticePage from "./pages/legal/LegalNoticePage";
 
 // Client Pages
 import ClientLayout from "./components/layout/ClientLayout";
@@ -105,6 +108,9 @@ const AppRoutes: React.FC = () => {
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/book" element={<GuestBookingPage />} />
       <Route path="/hours-location" element={<HoursLocationPage />} />
+      <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/legal/cookies" element={<CookiePolicyPage />} />
+      <Route path="/legal/notice" element={<LegalNoticePage />} />
 
       {/* Client Routes */}
       <Route path="/app" element={<ProtectedRoute><ClientLayout /></ProtectedRoute>}>

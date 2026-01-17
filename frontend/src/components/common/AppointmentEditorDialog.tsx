@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
-import { getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
+import { getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings, anonymizeAppointment } from '@/data/api';
 import { Appointment, AppointmentStatus, Barber, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAnonymizing, setIsAnonymizing] = useState(false);
+  const [anonymizeOpen, setAnonymizeOpen] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const isAdminContext = context === 'admin';
@@ -176,6 +179,25 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo actualizar la cita.', variant: 'destructive' });
       setIsSaving(false);
+    }
+  };
+
+  const handleAnonymize = async () => {
+    if (!appointment) return;
+    setIsAnonymizing(true);
+    try {
+      const updated = await anonymizeAppointment(appointment.id);
+      if (context === 'admin') {
+        dispatchAppointmentsUpdated({ source: 'appointment-anonymize' });
+      }
+      toast({ title: 'Cita anonimizada', description: 'Los datos personales han sido anonimizados.' });
+      onSaved?.(updated);
+      setAnonymizeOpen(false);
+      onClose();
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo anonimizar la cita.', variant: 'destructive' });
+    } finally {
+      setIsAnonymizing(false);
     }
   };
 
@@ -379,11 +401,38 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" type="button" onClick={onClose} disabled={isSaving}>
+            <div className="flex flex-wrap justify-end gap-2">
+              {isAdminContext && (
+                <AlertDialog open={anonymizeOpen} onOpenChange={setAnonymizeOpen}>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    disabled={isSaving || isAnonymizing}
+                    onClick={() => setAnonymizeOpen(true)}
+                  >
+                    Anonimizar
+                  </Button>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Anonimizar cita?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta acción sustituye los datos personales del invitado por valores anonimizados.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleAnonymize} disabled={isAnonymizing}>
+                        {isAnonymizing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Confirmar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              <Button variant="outline" type="button" onClick={onClose} disabled={isSaving || isAnonymizing}>
                 Cancelar
               </Button>
-              <Button onClick={handleSave} disabled={isSaving}>
+              <Button onClick={handleSave} disabled={isSaving || isAnonymizing}>
                 {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Guardar cambios
               </Button>
             </div>
