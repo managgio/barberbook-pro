@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { AppointmentStatus } from '@prisma/client';
 
 export class CreateAppointmentDto {
@@ -31,4 +31,8 @@ export class CreateAppointmentDto {
   @IsOptional()
   @IsString()
   guestContact?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  privacyConsentGiven?: boolean;
 }

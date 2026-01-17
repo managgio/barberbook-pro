@@ -15,6 +15,19 @@ export const runWithTenantContext = (context: TenantContext, fn: () => void) => 
   tenantStorage.run(context, fn);
 };
 
+export const runWithTenantContextAsync = async <T>(
+  context: TenantContext,
+  fn: () => Promise<T>,
+): Promise<T> =>
+  await new Promise<T>((resolve, reject) => {
+    runWithTenantContext(context, () => {
+      Promise.resolve()
+        .then(fn)
+        .then(resolve)
+        .catch(reject);
+    });
+  });
+
 export const getTenantContext = (): TenantContext => tenantStorage.getStore() || {};
 
 export const getCurrentBrandId = (): string =>

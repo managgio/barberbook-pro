@@ -122,6 +122,23 @@ AiChatSession | Sesiones IA | Conversaciones por admin/local
 AiChatMessage | Mensajes IA | Historial y tool payload
 AiBusinessFact | Hechos IA | Datos fijos para contexto del asistente
 
+## Legal & GDPR
+Modelos nuevos:
+- **BrandLegalSettings**: datos legales por marca (titular, contacto, versiones, subprocesadores, secciones custom, retencion).
+- **ConsentRecord**: consentimiento por cita (tipo, version, texto, ip hash opcional).
+- **AuditLog**: trazabilidad de cambios sensibles (legal, consentimientos, anonimizado).
+
+Endpoints clave:
+- Publicos tenant-aware: `GET /api/legal/privacy`, `GET /api/legal/cookies`, `GET /api/legal/notice`.
+- Admin: `POST /api/appointments/:id/anonymize`.
+- Plataforma: `GET/PUT /api/platform/brands/:id/legal/settings`, `GET /api/platform/brands/:id/legal/dpa`, `GET /api/platform/brands/:id/audit-logs`.
+- La configuracion legal se gestiona desde plataforma; el panel admin del negocio no expone edicion.
+
+Flujos:
+- Booking requiere consentimiento de privacidad y se guarda con version + audit log.
+- Cron de retencion itera marcas/locales y anonimiza citas antiguas segun `retentionDays`.
+- El hash de IP usa `IP_HASH_SALT` si esta definido.
+
 ## Flujos clave (logica importante)
 1) **Bootstrap tenant**
    - Front llama `/api/tenant/bootstrap`.
@@ -173,6 +190,7 @@ Backend (`backend/.env`):
 - Email: `EMAIL`, `PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_FROM_NAME`.
 - AI: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`, `AI_TRANSCRIPTION_MODEL`.
 - Firebase Admin: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`.
+- Legal: `IP_HASH_SALT` (hash IP para consentimientos).
 
 Frontend (`frontend/.env*`):
 - `VITE_API_BASE_URL` (API).
@@ -188,9 +206,10 @@ Frontend (`frontend/.env*`):
 
 ## Seguridad, riesgos y casuisticas (checklist rapido)
 - **Auth admin por header**: `x-admin-user-id` es facil de falsear si se expone sin autenticacion real.
+- **TODO JWT**: migrar a tokens firmados (JWT) con expiracion y refresh, manteniendo compatibilidad temporal con header.
 - **CORS**: habilitado global; revisar origenes en produccion.
 - **Multi-tenant**: validar siempre `localId` en queries (ya se usa `getCurrentLocalId`).
-- **Jobs cron**: corren sin tenant context; usan `DEFAULT_LOCAL_ID` (ojo multi-tenant).
+- **Jobs cron**: iteran por marca/local para evitar usar `DEFAULT_LOCAL_ID` en multi-tenant.
 - **Datos incompletos**: flows permiten `guestName`/`guestContact` sin userId.
 - **Email/SMS**: si faltan credenciales, notificaciones se deshabilitan (log warn).
 - **IA**: si no hay API key, el endpoint falla; manejar fallback.

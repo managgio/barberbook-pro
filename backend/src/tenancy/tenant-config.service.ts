@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from './tenant-config.defaults';
-import { BrandConfigData, EffectiveTenantConfig, LocationConfigData } from './tenant-config.types';
+import { BrandConfigData, EffectiveTenantConfig, LocationConfigData, TenantThemeConfig } from './tenant-config.types';
 import { getCurrentBrandId, getCurrentLocalId } from './tenant.context';
 
 const mergeConfig = <T extends Record<string, any>>(base: T, override?: Partial<T>) => {
@@ -15,6 +15,13 @@ const mergeConfig = <T extends Record<string, any>>(base: T, override?: Partial<
     }
   });
   return result;
+};
+
+const normalizeTheme = (theme?: TenantThemeConfig): TenantThemeConfig | undefined => {
+  if (!theme) return undefined;
+  const primary = typeof theme.primary === 'string' ? theme.primary.trim() : '';
+  if (!primary) return {};
+  return { ...theme, primary };
 };
 
 @Injectable()
@@ -46,7 +53,14 @@ export class TenantConfigService {
       this.getBrandConfig(),
       this.getLocationConfig(),
     ]);
-    return mergeConfig(brandConfig, locationConfig);
+    const brandTheme = normalizeTheme(brandConfig.theme);
+    const locationTheme = normalizeTheme(locationConfig.theme);
+    const theme = mergeConfig(brandTheme || {}, locationTheme || {});
+    const effectiveConfig = mergeConfig(brandConfig, locationConfig);
+    return {
+      ...effectiveConfig,
+      theme: Object.keys(theme).length ? theme : undefined,
+    };
   }
 
   async getPublicConfig() {
@@ -54,7 +68,9 @@ export class TenantConfigService {
       this.getBrandConfig(),
       this.getLocationConfig(),
     ]);
-    const theme = mergeConfig(brandConfig.theme || {}, locationConfig.theme || {});
+    const brandTheme = normalizeTheme(brandConfig.theme);
+    const locationTheme = normalizeTheme(locationConfig.theme);
+    const theme = mergeConfig(brandTheme || {}, locationTheme || {});
     const adminSidebar = mergeConfig(
       brandConfig.adminSidebar || {},
       locationConfig.adminSidebar || {},

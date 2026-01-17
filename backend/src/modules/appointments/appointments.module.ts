@@ -1,15 +1,18 @@
 import { Module } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
 import { AppointmentsStatusSyncService } from './appointments-status-sync.service';
+import { AppointmentsRetentionService } from './appointments-retention.service';
 import { AppointmentsController } from './appointments.controller';
 import { HolidaysModule } from '../holidays/holidays.module';
 import { SchedulesModule } from '../schedules/schedules.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { LegalModule } from '../legal/legal.module';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 
 @Module({
-  imports: [HolidaysModule, SchedulesModule, NotificationsModule],
+  imports: [HolidaysModule, SchedulesModule, NotificationsModule, LegalModule, AuditLogsModule],
   controllers: [AppointmentsController],
-  providers: [AppointmentsService, AppointmentsStatusSyncService],
+  providers: [AppointmentsService, AppointmentsStatusSyncService, AppointmentsRetentionService],
   exports: [AppointmentsService],
 })
 export class AppointmentsModule {}

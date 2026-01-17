@@ -24,6 +24,12 @@ enum AppointmentStatus {
   no_show
 }
 
+enum ConsentType {
+  PRIVACY
+  COOKIES
+  MARKETING
+}
+
 enum AlertType {
   info
   warning
@@ -72,6 +78,7 @@ model User {
   barber              Barber?
   brandMemberships    BrandUser[]
   localStaffRoles     LocationStaff[]
+  auditLogs           AuditLog[]
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 }
@@ -87,6 +94,9 @@ model Brand {
   locations Location[]
   users     BrandUser[]
   config    BrandConfig?
+  legalSettings BrandLegalSettings?
+  consentRecords ConsentRecord[]
+  auditLogs AuditLog[]
   providerUsageDaily ProviderUsageDaily[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
@@ -117,6 +127,8 @@ model Location {
   aiChatMessages AiChatMessage[]
   aiBusinessFacts AiBusinessFact[]
   config    LocationConfig?
+  consentRecords ConsentRecord[]
+  auditLogs AuditLog[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -174,6 +186,28 @@ model BrandConfig {
   data      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model BrandLegalSettings {
+  id                    String   @id @default(cuid())
+  brandId               String   @unique
+  brand                 Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  legalOwnerName        String?
+  legalOwnerTaxId       String?
+  legalOwnerAddress     String?
+  legalContactEmail     String?
+  legalContactPhone     String?
+  country               String   @default("ES")
+  privacyPolicyVersion  Int      @default(1)
+  cookiePolicyVersion   Int      @default(1)
+  legalNoticeVersion    Int      @default(1)
+  aiDisclosureEnabled   Boolean  @default(true)
+  aiProviderNames       Json?
+  subProcessors         Json?
+  optionalCustomSections Json?
+  retentionDays         Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model LocationConfig {
@@ -245,10 +279,56 @@ model Appointment {
   guestName     String?
   guestContact  String?
   reminderSent  Boolean            @default(false)
+  anonymizedAt  DateTime?
+  consents      ConsentRecord[]
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
   @@index([localId])
+}
+
+model ConsentRecord {
+  id                 String       @id @default(cuid())
+  brandId            String
+  brand              Brand        @relation(fields: [brandId], references: [id])
+  locationId         String?
+  location           Location?    @relation(fields: [locationId], references: [id])
+  bookingId          String
+  appointment        Appointment  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  consentType        ConsentType
+  policyVersion      Int
+  consentGiven       Boolean
+  consentTextSnapshot String
+  ipHash             String?
+  userAgent          String?
+  createdAt          DateTime     @default(now())
+
+  @@index([brandId])
+  @@index([locationId])
+  @@index([bookingId])
+  @@index([consentType])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  brandId     String
+  brand       Brand     @relation(fields: [brandId], references: [id])
+  locationId  String?
+  location    Location? @relation(fields: [locationId], references: [id])
+  actorUserId String?
+  actorUser   User?     @relation(fields: [actorUserId], references: [id])
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([brandId])
+  @@index([locationId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model Alert {

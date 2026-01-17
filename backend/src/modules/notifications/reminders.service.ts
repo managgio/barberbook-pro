@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { schedule, ScheduledTask } from 'node-cron';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
 import { NotificationsService } from './notifications.service';
 
 const REMINDER_OFFSET_MS = 24 * 60 * 60 * 1000; // 24h
@@ -27,6 +28,25 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleReminders() {
+    let totalReminders = 0;
+    await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
+      try {
+        const sent = await this.handleRemindersForLocal();
+        totalReminders += sent;
+      } catch (error) {
+        this.logger.error(
+          `Reminder job failed for ${brandId}/${localId}.`,
+          error instanceof Error ? error.stack : `${error}`,
+        );
+      }
+    });
+
+    if (totalReminders > 0) {
+      this.logger.log(`Reminder job: sent ${totalReminders} reminders`);
+    }
+  }
+
+  private async handleRemindersForLocal() {
     const now = new Date();
     const windowStart = new Date(now.getTime() + REMINDER_OFFSET_MS - REMINDER_WINDOW_MS);
     const windowEnd = new Date(now.getTime() + REMINDER_OFFSET_MS + REMINDER_WINDOW_MS);
@@ -48,6 +68,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    let sentCount = 0;
     for (const appointment of appointments) {
       const allowSms = appointment.user ? appointment.user.notificationWhatsapp === true : false;
       if (!allowSms) {
@@ -65,11 +86,10 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
         where: { id: appointment.id },
         data: { reminderSent: true },
       });
+      sentCount += 1;
     }
 
-    if (appointments.length > 0) {
-      this.logger.log(`Reminder job: sent ${appointments.length} reminders`);
-    }
+    return sentCount;
   }
 
   private getContact(user: any, guestName?: string | null, guestContact?: string | null) {

@@ -5,6 +5,26 @@ import { UsageMetricsService } from '../usage-metrics/usage-metrics.service';
 import { AssignBrandAdminDto } from './dto/assign-brand-admin.dto';
 import { RemoveBrandAdminDto } from './dto/remove-brand-admin.dto';
 
+const sanitizeThemeConfig = (data: Record<string, unknown>) => {
+  if (!data || typeof data !== 'object') return data;
+  const theme = data.theme;
+  if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return data;
+  const primary = typeof (theme as any).primary === 'string' ? (theme as any).primary.trim() : '';
+  if (primary) {
+    if (primary === (theme as any).primary) return data;
+    return { ...data, theme: { ...(theme as Record<string, unknown>), primary } };
+  }
+  const next = { ...data } as Record<string, unknown>;
+  const nextTheme = { ...(theme as Record<string, unknown>) };
+  delete (nextTheme as any).primary;
+  if (Object.keys(nextTheme).length === 0) {
+    delete (next as any).theme;
+  } else {
+    (next as any).theme = nextTheme;
+  }
+  return next;
+};
+
 @Injectable()
 export class PlatformAdminService {
   constructor(
@@ -303,7 +323,7 @@ export class PlatformAdminService {
   }
 
   async updateBrandConfig(brandId: string, data: Record<string, unknown>) {
-    const payload = data as Prisma.InputJsonValue;
+    const payload = sanitizeThemeConfig(data) as Prisma.InputJsonValue;
     return this.prisma.brandConfig.upsert({
       where: { brandId },
       update: { data: payload },
@@ -320,7 +340,7 @@ export class PlatformAdminService {
   }
 
   async updateLocationConfig(localId: string, data: Record<string, unknown>) {
-    const payload = data as Prisma.InputJsonValue;
+    const payload = sanitizeThemeConfig(data) as Prisma.InputJsonValue;
     return this.prisma.locationConfig.upsert({
       where: { localId },
       update: { data: payload },

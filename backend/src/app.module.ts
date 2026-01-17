@@ -20,6 +20,8 @@ import { ServiceCategoriesModule } from './modules/service-categories/service-ca
 import { OffersModule } from './modules/offers/offers.module';
 import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
+import { LegalModule } from './modules/legal/legal.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
     OffersModule,
     AiAssistantModule,
     PlatformAdminModule,
+    AuditLogsModule,
+    LegalModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
 })

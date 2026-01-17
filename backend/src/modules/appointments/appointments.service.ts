@@ -11,13 +11,17 @@ import { SchedulesService } from '../schedules/schedules.service';
 import { DEFAULT_SHOP_SCHEDULE, ShopSchedule } from '../schedules/schedule.types';
 import { NotificationsService } from '../notifications/notifications.service';
 import { computeServicePricing, isOfferActiveNow } from '../services/services.pricing';
+import { LegalService } from '../legal/legal.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 const DEFAULT_SERVICE_DURATION = 30;
 const SLOT_INTERVAL_MINUTES = 15;
 const CONFIRMATION_GRACE_MS = 60 * 1000;
+const ANONYMIZED_NAME = 'Invitado anonimizado';
 
 const startOfDay = (date: string) => new Date(`${date}T00:00:00`);
 const endOfDay = (date: string) => new Date(`${date}T23:59:59.999`);
+const buildAnonymizedContact = (id: string) => `anonimo+${id.slice(0, 8)}@example.invalid`;
 
 @Injectable()
 export class AppointmentsService {
@@ -26,6 +30,8 @@ export class AppointmentsService {
     private readonly holidaysService: HolidaysService,
     private readonly schedulesService: SchedulesService,
     private readonly notificationsService: NotificationsService,
+    private readonly legalService: LegalService,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
   private async getServiceDuration(serviceId?: string) {
@@ -91,7 +97,22 @@ export class AppointmentsService {
     return pricing.finalPrice ?? Number(service.price);
   }
 
-  async create(data: CreateAppointmentDto) {
+  async create(
+    data: CreateAppointmentDto,
+    context?: { requireConsent?: boolean; ip?: string | null; userAgent?: string | null; actorUserId?: string | null },
+  ) {
+    const requireConsent = context?.requireConsent !== false;
+    let consentRequired = requireConsent;
+    if (requireConsent && data.userId) {
+      const hasConsent = await this.legalService.hasUserPrivacyConsent(data.userId);
+      if (hasConsent) {
+        consentRequired = false;
+      }
+    }
+    if (consentRequired && data.privacyConsentGiven !== true) {
+      throw new BadRequestException('Se requiere aceptar la politica de privacidad.');
+    }
+
     const localId = getCurrentLocalId();
     const startDateTime = new Date(data.startDateTime);
     const price = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
@@ -113,8 +134,47 @@ export class AppointmentsService {
       include: { user: true, barber: true, service: true },
     });
 
+    if (consentRequired) {
+      await this.legalService.recordPrivacyConsent({
+        bookingId: appointment.id,
+        locationId: localId,
+        consentGiven: true,
+        ip: context?.ip || null,
+        userAgent: context?.userAgent || null,
+        actorUserId: context?.actorUserId || null,
+      });
+    }
+
     await this.notifyAppointment(appointment, 'creada');
     return mapAppointment(appointment);
+  }
+
+  async anonymizeAppointment(id: string, actorUserId?: string | null, reason = 'manual') {
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.appointment.findFirst({ where: { id, localId } });
+    if (!existing) throw new NotFoundException('Appointment not found');
+
+    const shouldRedactGuest = !existing.userId;
+    const updated = await this.prisma.appointment.update({
+      where: { id },
+      data: {
+        guestName: shouldRedactGuest ? ANONYMIZED_NAME : existing.guestName,
+        guestContact: shouldRedactGuest ? buildAnonymizedContact(id) : existing.guestContact,
+        notes: null,
+        anonymizedAt: new Date(),
+      },
+    });
+
+    await this.auditLogs.log({
+      locationId: localId,
+      actorUserId: actorUserId || null,
+      action: 'appointment.anonymized',
+      entityType: 'appointment',
+      entityId: id,
+      metadata: { reason },
+    });
+
+    return mapAppointment(updated);
   }
 
   async update(id: string, data: UpdateAppointmentDto) {
@@ -186,6 +246,13 @@ export class AppointmentsService {
     const existing = await this.prisma.appointment.findFirst({ where: { id, localId } });
     if (!existing) throw new NotFoundException('Appointment not found');
     await this.prisma.appointment.delete({ where: { id } });
+    await this.auditLogs.log({
+      locationId: localId,
+      action: 'appointment.deleted',
+      entityType: 'appointment',
+      entityId: id,
+      metadata: { status: existing.status },
+    });
     return { success: true };
   }
 

@@ -495,7 +495,7 @@ export class AiToolsRegistry {
       guestName: userResult.guestName ?? undefined,
       guestContact: userResult.guestContact ?? undefined,
       notes: typeof args.notes === 'string' ? args.notes : undefined,
-    });
+    }, { requireConsent: false });
 
     return {
       status: 'created',
