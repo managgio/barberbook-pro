@@ -30,6 +30,7 @@ import {
   Download,
   Loader2,
   RefreshCcw,
+  Copy,
 } from 'lucide-react';
 import {
   format,
@@ -102,6 +103,7 @@ const AdminDashboard: React.FC = () => {
   const [revenueRange, setRevenueRange] = useState(7);
   const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
+  const [isCopyingQrUrl, setIsCopyingQrUrl] = useState(false);
   const [qrAction, setQrAction] = useState<'share' | 'download' | null>(null);
   const { canAccessSection } = useAdminPermissions();
   const { toast } = useToast();
@@ -402,6 +404,34 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleCopyQrUrl = async () => {
+    if (!qrSticker || isCopyingQrUrl) return;
+    if (!navigator.clipboard?.writeText) {
+      toast({
+        title: 'No se pudo copiar',
+        description: 'Tu navegador no permite copiar automáticamente.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsCopyingQrUrl(true);
+    try {
+      await navigator.clipboard.writeText(qrSticker.url);
+      toast({
+        title: 'Enlace copiado',
+        description: 'El link del negocio está listo para compartir.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo copiar',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCopyingQrUrl(false);
+    }
+  };
+
   const selectedDays = Array.from({ length: revenueRange }).map((_, index) =>
     subDays(new Date(), revenueRange - 1 - index)
   );
@@ -492,48 +522,67 @@ const AdminDashboard: React.FC = () => {
                     <p className="text-xs text-muted-foreground">
                       URL guardada: {qrSticker.url}
                     </p>
-                    <AlertDialog>
+                    <div className="flex items-center gap-2">
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                disabled={isGeneratingQr || isSettingsLoading}
-                                aria-label="Regenerar QR"
-                              >
-                                <RefreshCcw className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              disabled={isCopyingQrUrl || isGeneratingQr || isSettingsLoading}
+                              aria-label="Copiar enlace"
+                              onClick={handleCopyQrUrl}
+                            >
+                              {isCopyingQrUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                            </Button>
                           </TooltipTrigger>
-                          <TooltipContent side="left">Regenerar QR</TooltipContent>
+                          <TooltipContent side="left">Copiar enlace</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Regenerar QR?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Se recomienda regenerar el QR solo si cambia el dominio o la URL pública del negocio. ¿Quieres continuar?
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction asChild>
-                            <Button
-                              variant="destructive"
-                              className="gap-2"
-                              onClick={handleRegenerateQr}
-                              disabled={isGeneratingQr}
-                            >
-                              {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                              Regenerar
-                            </Button>
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                      <AlertDialog>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  disabled={isGeneratingQr || isSettingsLoading}
+                                  aria-label="Regenerar QR"
+                                >
+                                  <RefreshCcw className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">Regenerar QR</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Regenerar QR?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Se recomienda regenerar el QR solo si cambia el dominio o la URL pública del negocio. ¿Quieres continuar?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction asChild>
+                              <Button
+                                variant="destructive"
+                                className="gap-2"
+                                onClick={handleRegenerateQr}
+                                disabled={isGeneratingQr}
+                              >
+                                {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                                Regenerar
+                              </Button>
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </>
               ) : (

@@ -1,4 +1,4 @@
-# ARCHITECTURE - Managgio (LeBlond)
+# ARCHITECTURE - Managgio
 
 ## Vision general de producto
 Managgio es una plataforma multi-tenant para gestionar negocios que funcionan con citas (barberias, peluquerias, centros de estetica, etc). El sistema se divide en:
