@@ -112,6 +112,16 @@ export interface Appointment {
   guestContact?: string;
 }
 
+export interface ClientNote {
+  id: string;
+  userId: string;
+  localId: string;
+  authorId?: string | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ShiftSchedule {
   enabled: boolean;
   start: string; // "09:00"

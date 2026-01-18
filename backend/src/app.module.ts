@@ -22,6 +22,7 @@ import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { LegalModule } from './modules/legal/legal.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { ClientNotesModule } from './modules/client-notes/client-notes.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
     PlatformAdminModule,
     AuditLogsModule,
     LegalModule,
+    ClientNotesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
 })

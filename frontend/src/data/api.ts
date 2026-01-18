@@ -5,6 +5,7 @@ import {
   Offer,
   ServiceCategory,
   Appointment,
+  ClientNote,
   CreateAppointmentPayload,
   Alert,
   ShopSchedule,
@@ -103,6 +104,16 @@ export const updateUser = async (id: string, data: Partial<User>): Promise<User>
   apiRequest(`/users/${id}`, { method: 'PATCH', body: data });
 export const deleteUser = async (id: string): Promise<void> =>
   apiRequest(`/users/${id}`, { method: 'DELETE' });
+
+// Client Notes API
+export const getClientNotes = async (userId: string): Promise<ClientNote[]> =>
+  apiRequest('/client-notes', { query: { userId } });
+export const createClientNote = async (data: { userId: string; content: string }): Promise<ClientNote> =>
+  apiRequest('/client-notes', { method: 'POST', body: data });
+export const updateClientNote = async (id: string, data: { content: string }): Promise<ClientNote> =>
+  apiRequest(`/client-notes/${id}`, { method: 'PATCH', body: data });
+export const deleteClientNote = async (id: string): Promise<void> =>
+  apiRequest(`/client-notes/${id}`, { method: 'DELETE' });
 
 // Tenant API
 export const getTenantBootstrap = async (): Promise<TenantBootstrap> =>

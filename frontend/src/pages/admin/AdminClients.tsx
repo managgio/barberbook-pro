@@ -2,9 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
-import { Appointment, Barber, Service, User } from '@/data/types';
-import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { createClientNote, deleteClientNote, getAppointments, getBarbers, getClientNotes, getServices, getUsers, updateAppointment } from '@/data/api';
+import { Appointment, Barber, ClientNote, Service, User } from '@/data/types';
+import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2 } from 'lucide-react';
 import { format, parseISO, subMonths, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
@@ -30,6 +33,12 @@ const AdminClients: React.FC = () => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [isNotesLoading, setIsNotesLoading] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const loadData = useCallback(async (withLoading = true) => {
     if (withLoading) setIsLoading(true);
@@ -68,6 +77,31 @@ const AdminClients: React.FC = () => {
     return () => clearInterval(interval);
   }, [loadData]);
 
+  const loadClientNotes = useCallback(async (clientId: string) => {
+    setIsNotesLoading(true);
+    try {
+      const notes = await getClientNotes(clientId);
+      setClientNotes(notes);
+    } catch (error) {
+      toast({
+        title: 'No se pudieron cargar las notas',
+        description: 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsNotesLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    setClientNotes([]);
+    setNoteDraft('');
+    setIsNotesOpen(false);
+    if (selectedClientId) {
+      void loadClientNotes(selectedClientId);
+    }
+  }, [selectedClientId, loadClientNotes]);
+
   const filteredClients = clients.filter(client => {
     const haystack = `${client.name} ${client.email || ''} ${client.phone || ''}`.toLowerCase();
     return haystack.includes(searchTerm.toLowerCase());
@@ -105,6 +139,79 @@ const AdminClients: React.FC = () => {
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
+
+  useEffect(() => {
+    if (!isNotesOpen || !selectedClient) return;
+    void loadClientNotes(selectedClient.id);
+  }, [isNotesOpen, loadClientNotes, selectedClient]);
+
+  const handleCreateNote = async () => {
+    if (!selectedClient || isSavingNote) return;
+    const trimmed = noteDraft.trim();
+    if (!trimmed) {
+      toast({
+        title: 'Escribe una nota',
+        description: 'La nota no puede estar vacía.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (trimmed.length > 150) {
+      toast({
+        title: 'Límite superado',
+        description: 'La nota no puede superar 150 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (clientNotes.length >= 5) {
+      toast({
+        title: 'Límite alcanzado',
+        description: 'Solo puedes guardar hasta 5 notas por cliente.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsSavingNote(true);
+    try {
+      const created = await createClientNote({ userId: selectedClient.id, content: trimmed });
+      setClientNotes((prev) => [created, ...prev]);
+      setNoteDraft('');
+      toast({
+        title: 'Nota guardada',
+        description: 'La nota interna se añadió correctamente.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo guardar',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (deletingNoteId) return;
+    setDeletingNoteId(noteId);
+    try {
+      await deleteClientNote(noteId);
+      setClientNotes((prev) => prev.filter((note) => note.id !== noteId));
+      toast({
+        title: 'Nota eliminada',
+        description: 'La nota interna se eliminó.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo eliminar',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingNoteId(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -180,32 +287,121 @@ const AdminClients: React.FC = () => {
               <div className="space-y-6">
                 {/* Client Info */}
                 <div className="p-4 bg-secondary/50 rounded-lg space-y-3 relative">
-                  {recentNoShows > 0 && (
-                    <div className="absolute top-3 right-3 rounded-full bg-destructive/10 text-destructive text-xs font-semibold px-2 py-1 inline-flex items-center gap-1">
-                      {recentNoShows} inasistencia{recentNoShows > 1 ? 's' : ''}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                            aria-label="Info sobre el rango de datos"
-                          >
-                            <HelpCircle className="w-3.5 h-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left" className="text-xs">
-                          Datos de los últimos 2 meses.
-                        </TooltipContent>
-                      </Tooltip>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <UserIcon className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-lg text-foreground">{selectedClient.name}</p>
+                        <p className="text-sm text-muted-foreground">Cliente registrado</p>
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <UserIcon className="w-6 h-6 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-lg text-foreground">{selectedClient.name}</p>
-                      <p className="text-sm text-muted-foreground">Cliente registrado</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {recentNoShows > 0 && (
+                        <div className="rounded-full bg-destructive/10 text-destructive text-xs font-semibold px-2 py-1 inline-flex items-center gap-1">
+                          {recentNoShows} inasistencia{recentNoShows > 1 ? 's' : ''}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                                aria-label="Info sobre el rango de datos"
+                              >
+                                <HelpCircle className="w-3.5 h-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="text-xs">
+                              Datos de los últimos 2 meses.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      )}
+                      <Dialog open={isNotesOpen} onOpenChange={setIsNotesOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="gap-2">
+                            <FileText className="w-4 h-4" />
+                            Notas internas: {isNotesLoading ? '...' : clientNotes.length}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg h-[560px] max-h-[80vh] overflow-hidden flex flex-col">
+                          <DialogHeader>
+                            <DialogTitle>Notas internas del cliente</DialogTitle>
+                            <DialogDescription>
+                              Son recordatorios privados para el equipo admin. El cliente no las ve ni recibe.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="flex min-h-0 flex-1 flex-col gap-4">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor="client-note">Nueva nota</Label>
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {noteDraft.length}/150
+                                </span>
+                              </div>
+                              <Textarea
+                                id="client-note"
+                                placeholder="Ej: Prefiere citas por la tarde, evitar navaja en barba..."
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                                maxLength={150}
+                                className="min-h-[96px]"
+                              />
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{clientNotes.length}/5 notas guardadas</span>
+                                <Button
+                                  size="sm"
+                                  onClick={handleCreateNote}
+                                  disabled={isSavingNote || noteDraft.trim().length === 0 || clientNotes.length >= 5}
+                                >
+                                  {isSavingNote ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar nota'}
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="flex min-h-0 flex-1 flex-col space-y-2">
+                              <p className="text-sm font-medium text-foreground">Notas guardadas</p>
+                              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                                {isNotesLoading ? (
+                                  <ListSkeleton count={2} />
+                                ) : clientNotes.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {clientNotes.map((note) => (
+                                      <div
+                                        key={note.id}
+                                        className="rounded-lg border border-border/60 bg-background/60 px-3 py-2"
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
+                                          <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                            onClick={() => handleDeleteNote(note.id)}
+                                            disabled={deletingNoteId === note.id}
+                                          >
+                                            {deletingNoteId === note.id ? (
+                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="w-4 h-4" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                        <p className="mt-2 text-xs text-muted-foreground">
+                                          {format(parseISO(note.createdAt), "d MMM yyyy, HH:mm", { locale: es })}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">
+                                    Aún no hay notas internas para este cliente.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-3 pt-2">

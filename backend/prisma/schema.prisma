@@ -78,6 +78,8 @@ model User {
   barber              Barber?
   brandMemberships    BrandUser[]
   localStaffRoles     LocationStaff[]
+  clientNotes         ClientNote[] @relation("ClientNoteUser")
+  authoredClientNotes ClientNote[] @relation("ClientNoteAuthor")
   auditLogs           AuditLog[]
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
@@ -118,6 +120,7 @@ model Location {
   alerts    Alert[]
   generalHolidays GeneralHoliday[]
   barberHolidays BarberHoliday[]
+  clientNotes ClientNote[]
   shopSchedule ShopSchedule?
   siteSettings SiteSettings?
   barberSchedules BarberSchedule[]
@@ -285,6 +288,23 @@ model Appointment {
   updatedAt     DateTime           @updatedAt
 
   @@index([localId])
+}
+
+model ClientNote {
+  id        String   @id @default(cuid())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id])
+  userId    String
+  user      User     @relation("ClientNoteUser", fields: [userId], references: [id])
+  authorId  String?
+  author    User?    @relation("ClientNoteAuthor", fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([localId])
+  @@index([userId])
+  @@index([authorId])
 }
 
 model ConsentRecord {
