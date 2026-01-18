@@ -32,6 +32,10 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsBoolean()
+  notificationSms?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   prefersBarberSelection?: boolean;
 
   @IsOptional()

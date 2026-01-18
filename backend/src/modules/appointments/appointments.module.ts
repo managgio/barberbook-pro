@@ -8,9 +8,10 @@ import { SchedulesModule } from '../schedules/schedules.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LegalModule } from '../legal/legal.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [HolidaysModule, SchedulesModule, NotificationsModule, LegalModule, AuditLogsModule],
+  imports: [HolidaysModule, SchedulesModule, NotificationsModule, LegalModule, AuditLogsModule, SettingsModule],
   controllers: [AppointmentsController],
   providers: [AppointmentsService, AppointmentsStatusSyncService, AppointmentsRetentionService],
   exports: [AppointmentsService],

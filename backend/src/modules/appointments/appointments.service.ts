@@ -13,6 +13,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { computeServicePricing, isOfferActiveNow } from '../services/services.pricing';
 import { LegalService } from '../legal/legal.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { SettingsService } from '../settings/settings.service';
 
 const DEFAULT_SERVICE_DURATION = 30;
 const SLOT_INTERVAL_MINUTES = 15;
@@ -32,6 +33,7 @@ export class AppointmentsService {
     private readonly notificationsService: NotificationsService,
     private readonly legalService: LegalService,
     private readonly auditLogs: AuditLogsService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   private async getServiceDuration(serviceId?: string) {
@@ -177,68 +179,78 @@ export class AppointmentsService {
     return mapAppointment(updated);
   }
 
-  async update(id: string, data: UpdateAppointmentDto) {
+  async update(id: string, data: UpdateAppointmentDto, context?: { actorUserId?: string | null }) {
     const localId = getCurrentLocalId();
-    try {
-      const current = await this.prisma.appointment.findFirst({ where: { id, localId } });
-      if (!current) throw new NotFoundException('Appointment not found');
-      if ((current.status === 'no_show' || current.status === 'cancelled') && data.status === 'completed') {
-        throw new BadRequestException('Appointment marked as no-show or cancelled cannot be completed.');
-      }
-      if (current.status === 'completed' && data.status === 'scheduled') {
-        throw new BadRequestException('Completed appointment cannot be set to scheduled.');
-      }
+    const current = await this.prisma.appointment.findFirst({ where: { id, localId } });
+    if (!current) throw new NotFoundException('Appointment not found');
+    if ((current.status === 'no_show' || current.status === 'cancelled') && data.status === 'completed') {
+      throw new BadRequestException('Appointment marked as no-show or cancelled cannot be completed.');
+    }
+    if (current.status === 'completed' && data.status === 'scheduled') {
+      throw new BadRequestException('Completed appointment cannot be set to scheduled.');
+    }
 
-      const nextServiceId = data.serviceId ?? current.serviceId;
-      const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
-      if (data.status === 'completed') {
-        const duration = await this.getServiceDuration(nextServiceId);
-        const endTime = new Date(nextStartDateTime.getTime() + duration * 60 * 1000);
-        const confirmationThreshold = new Date(endTime.getTime() + CONFIRMATION_GRACE_MS);
-        if (new Date() < confirmationThreshold) {
-          throw new BadRequestException('Appointment cannot be completed before it ends.');
+    const nextServiceId = data.serviceId ?? current.serviceId;
+    const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
+    if (data.status === 'completed') {
+      const duration = await this.getServiceDuration(nextServiceId);
+      const endTime = new Date(nextStartDateTime.getTime() + duration * 60 * 1000);
+      const confirmationThreshold = new Date(endTime.getTime() + CONFIRMATION_GRACE_MS);
+      if (new Date() < confirmationThreshold) {
+        throw new BadRequestException('Appointment cannot be completed before it ends.');
+      }
+    }
+
+    const startChanged =
+      data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
+    const statusChanged = data.status && data.status !== current.status;
+    const isCancelled = statusChanged && data.status === 'cancelled';
+
+    if (isCancelled && !context?.actorUserId) {
+      const settings = await this.settingsService.getSettings();
+      const cutoffHours = settings.appointments?.cancellationCutoffHours ?? 0;
+      if (cutoffHours > 0) {
+        const cutoffMs = cutoffHours * 60 * 60 * 1000;
+        const timeUntil = nextStartDateTime.getTime() - Date.now();
+        if (timeUntil <= cutoffMs) {
+          throw new BadRequestException(
+            `Solo puedes cancelar con más de ${cutoffHours}h de antelación.`,
+          );
         }
       }
-
-      const startChanged =
-        data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
-      const statusChanged = data.status && data.status !== current.status;
-      const isCancelled = statusChanged && data.status === 'cancelled';
-
-      let reminderSent: boolean | undefined;
-      if (statusChanged) {
-        reminderSent = data.status === 'cancelled' ? true : false;
-      } else if (startChanged) {
-        reminderSent = false;
-      }
-
-      const shouldRecalculatePrice = data.serviceId !== undefined || data.startDateTime !== undefined;
-      const price = shouldRecalculatePrice
-        ? new Prisma.Decimal(await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime))
-        : undefined;
-
-      const updated = await this.prisma.appointment.update({
-        where: { id },
-        data: {
-          userId: data.userId,
-          barberId: data.barberId,
-          serviceId: data.serviceId,
-          startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
-          price,
-          status: data.status,
-          notes: data.notes,
-          guestName: data.guestName,
-          guestContact: data.guestContact,
-          reminderSent,
-        },
-        include: { user: true, barber: true, service: true },
-      });
-
-      await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
-      return mapAppointment(updated);
-    } catch (error) {
-      throw new NotFoundException('Appointment not found');
     }
+
+    let reminderSent: boolean | undefined;
+    if (statusChanged) {
+      reminderSent = data.status === 'cancelled' ? true : false;
+    } else if (startChanged) {
+      reminderSent = false;
+    }
+
+    const shouldRecalculatePrice = data.serviceId !== undefined || data.startDateTime !== undefined;
+    const price = shouldRecalculatePrice
+      ? new Prisma.Decimal(await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime))
+      : undefined;
+
+    const updated = await this.prisma.appointment.update({
+      where: { id },
+      data: {
+        userId: data.userId,
+        barberId: data.barberId,
+        serviceId: data.serviceId,
+        startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
+        price,
+        status: data.status,
+        notes: data.notes,
+        guestName: data.guestName,
+        guestContact: data.guestContact,
+        reminderSent,
+      },
+      include: { user: true, barber: true, service: true },
+    });
+
+    await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
+    return mapAppointment(updated);
   }
 
   async remove(id: string) {

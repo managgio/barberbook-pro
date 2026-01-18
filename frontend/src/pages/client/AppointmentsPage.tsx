@@ -72,6 +72,14 @@ const AppointmentsPage: React.FC = () => {
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
 
+  const cancellationCutoffHours = settings.appointments?.cancellationCutoffHours ?? 0;
+  const canCancelAppointment = (appointment: Appointment) => {
+    if (cancellationCutoffHours <= 0) return true;
+    const startDate = parseISO(appointment.startDateTime);
+    const cutoffMs = cancellationCutoffHours * 60 * 60 * 1000;
+    return startDate.getTime() - Date.now() > cutoffMs;
+  };
+
   const generateCalendarLink = (appointment: Appointment) => {
     const service = getService(appointment.serviceId);
     const barber = getBarber(appointment.barberId);
@@ -102,6 +110,7 @@ const AppointmentsPage: React.FC = () => {
     const basePrice = service?.price ?? appointment.price;
     const paidPrice = appointment.price;
     const hadOffer = paidPrice < (basePrice - 0.001);
+    const canCancel = canCancelAppointment(appointment);
     
     return (
       <Card variant={isHistorical ? 'default' : 'elevated'} className={isHistorical ? 'opacity-70' : ''}>
@@ -182,7 +191,16 @@ const AppointmentsPage: React.FC = () => {
                   variant="ghost"
                   size="icon"
                   className="text-destructive"
-                  onClick={() => setDeleteTarget(appointment)}
+                  onClick={() => {
+                    if (!canCancel) return;
+                    setDeleteTarget(appointment);
+                  }}
+                  disabled={!canCancel}
+                  title={
+                    !canCancel
+                      ? `No puedes cancelar con menos de ${cancellationCutoffHours}h de antelación.`
+                      : undefined
+                  }
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
@@ -282,7 +300,7 @@ const AppointmentsPage: React.FC = () => {
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
-                if (!deleteTarget) return;
+                if (!deleteTarget || !canCancelAppointment(deleteTarget)) return;
                 setIsDeleting(true);
                 try {
                   await updateAppointment(deleteTarget.id, { status: 'cancelled' });

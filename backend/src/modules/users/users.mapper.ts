@@ -13,6 +13,7 @@ export const mapUser = (
   notificationPrefs: {
     email: user.notificationEmail,
     whatsapp: user.notificationWhatsapp,
+    sms: user.notificationSms,
   },
   prefersBarberSelection: user.prefersBarberSelection,
   avatar: user.avatar || undefined,

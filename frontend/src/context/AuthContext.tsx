@@ -27,7 +27,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const defaultNotificationPrefs = { email: true, whatsapp: true };
+const defaultNotificationPrefs = { email: true, whatsapp: true, sms: true };
 
 const getDisplayName = (firebaseUser: FirebaseUser, providedName?: string) => {
   const email = firebaseUser.email || '';
@@ -47,9 +47,11 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
   const existing = existingByUid || (await getUserByEmail(email));
 
   const phone = extras?.phone || firebaseUser.phoneNumber || existing?.phone;
-  const notificationPrefs =
-    existing?.notificationPrefs ||
-    { email: true, whatsapp: true };
+  const notificationPrefs = {
+    email: existing?.notificationPrefs?.email ?? true,
+    whatsapp: existing?.notificationPrefs?.whatsapp ?? true,
+    sms: existing?.notificationPrefs?.sms ?? true,
+  };
   const prefersBarberSelection = existing?.prefersBarberSelection ?? true;
 
   const payload: Partial<User> = {
@@ -226,6 +228,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (data.notificationPrefs) {
       payload.notificationEmail = data.notificationPrefs.email;
       payload.notificationWhatsapp = data.notificationPrefs.whatsapp;
+      payload.notificationSms = data.notificationPrefs.sms;
     }
     if (data.prefersBarberSelection !== undefined) {
       payload.prefersBarberSelection = data.prefersBarberSelection;

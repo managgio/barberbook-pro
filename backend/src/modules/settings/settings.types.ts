@@ -42,6 +42,9 @@ export type SiteSettings = {
   socials: SocialLinks;
   stats: SiteStats;
   openingHours: ShopSchedule;
+  appointments: {
+    cancellationCutoffHours: number;
+  };
   services: {
     categoriesEnabled: boolean;
   };
@@ -80,6 +83,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     repeatClientsPercentage: 80,
   },
   openingHours: cloneSchedule(DEFAULT_SHOP_SCHEDULE),
+  appointments: {
+    cancellationCutoffHours: 0,
+  },
   services: {
     categoriesEnabled: false,
   },
@@ -95,6 +101,10 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
   openingHours: data?.openingHours
     ? normalizeSchedule(data.openingHours)
     : cloneSchedule(DEFAULT_SITE_SETTINGS.openingHours),
+  appointments: {
+    ...DEFAULT_SITE_SETTINGS.appointments,
+    ...(data?.appointments ?? {}),
+  },
   services: {
     ...DEFAULT_SITE_SETTINGS.services,
     ...(data?.services ?? {}),

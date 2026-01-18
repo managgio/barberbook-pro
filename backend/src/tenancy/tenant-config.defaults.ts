@@ -8,6 +8,11 @@ const parseNumber = (value?: string) => {
 
 export const buildBrandConfigFromEnv = (): BrandConfigData => ({
   superAdminEmail: process.env.SUPER_ADMIN_EMAIL?.toLowerCase(),
+  notificationPrefs: {
+    email: true,
+    whatsapp: true,
+    sms: true,
+  },
   imagekit: {
     publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
     privateKey: process.env.IMAGEKIT_PRIVATE_KEY,

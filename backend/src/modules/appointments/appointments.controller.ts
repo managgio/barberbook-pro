@@ -56,8 +56,9 @@ export class AppointmentsController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() data: UpdateAppointmentDto) {
-    return this.appointmentsService.update(id, data);
+  async update(@Param('id') id: string, @Body() data: UpdateAppointmentDto, @Req() req: any) {
+    const adminUserId = await this.resolveAdminUserId(req);
+    return this.appointmentsService.update(id, data, { actorUserId: adminUserId });
   }
 
   @Delete(':id')

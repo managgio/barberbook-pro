@@ -30,6 +30,10 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsBoolean()
+  notificationSms?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   prefersBarberSelection?: boolean;
 
   @IsOptional()

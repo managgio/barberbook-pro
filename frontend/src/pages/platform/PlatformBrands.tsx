@@ -398,6 +398,20 @@ const PlatformBrands: React.FC = () => {
 
   const isLocationSidebarOverride = Array.isArray(locationConfig?.adminSidebar?.hiddenSections);
   const locationSidebarConfig = isLocationSidebarOverride ? locationConfig : brandConfig;
+  const isLocationNotificationOverride = Boolean(locationConfig?.notificationPrefs);
+  const brandNotificationPrefs = {
+    email: brandConfig?.notificationPrefs?.email !== false,
+    whatsapp: brandConfig?.notificationPrefs?.whatsapp !== false,
+    sms: brandConfig?.notificationPrefs?.sms !== false,
+  };
+  const locationNotificationPrefsSource = isLocationNotificationOverride
+    ? locationConfig.notificationPrefs
+    : brandConfig.notificationPrefs;
+  const locationNotificationPrefs = {
+    email: locationNotificationPrefsSource?.email !== false,
+    whatsapp: locationNotificationPrefsSource?.whatsapp !== false,
+    sms: locationNotificationPrefsSource?.sms !== false,
+  };
 
   const updateSidebarVisibility = (
     setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
@@ -425,6 +439,18 @@ const PlatformBrands: React.FC = () => {
     setLocationConfig((prev) => {
       if (!prev.adminSidebar) return prev;
       const { adminSidebar, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const handleLocationNotificationOverride = (checked: boolean) => {
+    if (checked) {
+      setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs'], { ...brandNotificationPrefs }));
+      return;
+    }
+    setLocationConfig((prev) => {
+      if (!prev.notificationPrefs) return prev;
+      const { notificationPrefs, ...rest } = prev;
       return rest;
     });
   };
@@ -1378,6 +1404,48 @@ const PlatformBrands: React.FC = () => {
                       </div>
 
                       <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Notificaciones (perfil)</p>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Email</div>
+                              <p className="text-xs text-muted-foreground">Mostrar opción de correo en el perfil.</p>
+                            </div>
+                            <Switch
+                              checked={brandNotificationPrefs.email}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'email'], checked))
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">WhatsApp</div>
+                              <p className="text-xs text-muted-foreground">Mostrar opción de WhatsApp en el perfil.</p>
+                            </div>
+                            <Switch
+                              checked={brandNotificationPrefs.whatsapp}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'whatsapp'], checked))
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">SMS</div>
+                              <p className="text-xs text-muted-foreground">Mostrar opción de SMS en el perfil.</p>
+                            </div>
+                            <Switch
+                              checked={brandNotificationPrefs.sms}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'sms'], checked))
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
                         <div className="grid gap-4">
                           {renderBrandAssetInput('heroBackground')}
@@ -1510,6 +1578,64 @@ const PlatformBrands: React.FC = () => {
                         <p className="text-xs text-muted-foreground">
                           Cambia de local aquí para editar su color e ImageKit.
                         </p>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">Notificaciones en perfil</p>
+                            <p className="text-xs text-muted-foreground">
+                              Sobrescribe las opciones visibles para este local.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Personalizar</span>
+                            <Switch
+                              checked={isLocationNotificationOverride}
+                              onCheckedChange={handleLocationNotificationOverride}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Email</div>
+                              <p className="text-xs text-muted-foreground">Visible para clientes.</p>
+                            </div>
+                            <Switch
+                              checked={locationNotificationPrefs.email}
+                              disabled={!isLocationNotificationOverride}
+                              onCheckedChange={(checked) =>
+                                setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'email'], checked))
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">WhatsApp</div>
+                              <p className="text-xs text-muted-foreground">Visible para clientes.</p>
+                            </div>
+                            <Switch
+                              checked={locationNotificationPrefs.whatsapp}
+                              disabled={!isLocationNotificationOverride}
+                              onCheckedChange={(checked) =>
+                                setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'whatsapp'], checked))
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">SMS</div>
+                              <p className="text-xs text-muted-foreground">Visible para clientes.</p>
+                            </div>
+                            <Switch
+                              checked={locationNotificationPrefs.sms}
+                              disabled={!isLocationNotificationOverride}
+                              onCheckedChange={(checked) =>
+                                setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'sms'], checked))
+                              }
+                            />
+                          </div>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <Label>Color local (opcional)</Label>

@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
 import { NotificationsService } from './notifications.service';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
 
 const REMINDER_OFFSET_MS = 24 * 60 * 60 * 1000; // 24h
 const REMINDER_WINDOW_MS = 10 * 60 * 1000; // 10 minutes window to avoid repeats if job runs often
@@ -16,6 +17,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly tenantConfig: TenantConfigService,
   ) {}
 
   onModuleInit() {
@@ -47,6 +49,12 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleRemindersForLocal() {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    const smsEnabled = config.notificationPrefs?.sms !== false;
+    if (!smsEnabled) {
+      return 0;
+    }
+
     const now = new Date();
     const windowStart = new Date(now.getTime() + REMINDER_OFFSET_MS - REMINDER_WINDOW_MS);
     const windowEnd = new Date(now.getTime() + REMINDER_OFFSET_MS + REMINDER_WINDOW_MS);
@@ -70,7 +78,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
 
     let sentCount = 0;
     for (const appointment of appointments) {
-      const allowSms = appointment.user ? appointment.user.notificationWhatsapp === true : false;
+      const allowSms = appointment.user ? appointment.user.notificationSms === true : false;
       if (!allowSms) {
         continue;
       }

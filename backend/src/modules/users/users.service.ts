@@ -47,6 +47,7 @@ export class UsersService {
     return {
       notificationEmail: data.notificationEmail ?? (useDefaults ? true : undefined),
       notificationWhatsapp: data.notificationWhatsapp ?? (useDefaults ? true : undefined),
+      notificationSms: data.notificationSms ?? (useDefaults ? true : undefined),
       prefersBarberSelection: data.prefersBarberSelection ?? (useDefaults ? true : undefined),
     };
   }

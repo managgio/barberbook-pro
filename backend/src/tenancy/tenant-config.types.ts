@@ -42,6 +42,12 @@ export type TenantAdminSidebarConfig = {
   hiddenSections?: string[];
 };
 
+export type TenantNotificationPrefs = {
+  email?: boolean;
+  whatsapp?: boolean;
+  sms?: boolean;
+};
+
 export type BrandConfigData = {
   superAdminEmail?: string;
   imagekit?: TenantImageKitConfig;
@@ -50,6 +56,7 @@ export type BrandConfigData = {
   firebaseAdmin?: TenantFirebaseAdminConfig;
   ai?: TenantAiConfig;
   adminSidebar?: TenantAdminSidebarConfig;
+  notificationPrefs?: TenantNotificationPrefs;
   branding?: {
     name?: string;
     shortName?: string;
@@ -69,6 +76,7 @@ export type LocationConfigData = {
   imagekit?: Pick<TenantImageKitConfig, 'folder'>;
   adminSidebar?: TenantAdminSidebarConfig;
   theme?: TenantThemeConfig;
+  notificationPrefs?: TenantNotificationPrefs;
 };
 
 export type EffectiveTenantConfig = BrandConfigData & LocationConfigData;

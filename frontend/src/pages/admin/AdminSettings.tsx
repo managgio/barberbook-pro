@@ -519,6 +519,43 @@ const AdminSettings: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Cancellation policy */}
+      <Card variant="elevated">
+        <CardHeader className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary" />
+            <CardTitle>Política de cancelación</CardTitle>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Define con cuántas horas de antelación se puede cancelar una cita.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2 max-w-xs">
+            <Label>Horas mínimas antes de la cita</Label>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={settings.appointments.cancellationCutoffHours}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  appointments: {
+                    ...prev.appointments,
+                    cancellationCutoffHours: Math.max(0, parseInt(e.target.value, 10) || 0),
+                  },
+                }))
+              }
+              disabled={isLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Usa 0 si no quieres aplicar límite de cancelación.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Opening hours */}
       <Card variant="elevated">
         <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

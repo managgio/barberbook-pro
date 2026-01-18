@@ -10,6 +10,7 @@ export interface User {
   notificationPrefs: {
     email: boolean;
     whatsapp: boolean;
+    sms?: boolean;
   };
   prefersBarberSelection?: boolean;
   avatar?: string;
@@ -68,6 +69,11 @@ export interface TenantBootstrap {
     } | null;
     theme?: {
       primary?: string;
+    } | null;
+    notificationPrefs?: {
+      email?: boolean;
+      whatsapp?: boolean;
+      sms?: boolean;
     } | null;
   };
 }
@@ -203,6 +209,9 @@ export interface SiteSettings {
   socials: SocialLinks;
   stats: SiteStats;
   openingHours: ShopSchedule;
+  appointments: {
+    cancellationCutoffHours: number;
+  };
   services: {
     categoriesEnabled: boolean;
   };

@@ -75,10 +75,15 @@ export class TenantConfigService {
       brandConfig.adminSidebar || {},
       locationConfig.adminSidebar || {},
     );
+    const notificationPrefs = mergeConfig(
+      brandConfig.notificationPrefs || {},
+      locationConfig.notificationPrefs || {},
+    );
     return {
       branding: brandConfig.branding || null,
       theme: Object.keys(theme).length ? theme : null,
       adminSidebar: Object.keys(adminSidebar).length ? adminSidebar : null,
+      notificationPrefs: Object.keys(notificationPrefs).length ? notificationPrefs : null,
     };
   }
 }
