@@ -29,6 +29,7 @@ import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminCalendar from "./pages/admin/AdminCalendar";
 import AdminSearch from "./pages/admin/AdminSearch";
+import AdminCashRegister from "./pages/admin/AdminCashRegister";
 import AdminClients from "./pages/admin/AdminClients";
 import AdminServices from "./pages/admin/AdminServices";
 import AdminBarbers from "./pages/admin/AdminBarbers";
@@ -125,6 +126,7 @@ const AppRoutes: React.FC = () => {
         <Route index element={<AdminDashboard />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="search" element={<AdminSearch />} />
+        <Route path="cash-register" element={<AdminCashRegister />} />
         <Route path="clients" element={<AdminClients />} />
         <Route path="services" element={<AdminServices />} />
         <Route path="barbers" element={<AdminBarbers />} />

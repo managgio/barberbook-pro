@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode } from 'react';
 import { User, UserRole } from '@/data/types';
 import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api';
 import {
@@ -162,7 +162,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       .finally(() => setIsLoading(false));
   }, [tenantReady, currentLocationId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!user) {
       setAdminUserId(null);
       return;

@@ -17,6 +17,11 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
     description: 'Historial completo de citas filtrado por barbero o fecha.',
   },
   {
+    key: 'cash-register',
+    label: 'Caja Registradora',
+    description: 'Control diario de ingresos, salidas y medios de pago.',
+  },
+  {
     key: 'clients',
     label: 'Clientes',
     description: 'Gestión de clientes y su historial de visitas.',

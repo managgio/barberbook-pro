@@ -5,6 +5,7 @@ import {
   Offer,
   ServiceCategory,
   Appointment,
+  CashMovement,
   ClientNote,
   CreateAppointmentPayload,
   Alert,
@@ -19,6 +20,7 @@ import {
   LegalPolicyResponse,
   LegalSettings,
   PrivacyConsentStatus,
+  PaymentMethod,
 } from './types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
 import { getAdminUserId } from '@/lib/authStorage';
@@ -182,6 +184,8 @@ export const getAppointmentsByBarber = async (barberId: string): Promise<Appoint
   apiRequest('/appointments', { query: { barberId } });
 export const getAppointmentsByDate = async (date: string): Promise<Appointment[]> =>
   apiRequest('/appointments', { query: { date } });
+export const getAppointmentsByDateForLocal = async (date: string, localId: string): Promise<Appointment[]> =>
+  apiRequest('/appointments', { query: { date }, headers: { 'x-local-id': localId } });
 export const createAppointment = async (data: CreateAppointmentPayload): Promise<Appointment> =>
   apiRequest('/appointments', { method: 'POST', body: data });
 export const updateAppointment = async (id: string, data: Partial<Appointment>): Promise<Appointment> =>
@@ -190,6 +194,25 @@ export const deleteAppointment = async (id: string): Promise<void> =>
   apiRequest(`/appointments/${id}`, { method: 'DELETE' });
 export const anonymizeAppointment = async (id: string): Promise<Appointment> =>
   apiRequest(`/appointments/${id}/anonymize`, { method: 'POST' });
+
+// Cash Register API
+export const getCashMovements = async (date: string): Promise<CashMovement[]> =>
+  apiRequest('/cash-register/movements', { query: { date } });
+export const getCashMovementsForLocal = async (date: string, localId: string): Promise<CashMovement[]> =>
+  apiRequest('/cash-register/movements', { query: { date }, headers: { 'x-local-id': localId } });
+export const createCashMovement = async (data: {
+  type: 'in' | 'out';
+  amount: number;
+  method?: PaymentMethod | null;
+  note?: string;
+  occurredAt?: string;
+}): Promise<CashMovement> => apiRequest('/cash-register/movements', { method: 'POST', body: data });
+export const updateCashMovement = async (
+  id: string,
+  data: Partial<{ type: 'in' | 'out'; amount: number; method?: PaymentMethod | null; note?: string; occurredAt?: string }>,
+): Promise<CashMovement> => apiRequest(`/cash-register/movements/${id}`, { method: 'PATCH', body: data });
+export const deleteCashMovement = async (id: string): Promise<void> =>
+  apiRequest(`/cash-register/movements/${id}`, { method: 'DELETE' });
 
 export const getAvailableSlots = async (
   barberId: string,

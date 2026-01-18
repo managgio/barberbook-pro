@@ -46,6 +46,7 @@ const AuthPage: React.FC = () => {
     if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
     return value.toString();
   };
+  const isSignup = activeTab === 'signup' && !isPlatform;
 
   // Redirect if already authenticated
   React.useEffect(() => {
@@ -59,13 +60,19 @@ const AuthPage: React.FC = () => {
     }
   }, [isAuthenticated, user, navigate, isPlatform]);
 
+  React.useEffect(() => {
+    if (isPlatform && activeTab !== 'login') {
+      setActiveTab('login');
+    }
+  }, [isPlatform, activeTab]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
       let result;
-      if (activeTab === 'login') {
+      if (activeTab === 'login' || isPlatform) {
         result = await login(formData.email, formData.password);
       } else {
         result = await signup(formData.name, formData.email, formData.password);
@@ -73,8 +80,8 @@ const AuthPage: React.FC = () => {
 
       if (result.success) {
         toast({
-          title: activeTab === 'login' ? '¡Bienvenido!' : '¡Cuenta creada!',
-          description: activeTab === 'login' ? 'Has iniciado sesión correctamente.' : 'Tu cuenta ha sido creada.',
+          title: isSignup ? '¡Cuenta creada!' : '¡Bienvenido!',
+          description: isSignup ? 'Tu cuenta ha sido creada.' : 'Has iniciado sesión correctamente.',
         });
       } else {
         toast({
@@ -217,28 +224,30 @@ const AuthPage: React.FC = () => {
           )}
 
           {/* Tab Switcher */}
-          <div className="flex bg-secondary rounded-lg p-1 mb-8">
-            <button
-              onClick={() => setActiveTab('login')}
-              className={`flex-1 py-2.5 px-4 rounded-md text-sm font-medium transition-all duration-200 ${
-                activeTab === 'login'
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Iniciar sesión
-            </button>
-            <button
-              onClick={() => setActiveTab('signup')}
-              className={`flex-1 py-2.5 px-4 rounded-md text-sm font-medium transition-all duration-200 ${
-                activeTab === 'signup'
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Registrarse
-            </button>
-          </div>
+          {!isPlatform && (
+            <div className="flex bg-secondary rounded-lg p-1 mb-8">
+              <button
+                onClick={() => setActiveTab('login')}
+                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-medium transition-all duration-200 ${
+                  activeTab === 'login'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Iniciar sesión
+              </button>
+              <button
+                onClick={() => setActiveTab('signup')}
+                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-medium transition-all duration-200 ${
+                  activeTab === 'signup'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Registrarse
+              </button>
+            </div>
+          )}
 
           {/* Google Login */}
           <Button
@@ -281,7 +290,7 @@ const AuthPage: React.FC = () => {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {activeTab === 'signup' && (
+            {isSignup && (
               <div className="space-y-2">
                 <Label htmlFor="name">Nombre completo</Label>
                 <div className="relative">
@@ -333,7 +342,7 @@ const AuthPage: React.FC = () => {
 
             <Button type="submit" className="w-full h-12" disabled={isLoading}>
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {activeTab === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
+              {isSignup ? 'Crear cuenta' : 'Iniciar sesión'}
             </Button>
           </form>
 

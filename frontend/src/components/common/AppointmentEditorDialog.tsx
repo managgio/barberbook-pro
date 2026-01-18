@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings, anonymizeAppointment } from '@/data/api';
-import { Appointment, AppointmentStatus, Barber, Service, ServiceCategory } from '@/data/types';
+import { Appointment, AppointmentStatus, Barber, PaymentMethod, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -39,6 +39,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [anonymizeOpen, setAnonymizeOpen] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [priceTouched, setPriceTouched] = useState(false);
   const isAdminContext = context === 'admin';
   const isNoShowLocked = appointment?.status === 'no_show' || appointment?.status === 'cancelled';
 
@@ -48,6 +49,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     date: '',
     time: '',
     notes: '',
+    price: '',
+    paymentMethod: '' as '' | PaymentMethod,
     status: 'scheduled' as AppointmentStatus,
   });
 
@@ -77,8 +80,11 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         date: initialDate,
         time: initialTime,
         notes: appointment.notes || '',
+        price: appointment.price.toFixed(2),
+        paymentMethod: appointment.paymentMethod || '',
         status: appointment.status,
       });
+      setPriceTouched(false);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo cargar la información.', variant: 'destructive' });
       onClose();
@@ -154,11 +160,35 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     [orderedCategories, services],
   );
 
+  const handleServiceChange = (value: string) => {
+    setForm((prev) => {
+      const nextForm = { ...prev, serviceId: value, time: '' };
+      if (!priceTouched) {
+        const nextService = services.find((service) => service.id === value);
+        const nextPrice = nextService?.finalPrice ?? nextService?.price;
+        if (nextPrice !== undefined) {
+          nextForm.price = nextPrice.toFixed(2);
+        }
+      }
+      return nextForm;
+    });
+  };
+
   const handleSave = async () => {
     if (!appointment) return;
     if (!form.serviceId || !form.barberId || !form.date || !form.time) {
       toast({ title: 'Campos incompletos', description: 'Selecciona servicio, barbero, fecha y hora.' });
       return;
+    }
+    let priceValue: number | null = null;
+    if (isAdminContext) {
+      const normalizedPrice = form.price.trim().replace(',', '.');
+      const parsedPrice = Number(normalizedPrice);
+      if (!normalizedPrice || Number.isNaN(parsedPrice) || parsedPrice < 0) {
+        toast({ title: 'Precio inválido', description: 'Introduce un importe válido para la cita.' });
+        return;
+      }
+      priceValue = parsedPrice;
     }
     setIsSaving(true);
     try {
@@ -168,7 +198,13 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         barberId: form.barberId,
         startDateTime: dateTime,
         ...(isAdminContext ? {} : { notes: form.notes.trim() }),
-        ...(isAdminContext ? { status: form.status } : {}),
+        ...(isAdminContext
+          ? {
+              status: form.status,
+              price: priceValue ?? undefined,
+              paymentMethod: form.paymentMethod || null,
+            }
+          : {}),
       });
       if (context === 'admin') {
         dispatchAppointmentsUpdated({ source: 'appointment-editor' });
@@ -178,6 +214,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       onClose();
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo actualizar la cita.', variant: 'destructive' });
+    } finally {
       setIsSaving(false);
     }
   };
@@ -222,7 +259,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                 <Label>Servicio</Label>
                 <Select
                   value={form.serviceId}
-                  onValueChange={(value) => setForm((prev) => ({ ...prev, serviceId: value, time: '' }))}
+                  onValueChange={handleServiceChange}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona un servicio" />
@@ -369,6 +406,50 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                 </div>
               </div>
             </div>
+
+            {isAdminContext && (
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Precio final</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.price}
+                    onChange={(e) => {
+                      setPriceTouched(true);
+                      setForm((prev) => ({ ...prev, price: e.target.value }));
+                    }}
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Este importe es el que se usa en caja registradora.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Método de pago</Label>
+                  <Select
+                    value={form.paymentMethod || 'none'}
+                    onValueChange={(value) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        paymentMethod: value === 'none' ? '' : (value as PaymentMethod),
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un método" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Efectivo</SelectItem>
+                      <SelectItem value="card">Tarjeta</SelectItem>
+                      <SelectItem value="bizum">Bizum</SelectItem>
+                      <SelectItem value="none">Sin método</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             {isAdminContext ? (
               appointment.notes?.trim() ? (

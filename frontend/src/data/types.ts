@@ -105,6 +105,8 @@ export interface Service {
 }
 
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+export type PaymentMethod = 'cash' | 'card' | 'bizum';
+export type CashMovementType = 'in' | 'out';
 
 export interface Appointment {
   id: string;
@@ -113,10 +115,23 @@ export interface Appointment {
   serviceId: string;
   startDateTime: string; // ISO string
   price: number;
+  paymentMethod?: PaymentMethod | null;
   status: AppointmentStatus;
   notes?: string;
   guestName?: string;
   guestContact?: string;
+}
+
+export interface CashMovement {
+  id: string;
+  localId: string;
+  type: CashMovementType;
+  amount: number;
+  method?: PaymentMethod | null;
+  note?: string | null;
+  occurredAt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ClientNote {
@@ -252,6 +267,7 @@ export type AdminSectionKey =
   | 'dashboard'
   | 'calendar'
   | 'search'
+  | 'cash-register'
   | 'clients'
   | 'services'
   | 'barbers'

@@ -16,6 +16,7 @@ import {
   CalendarDays,
   Shield,
   Settings,
+  Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, section: 'dashboard' },
   { href: '/admin/calendar', label: 'Calendario', icon: Calendar, section: 'calendar' },
   { href: '/admin/search', label: 'Buscar Citas', icon: Search, section: 'search' },
+  { href: '/admin/cash-register', label: 'Caja Registradora', icon: Wallet, section: 'cash-register' },
   { href: '/admin/clients', label: 'Clientes', icon: Users, section: 'clients' },
   { href: '/admin/services', label: 'Servicios', icon: Scissors, section: 'services' },
   { href: '/admin/barbers', label: 'Barberos', icon: UserCircle, section: 'barbers' },
