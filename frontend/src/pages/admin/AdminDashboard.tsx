@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog,
@@ -105,6 +106,7 @@ const AdminDashboard: React.FC = () => {
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
   const [isCopyingQrUrl, setIsCopyingQrUrl] = useState(false);
   const [qrAction, setQrAction] = useState<'share' | 'download' | null>(null);
+  const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
   const { canAccessSection } = useAdminPermissions();
   const { toast } = useToast();
   const { settings, isLoading: isSettingsLoading } = useSiteSettings();
@@ -127,7 +129,12 @@ const AdminDashboard: React.FC = () => {
     fetchData();
   }, []);
 
-  const todayAppointments = appointments.filter(
+  const filteredAppointments =
+    selectedBarberId === 'all'
+      ? appointments
+      : appointments.filter((appointment) => appointment.barberId === selectedBarberId);
+
+  const todayAppointments = filteredAppointments.filter(
     (appointment) =>
       isToday(parseISO(appointment.startDateTime)) && isAppointmentActive(appointment.status),
   );
@@ -140,19 +147,19 @@ const AdminDashboard: React.FC = () => {
   const getBarber = (id: string) => barbers.find((barber) => barber.id === id);
   const getService = (id: string) => services.find((service) => service.id === id);
   const getClient = (id: string | null) => users.find((user) => user.id === id);
-  const revenueToday = appointments
+  const revenueToday = filteredAppointments
     .filter(
       (appointment) =>
         isToday(parseISO(appointment.startDateTime)) && isAppointmentRevenueStatus(appointment.status),
     )
     .reduce((total, appointment) => total + (appointment.price || 0), 0);
 
-  const weekCancelled = appointments.filter(
+  const weekCancelled = filteredAppointments.filter(
     (appointment) =>
       appointment.status === 'cancelled' &&
       isWithinInterval(parseISO(appointment.startDateTime), { start: weekStart, end: weekEnd }),
   ).length;
-  const weekNoShow = appointments.filter(
+  const weekNoShow = filteredAppointments.filter(
     (appointment) =>
       appointment.status === 'no_show' &&
       isWithinInterval(parseISO(appointment.startDateTime), { start: weekStart, end: weekEnd }),
@@ -160,7 +167,7 @@ const AdminDashboard: React.FC = () => {
 
   const occupancyHours = Array.from({ length: 12 }).map((_, index) => 9 + index);
   const occupancyMatrix = occupancyHours.map(() => weekDays.map(() => 0));
-  appointments.forEach((appointment) => {
+  filteredAppointments.forEach((appointment) => {
     if (!isAppointmentActive(appointment.status)) return;
     const startDate = parseISO(appointment.startDateTime);
     if (!isWithinInterval(startDate, { start: weekStart, end: weekEnd })) return;
@@ -174,7 +181,7 @@ const AdminDashboard: React.FC = () => {
 
   const serviceMixRangeDays = 30;
   const serviceMixStart = subDays(new Date(), serviceMixRangeDays - 1);
-  const serviceMixAppointments = appointments.filter(
+  const serviceMixAppointments = filteredAppointments.filter(
     (appointment) =>
       isAppointmentRevenueStatus(appointment.status) &&
       isWithinInterval(parseISO(appointment.startDateTime), { start: serviceMixStart, end: new Date() }),
@@ -216,7 +223,7 @@ const AdminDashboard: React.FC = () => {
     no_show: 0,
     cancelled: 0,
   }));
-  appointments.forEach((appointment) => {
+  filteredAppointments.forEach((appointment) => {
     if (appointment.status !== 'no_show' && appointment.status !== 'cancelled') return;
     const startDate = parseISO(appointment.startDateTime);
     if (!isWithinInterval(startDate, { start: lossStart, end: new Date() })) return;
@@ -436,7 +443,7 @@ const AdminDashboard: React.FC = () => {
     subDays(new Date(), revenueRange - 1 - index)
   );
   const revenueData = selectedDays.map((day) => {
-    const dayAppointments = appointments.filter(
+    const dayAppointments = filteredAppointments.filter(
       (appointment) =>
         isAppointmentRevenueStatus(appointment.status) && isSameDay(parseISO(appointment.startDateTime), day),
     );
@@ -457,156 +464,171 @@ const AdminDashboard: React.FC = () => {
             Resumen de la actividad de la barbería.
           </p>
         </div>
-        <Dialog open={isQrDialogOpen} onOpenChange={setIsQrDialogOpen}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={() => setIsQrDialogOpen(true)}
-                  variant="secondary"
-                  size="icon"
-                  className="h-9 w-9 rounded-full"
-                  disabled={isSettingsLoading}
-                  aria-label={qrSticker ? 'QR del negocio' : 'Crear QR'}
-                >
-                  <QrCode className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                {qrSticker ? 'QR del negocio' : 'Crear QR'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Pegatina QR del negocio</DialogTitle>
-              {!qrSticker && (
-                <DialogDescription>
-                  Genera una sola vez el QR del sitio para imprimirlo y compartirlo cuando lo necesites.
-                </DialogDescription>
-              )}
-            </DialogHeader>
-            <div className="grid gap-5">
-              {qrSticker ? (
-                <>
-                  <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-secondary/50 via-background to-muted/60 p-6">
-                    <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_top,_hsl(var(--primary))/0.12,_transparent_55%)]" />
-                    <div className="relative mx-auto w-fit rounded-2xl bg-background p-4 shadow-xl">
-                      <img
-                        src={qrSticker.imageUrl}
-                        alt="QR del negocio"
-                        className="h-56 w-56 rounded-lg object-contain"
-                      />
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
+            <SelectTrigger className="h-9 w-full sm:w-[210px]">
+              <SelectValue placeholder="Filtrar barbero" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="all">Todos los barberos</SelectItem>
+              {barbers.map((barber) => (
+                <SelectItem key={barber.id} value={barber.id}>
+                  {barber.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Dialog open={isQrDialogOpen} onOpenChange={setIsQrDialogOpen}>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => setIsQrDialogOpen(true)}
+                    variant="secondary"
+                    size="icon"
+                    className="h-9 w-9 rounded-full"
+                    disabled={isSettingsLoading}
+                    aria-label={qrSticker ? 'QR del negocio' : 'Crear QR'}
+                  >
+                    <QrCode className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  {qrSticker ? 'QR del negocio' : 'Crear QR'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <DialogContent className="max-w-xl">
+              <DialogHeader>
+                <DialogTitle>Pegatina QR del negocio</DialogTitle>
+                {!qrSticker && (
+                  <DialogDescription>
+                    Genera una sola vez el QR del sitio para imprimirlo y compartirlo cuando lo necesites.
+                  </DialogDescription>
+                )}
+              </DialogHeader>
+              <div className="grid gap-5">
+                {qrSticker ? (
+                  <>
+                    <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-secondary/50 via-background to-muted/60 p-6">
+                      <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_top,_hsl(var(--primary))/0.12,_transparent_55%)]" />
+                      <div className="relative mx-auto w-fit rounded-2xl bg-background p-4 shadow-xl">
+                        <img
+                          src={qrSticker.imageUrl}
+                          alt="QR del negocio"
+                          className="h-56 w-56 rounded-lg object-contain"
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Button
-                      onClick={handleShareQr}
-                      className="gap-2"
-                      disabled={qrAction !== null || isGeneratingQr}
-                    >
-                      {qrAction === 'share' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                      Compartir
-                    </Button>
-                    <Button
-                      onClick={handleDownloadQr}
-                      variant="outline"
-                      className="gap-2"
-                      disabled={qrAction !== null || isGeneratingQr}
-                    >
-                      {qrAction === 'download' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      Descargar PNG
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-muted-foreground/20 bg-muted/30 px-3 py-2">
-                    <p className="text-xs text-muted-foreground">
-                      URL guardada: {qrSticker.url}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              disabled={isCopyingQrUrl || isGeneratingQr || isSettingsLoading}
-                              aria-label="Copiar enlace"
-                              onClick={handleCopyQrUrl}
-                            >
-                              {isCopyingQrUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="left">Copiar enlace</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <AlertDialog>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Button
+                        onClick={handleShareQr}
+                        className="gap-2"
+                        disabled={qrAction !== null || isGeneratingQr}
+                      >
+                        {qrAction === 'share' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                        Compartir
+                      </Button>
+                      <Button
+                        onClick={handleDownloadQr}
+                        variant="outline"
+                        className="gap-2"
+                        disabled={qrAction !== null || isGeneratingQr}
+                      >
+                        {qrAction === 'download' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                        Descargar PNG
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-muted-foreground/20 bg-muted/30 px-3 py-2">
+                      <p className="text-xs text-muted-foreground">
+                        URL guardada: {qrSticker.url}
+                      </p>
+                      <div className="flex items-center gap-2">
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                  disabled={isGeneratingQr || isSettingsLoading}
-                                  aria-label="Regenerar QR"
-                                >
-                                  <RefreshCcw className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                disabled={isCopyingQrUrl || isGeneratingQr || isSettingsLoading}
+                                aria-label="Copiar enlace"
+                                onClick={handleCopyQrUrl}
+                              >
+                                {isCopyingQrUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                              </Button>
                             </TooltipTrigger>
-                            <TooltipContent side="left">Regenerar QR</TooltipContent>
+                            <TooltipContent side="left">Copiar enlace</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Regenerar QR?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Se recomienda regenerar el QR solo si cambia el dominio o la URL pública del negocio. ¿Quieres continuar?
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction asChild>
-                              <Button
-                                variant="destructive"
-                                className="gap-2"
-                                onClick={handleRegenerateQr}
-                                disabled={isGeneratingQr}
-                              >
-                                {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                                Regenerar
-                              </Button>
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                        <AlertDialog>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                    disabled={isGeneratingQr || isSettingsLoading}
+                                    aria-label="Regenerar QR"
+                                  >
+                                    <RefreshCcw className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent side="left">Regenerar QR</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Regenerar QR?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Se recomienda regenerar el QR solo si cambia el dominio o la URL pública del negocio. ¿Quieres continuar?
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction asChild>
+                                <Button
+                                  variant="destructive"
+                                  className="gap-2"
+                                  onClick={handleRegenerateQr}
+                                  disabled={isGeneratingQr}
+                                >
+                                  {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                                  Regenerar
+                                </Button>
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </div>
+                  </>
+                ) : (
+                  <div className="rounded-2xl border border-dashed bg-muted/30 p-6 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-background shadow">
+                      <QrCode className="h-7 w-7 text-primary" />
+                    </div>
+                    <h3 className="mt-4 text-lg font-semibold text-foreground">Genera tu pegatina QR</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      El QR apunta a la web del negocio y se guarda para reutilizarlo siempre.
+                    </p>
+                    <Button
+                      onClick={handleGenerateQr}
+                      className="mt-5 gap-2"
+                      disabled={isGeneratingQr || isSettingsLoading}
+                    >
+                      {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                      {isGeneratingQr ? 'Generando...' : 'Generar QR'}
+                    </Button>
                   </div>
-                </>
-              ) : (
-                <div className="rounded-2xl border border-dashed bg-muted/30 p-6 text-center">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-background shadow">
-                    <QrCode className="h-7 w-7 text-primary" />
-                  </div>
-                  <h3 className="mt-4 text-lg font-semibold text-foreground">Genera tu pegatina QR</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    El QR apunta a la web del negocio y se guarda para reutilizarlo siempre.
-                  </p>
-                  <Button
-                    onClick={handleGenerateQr}
-                    className="mt-5 gap-2"
-                    disabled={isGeneratingQr || isSettingsLoading}
-                  >
-                    {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                    {isGeneratingQr ? 'Generando...' : 'Generar QR'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Stats */}
