@@ -223,68 +223,72 @@ const AdminClients: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="mt-4 grid lg:grid-cols-3 gap-6">
         {/* Client List */}
-        <Card variant="elevated" className="lg:col-span-1">
+        <Card variant="elevated" className="lg:col-span-1 h-[calc(100vh-150px)] flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserIcon className="w-5 h-5 text-primary" />
               Lista de clientes
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nombre, email o teléfono..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-
-            {isLoading ? (
-              <ListSkeleton count={5} />
-            ) : filteredClients.length > 0 ? (
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                {filteredClients.map((client) => (
-                  <button
-                    key={client.id}
-                    onClick={() => setSelectedClientId(client.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      selectedClient?.id === client.id
-                        ? 'bg-primary/10 border border-primary/30'
-                        : 'hover:bg-secondary'
-                    }`}
-                  >
-                    <p className="font-medium text-foreground">{client.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {client.email || 'Sin email'}
-                    </p>
-                    {client.phone && (
-                      <p className="text-sm text-muted-foreground">
-                        {client.phone}
-                      </p>
-                    )}
-                  </button>
-                ))}
+          <CardContent className="flex-1 min-h-0 overflow-hidden">
+            <div className="flex h-full flex-col">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nombre, email o teléfono..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
               </div>
-            ) : (
-              <p className="text-center py-8 text-muted-foreground">
-                No se encontraron clientes
-              </p>
-            )}
+
+              {isLoading ? (
+                <div className="flex-1 overflow-y-auto pr-1">
+                  <ListSkeleton count={5} />
+                </div>
+              ) : filteredClients.length > 0 ? (
+                <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+                  {filteredClients.map((client) => (
+                    <button
+                      key={client.id}
+                      onClick={() => setSelectedClientId(client.id)}
+                      className={`w-full text-left p-3 rounded-lg transition-colors ${
+                        selectedClient?.id === client.id
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'hover:bg-secondary'
+                      }`}
+                    >
+                      <p className="font-medium text-foreground">{client.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {client.email || 'Sin email'}
+                      </p>
+                      {client.phone && (
+                        <p className="text-sm text-muted-foreground">
+                          {client.phone}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                  No se encontraron clientes
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
         {/* Client Details */}
-        <Card variant="elevated" className="lg:col-span-2">
+        <Card variant="elevated" className="lg:col-span-2 h-[calc(100vh-150px)] flex flex-col">
           <CardHeader>
             <CardTitle>Historial del cliente</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 min-h-0 overflow-hidden">
             {selectedClient ? (
-              <div className="space-y-6">
+              <div className="flex h-full flex-col gap-6">
                 {/* Client Info */}
                 <div className="p-4 bg-secondary/50 rounded-lg space-y-3 relative">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -439,67 +443,71 @@ const AdminClients: React.FC = () => {
                 </div>
 
                 {/* Appointments */}
-                <div>
-                  <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-primary" />
-                    Historial de citas ({selectedClientAppointments.length})
-                  </h4>
-                  {selectedClientAppointments.length > 0 ? (
-                    <div className="space-y-2">
-                      {selectedClientAppointments.map((apt) => (
-                        <div 
-                          key={apt.id}
-                          className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-foreground">{getService(apt.serviceId)?.name}</p>
-                              <AppointmentNoteIndicator note={apt.notes} variant="icon" />
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: es })} · {getBarber(apt.barberId)?.name}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <AppointmentStatusPicker
-                              appointment={apt}
-                              serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
-                              onStatusUpdated={(updated) => {
-                                setAppointments((prev) =>
-                                  prev.map((appointment) =>
-                                    appointment.id === updated.id ? updated : appointment,
-                                  ),
-                                );
-                                dispatchAppointmentsUpdated({ source: 'admin-clients' });
-                              }}
-                            />
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingAppointment(apt);
-                                setIsEditorOpen(true);
-                              }}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-destructive"
-                              onClick={() => setDeleteTarget(apt)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                    <div className="sticky top-0 z-10 bg-card border-b border-border/60 pb-2">
+                      <h4 className="font-medium text-foreground flex items-center gap-2 pt-1">
+                        <Calendar className="w-4 h-4 text-primary" />
+                        Historial de citas ({selectedClientAppointments.length})
+                      </h4>
                     </div>
-                  ) : (
-                    <p className="text-muted-foreground text-center py-4">
-                      Este cliente no tiene citas registradas
-                    </p>
-                  )}
+                    {selectedClientAppointments.length > 0 ? (
+                      <div className="space-y-2 pt-3">
+                        {selectedClientAppointments.map((apt) => (
+                          <div 
+                            key={apt.id}
+                            className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-foreground">{getService(apt.serviceId)?.name}</p>
+                                <AppointmentNoteIndicator note={apt.notes} variant="icon" />
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: es })} · {getBarber(apt.barberId)?.name}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <AppointmentStatusPicker
+                                appointment={apt}
+                                serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
+                                onStatusUpdated={(updated) => {
+                                  setAppointments((prev) =>
+                                    prev.map((appointment) =>
+                                      appointment.id === updated.id ? updated : appointment,
+                                    ),
+                                  );
+                                  dispatchAppointmentsUpdated({ source: 'admin-clients' });
+                                }}
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingAppointment(apt);
+                                  setIsEditorOpen(true);
+                                }}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="text-destructive"
+                                onClick={() => setDeleteTarget(apt)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center py-6 text-muted-foreground">
+                        Este cliente no tiene citas registradas
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
