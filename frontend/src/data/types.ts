@@ -12,6 +12,7 @@ export interface User {
     whatsapp: boolean;
     sms?: boolean;
   };
+  isBlocked?: boolean;
   prefersBarberSelection?: boolean;
   avatar?: string;
   isSuperAdmin?: boolean;

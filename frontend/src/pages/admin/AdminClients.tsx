@@ -5,9 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { createClientNote, deleteClientNote, getAppointments, getBarbers, getClientNotes, getServices, getUsers, updateAppointment } from '@/data/api';
+import { createClientNote, deleteClientNote, getAppointments, getBarbers, getClientNotes, getServices, getUsers, updateAppointment, updateUserBlockStatus } from '@/data/api';
 import { Appointment, Barber, ClientNote, Service, User } from '@/data/types';
-import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2 } from 'lucide-react';
+import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { format, parseISO, subMonths, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
@@ -15,7 +15,7 @@ import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -39,6 +39,8 @@ const AdminClients: React.FC = () => {
   const [isNotesLoading, setIsNotesLoading] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+  const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
 
   const loadData = useCallback(async (withLoading = true) => {
     if (withLoading) setIsLoading(true);
@@ -111,6 +113,7 @@ const AdminClients: React.FC = () => {
     () => clients.find((client) => client.id === selectedClientId) || null,
     [clients, selectedClientId]
   );
+  const isClientBlocked = selectedClient?.isBlocked ?? false;
 
   const getClientAppointments = useCallback(
     (clientId: string) =>
@@ -213,6 +216,30 @@ const AdminClients: React.FC = () => {
     }
   };
 
+  const handleToggleBlock = async () => {
+    if (!selectedClient || isBlocking) return;
+    setIsBlocking(true);
+    try {
+      const updated = await updateUserBlockStatus(selectedClient.id, !isClientBlocked);
+      setClients((prev) => prev.map((client) => (client.id === updated.id ? updated : client)));
+      toast({
+        title: updated.isBlocked ? 'Cliente bloqueado' : 'Cliente desbloqueado',
+        description: updated.isBlocked
+          ? 'El cliente no podrá acceder a la app de la marca.'
+          : 'El cliente vuelve a tener acceso a la app.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo actualizar el bloqueo',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBlocking(false);
+      setIsBlockDialogOpen(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -297,7 +324,14 @@ const AdminClients: React.FC = () => {
                         <UserIcon className="w-6 h-6 text-primary" />
                       </div>
                       <div>
-                        <p className="font-semibold text-lg text-foreground">{selectedClient.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-lg text-foreground">{selectedClient.name}</p>
+                          {isClientBlocked && (
+                            <span className="rounded-full bg-destructive/10 text-destructive text-xs font-semibold px-2 py-0.5">
+                              Bloqueado
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-muted-foreground">Cliente registrado</p>
                       </div>
                     </div>
@@ -408,37 +442,79 @@ const AdminClients: React.FC = () => {
                       </Dialog>
                     </div>
                   </div>
-                  <div className="grid sm:grid-cols-2 gap-3 pt-2">
-                    {selectedClient.email ? (
-                      <a
-                        href={`mailto:${selectedClient.email}`}
-                        className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <Mail className="w-4 h-4" />
-                        {selectedClient.email}
-                      </a>
-                    ) : (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Mail className="w-4 h-4" />
-                        Sin email
-                      </div>
-                    )}
-                    {whatsappLink ? (
-                      <a
-                        href={whatsappLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <Phone className="w-4 h-4" />
-                        {selectedClient.phone}
-                      </a>
-                    ) : (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Phone className="w-4 h-4" />
-                        Sin teléfono
-                      </div>
-                    )}
+                  <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="grid sm:grid-cols-2 gap-3 flex-1">
+                      {selectedClient.email ? (
+                        <a
+                          href={`mailto:${selectedClient.email}`}
+                          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <Mail className="w-4 h-4" />
+                          {selectedClient.email}
+                        </a>
+                      ) : (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="w-4 h-4" />
+                          Sin email
+                        </div>
+                      )}
+                      {whatsappLink ? (
+                        <a
+                          href={whatsappLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <Phone className="w-4 h-4" />
+                          {selectedClient.phone}
+                        </a>
+                      ) : (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="w-4 h-4" />
+                          Sin teléfono
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-start sm:justify-end">
+                      <AlertDialog open={isBlockDialogOpen} onOpenChange={setIsBlockDialogOpen}>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant={isClientBlocked ? 'outline' : 'destructive'}
+                            size="sm"
+                            className={isClientBlocked ? 'border-primary/40 text-primary hover:border-primary/70' : ''}
+                          >
+                            {isClientBlocked ? <ShieldCheck className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                            {isClientBlocked ? 'Desbloquear' : 'Bloquear'}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              {isClientBlocked ? 'Desbloquear cliente' : 'Bloquear cliente'}
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {isClientBlocked
+                                ? 'El cliente podrá volver a iniciar sesión en la app de la marca.'
+                                : 'Este bloqueo es a nivel de marca y aplica en todos los locales. El cliente no podrá iniciar sesión.'}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isBlocking}>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              className={
+                                isClientBlocked
+                                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                  : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                              }
+                              onClick={handleToggleBlock}
+                              disabled={isBlocking}
+                            >
+                              {isBlocking ? 'Guardando...' : isClientBlocked ? 'Desbloquear' : 'Bloquear'}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </div>
 

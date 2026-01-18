@@ -2,7 +2,7 @@ import { User } from '@prisma/client';
 
 export const mapUser = (
   user: User,
-  options?: { adminRoleId?: string | null; isPlatformAdmin?: boolean; isLocalAdmin?: boolean },
+  options?: { adminRoleId?: string | null; isPlatformAdmin?: boolean; isLocalAdmin?: boolean; isBlocked?: boolean },
 ) => ({
   id: user.id,
   firebaseUid: user.firebaseUid || undefined,
@@ -15,6 +15,7 @@ export const mapUser = (
     whatsapp: user.notificationWhatsapp,
     sms: user.notificationSms,
   },
+  isBlocked: options?.isBlocked ?? false,
   prefersBarberSelection: user.prefersBarberSelection,
   avatar: user.avatar || undefined,
   isSuperAdmin: user.isSuperAdmin,

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -78,6 +78,19 @@ export class UsersService {
     });
   }
 
+  private async getBrandMembershipStatus(userId: string) {
+    const brandId = getCurrentBrandId();
+    return this.prisma.brandUser.findUnique({
+      where: {
+        brandId_userId: {
+          brandId,
+          userId,
+        },
+      },
+      select: { isBlocked: true },
+    });
+  }
+
   private async syncLocalStaffRole(user: Pick<User, 'id' | 'role' | 'isSuperAdmin' | 'isPlatformAdmin' | 'adminRoleId'>) {
     const localId = getCurrentLocalId();
     const isAdmin = user.role === 'admin' || user.isSuperAdmin || user.isPlatformAdmin;
@@ -109,6 +122,11 @@ export class UsersService {
     const users = await this.prisma.user.findMany({
       where: { brandMemberships: { some: { brandId } } },
       include: {
+        brandMemberships: {
+          where: { brandId },
+          select: { isBlocked: true },
+          take: 1,
+        },
         localStaffRoles: {
           where: { localId },
           select: { adminRoleId: true },
@@ -120,6 +138,7 @@ export class UsersService {
       mapUser(user, {
         adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
         isLocalAdmin: user.localStaffRoles.length > 0,
+        isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
       }),
     );
   }
@@ -130,6 +149,11 @@ export class UsersService {
     const user = await this.prisma.user.findFirst({
       where: { id, brandMemberships: { some: { brandId } } },
       include: {
+        brandMemberships: {
+          where: { brandId },
+          select: { isBlocked: true },
+          take: 1,
+        },
         localStaffRoles: {
           where: { localId },
           select: { adminRoleId: true },
@@ -141,6 +165,7 @@ export class UsersService {
     return mapUser(user, {
       adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
       isLocalAdmin: user.localStaffRoles.length > 0,
+      isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
     });
   }
 
@@ -150,6 +175,11 @@ export class UsersService {
     const user = await this.prisma.user.findFirst({
       where: { email: email.toLowerCase(), brandMemberships: { some: { brandId } } },
       include: {
+        brandMemberships: {
+          where: { brandId },
+          select: { isBlocked: true },
+          take: 1,
+        },
         localStaffRoles: {
           where: { localId },
           select: { adminRoleId: true },
@@ -157,10 +187,14 @@ export class UsersService {
         },
       },
     });
+    if (user?.brandMemberships[0]?.isBlocked) {
+      throw new ForbiddenException('Usuario bloqueado');
+    }
     return user
       ? mapUser(user, {
           adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
           isLocalAdmin: user.localStaffRoles.length > 0,
+          isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
         })
       : null;
   }
@@ -171,6 +205,11 @@ export class UsersService {
     const user = await this.prisma.user.findFirst({
       where: { firebaseUid, brandMemberships: { some: { brandId } } },
       include: {
+        brandMemberships: {
+          where: { brandId },
+          select: { isBlocked: true },
+          take: 1,
+        },
         localStaffRoles: {
           where: { localId },
           select: { adminRoleId: true },
@@ -178,10 +217,14 @@ export class UsersService {
         },
       },
     });
+    if (user?.brandMemberships[0]?.isBlocked) {
+      throw new ForbiddenException('Usuario bloqueado');
+    }
     return user
       ? mapUser(user, {
           adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
           isLocalAdmin: user.localStaffRoles.length > 0,
+          isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
         })
       : null;
   }
@@ -207,6 +250,7 @@ export class UsersService {
       if (this.shouldSyncLocalStaff(payload)) {
         await this.syncLocalStaffRole(created);
       }
+      const brandMembership = await this.getBrandMembershipStatus(created.id);
       const localId = getCurrentLocalId();
       const localStaff = await this.prisma.locationStaff.findUnique({
         where: { localId_userId: { localId, userId: created.id } },
@@ -215,6 +259,7 @@ export class UsersService {
       return mapUser(created, {
         adminRoleId: localStaff?.adminRoleId ?? null,
         isLocalAdmin: Boolean(localStaff),
+        isBlocked: brandMembership?.isBlocked ?? false,
       });
     } catch (error) {
       if (
@@ -246,6 +291,7 @@ export class UsersService {
         if (this.shouldSyncLocalStaff(payload)) {
           await this.syncLocalStaffRole(updated);
         }
+        const brandMembership = await this.getBrandMembershipStatus(updated.id);
         const localId = getCurrentLocalId();
         const localStaff = await this.prisma.locationStaff.findUnique({
           where: { localId_userId: { localId, userId: updated.id } },
@@ -254,6 +300,7 @@ export class UsersService {
         return mapUser(updated, {
           adminRoleId: localStaff?.adminRoleId ?? null,
           isLocalAdmin: Boolean(localStaff),
+          isBlocked: brandMembership?.isBlocked ?? false,
         });
       }
       throw error;
@@ -287,6 +334,7 @@ export class UsersService {
     if (shouldSyncLocalRole) {
       await this.syncLocalStaffRole(updated);
     }
+    const brandMembership = await this.getBrandMembershipStatus(updated.id);
     const localId = getCurrentLocalId();
     const localStaff = await this.prisma.locationStaff.findUnique({
       where: { localId_userId: { localId, userId: updated.id } },
@@ -295,7 +343,33 @@ export class UsersService {
     return mapUser(updated, {
       adminRoleId: localStaff?.adminRoleId ?? null,
       isLocalAdmin: Boolean(localStaff),
+      isBlocked: brandMembership?.isBlocked ?? false,
     });
+  }
+
+  async setBrandBlockStatus(userId: string, isBlocked: boolean) {
+    const brandId = getCurrentBrandId();
+    const membership = await this.prisma.brandUser.findUnique({
+      where: {
+        brandId_userId: {
+          brandId,
+          userId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('User not found');
+    }
+    await this.prisma.brandUser.update({
+      where: {
+        brandId_userId: {
+          brandId,
+          userId,
+        },
+      },
+      data: { isBlocked },
+    });
+    return this.findOne(userId);
   }
 
   async remove(id: string) {

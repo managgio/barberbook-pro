@@ -102,6 +102,8 @@ export const createUser = async (data: Omit<User, 'id'> & { id?: string }): Prom
   apiRequest('/users', { method: 'POST', body: data });
 export const updateUser = async (id: string, data: Partial<User>): Promise<User> =>
   apiRequest(`/users/${id}`, { method: 'PATCH', body: data });
+export const updateUserBlockStatus = async (id: string, blocked: boolean): Promise<User> =>
+  apiRequest(`/users/${id}/block`, { method: 'PATCH', body: { blocked } });
 export const deleteUser = async (id: string): Promise<void> =>
   apiRequest(`/users/${id}`, { method: 'DELETE' });
 
