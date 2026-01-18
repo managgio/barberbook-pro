@@ -1,5 +1,5 @@
-import { IsDateString, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
-import { AppointmentStatus } from '@prisma/client';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { AppointmentStatus, PaymentMethod } from '@prisma/client';
 
 export class UpdateAppointmentDto {
   @IsOptional()
@@ -34,4 +34,13 @@ export class UpdateAppointmentDto {
   @IsOptional()
   @IsString()
   guestContact?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price?: number;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod | null;
 }

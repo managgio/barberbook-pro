@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
@@ -203,6 +203,8 @@ export class AppointmentsService {
 
     const startChanged =
       data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
+    const serviceChanged = data.serviceId !== undefined && data.serviceId !== current.serviceId;
+    const barberChanged = data.barberId !== undefined && data.barberId !== current.barberId;
     const statusChanged = data.status && data.status !== current.status;
     const isCancelled = statusChanged && data.status === 'cancelled';
 
@@ -227,10 +229,21 @@ export class AppointmentsService {
       reminderSent = false;
     }
 
+    const isAdminActor = Boolean(context?.actorUserId);
+    if (data.price !== undefined && !isAdminActor) {
+      throw new ForbiddenException('Solo un admin puede modificar el precio final.');
+    }
+    if (data.paymentMethod !== undefined && !isAdminActor) {
+      throw new ForbiddenException('Solo un admin puede actualizar el método de pago.');
+    }
+
     const shouldRecalculatePrice = data.serviceId !== undefined || data.startDateTime !== undefined;
-    const price = shouldRecalculatePrice
-      ? new Prisma.Decimal(await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime))
-      : undefined;
+    let price: Prisma.Decimal | undefined;
+    if (data.price !== undefined) {
+      price = new Prisma.Decimal(data.price);
+    } else if (shouldRecalculatePrice) {
+      price = new Prisma.Decimal(await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime));
+    }
 
     const updated = await this.prisma.appointment.update({
       where: { id },
@@ -240,6 +253,7 @@ export class AppointmentsService {
         serviceId: data.serviceId,
         startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
         price,
+        paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,
         status: data.status,
         notes: data.notes,
         guestName: data.guestName,
@@ -249,7 +263,10 @@ export class AppointmentsService {
       include: { user: true, barber: true, service: true },
     });
 
-    await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
+    const shouldNotify = serviceChanged || barberChanged || startChanged;
+    if (shouldNotify) {
+      await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
+    }
     return mapAppointment(updated);
   }
 

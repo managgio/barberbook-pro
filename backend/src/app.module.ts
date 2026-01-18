@@ -23,6 +23,7 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
 import { LegalModule } from './modules/legal/legal.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { ClientNotesModule } from './modules/client-notes/client-notes.module';
+import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ClientNotesModule } from './modules/client-notes/client-notes.module';
     AuditLogsModule,
     LegalModule,
     ClientNotesModule,
+    CashRegisterModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
 })

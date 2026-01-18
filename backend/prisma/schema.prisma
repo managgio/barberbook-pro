@@ -24,6 +24,17 @@ enum AppointmentStatus {
   no_show
 }
 
+enum PaymentMethod {
+  cash
+  card
+  bizum
+}
+
+enum CashMovementType {
+  in
+  out
+}
+
 enum ConsentType {
   PRIVACY
   COOKIES
@@ -118,6 +129,7 @@ model Location {
   barbers   Barber[]
   services  Service[]
   appointments Appointment[]
+  cashMovements CashMovement[]
   alerts    Alert[]
   generalHolidays GeneralHoliday[]
   barberHolidays BarberHoliday[]
@@ -279,6 +291,7 @@ model Appointment {
   service       Service            @relation(fields: [serviceId], references: [id])
   startDateTime DateTime
   price         Decimal            @db.Decimal(10, 2)
+  paymentMethod PaymentMethod?
   status        AppointmentStatus  @default(scheduled)
   notes         String?
   guestName     String?
@@ -290,6 +303,22 @@ model Appointment {
   updatedAt     DateTime           @updatedAt
 
   @@index([localId])
+}
+
+model CashMovement {
+  id         String           @id @default(cuid())
+  localId    String
+  local      Location         @relation(fields: [localId], references: [id])
+  type       CashMovementType
+  amount     Decimal          @db.Decimal(10, 2)
+  method     PaymentMethod?
+  note       String?
+  occurredAt DateTime         @default(now())
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([localId])
+  @@index([occurredAt])
 }
 
 model ClientNote {
