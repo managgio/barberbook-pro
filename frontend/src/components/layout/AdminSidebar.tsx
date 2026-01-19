@@ -17,6 +17,8 @@ import {
   Shield,
   Settings,
   Wallet,
+  Tag,
+  Boxes,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -38,11 +40,13 @@ const navItems: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, section: 'dashboard' },
   { href: '/admin/calendar', label: 'Calendario', icon: Calendar, section: 'calendar' },
   { href: '/admin/search', label: 'Buscar Citas', icon: Search, section: 'search' },
-  { href: '/admin/cash-register', label: 'Caja Registradora', icon: Wallet, section: 'cash-register' },
   { href: '/admin/clients', label: 'Clientes', icon: Users, section: 'clients' },
+  { href: '/admin/cash-register', label: 'Caja Registradora', icon: Wallet, section: 'cash-register' },
+  { href: '/admin/stock', label: 'Control de stock', icon: Boxes, section: 'stock' },
   { href: '/admin/services', label: 'Servicios', icon: Scissors, section: 'services' },
   { href: '/admin/barbers', label: 'Barberos', icon: UserCircle, section: 'barbers' },
   { href: '/admin/alerts', label: 'Alertas', icon: Bell, section: 'alerts' },
+  { href: '/admin/offers', label: 'Ofertas', icon: Tag, section: 'offers' },
   { href: '/admin/holidays', label: 'Festivos', icon: CalendarDays, section: 'holidays' },
   { href: '/admin/settings', label: 'Configuración', icon: Settings, section: 'settings' },
   { href: '/admin/roles', label: 'Roles', icon: Shield, section: 'roles' },

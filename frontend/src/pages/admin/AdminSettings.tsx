@@ -10,6 +10,7 @@ import { SiteSettings } from '@/data/types';
 import { getServices, getSiteSettings, updateSiteSettings } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
+import { useTenant } from '@/context/TenantContext';
 import {
   Loader2,
   MapPin,
@@ -25,6 +26,7 @@ import {
   Music2,
   Youtube,
   Linkedin,
+  Boxes,
 } from 'lucide-react';
 
 const DAY_LABELS: { key: keyof SiteSettings['openingHours']; label: string }[] = [
@@ -56,6 +58,8 @@ const AdminSettings: React.FC = () => {
   );
 
   const { toast } = useToast();
+  const { tenant } = useTenant();
+  const productsModuleEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('stock');
   const [settings, setSettings] = useState<SiteSettings>(() => cloneSettings(DEFAULT_SITE_SETTINGS));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -85,19 +89,23 @@ const AdminSettings: React.FC = () => {
     loadSettings();
   }, []);
 
+  const buildSettingsPayload = (nextSettings: SiteSettings) => {
+    const phone = composePhone(phonePrefix, phoneNumber);
+    const payload: SiteSettings = {
+      ...nextSettings,
+      contact: { ...nextSettings.contact, phone },
+      socials: { ...nextSettings.socials },
+    };
+    Object.entries(payload.socials).forEach(([key, value]) => {
+      payload.socials[key as keyof SiteSettings['socials']] = value?.trim() || '';
+    });
+    return payload;
+  };
+
   const handleSave = async (fromSchedule = false) => {
     fromSchedule ? setIsSavingSchedule(true) : setIsSaving(true);
     try {
-      const phone = composePhone(phonePrefix, phoneNumber);
-      const payload: SiteSettings = {
-        ...settings,
-        contact: { ...settings.contact, phone },
-        socials: { ...settings.socials },
-      };
-      Object.entries(payload.socials).forEach(([key, value]) => {
-        payload.socials[key as keyof SiteSettings['socials']] = value?.trim() || '';
-      });
-
+      const payload = buildSettingsPayload(settings);
       if (payload.services.categoriesEnabled) {
         const servicesData = await getServices();
         const missingCategory = servicesData.filter((service) => !service.categoryId);
@@ -128,6 +136,33 @@ const AdminSettings: React.FC = () => {
       });
     } finally {
       fromSchedule ? setIsSavingSchedule(false) : setIsSaving(false);
+    }
+  };
+
+  const saveProductsPreference = async (nextProducts: SiteSettings['products']) => {
+    if (isLoading || isSaving || isSavingSchedule) return;
+    const nextSettings = { ...settings, products: nextProducts };
+    setSettings(nextSettings);
+    setIsSaving(true);
+    try {
+      const payload = buildSettingsPayload(nextSettings);
+      const updated = await updateSiteSettings(payload);
+      setSettings(updated);
+      setPhoneParts(normalizePhoneParts(updated.contact.phone));
+      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      toast({
+        title: 'Preferencias actualizadas',
+        description: 'Los cambios se han guardado correctamente.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudieron guardar los cambios.';
+      toast({
+        title: 'Error al guardar',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -518,6 +553,51 @@ const AdminSettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Products */}
+      {productsModuleEnabled && (
+        <Card variant="elevated">
+          <CardHeader className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Boxes className="w-5 h-5 text-primary" />
+              <CardTitle>Productos y stock</CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Gestiona la visibilidad pública y la compra desde la app.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Compra de clientes</p>
+                  <p className="text-xs text-muted-foreground">Permite añadir productos a la cita.</p>
+                </div>
+                <Switch
+                  checked={settings.products.clientPurchaseEnabled}
+                  onCheckedChange={(checked) =>
+                    saveProductsPreference({ ...settings.products, clientPurchaseEnabled: checked })
+                  }
+                  disabled={isLoading || isSaving || isSavingSchedule}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Mostrar en landing</p>
+                  <p className="text-xs text-muted-foreground">Sección pública de productos.</p>
+                </div>
+                <Switch
+                  checked={settings.products.showOnLanding}
+                  onCheckedChange={(checked) =>
+                    saveProductsPreference({ ...settings.products, showOnLanding: checked })
+                  }
+                  disabled={isLoading || isSaving || isSavingSchedule}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cancellation policy */}
       <Card variant="elevated">

@@ -63,7 +63,9 @@ Modulos principales:
 - **Barbers**: gestion de barberos y calendario.
 - **Services**: servicios con precio/duracion, categorias opcionales.
 - **Service Categories**: categorias de servicios (configurable).
-- **Offers**: ofertas con descuentos (por servicios, categorias o global).
+- **Offers**: ofertas con descuentos para servicios y productos (por alcance y target).
+- **Products**: catalogo de productos con stock, precio y visibilidad publica.
+- **Product Categories**: categorias de productos (configurable).
 - **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
 - **Schedules**: horario del local y horarios por barbero (JSON).
 - **Holidays**: festivos del local y por barbero.
@@ -94,7 +96,7 @@ Contextos principales:
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
 - Cliente: Dashboard, Booking Wizard, Appointments, Profile.
-- Admin: Dashboard, Calendar, Search, Clients, Services, Barbers, Alerts, Holidays, Roles, Settings, Cash Register.
+- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register.
 - Plataforma: Dashboard, Brands (gestion multi-tenant).
 
 ## Modelo de datos (Prisma / MySQL)
@@ -111,7 +113,10 @@ LocationConfig | Configuracion por local | JSON (theme, imagekit folder, adminSi
 Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
 Service | Servicio | Precio, duracion, categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
-Offer | Ofertas | Descuento por scope (all/categories/services)
+Offer | Ofertas | Descuento por scope (all/categories/services/products) y target (service/product)
+ProductCategory | Categoria producto | Orden y descripcion de productos
+Product | Producto | Precio, stock, imagen, visibilidad y categoria
+AppointmentProduct | Linea producto | Productos agregados a la cita (qty + precio unitario)
 Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado
 ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
 CashMovement | Movimiento de caja | Entradas/salidas manuales y metodo de pago
@@ -161,10 +166,10 @@ Flujos:
    - Slots por intervalos de 15 min y duracion de servicio.
 
 4) **Pricing y ofertas**
-   - Price base del servicio.
-   - Se aplica la mejor oferta activa (rango de fechas).
+   - Price base del servicio y productos añadidos.
+   - Se aplica la mejor oferta activa por target (service/product).
    - Se guarda `price` final en Appointment (editable en admin).
-   - Caja registradora y KPIs usan el precio final.
+   - Caja registradora y KPIs usan el precio final (incluye productos).
 
 5) **Notificaciones**
    - Email: al crear/actualizar/cancelar cita (SMTP via Nodemailer).
@@ -181,8 +186,13 @@ Flujos:
    - Transcripcion de audio con OpenAI (whisper-1).
  
 8) **Caja registradora**
-   - Combina citas (precio final) + movimientos manuales.
+   - Combina citas (precio final, incluye productos) + movimientos manuales.
    - KPIs por local y desglose por barbero/metodo de pago.
+
+9) **Productos y stock**
+   - El admin gestiona catalogo, stock y visibilidad publica por local.
+   - Productos se agregan a las citas (admin y cliente si esta habilitado).
+   - Al cancelar o marcar ausencia se revierte stock automaticamente.
 
 ## Integraciones externas
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local.

@@ -19,17 +19,12 @@ import {
   deleteServiceCategory,
   getSiteSettings,
   updateSiteSettings,
-  getOffers,
-  createOffer,
-  updateOffer,
-  deleteOffer,
 } from '@/data/api';
-import { Offer, OfferScope, Service, ServiceCategory, SiteSettings } from '@/data/types';
-import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, CheckCircle2, Sparkles, Percent, Euro } from 'lucide-react';
+import { Service, ServiceCategory, SiteSettings } from '@/data/types';
+import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, CheckCircle2, Sparkles, Percent } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 
 const UNCATEGORIZED_VALUE = 'none';
@@ -38,25 +33,19 @@ const AdminServices: React.FC = () => {
   const { toast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isCategoryDeleteDialogOpen, setIsCategoryDeleteDialogOpen] = useState(false);
-  const [isOfferDialogOpen, setIsOfferDialogOpen] = useState(false);
-  const [isOfferDeleteDialogOpen, setIsOfferDeleteDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
-  const [isOfferSubmitting, setIsOfferSubmitting] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [editingCategory, setEditingCategory] = useState<ServiceCategory | null>(null);
-  const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
-  const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
   const [updatingServiceCategoryId, setUpdatingServiceCategoryId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -70,34 +59,19 @@ const AdminServices: React.FC = () => {
     description: '',
     position: 0,
   });
-  const [offerForm, setOfferForm] = useState({
-    name: '',
-    description: '',
-    discountType: 'percentage' as Offer['discountType'],
-    discountValue: '',
-    scope: 'all' as OfferScope,
-    categoryIds: [] as string[],
-    serviceIds: [] as string[],
-    startDate: '',
-    endDate: '',
-    active: true,
-  });
-
   const categoriesEnabled = settings?.services.categoriesEnabled ?? false;
 
   const loadData = async (withLoader = true) => {
     if (withLoader) setIsLoading(true);
     try {
-      const [servicesData, categoriesData, settingsData, offersData] = await Promise.all([
+      const [servicesData, categoriesData, settingsData] = await Promise.all([
         getServices(),
         getServiceCategories(true),
         getSiteSettings(),
-        getOffers(),
       ]);
       setServices(servicesData);
       setCategories(categoriesData);
       setSettings(settingsData);
-      setOffers(offersData);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo cargar la configuración de servicios.', variant: 'destructive' });
     } finally {
@@ -164,28 +138,6 @@ const AdminServices: React.FC = () => {
       position: category?.position ?? categories.length,
     });
     setIsCategoryDialogOpen(true);
-  };
-
-  const openOfferDialog = (offer?: Offer) => {
-    setEditingOffer(offer || null);
-    setOfferForm({
-      name: offer?.name || '',
-      description: offer?.description || '',
-      discountType: offer?.discountType || 'percentage',
-      discountValue: offer ? String(offer.discountValue) : '',
-      scope: offer?.scope || 'all',
-      categoryIds: offer?.categories?.map((c) => c.id) || [],
-      serviceIds: offer?.services?.map((s) => s.id) || [],
-      startDate: offer?.startDate ? offer.startDate.slice(0, 10) : '',
-      endDate: offer?.endDate ? offer.endDate.slice(0, 10) : '',
-      active: offer?.active ?? true,
-    });
-    setIsOfferDialogOpen(true);
-  };
-
-  const openOfferDeleteDialog = (id: string) => {
-    setDeletingOfferId(id);
-    setIsOfferDeleteDialogOpen(true);
   };
 
   const openCategoryDeleteDialog = (id: string) => {
@@ -278,65 +230,6 @@ const AdminServices: React.FC = () => {
     }
   };
 
-  const handleOfferSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsOfferSubmitting(true);
-    try {
-      const discountValue = parseFloat(offerForm.discountValue);
-      if (Number.isNaN(discountValue) || discountValue <= 0) {
-        toast({ title: 'Valor de oferta inválido', description: 'Introduce un número mayor que cero.', variant: 'destructive' });
-        setIsOfferSubmitting(false);
-        return;
-      }
-
-      const payload = {
-        name: offerForm.name,
-        description: offerForm.description || undefined,
-        discountType: offerForm.discountType,
-        discountValue,
-        scope: offerForm.scope,
-        categoryIds: offerForm.scope === 'categories' ? offerForm.categoryIds : undefined,
-        serviceIds: offerForm.scope === 'services' ? offerForm.serviceIds : undefined,
-        startDate: offerForm.startDate || undefined,
-        endDate: offerForm.endDate || undefined,
-        active: offerForm.active,
-      };
-
-      if (offerForm.scope === 'categories' && (!payload.categoryIds || payload.categoryIds.length === 0)) {
-        toast({ title: 'Selecciona categorías', description: 'Elige al menos una categoría.', variant: 'destructive' });
-        setIsOfferSubmitting(false);
-        return;
-      }
-
-      if (offerForm.scope === 'services' && (!payload.serviceIds || payload.serviceIds.length === 0)) {
-        toast({ title: 'Selecciona servicios', description: 'Elige al menos un servicio.', variant: 'destructive' });
-        setIsOfferSubmitting(false);
-        return;
-      }
-
-      if (offerForm.startDate && offerForm.endDate && offerForm.startDate > offerForm.endDate) {
-        toast({ title: 'Rango de fechas inválido', description: 'La fecha de inicio debe ser anterior a la fecha fin.', variant: 'destructive' });
-        setIsOfferSubmitting(false);
-        return;
-      }
-
-      if (editingOffer) {
-        await updateOffer(editingOffer.id, payload);
-        toast({ title: 'Oferta actualizada', description: 'Los cambios se han guardado.' });
-      } else {
-        await createOffer(payload as any);
-        toast({ title: 'Oferta creada', description: 'Ya puedes aplicarla a tus servicios.' });
-      }
-
-      await loadData(false);
-      setIsOfferDialogOpen(false);
-    } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'No se pudo guardar la oferta.', variant: 'destructive' });
-    } finally {
-      setIsOfferSubmitting(false);
-    }
-  };
-
   const handleDelete = async () => {
     if (!deletingServiceId) return;
     
@@ -368,20 +261,6 @@ const AdminServices: React.FC = () => {
     } finally {
       setIsCategoryDeleteDialogOpen(false);
       setDeletingCategoryId(null);
-    }
-  };
-
-  const handleDeleteOffer = async () => {
-    if (!deletingOfferId) return;
-    try {
-      await deleteOffer(deletingOfferId);
-      toast({ title: 'Oferta eliminada', description: 'Se ha retirado correctamente.' });
-      await loadData(false);
-    } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'No se pudo eliminar la oferta.', variant: 'destructive' });
-    } finally {
-      setIsOfferDeleteDialogOpen(false);
-      setDeletingOfferId(null);
     }
   };
 
@@ -582,79 +461,6 @@ const AdminServices: React.FC = () => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Offers */}
-      <Card variant="elevated">
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Percent className="w-4 h-4 text-primary" />
-              Ofertas
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Crea descuentos por porcentaje o cantidad y aplícalos a todos, a categorías o a servicios concretos.
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => openOfferDialog()}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva oferta
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {offers.length > 0 ? (
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {offers.map((offer) => {
-                const isPercent = offer.discountType === 'percentage';
-                const scopeLabel =
-                  offer.scope === 'all'
-                    ? 'Todos los servicios'
-                    : offer.scope === 'categories'
-                    ? `${offer.categories.length} categoría(s)`
-                    : `${offer.services.length} servicio(s)`;
-                return (
-                  <div key={offer.id} className="rounded-xl border border-border p-4 bg-muted/20 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-foreground">{offer.name}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2">{offer.description || 'Sin descripción'}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openOfferDialog(offer)}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openOfferDeleteDialog(offer.id)}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Badge variant="secondary" className="gap-1">
-                        {isPercent ? <Percent className="w-3 h-3" /> : <Euro className="w-3 h-3" />}
-                        {offer.discountValue}{isPercent ? '%' : '€'} de dto.
-                      </Badge>
-                      <Badge variant={offer.active ? 'secondary' : 'outline'} className="text-[11px]">
-                        {offer.active ? 'Activa' : 'Pausada'}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="px-2 py-1 rounded-full border border-border">{scopeLabel}</span>
-                      {offer.startDate && <span>Inicio: {offer.startDate.slice(0, 10)}</span>}
-                      {offer.endDate && <span>Fin: {offer.endDate.slice(0, 10)}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              icon={Percent}
-              title="Sin ofertas"
-              description="Crea promociones para impulsar reservas."
-              action={{ label: 'Nueva oferta', onClick: () => openOfferDialog() }}
-            />
-          )}
-        </CardContent>
-      </Card>
 
       {/* Services Grid */}
       {isLoading ? (
@@ -895,180 +701,6 @@ const AdminServices: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Offer Dialog */}
-      <Dialog open={isOfferDialogOpen} onOpenChange={setIsOfferDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingOffer ? 'Editar oferta' : 'Nueva oferta'}</DialogTitle>
-            <DialogDescription>
-              Define el descuento, alcance y fechas opcionales de activación.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleOfferSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nombre</Label>
-                  <Input
-                    value={offerForm.name}
-                    onChange={(e) => setOfferForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Promoción de verano"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Descripción (opcional)</Label>
-                  <Input
-                    value={offerForm.description}
-                    onChange={(e) => setOfferForm((prev) => ({ ...prev, description: e.target.value }))}
-                    placeholder="Explica brevemente el descuento"
-                  />
-                </div>
-              </div>
-              <div className="grid sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Tipo</Label>
-                  <Select
-                    value={offerForm.discountType}
-                    onValueChange={(value) => setOfferForm((prev) => ({ ...prev, discountType: value as Offer['discountType'] }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Tipo de descuento" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="percentage">Porcentaje (%)</SelectItem>
-                      <SelectItem value="amount">Cantidad (€)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Valor</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={offerForm.discountValue}
-                    onChange={(e) => setOfferForm((prev) => ({ ...prev, discountValue: e.target.value }))}
-                    placeholder={offerForm.discountType === 'percentage' ? '10' : '2'}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Ámbito</Label>
-                  <Select
-                    value={offerForm.scope}
-                    onValueChange={(value) => setOfferForm((prev) => ({ ...prev, scope: value as OfferScope }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona el ámbito" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los servicios</SelectItem>
-                      <SelectItem value="categories" disabled={!categoriesEnabled || orderedCategories.length === 0}>
-                        Categorías {categoriesEnabled ? '' : '(activa categorías)'}
-                      </SelectItem>
-                      <SelectItem value="services">Servicios concretos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {offerForm.scope === 'categories' && (
-                <div className="space-y-2">
-                  <Label>Categorías a incluir</Label>
-                  <div className="grid sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto rounded-xl border border-border p-3">
-                    {orderedCategories.map((category) => (
-                      <label key={category.id} className="flex items-center gap-2 text-sm text-foreground">
-                        <Checkbox
-                          checked={offerForm.categoryIds.includes(category.id)}
-                          onCheckedChange={(checked) => {
-                            setOfferForm((prev) => ({
-                              ...prev,
-                              categoryIds: checked
-                                ? [...prev.categoryIds, category.id]
-                                : prev.categoryIds.filter((id) => id !== category.id),
-                            }));
-                          }}
-                        />
-                        <span>{category.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {orderedCategories.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Crea al menos una categoría para usar este ámbito.</p>
-                  )}
-                </div>
-              )}
-
-              {offerForm.scope === 'services' && (
-                <div className="space-y-2">
-                  <Label>Servicios a incluir</Label>
-                  <div className="grid sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto rounded-xl border border-border p-3">
-                    {services.map((service) => (
-                      <label key={service.id} className="flex items-center gap-2 text-sm text-foreground">
-                        <Checkbox
-                          checked={offerForm.serviceIds.includes(service.id)}
-                          onCheckedChange={(checked) => {
-                            setOfferForm((prev) => ({
-                              ...prev,
-                              serviceIds: checked
-                                ? [...prev.serviceIds, service.id]
-                                : prev.serviceIds.filter((id) => id !== service.id),
-                            }));
-                          }}
-                        />
-                        <span>{service.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {services.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Crea servicios para poder seleccionarlos.</p>
-                  )}
-                </div>
-              )}
-
-              <div className="grid sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Inicio</Label>
-                  <Input
-                    type="date"
-                    value={offerForm.startDate}
-                    onChange={(e) => setOfferForm((prev) => ({ ...prev, startDate: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Fin</Label>
-                  <Input
-                    type="date"
-                    value={offerForm.endDate}
-                    onChange={(e) => setOfferForm((prev) => ({ ...prev, endDate: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Estado</Label>
-                  <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2">
-                    <Switch
-                      checked={offerForm.active}
-                      onCheckedChange={(checked) => setOfferForm((prev) => ({ ...prev, active: checked }))}
-                    />
-                    <span className="text-sm">{offerForm.active ? 'Activa' : 'Pausada'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsOfferDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={isOfferSubmitting}>
-                {isOfferSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editingOffer ? 'Guardar cambios' : 'Crear oferta'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Confirmation */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
@@ -1107,23 +739,6 @@ const AdminServices: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={isOfferDeleteDialogOpen} onOpenChange={setIsOfferDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar oferta?</AlertDialogTitle>
-            <AlertDialogDescription>La promoción dejará de aplicarse de inmediato.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteOffer}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

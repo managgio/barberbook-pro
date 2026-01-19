@@ -104,9 +104,38 @@ export interface Service {
   appliedOffer?: AppliedOffer | null;
 }
 
+export interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  sku?: string | null;
+  price: number;
+  finalPrice?: number;
+  stock: number;
+  minStock?: number;
+  imageUrl?: string | null;
+  imageFileId?: string | null;
+  isActive: boolean;
+  isPublic: boolean;
+  categoryId?: string | null;
+  category?: ProductCategory | null;
+  appliedOffer?: AppliedOffer | null;
+}
+
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
 export type PaymentMethod = 'cash' | 'card' | 'bizum';
 export type CashMovementType = 'in' | 'out';
+
+export interface AppointmentProductItem {
+  id: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  imageUrl?: string | null;
+  isPublic?: boolean;
+}
 
 export interface Appointment {
   id: string;
@@ -120,6 +149,7 @@ export interface Appointment {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  products?: AppointmentProductItem[];
 }
 
 export interface CashMovement {
@@ -206,6 +236,14 @@ export interface ServiceCategory {
   services?: Service[];
 }
 
+export interface ProductCategory {
+  id: string;
+  name: string;
+  description?: string;
+  position?: number;
+  products?: Product[];
+}
+
 export interface SiteSettings {
   branding: {
     name: string;
@@ -231,11 +269,18 @@ export interface SiteSettings {
   services: {
     categoriesEnabled: boolean;
   };
+  products: {
+    enabled: boolean;
+    categoriesEnabled: boolean;
+    clientPurchaseEnabled: boolean;
+    showOnLanding: boolean;
+  };
   qrSticker: QrSticker | null;
 }
 
 export type DiscountType = 'percentage' | 'amount';
-export type OfferScope = 'all' | 'categories' | 'services';
+export type OfferScope = 'all' | 'categories' | 'services' | 'products';
+export type OfferTarget = 'service' | 'product';
 
 export interface AppliedOffer {
   id: string;
@@ -256,18 +301,23 @@ export interface Offer {
   discountType: DiscountType;
   discountValue: number;
   scope: OfferScope;
+  target?: OfferTarget;
   startDate?: string | null;
   endDate?: string | null;
   active: boolean;
   categories: ServiceCategory[];
   services: Service[];
+  productCategories?: ProductCategory[];
+  products?: Product[];
 }
 
 export type AdminSectionKey =
   | 'dashboard'
   | 'calendar'
   | 'search'
+  | 'offers'
   | 'cash-register'
+  | 'stock'
   | 'clients'
   | 'services'
   | 'barbers'
@@ -302,6 +352,7 @@ export interface CreateAppointmentPayload {
   guestName?: string;
   guestContact?: string;
   privacyConsentGiven?: boolean;
+  products?: Array<{ productId: string; quantity: number }>;
 }
 
 export interface LegalSection {

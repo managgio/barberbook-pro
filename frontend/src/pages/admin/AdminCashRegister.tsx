@@ -62,7 +62,7 @@ const methodIcons: Record<PaymentMethod | 'unknown', React.ElementType> = {
 
 const AdminCashRegister: React.FC = () => {
   const { toast } = useToast();
-  const { locations, currentLocationId } = useTenant();
+  const { locations, currentLocationId, tenant } = useTenant();
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -75,6 +75,7 @@ const AdminCashRegister: React.FC = () => {
   const [barberPaymentMethodFilter, setBarberPaymentMethodFilter] = useState<
     'all' | PaymentMethod | 'unknown'
   >('all');
+  const productsEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
   const [movementDraft, setMovementDraft] = useState<{
     type: CashMovementType;
     amount: string;
@@ -86,16 +87,31 @@ const AdminCashRegister: React.FC = () => {
     method: 'cash',
     note: '',
   });
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  const getProductsTotal = useCallback(
+    (appointment: Appointment) =>
+      appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0,
+    [],
+  );
+
+  const getAppointmentAmount = useCallback(
+    (appointment: Appointment) => {
+      const productsTotal = getProductsTotal(appointment);
+      return productsEnabled ? appointment.price : Math.max(0, appointment.price - productsTotal);
+    },
+    [getProductsTotal, productsEnabled],
+  );
 
   const calculateNetTotal = useCallback((appts: Appointment[], moves: CashMovement[]) => {
     const completedTotal = appts.filter((apt) => apt.status === 'completed')
-      .reduce((acc, apt) => acc + apt.price, 0);
+      .reduce((acc, apt) => acc + getAppointmentAmount(apt), 0);
     const manualInTotal = moves.filter((movement) => movement.type === 'in')
       .reduce((acc, movement) => acc + movement.amount, 0);
     const manualOutTotal = moves.filter((movement) => movement.type === 'out')
       .reduce((acc, movement) => acc + movement.amount, 0);
     return completedTotal + manualInTotal - manualOutTotal;
-  }, []);
+  }, [getAppointmentAmount]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -155,12 +171,12 @@ const AdminCashRegister: React.FC = () => {
   );
 
   const appointmentIncome = useMemo(
-    () => completedAppointments.reduce((acc, appointment) => acc + appointment.price, 0),
-    [completedAppointments],
+    () => completedAppointments.reduce((acc, appointment) => acc + getAppointmentAmount(appointment), 0),
+    [completedAppointments, getAppointmentAmount],
   );
   const pendingIncome = useMemo(
-    () => pendingAppointments.reduce((acc, appointment) => acc + appointment.price, 0),
-    [pendingAppointments],
+    () => pendingAppointments.reduce((acc, appointment) => acc + getAppointmentAmount(appointment), 0),
+    [pendingAppointments, getAppointmentAmount],
   );
   const manualIn = useMemo(
     () => movements.filter((movement) => movement.type === 'in').reduce((acc, movement) => acc + movement.amount, 0),
@@ -190,7 +206,7 @@ const AdminCashRegister: React.FC = () => {
     };
     paymentFilteredAppointments.forEach((appointment) => {
       const key = appointment.paymentMethod ?? 'unknown';
-      totals[key] += appointment.price;
+      totals[key] += getAppointmentAmount(appointment);
     });
     if (paymentBarberFilter === 'all') {
       movements
@@ -201,7 +217,7 @@ const AdminCashRegister: React.FC = () => {
         });
     }
     return totals;
-  }, [paymentFilteredAppointments, movements, paymentBarberFilter]);
+  }, [paymentFilteredAppointments, movements, paymentBarberFilter, getAppointmentAmount]);
 
   const methodData = useMemo(
     () =>
@@ -226,7 +242,7 @@ const AdminCashRegister: React.FC = () => {
     filtered.forEach((appointment) => {
       const current = totals.get(appointment.barberId) || { total: 0, count: 0 };
       totals.set(appointment.barberId, {
-        total: current.total + appointment.price,
+        total: current.total + getAppointmentAmount(appointment),
         count: current.count + 1,
       });
     });
@@ -240,9 +256,40 @@ const AdminCashRegister: React.FC = () => {
       .filter((row) => row.total > 0 || row.count > 0)
       .sort((a, b) => b.total - a.total);
     return rows;
-  }, [barbers, completedAppointments, barberPaymentMethodFilter]);
+  }, [barbers, completedAppointments, barberPaymentMethodFilter, getAppointmentAmount]);
 
   const maxBarberTotal = barberTotals.reduce((max, row) => Math.max(max, row.total), 0);
+  const productSales = useMemo(() => {
+    if (!productsEnabled) return [];
+    const totals = new Map<string, { id: string; name: string; quantity: number; total: number }>();
+    completedAppointments.forEach((appointment) => {
+      (appointment.products ?? []).forEach((item) => {
+        const current = totals.get(item.productId) || {
+          id: item.productId,
+          name: item.name || 'Producto',
+          quantity: 0,
+          total: 0,
+        };
+        totals.set(item.productId, {
+          ...current,
+          quantity: current.quantity + item.quantity,
+          total: current.total + item.totalPrice,
+        });
+      });
+    });
+    return [...totals.values()].sort((a, b) => b.total - a.total);
+  }, [completedAppointments, productsEnabled]);
+
+  const productSalesSummary = useMemo(() => {
+    if (!productsEnabled) return { units: 0, total: 0 };
+    return productSales.reduce(
+      (acc, item) => ({
+        units: acc.units + item.quantity,
+        total: acc.total + item.total,
+      }),
+      { units: 0, total: 0 },
+    );
+  }, [productSales, productsEnabled]);
 
   const handleCreateMovement = async () => {
     if (isSavingMovement) return;
@@ -345,6 +392,7 @@ const AdminCashRegister: React.FC = () => {
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
+            max={today}
             className="w-[160px]"
           />
         </div>
@@ -534,6 +582,46 @@ const AdminCashRegister: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {productsEnabled && (
+        <Card variant="elevated" className="flex flex-col">
+          <CardHeader className="space-y-1">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Ventas de productos</CardTitle>
+              <div className="text-xs text-muted-foreground">
+                {productSalesSummary.units} unidad(es) · {currencyFormatter.format(productSalesSummary.total)}
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Productos añadidos en citas completadas para la fecha seleccionada.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {productSales.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                No hay ventas de productos en esta fecha.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                {productSales.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg border border-border/60 bg-background/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.quantity} unidad(es)</p>
+                    </div>
+                    <span className="text-sm font-semibold text-foreground">
+                      {currencyFormatter.format(item.total)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card variant="elevated" className="flex flex-col">
         <CardHeader className="space-y-1">

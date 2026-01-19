@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import {
   Repeat, 
   MapPin, 
   ArrowRight,
+  Package,
   Instagram,
   Phone,
   Mail,
@@ -20,8 +21,8 @@ import {
   Music2,
 } from 'lucide-react';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
-import { Barber, Service } from '@/data/types';
-import { getBarbers, getServices } from '@/data/api';
+import { Barber, Product, ProductCategory, Service } from '@/data/types';
+import { getBarbers, getProductCategories, getProducts, getServices } from '@/data/api';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
@@ -29,6 +30,7 @@ import { useTenant } from '@/context/TenantContext';
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
 const signImageFallback = '/placeholder.svg';
+const productImageFallback = '/placeholder.svg';
 
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
@@ -71,19 +73,116 @@ const LandingPage: React.FC = () => {
   ].filter((item) => item.url && item.label);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const categoriesEnabled = settings.products.categoriesEnabled;
+  const showProducts = settings.products.showOnLanding && products.length > 0;
+
+  const renderProductCard = (product: Product, index: number) => {
+    const price = product.finalPrice ?? product.price;
+    const hasOffer = product.appliedOffer && Math.abs(product.price - price) > 0.001;
+    const productLink = isAuthenticated
+      ? `/app/book?product=${product.id}`
+      : `/auth?tab=signup&product=${product.id}`;
+    return (
+      <Card
+        key={product.id}
+        variant="interactive"
+        className="overflow-hidden animate-slide-up h-full flex flex-col min-h-[330px] md:min-h-[300px] lg:min-h-[280px]"
+        style={{ animationDelay: `${index * 0.1}s` }}
+      >
+        <div className="relative aspect-[4/3] bg-secondary/40 shrink-0">
+          <img
+            src={product.imageUrl || productImageFallback}
+            alt={product.name}
+            className="w-full h-full object-cover"
+          />
+          {hasOffer && (
+            <div className="absolute top-3 right-3 bg-primary text-primary-foreground text-xs px-3 py-1 rounded-full shadow-lg">
+              Oferta
+            </div>
+          )}
+        </div>
+        <CardContent className="p-6 md:p-5 lg:p-4 flex flex-col flex-1 gap-4">
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex-1">
+              <h3 className="text-lg md:text-base font-semibold text-foreground">{product.name}</h3>
+              <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
+                {product.description}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              {hasOffer && (
+                <div className="text-xs line-through text-muted-foreground">{product.price}€</div>
+              )}
+              <span className="text-2xl md:text-xl font-bold text-primary">{price.toFixed(2)}€</span>
+            </div>
+          </div>
+          <div className="mt-auto">
+            {settings.products.clientPurchaseEnabled ? (
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link to={productLink}>
+                  <Package className="w-4 h-4 mr-2" />
+                  {isAuthenticated ? 'Añadir a tu cita' : 'Accede para comprar'}
+                </Link>
+              </Button>
+            ) : (
+              <div className="text-xs text-muted-foreground text-center border border-dashed border-border rounded-lg py-2">
+                Disponible en el local
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const productGroups = useMemo(() => {
+    if (!categoriesEnabled) return [];
+    const byId = new Map(productCategories.map((category) => [category.id, category]));
+    const grouped = new Map<string, { category: ProductCategory | null; items: Product[] }>();
+    const uncategorizedKey = 'uncategorized';
+    products.forEach((product) => {
+      const categoryId = product.categoryId ?? product.category?.id ?? uncategorizedKey;
+      const category = categoryId === uncategorizedKey ? null : byId.get(categoryId) ?? product.category ?? null;
+      if (!grouped.has(categoryId)) {
+        grouped.set(categoryId, { category, items: [] });
+      }
+      grouped.get(categoryId)?.items.push(product);
+    });
+    const ordered: Array<{ key: string; category: ProductCategory | null; items: Product[] }> = [];
+    productCategories.forEach((category) => {
+      const entry = grouped.get(category.id);
+      if (entry) ordered.push({ key: category.id, category, items: entry.items });
+    });
+    const uncategorized = grouped.get(uncategorizedKey);
+    if (uncategorized) {
+      ordered.push({ key: uncategorizedKey, category: null, items: uncategorized.items });
+    }
+    return ordered;
+  }, [categoriesEnabled, productCategories, products]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [barbersData, servicesData] = await Promise.all([getBarbers(), getServices()]);
+        const [barbersData, servicesData, productsData, productCategoriesData] = await Promise.all([
+          getBarbers(),
+          getServices(),
+          settings.products.showOnLanding ? getProducts('landing') : Promise.resolve([]),
+          settings.products.showOnLanding && settings.products.categoriesEnabled
+            ? getProductCategories(true)
+            : Promise.resolve([]),
+        ]);
         setBarbers(barbersData);
         setServices(servicesData);
+        setProducts(productsData as Product[]);
+        setProductCategories(productCategoriesData as ProductCategory[]);
       } catch (error) {
         console.error('Error loading landing data', error);
       }
     };
     loadData();
-  }, []);
+  }, [settings.products.showOnLanding, settings.products.categoriesEnabled]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -248,6 +347,66 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      {showProducts && (
+        <section className="py-24">
+          <div className="container px-4">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+                Productos destacados
+              </h2>
+              <p className="text-muted-foreground max-w-lg mx-auto">
+                Selección profesional para cuidar tu estilo en casa.
+              </p>
+            </div>
+
+            {categoriesEnabled ? (
+              <div className="space-y-10 max-w-5xl mx-auto">
+                {productGroups.map((group) => (
+                  <div key={group.key} className="space-y-4">
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <h3 className="text-xl font-semibold text-foreground">
+                          {group.category?.name ?? 'Otros productos'}
+                        </h3>
+                        {group.category?.description && (
+                          <p className="text-sm text-muted-foreground">{group.category.description}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {group.items.length} producto(s)
+                      </span>
+                    </div>
+                    <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 md:gap-6">
+                      {group.items.map((product, index) => (
+                        <div
+                          key={product.id}
+                          className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-auto md:h-full"
+                        >
+                          {renderProductCard(product, index)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="max-w-5xl mx-auto">
+                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 md:gap-6">
+                  {products.slice(0, 6).map((product, index) => (
+                    <div
+                      key={product.id}
+                      className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-auto md:h-full"
+                    >
+                      {renderProductCard(product, index)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Barbers Section */}
       <section className="py-24">
         <div className="container px-4">
@@ -260,27 +419,28 @@ const LandingPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 max-w-6xl mx-auto">
             {barbers.map((barber, index) => (
-              <Card 
-                key={barber.id} 
-                variant="interactive"
-                className="overflow-hidden animate-slide-up"
-                style={{ animationDelay: `${index * 0.1}s` }}
-              >
-                <div className="aspect-square relative overflow-hidden">
-                  <img 
-                    src={barber.photo || defaultAvatar} 
-                    alt={barber.name}
-                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                  />
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-4" />
-                </div>
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-foreground">{barber.name}</h3>
-                  <p className="text-sm text-muted-foreground">{barber.specialty}</p>
-                </CardContent>
-              </Card>
+              <div key={barber.id} className="min-w-[220px] sm:min-w-[260px] md:min-w-0 md:w-auto">
+                <Card
+                  variant="interactive"
+                  className="overflow-hidden animate-slide-up h-full"
+                  style={{ animationDelay: `${index * 0.1}s` }}
+                >
+                  <div className="aspect-square relative overflow-hidden">
+                    <img
+                      src={barber.photo || defaultAvatar}
+                      alt={barber.name}
+                      className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-4" />
+                  </div>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-foreground">{barber.name}</h3>
+                    <p className="text-sm text-muted-foreground">{barber.specialty}</p>
+                  </CardContent>
+                </Card>
+              </div>
             ))}
             {barbers.length === 0 && (
               <div className="md:col-span-2 lg:col-span-4 text-center text-muted-foreground">

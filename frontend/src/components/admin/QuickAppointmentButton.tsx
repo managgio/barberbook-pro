@@ -4,12 +4,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getUsers, getBarbers, getServices, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
-import { Barber, Service, ServiceCategory, User } from '@/data/types';
+import { getUsers, getBarbers, getServices, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings, getAdminProducts, getProductCategories } from '@/data/api';
+import { Barber, Product, ProductCategory, Service, ServiceCategory, User } from '@/data/types';
 import { Plus, Search, Loader2, UserCircle2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import ProductSelector from '@/components/common/ProductSelector';
 
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
@@ -20,6 +21,10 @@ const QuickAppointmentButton: React.FC = () => {
   const [services, setServices] = useState<Service[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const [productsEnabled, setProductsEnabled] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
 
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -41,18 +46,23 @@ const QuickAppointmentButton: React.FC = () => {
     const fetchData = async () => {
       setIsLoadingData(true);
       try {
-        const [usersData, barbersData, servicesData, categoriesData, settingsData] = await Promise.all([
+        const [usersData, barbersData, servicesData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
           getUsers(),
           getBarbers(),
           getServices(),
           getServiceCategories(true),
           getSiteSettings(),
+          getAdminProducts(),
+          getProductCategories(true),
         ]);
         setClients(usersData.filter((user) => user.role === 'client'));
         setBarbers(barbersData);
         setServices(servicesData);
         setServiceCategories(categoriesData);
         setCategoriesEnabled(settingsData.services.categoriesEnabled);
+        setProductsEnabled(settingsData.products.enabled);
+        setProducts(productsData);
+        setProductCategories(productCategoriesData);
       } catch (error) {
         console.error(error);
         toast({
@@ -144,6 +154,7 @@ const QuickAppointmentButton: React.FC = () => {
     setSelectedDate('');
     setSelectedTime('');
     setAvailableSlots([]);
+    setSelectedProducts([]);
   };
 
   const handleOpenChange = (value: boolean) => {
@@ -184,6 +195,7 @@ const QuickAppointmentButton: React.FC = () => {
         status: 'scheduled',
         guestName: useGuest ? guestName : undefined,
         guestContact: useGuest ? guestContact : undefined,
+        products: productsEnabled ? selectedProducts : undefined,
       });
       dispatchAppointmentsUpdated({ source: 'quick-appointment' });
       toast({
@@ -414,6 +426,18 @@ const QuickAppointmentButton: React.FC = () => {
                   </Select>
                 </div>
               </div>
+
+              {productsEnabled && (
+                <div className="space-y-3">
+                  <Label className="text-base">Productos</Label>
+                  <ProductSelector
+                    products={products}
+                    categories={productCategories}
+                    selected={selectedProducts}
+                    onChange={setSelectedProducts}
+                  />
+                </div>
+              )}
 
               {/* Date & time */}
               <div className="space-y-3">

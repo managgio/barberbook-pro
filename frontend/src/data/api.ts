@@ -3,7 +3,10 @@ import {
   Barber,
   Service,
   Offer,
+  OfferTarget,
   ServiceCategory,
+  Product,
+  ProductCategory,
   Appointment,
   CashMovement,
   ClientNote,
@@ -149,15 +152,24 @@ export const deleteService = async (id: string): Promise<void> =>
   apiRequest(`/services/${id}`, { method: 'DELETE' });
 
 // Offers API
-export const getOffers = async (): Promise<Offer[]> => apiRequest('/offers');
-export const getActiveOffers = async (): Promise<Offer[]> => apiRequest('/offers/active');
-export const createOffer = async (data: Omit<Offer, 'id' | 'categories' | 'services'> & {
+export const getOffers = async (target?: OfferTarget): Promise<Offer[]> =>
+  apiRequest('/offers', { query: target ? { target } : undefined });
+export const getActiveOffers = async (target?: OfferTarget): Promise<Offer[]> =>
+  apiRequest('/offers/active', { query: target ? { target } : undefined });
+export const createOffer = async (data: Omit<Offer, 'id' | 'categories' | 'services' | 'productCategories' | 'products'> & {
   categoryIds?: string[];
   serviceIds?: string[];
+  productCategoryIds?: string[];
+  productIds?: string[];
 }): Promise<Offer> => apiRequest('/offers', { method: 'POST', body: data });
 export const updateOffer = async (
   id: string,
-  data: Partial<Omit<Offer, 'id' | 'categories' | 'services'>> & { categoryIds?: string[]; serviceIds?: string[] },
+  data: Partial<Omit<Offer, 'id' | 'categories' | 'services' | 'productCategories' | 'products'>> & {
+    categoryIds?: string[];
+    serviceIds?: string[];
+    productCategoryIds?: string[];
+    productIds?: string[];
+  },
 ): Promise<Offer> => apiRequest(`/offers/${id}`, { method: 'PATCH', body: data });
 export const deleteOffer = async (id: string): Promise<void> => apiRequest(`/offers/${id}`, { method: 'DELETE' });
 
@@ -175,6 +187,33 @@ export const updateServiceCategory = async (
 export const deleteServiceCategory = async (id: string): Promise<void> =>
   apiRequest(`/service-categories/${id}`, { method: 'DELETE' });
 
+// Product Categories API
+export const getProductCategories = async (withProducts = true): Promise<ProductCategory[]> =>
+  apiRequest('/product-categories', { query: { withProducts } });
+export const createProductCategory = async (
+  data: Omit<ProductCategory, 'id' | 'products'>,
+): Promise<ProductCategory> =>
+  apiRequest('/product-categories', { method: 'POST', body: data });
+export const updateProductCategory = async (
+  id: string,
+  data: Partial<Omit<ProductCategory, 'id' | 'products'>>,
+): Promise<ProductCategory> => apiRequest(`/product-categories/${id}`, { method: 'PATCH', body: data });
+export const deleteProductCategory = async (id: string): Promise<void> =>
+  apiRequest(`/product-categories/${id}`, { method: 'DELETE' });
+
+// Products API
+export const getProducts = async (context: 'booking' | 'landing' = 'booking'): Promise<Product[]> =>
+  apiRequest('/products', { query: { context } });
+export const getAdminProducts = async (): Promise<Product[]> => apiRequest('/products/admin');
+export const createProduct = async (data: Partial<Product>): Promise<Product> =>
+  apiRequest('/products', { method: 'POST', body: data });
+export const updateProduct = async (id: string, data: Partial<Product>): Promise<Product> =>
+  apiRequest(`/products/${id}`, { method: 'PATCH', body: data });
+export const deleteProduct = async (id: string): Promise<void> =>
+  apiRequest(`/products/${id}`, { method: 'DELETE' });
+export const importProducts = async (data: { sourceLocalId: string; targetLocalId?: string }): Promise<{ created: number; updated: number }> =>
+  apiRequest('/products/import', { method: 'POST', body: data });
+
 // Appointments API
 export const getAppointments = async (): Promise<Appointment[]> => apiRequest('/appointments');
 export const getAppointmentById = async (id: string): Promise<Appointment | undefined> => apiRequest(`/appointments/${id}`);
@@ -188,8 +227,10 @@ export const getAppointmentsByDateForLocal = async (date: string, localId: strin
   apiRequest('/appointments', { query: { date }, headers: { 'x-local-id': localId } });
 export const createAppointment = async (data: CreateAppointmentPayload): Promise<Appointment> =>
   apiRequest('/appointments', { method: 'POST', body: data });
-export const updateAppointment = async (id: string, data: Partial<Appointment>): Promise<Appointment> =>
-  apiRequest(`/appointments/${id}`, { method: 'PATCH', body: data });
+export const updateAppointment = async (
+  id: string,
+  data: Partial<Appointment> & { products?: Array<{ productId: string; quantity: number }> },
+): Promise<Appointment> => apiRequest(`/appointments/${id}`, { method: 'PATCH', body: data });
 export const deleteAppointment = async (id: string): Promise<void> =>
   apiRequest(`/appointments/${id}`, { method: 'DELETE' });
 export const anonymizeAppointment = async (id: string): Promise<Appointment> =>

@@ -17,9 +17,19 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
     description: 'Historial completo de citas filtrado por barbero o fecha.',
   },
   {
+    key: 'offers',
+    label: 'Ofertas',
+    description: 'Promociones programables para servicios y productos.',
+  },
+  {
     key: 'cash-register',
     label: 'Caja Registradora',
     description: 'Control diario de ingresos, salidas y medios de pago.',
+  },
+  {
+    key: 'stock',
+    label: 'Control de stock',
+    description: 'Inventario de productos, precios y alertas de stock.',
   },
   {
     key: 'clients',

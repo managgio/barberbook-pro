@@ -13,6 +13,7 @@ import {
   User as UserIcon,
   Scissors,
   MessageSquare,
+  Package,
 } from 'lucide-react';
 import { 
   format, 
@@ -42,6 +43,11 @@ const END_HOUR = 20;
 const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR);
 const HOUR_HEIGHT = 60;
 const MINUTES_IN_DAY_VIEW = HOURS.length * 60;
+const currencyFormatter = new Intl.NumberFormat('es-ES', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+});
 
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
@@ -57,6 +63,9 @@ const AdminCalendar: React.FC = () => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const getProductsTotal = (appointment: Appointment) =>
+    appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0;
 
   const loadData = useCallback(async (withLoading = true) => {
     if (withLoading) setIsLoading(true);
@@ -107,6 +116,8 @@ const AdminCalendar: React.FC = () => {
     };
   };
   const selectedClientInfo = selectedAppointment ? getClientInfo(selectedAppointment) : null;
+  const selectedProductsTotal = selectedAppointment ? getProductsTotal(selectedAppointment) : 0;
+  const hasSelectedProducts = selectedProductsTotal > 0;
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
 
@@ -353,6 +364,35 @@ const AdminCalendar: React.FC = () => {
                 </div>
               </div>
 
+              {hasSelectedProducts && (
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Package className="w-4 h-4 text-primary" />
+                      Productos añadidos
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Total productos: {currencyFormatter.format(selectedProductsTotal)}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedAppointment.products?.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between text-sm">
+                        <div>
+                          <p className="font-medium text-foreground">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.quantity} x {currencyFormatter.format(item.unitPrice)}
+                          </p>
+                        </div>
+                        <span className="font-semibold text-foreground">
+                          {currencyFormatter.format(item.totalPrice)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
                 <UserIcon className="w-5 h-5 text-primary" />
                 <div>
@@ -421,9 +461,16 @@ const AdminCalendar: React.FC = () => {
                     dispatchAppointmentsUpdated({ source: 'admin-calendar' });
                   }}
                 />
-                <span className="text-xl font-bold text-primary">
-                  {getService(selectedAppointment.serviceId)?.price}€
-                </span>
+                <div className="text-right">
+                  <span className="text-xl font-bold text-primary">
+                    {currencyFormatter.format(selectedAppointment.price)}
+                  </span>
+                  {hasSelectedProducts && (
+                    <p className="text-xs text-muted-foreground">
+                      Incluye {currencyFormatter.format(selectedProductsTotal)} en productos
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

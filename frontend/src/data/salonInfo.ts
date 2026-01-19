@@ -74,5 +74,11 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   services: {
     categoriesEnabled: false,
   },
+  products: {
+    enabled: false,
+    categoriesEnabled: false,
+    clientPurchaseEnabled: false,
+    showOnLanding: false,
+  },
   qrSticker: null,
 };

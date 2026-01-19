@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -7,11 +7,12 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
-import { getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings, anonymizeAppointment } from '@/data/api';
-import { Appointment, AppointmentStatus, Barber, PaymentMethod, Service, ServiceCategory } from '@/data/types';
+import { getAdminProducts, getProducts, getProductCategories, getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings, anonymizeAppointment } from '@/data/api';
+import { Appointment, AppointmentStatus, Barber, PaymentMethod, Product, ProductCategory, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import ProductSelector from '@/components/common/ProductSelector';
 
 interface AppointmentEditorDialogProps {
   open: boolean;
@@ -32,7 +33,11 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
+  const [productsEnabled, setProductsEnabled] = useState(false);
+  const [clientPurchaseEnabled, setClientPurchaseEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isAnonymizing, setIsAnonymizing] = useState(false);
@@ -40,6 +45,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [priceTouched, setPriceTouched] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
+  const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
   const isAdminContext = context === 'admin';
   const isNoShowLocked = appointment?.status === 'no_show' || appointment?.status === 'cancelled';
 
@@ -58,16 +65,22 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     if (!appointment) return;
     setIsLoading(true);
     try {
-      const [servicesData, barbersData, categoriesData, settingsData] = await Promise.all([
+      const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
         getServices(),
         getBarbers(),
         getServiceCategories(true),
         getSiteSettings(),
+        isAdminContext ? getAdminProducts() : getProducts('booking'),
+        getProductCategories(true),
       ]);
       setServices(servicesData);
       setBarbers(barbersData);
       setServiceCategories(categoriesData);
       setCategoriesEnabled(settingsData.services.categoriesEnabled);
+      setProductsEnabled(settingsData.products.enabled);
+      setClientPurchaseEnabled(settingsData.products.clientPurchaseEnabled);
+      setProducts(productsData);
+      setProductCategories(productCategoriesData);
       const initialDate = appointment.startDateTime.split('T')[0];
       const dateObj = new Date(appointment.startDateTime);
       const initialTime = `${dateObj.getHours().toString().padStart(2, '0')}:${dateObj
@@ -84,6 +97,9 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         paymentMethod: appointment.paymentMethod || '',
         status: appointment.status,
       });
+      setSelectedProducts(
+        appointment.products?.map((item) => ({ productId: item.productId, quantity: item.quantity })) ?? [],
+      );
       setPriceTouched(false);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo cargar la información.', variant: 'destructive' });
@@ -127,6 +143,49 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.barberId, form.date, form.serviceId]);
 
+  const selectedServicePrice = useMemo(() => {
+    const service = services.find((item) => item.id === form.serviceId);
+    return service ? (service.finalPrice ?? service.price) : 0;
+  }, [form.serviceId, services]);
+  const selectedProductsTotal = useMemo(() => {
+    return selectedProducts.reduce((acc, item) => {
+      const product = products.find((prod) => prod.id === item.productId);
+      if (!product) return acc;
+      const unitPrice = product.finalPrice ?? product.price;
+      return acc + unitPrice * item.quantity;
+    }, 0);
+  }, [products, selectedProducts]);
+  const selectedProductDetails = useMemo(() => {
+    return selectedProducts
+      .map((item) => {
+        const product = products.find((prod) => prod.id === item.productId);
+        if (!product) return null;
+        const unitPrice = product.finalPrice ?? product.price;
+        return {
+          id: product.id,
+          name: product.name,
+          quantity: item.quantity,
+          unitPrice,
+          total: unitPrice * item.quantity,
+          imageUrl: product.imageUrl ?? null,
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      total: number;
+      imageUrl: string | null;
+    }>;
+  }, [products, selectedProducts]);
+
+  useEffect(() => {
+    if (!isAdminContext || priceTouched) return;
+    const total = selectedServicePrice + selectedProductsTotal;
+    setForm((prev) => ({ ...prev, price: total.toFixed(2) }));
+  }, [isAdminContext, priceTouched, selectedProductsTotal, selectedServicePrice]);
+
   const slotGroups = useMemo(() => {
     const morning: string[] = [];
     const afternoon: string[] = [];
@@ -160,6 +219,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     [orderedCategories, services],
   );
 
+  const canShowProducts = productsEnabled && (isAdminContext || clientPurchaseEnabled);
+
   const handleServiceChange = (value: string) => {
     setForm((prev) => {
       const nextForm = { ...prev, serviceId: value, time: '' };
@@ -167,7 +228,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         const nextService = services.find((service) => service.id === value);
         const nextPrice = nextService?.finalPrice ?? nextService?.price;
         if (nextPrice !== undefined) {
-          nextForm.price = nextPrice.toFixed(2);
+          const total = nextPrice + selectedProductsTotal;
+          nextForm.price = total.toFixed(2);
         }
       }
       return nextForm;
@@ -181,7 +243,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       return;
     }
     let priceValue: number | null = null;
-    if (isAdminContext) {
+    if (isAdminContext && priceTouched) {
       const normalizedPrice = form.price.trim().replace(',', '.');
       const parsedPrice = Number(normalizedPrice);
       if (!normalizedPrice || Number.isNaN(parsedPrice) || parsedPrice < 0) {
@@ -193,6 +255,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     setIsSaving(true);
     try {
       const dateTime = new Date(`${form.date}T${form.time}:00`).toISOString();
+      const productsPayload = canShowProducts ? selectedProducts : undefined;
       const updated = await updateAppointment(appointment.id, {
         serviceId: form.serviceId,
         barberId: form.barberId,
@@ -201,10 +264,11 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         ...(isAdminContext
           ? {
               status: form.status,
-              price: priceValue ?? undefined,
+              ...(priceTouched ? { price: priceValue ?? undefined } : {}),
               paymentMethod: form.paymentMethod || null,
             }
           : {}),
+        ...(productsPayload ? { products: productsPayload } : {}),
       });
       if (context === 'admin') {
         dispatchAppointmentsUpdated({ source: 'appointment-editor' });
@@ -240,7 +304,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && !isSaving && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Editar cita</DialogTitle>
           <DialogDescription>
@@ -248,12 +312,13 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        {isLoading || !appointment ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="space-y-5">
+        <div className="flex-1 overflow-y-auto pr-2">
+          {isLoading || !appointment ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="space-y-5">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Servicio</Label>
@@ -338,74 +403,134 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                   onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
                 />
               </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="w-4 h-4" /> Selecciona la hora
-                </Label>
-                <div className="min-h-[120px] rounded-2xl border border-dashed border-border p-3">
-                  {!form.serviceId || !form.barberId || !form.date ? (
-                    <p className="text-sm text-muted-foreground">
-                      Selecciona servicio, barbero y fecha.
-                    </p>
-                  ) : slotsLoading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                    </div>
-                  ) : availableSlots.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No hay horarios disponibles para ese día.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {slotGroups.morning.length > 0 && (
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground mb-2">Mañana</p>
-                          <div className="flex flex-wrap gap-2">
-                            {slotGroups.morning.map((slot) => (
-                              <button
-                                key={slot}
-                                type="button"
-                                onClick={() => setForm((prev) => ({ ...prev, time: slot }))}
-                                className={cn(
-                                  'px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
-                                  form.time === slot
-                                    ? 'bg-primary text-primary-foreground border-primary shadow-glow'
-                                    : 'border-border hover:border-primary/40'
-                                )}
-                              >
-                                {slot}
-                              </button>
-                            ))}
-                          </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="w-4 h-4" /> Selecciona la hora
+              </Label>
+              <div className="min-h-[120px] rounded-2xl border border-dashed border-border p-3">
+                {!form.serviceId || !form.barberId || !form.date ? (
+                  <p className="text-sm text-muted-foreground">
+                    Selecciona servicio, barbero y fecha.
+                  </p>
+                ) : slotsLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  </div>
+                ) : availableSlots.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No hay horarios disponibles para ese día.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {slotGroups.morning.length > 0 && (
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground mb-2">Mañana</p>
+                        <div className="flex flex-wrap gap-2">
+                          {slotGroups.morning.map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => setForm((prev) => ({ ...prev, time: slot }))}
+                              className={cn(
+                                'px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
+                                form.time === slot
+                                  ? 'bg-primary text-primary-foreground border-primary shadow-glow'
+                                  : 'border-border hover:border-primary/40'
+                              )}
+                            >
+                              {slot}
+                            </button>
+                          ))}
                         </div>
-                      )}
-                      {slotGroups.afternoon.length > 0 && (
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground mb-2">Tarde</p>
-                          <div className="flex flex-wrap gap-2">
-                            {slotGroups.afternoon.map((slot) => (
-                              <button
-                                key={slot}
-                                type="button"
-                                onClick={() => setForm((prev) => ({ ...prev, time: slot }))}
-                                className={cn(
-                                  'px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
-                                  form.time === slot
-                                    ? 'bg-primary text-primary-foreground border-primary shadow-glow'
-                                    : 'border-border hover:border-primary/40'
-                                )}
-                              >
-                                {slot}
-                              </button>
-                            ))}
-                          </div>
+                      </div>
+                    )}
+                    {slotGroups.afternoon.length > 0 && (
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground mb-2">Tarde</p>
+                        <div className="flex flex-wrap gap-2">
+                          {slotGroups.afternoon.map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => setForm((prev) => ({ ...prev, time: slot }))}
+                              className={cn(
+                                'px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
+                                form.time === slot
+                                  ? 'bg-primary text-primary-foreground border-primary shadow-glow'
+                                  : 'border-border hover:border-primary/40'
+                              )}
+                            >
+                              {slot}
+                            </button>
+                          ))}
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+
+            {productsEnabled && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <Label>Productos para la cita</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Solo se muestran los productos añadidos en esta cita.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      Total productos: {selectedProductsTotal.toFixed(2)}€
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsProductsDialogOpen(true)}
+                      disabled={!canShowProducts || isNoShowLocked}
+                    >
+                      {selectedProducts.length > 0 ? 'Editar productos' : 'Añadir productos'}
+                    </Button>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-muted/30 p-4 space-y-3">
+                  {selectedProductDetails.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedProductDetails.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-[11px] text-muted-foreground">Sin foto</span>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.quantity} x {item.unitPrice.toFixed(2)}€
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-sm font-medium text-foreground">{item.total.toFixed(2)}€</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
+                  )}
+                </div>
+                {!canShowProducts && (
+                  <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    La compra de productos no está disponible para clientes en este local.
+                  </div>
+                )}
+              </div>
+            )}
 
             {isAdminContext && (
               <div className="grid md:grid-cols-2 gap-4">
@@ -517,9 +642,34 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                 {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Guardar cambios
               </Button>
             </div>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </DialogContent>
+      <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Seleccionar productos</DialogTitle>
+            <DialogDescription>
+              Busca y añade productos a la cita. Solo se guardarán los seleccionados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto pr-2">
+            <ProductSelector
+              products={products}
+              categories={productCategories}
+              selected={selectedProducts}
+              onChange={setSelectedProducts}
+              disabled={isNoShowLocked}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setIsProductsDialogOpen(false)}>
+              Listo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

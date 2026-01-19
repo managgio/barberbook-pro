@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings, getPrivacyConsentStatus } from '@/data/api';
-import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer } from '@/data/types';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus } from '@/data/api';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -26,6 +27,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import AlertBanner from '@/components/common/AlertBanner';
+import ProductSelector from '@/components/common/ProductSelector';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const STEPS = ['Servicio', 'Barbero y horario', 'Confirmación'];
@@ -45,6 +47,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const [productsEnabled, setProductsEnabled] = useState(false);
+  const [clientPurchaseEnabled, setClientPurchaseEnabled] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
+  const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
@@ -70,21 +78,56 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(new Date()));
   const today = startOfDay(new Date());
+  const allowProductSelection = !isGuest && Boolean(user?.id) && productsEnabled && clientPurchaseEnabled;
+
+  const selectedProductsTotal = useMemo(() => {
+    return selectedProducts.reduce((acc, item) => {
+      const product = products.find((prod) => prod.id === item.productId);
+      if (!product) return acc;
+      const unitPrice = product.finalPrice ?? product.price;
+      return acc + unitPrice * item.quantity;
+    }, 0);
+  }, [products, selectedProducts]);
+  const selectedProductDetails = useMemo(
+    () =>
+      selectedProducts
+        .map((item) => {
+          const product = products.find((prod) => prod.id === item.productId);
+          if (!product) return null;
+          const unitPrice = product.finalPrice ?? product.price;
+          return {
+            id: product.id,
+            name: product.name,
+            imageUrl: product.imageUrl,
+            quantity: item.quantity,
+            unitPrice,
+            total: unitPrice * item.quantity,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+    [products, selectedProducts],
+  );
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [servicesData, barbersData, categoriesData, settingsData] = await Promise.all([
+        const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
           getServices(),
           getBarbers(),
           getServiceCategories(true),
           getSiteSettings(),
+          getProducts('booking'),
+          getProductCategories(true),
         ]);
         setServices(servicesData);
         setBarbers(barbersData);
         setServiceCategories(categoriesData);
         setCategoriesEnabled(settingsData.services.categoriesEnabled);
+        setProductsEnabled(settingsData.products.enabled);
+        setClientPurchaseEnabled(settingsData.products.clientPurchaseEnabled);
+        setProducts(productsData);
+        setProductCategories(productCategoriesData);
       } catch (error) {
         toast({
           title: 'No pudimos cargar los servicios',
@@ -100,6 +143,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     };
     fetchData();
   }, [searchParams, toast]);
+
+  useEffect(() => {
+    const preselected = searchParams.get('product');
+    if (!preselected || !allowProductSelection || products.length === 0) return;
+    setSelectedProducts((prev) => {
+      if (prev.some((item) => item.productId === preselected)) return prev;
+      return [...prev, { productId: preselected, quantity: 1 }];
+    });
+  }, [allowProductSelection, products, searchParams]);
 
   useEffect(() => {
     if (isGuest || !user?.id) {
@@ -450,6 +502,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     return { basePrice, finalPrice: basePrice, appliedOffer: null, amountOff: 0 };
   }, [booking.dateTime, selectedDate, services, booking.serviceId]);
 
+  const totalWithProducts = useMemo(
+    () => (selectedPricing?.finalPrice ?? 0) + selectedProductsTotal,
+    [selectedPricing, selectedProductsTotal],
+  );
+
   const activeOffers = useMemo(() => {
     const refDate = selectedDate;
     const seen = new Map<string, AppliedOffer>();
@@ -531,6 +588,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     try {
       const guestContact = [guestInfo.email.trim(), guestInfo.phone.trim()].filter(Boolean).join(' · ');
       const userId = isGuest ? null : (user as User).id;
+      const productsPayload = allowProductSelection ? selectedProducts : undefined;
       await createAppointment({
         userId,
         serviceId: booking.serviceId,
@@ -541,6 +599,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
         privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
+        ...(productsPayload ? { products: productsPayload } : {}),
       });
 
       setShowSuccess(true);
@@ -1022,6 +1081,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         {selectedPricing?.finalPrice.toFixed(2)}€
                       </span>
                     )}
+                    {selectedProductsTotal > 0 && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Total con productos: {totalWithProducts.toFixed(2)}€
+                      </div>
+                    )}
                   </div>
                 </div>
                 {getService()?.appliedOffer && !selectedPricing?.appliedOffer && (
@@ -1034,6 +1098,63 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     Precio promocional válido para citas hasta{' '}
                     {format(new Date(selectedPricing.appliedOffer.endDate), "d 'de' MMMM", { locale: es })}.
                   </div>
+                )}
+
+                {allowProductSelection && productsEnabled && (
+                  <>
+                    <hr className="border-border" />
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Productos añadidos</p>
+                          <p className="text-xs text-muted-foreground">
+                            Puedes incluir productos en esta cita.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground">
+                            Total productos: {selectedProductsTotal.toFixed(2)}€
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsProductsDialogOpen(true)}
+                          >
+                            {selectedProducts.length > 0 ? 'Editar productos' : 'Añadir productos'}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-muted/30 p-4 space-y-3">
+                        {selectedProductDetails.length > 0 ? (
+                          <div className="space-y-3">
+                            {selectedProductDetails.map((item) => (
+                              <div key={item.id} className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
+                                    {item.imageUrl ? (
+                                      <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <span className="text-[11px] text-muted-foreground">Sin foto</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-foreground">{item.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {item.quantity} x {item.unitPrice.toFixed(2)}€
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-medium text-foreground">{item.total.toFixed(2)}€</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <hr className="border-border" />
@@ -1198,6 +1319,29 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           )}
         </div>
       </div>
+      <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Seleccionar productos</DialogTitle>
+            <DialogDescription>
+              Busca y añade productos a tu cita. Solo se guardarán los seleccionados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto pr-2">
+            <ProductSelector
+              products={products}
+              categories={productCategories}
+              selected={selectedProducts}
+              onChange={setSelectedProducts}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setIsProductsDialogOpen(false)}>
+              Listo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
