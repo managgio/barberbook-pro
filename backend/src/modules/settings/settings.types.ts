@@ -6,6 +6,12 @@ export type SiteStats = {
   averageRating: number;
   yearlyBookings: number;
   repeatClientsPercentage: number;
+  visibility: {
+    experienceYears: boolean;
+    averageRating: boolean;
+    yearlyBookings: boolean;
+    repeatClientsPercentage: boolean;
+  };
 };
 
 export type SocialLinks = {
@@ -87,6 +93,12 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     averageRating: 4.9,
     yearlyBookings: 5000,
     repeatClientsPercentage: 80,
+    visibility: {
+      experienceYears: true,
+      averageRating: true,
+      yearlyBookings: true,
+      repeatClientsPercentage: true,
+    },
   },
   openingHours: cloneSchedule(DEFAULT_SHOP_SCHEDULE),
   appointments: {
@@ -104,12 +116,18 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   qrSticker: null,
 };
 
-export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings => ({
+export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings => {
+  const stats = { ...DEFAULT_SITE_SETTINGS.stats, ...(data?.stats ?? {}) };
+  const visibility = {
+    ...DEFAULT_SITE_SETTINGS.stats.visibility,
+    ...(data?.stats?.visibility ?? {}),
+  };
+  return {
   branding: { ...DEFAULT_SITE_SETTINGS.branding, ...(data?.branding ?? {}) },
   location: { ...DEFAULT_SITE_SETTINGS.location, ...(data?.location ?? {}) },
   contact: { ...DEFAULT_SITE_SETTINGS.contact, ...(data?.contact ?? {}) },
   socials: { ...DEFAULT_SITE_SETTINGS.socials, ...(data?.socials ?? {}) },
-  stats: { ...DEFAULT_SITE_SETTINGS.stats, ...(data?.stats ?? {}) },
+  stats: { ...stats, visibility },
   openingHours: data?.openingHours
     ? normalizeSchedule(data.openingHours)
     : cloneSchedule(DEFAULT_SITE_SETTINGS.openingHours),
@@ -126,7 +144,8 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
     ...(data?.products ?? {}),
   },
   qrSticker: data?.qrSticker ?? null,
-});
+  };
+};
 
 export const cloneSettings = (settings: SiteSettings): SiteSettings =>
   JSON.parse(JSON.stringify(settings));

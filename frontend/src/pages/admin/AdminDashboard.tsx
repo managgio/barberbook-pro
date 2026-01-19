@@ -848,8 +848,8 @@ const AdminDashboard: React.FC = () => {
                         </Pie>
                         <RechartsTooltip
                           contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
-                          itemStyle={{ color: '#fff', fontSize: '12px', lineHeight: '1.4' }}
-                          labelStyle={{ color: '#fff', fontSize: '12px', lineHeight: '1.4' }}
+                          itemStyle={{ color: 'hsl(var(--foreground))', fontSize: '12px', lineHeight: '1.4' }}
+                          labelStyle={{ color: 'hsl(var(--muted-foreground))', fontSize: '12px', lineHeight: '1.4' }}
                           wrapperStyle={{ zIndex: 20 }}
                           formatter={(value: number) => `${value} citas`}
                         />

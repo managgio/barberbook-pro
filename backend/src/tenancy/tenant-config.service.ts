@@ -20,8 +20,12 @@ const mergeConfig = <T extends Record<string, any>>(base: T, override?: Partial<
 const normalizeTheme = (theme?: TenantThemeConfig): TenantThemeConfig | undefined => {
   if (!theme) return undefined;
   const primary = typeof theme.primary === 'string' ? theme.primary.trim() : '';
-  if (!primary) return {};
-  return { ...theme, primary };
+  const rawMode = typeof theme.mode === 'string' ? theme.mode.trim().toLowerCase() : '';
+  const mode = rawMode === 'light' || rawMode === 'dark' ? rawMode : undefined;
+  const next: TenantThemeConfig = {};
+  if (primary) next.primary = primary;
+  if (mode) next.mode = mode;
+  return Object.keys(next).length ? next : undefined;
 };
 
 @Injectable()

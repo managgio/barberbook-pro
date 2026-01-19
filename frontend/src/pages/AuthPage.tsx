@@ -11,6 +11,7 @@ import managgioHero from '@/assets/img/managgio/fondo-managgio.png';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useTenant } from '@/context/TenantContext';
 import LegalFooter from '@/components/layout/LegalFooter';
+import { resolveBrandLogo } from '@/lib/branding';
 
 const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -39,7 +40,8 @@ const AuthPage: React.FC = () => {
   const heroImage = isPlatform
     ? managgioHero
     : tenant?.config?.branding?.heroBackgroundUrl || heroImageFallback;
-  const brandLogo = tenant?.config?.branding?.logoUrl || leBlondLogo;
+  const brandLogo = resolveBrandLogo(tenant, leBlondLogo);
+  const heroBackgroundDimmed = tenant?.config?.branding?.heroBackgroundDimmed !== false;
   const experienceYears = Math.max(0, new Date().getFullYear() - settings.stats.experienceStartYear);
   const formatYearlyBookings = (value: number) => {
     if (value >= 10000) return `${(value / 1000).toFixed(0)}K`;
@@ -141,8 +143,10 @@ const AuthPage: React.FC = () => {
             backgroundPosition: 'center',
           }}
         />
-        <div className="absolute inset-0 bg-black/85" />
-        <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-transparent to-transparent" />
+        {heroBackgroundDimmed && <div className="absolute inset-0 bg-background/85" />}
+        {heroBackgroundDimmed && (
+          <div className="absolute inset-0 bg-gradient-to-br from-background/70 via-transparent to-transparent" />
+        )}
         <div className="absolute inset-y-0 right-0 w-48 bg-gradient-to-l from-background via-background/5 to-transparent" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] h-[440px] bg-primary/30 rounded-full blur-[180px]" />
         

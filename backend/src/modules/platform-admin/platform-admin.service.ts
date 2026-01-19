@@ -9,14 +9,21 @@ const sanitizeThemeConfig = (data: Record<string, unknown>) => {
   if (!data || typeof data !== 'object') return data;
   const theme = data.theme;
   if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return data;
-  const primary = typeof (theme as any).primary === 'string' ? (theme as any).primary.trim() : '';
-  if (primary) {
-    if (primary === (theme as any).primary) return data;
-    return { ...data, theme: { ...(theme as Record<string, unknown>), primary } };
+  const rawPrimary = typeof (theme as any).primary === 'string' ? (theme as any).primary.trim() : '';
+  const rawMode = typeof (theme as any).mode === 'string' ? (theme as any).mode.trim().toLowerCase() : '';
+  const mode = rawMode === 'light' || rawMode === 'dark' ? rawMode : '';
+  if (rawPrimary || mode) {
+    const normalizedTheme = {
+      ...(theme as Record<string, unknown>),
+      ...(rawPrimary ? { primary: rawPrimary } : {}),
+      ...(mode ? { mode } : {}),
+    };
+    return { ...data, theme: normalizedTheme };
   }
   const next = { ...data } as Record<string, unknown>;
   const nextTheme = { ...(theme as Record<string, unknown>) };
   delete (nextTheme as any).primary;
+  delete (nextTheme as any).mode;
   if (Object.keys(nextTheme).length === 0) {
     delete (next as any).theme;
   } else {

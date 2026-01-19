@@ -26,6 +26,7 @@ import { getBarbers, getProductCategories, getProducts, getServices } from '@/da
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
+import { resolveBrandLogo } from '@/lib/branding';
 
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
@@ -41,10 +42,12 @@ const LandingPage: React.FC = () => {
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
   const leBlondLogo = '/leBlondLogo.png';
-  const logoUrl = tenant?.config?.branding?.logoUrl || leBlondLogo;
+  const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const heroBackgroundUrl = tenant?.config?.branding?.heroBackgroundUrl || heroBackgroundFallback;
   const heroImageUrl = tenant?.config?.branding?.heroImageUrl || heroImageFallback;
   const signImageUrl = tenant?.config?.branding?.signImageUrl || signImageFallback;
+  const heroImageEnabled = tenant?.config?.branding?.heroImageEnabled !== false;
+  const heroBackgroundDimmed = tenant?.config?.branding?.heroBackgroundDimmed !== false;
   const currentYear = new Date().getFullYear();
   const experienceYears = Math.max(0, currentYear - settings.stats.experienceStartYear);
   const formatYearlyBookings = (value: number) => {
@@ -96,6 +99,21 @@ const LandingPage: React.FC = () => {
     () => new Set((landingConfig?.hiddenSections || []).filter(isLandingSectionKey)),
     [landingConfig],
   );
+  const statsVisibility = settings.stats.visibility || {
+    experienceYears: true,
+    averageRating: true,
+    yearlyBookings: true,
+    repeatClientsPercentage: true,
+  };
+  const statsHighlights = [
+    { key: 'experienceYears', icon: Scissors, value: `${experienceYears}+`, label: 'Años de experiencia' },
+    { key: 'averageRating', icon: Star, value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
+    { key: 'yearlyBookings', icon: Calendar, value: `${formatYearlyBookings(settings.stats.yearlyBookings)}`, label: 'Reservas/año' },
+    { key: 'repeatClientsPercentage', icon: Repeat, value: `${settings.stats.repeatClientsPercentage}%`, label: 'Clientes que repiten' },
+  ].filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false);
+  const heroLayoutClass = heroImageEnabled ? 'flex-col lg:flex-row' : 'flex-col';
+  const heroTextAlignClass = heroImageEnabled ? 'text-center lg:text-left' : 'text-center';
+  const heroActionsClass = heroImageEnabled ? 'justify-center lg:justify-start' : 'justify-center';
 
   const renderProductCard = (product: Product, index: number) => {
     const price = product.finalPrice ?? product.price;
@@ -408,7 +426,7 @@ const LandingPage: React.FC = () => {
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${heroBackgroundUrl})` }}
           />
-          <div className="absolute inset-0 bg-black/95" />
+          {heroBackgroundDimmed && <div className="absolute inset-0 bg-background/90" />}
         </div>
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-glow" />
@@ -416,8 +434,8 @@ const LandingPage: React.FC = () => {
         </div>
         
         <div className="container relative z-10 px-4 py-20">
-          <div className="flex flex-col lg:flex-row items-center gap-12">
-            <div className="flex-1 text-center lg:text-left animate-slide-up">
+          <div className={`flex ${heroLayoutClass} items-center gap-12`}>
+            <div className={`flex-1 ${heroTextAlignClass} animate-slide-up`}>
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-8">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 <span className="text-sm text-primary font-medium">Reserva online disponible</span>
@@ -428,11 +446,15 @@ const LandingPage: React.FC = () => {
                 <span className="text-gradient">{settings.branding.tagline}</span>
               </h1>
               
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto lg:mx-0 mb-10">
+              <p
+                className={`text-xl text-muted-foreground max-w-2xl mb-10 ${
+                  heroImageEnabled ? 'mx-auto lg:mx-0' : 'mx-auto'
+                }`}
+              >
                 {settings.branding.description}
               </p>
               
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+              <div className={`flex flex-col sm:flex-row gap-4 ${heroActionsClass}`}>
                 {isAuthenticated ? (
                   <Button variant="hero" size="xl" asChild>
                     <Link to={user?.role === 'admin' ? '/admin' : '/app/book'}>
@@ -458,48 +480,47 @@ const LandingPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex-1 w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
-              <div className="relative w-full max-w-xl mx-auto">
-                <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-[36px]" />
-                <img
-                  src={heroImageUrl}
-                  alt={`Experiencia premium en ${settings.branding.name}`}
-                  className="relative w-full rounded-[36px] border border-white/10 shadow-2xl object-cover"
-                />
-                <div className="absolute left-6 right-auto bottom-6 bg-background/80 backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl border border-border/60">
-                  <MapPin className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
-                    <a
-                      href={settings.location.mapUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-semibold text-foreground hover:text-primary transition-colors"
-                    >
-                      {settings.location.label}
-                    </a>
+            {heroImageEnabled && (
+              <div className="flex-1 w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
+                <div className="relative w-full max-w-xl mx-auto">
+                  <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-[36px]" />
+                  <img
+                    src={heroImageUrl}
+                    alt={`Experiencia premium en ${settings.branding.name}`}
+                    className="relative w-full rounded-[36px] border border-border/60 shadow-2xl object-cover"
+                  />
+                  <div className="absolute left-6 right-auto bottom-6 bg-background/80 backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl border border-border/60">
+                    <MapPin className="w-5 h-5 text-primary" />
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
+                      <a
+                        href={settings.location.mapUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-semibold text-foreground hover:text-primary transition-colors"
+                      >
+                        {settings.location.label}
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
-          <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
-            {[
-              { icon: Scissors, value: `${experienceYears}+`, label: 'Años de experiencia' },
-              { icon: Star, value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
-              { icon: Calendar, value: `${formatYearlyBookings(settings.stats.yearlyBookings)}`, label: 'Reservas/año' },
-              { icon: Repeat, value: `${settings.stats.repeatClientsPercentage}%`, label: 'Clientes que repiten' },
-            ].map((stat, index) => (
-              <div key={stat.label} className="text-center" style={{ animationDelay: `${0.5 + index * 0.1}s` }}>
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <stat.icon className="w-6 h-6 text-primary" />
+          {statsHighlights.length > 0 && (
+            <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
+              {statsHighlights.map((stat, index) => (
+                <div key={stat.label} className="text-center" style={{ animationDelay: `${0.5 + index * 0.1}s` }}>
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                    <stat.icon className="w-6 h-6 text-primary" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
                 </div>
-                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

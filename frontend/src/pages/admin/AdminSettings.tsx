@@ -187,10 +187,23 @@ const AdminSettings: React.FC = () => {
     }));
   };
 
-  const handleStatsChange = (field: keyof SiteSettings['stats'], value: number) => {
+  const handleStatsChange = (field: Exclude<keyof SiteSettings['stats'], 'visibility'>, value: number) => {
     setSettings((prev) => ({
       ...prev,
       stats: { ...prev.stats, [field]: value },
+    }));
+  };
+
+  const handleStatsVisibilityChange = (field: keyof SiteSettings['stats']['visibility'], enabled: boolean) => {
+    setSettings((prev) => ({
+      ...prev,
+      stats: {
+        ...prev.stats,
+        visibility: {
+          ...prev.stats.visibility,
+          [field]: enabled,
+        },
+      },
     }));
   };
 
@@ -249,6 +262,18 @@ const AdminSettings: React.FC = () => {
   };
 
   const experienceYears = Math.max(0, new Date().getFullYear() - settings.stats.experienceStartYear);
+  const statsVisibility = settings.stats.visibility || {
+    experienceYears: true,
+    averageRating: true,
+    yearlyBookings: true,
+    repeatClientsPercentage: true,
+  };
+  const statsPreviewItems = [
+    { key: 'experienceYears', icon: Sparkles, label: 'Años de experiencia', value: `${experienceYears}+` },
+    { key: 'averageRating', icon: Star, label: 'Valoración media', value: settings.stats.averageRating.toFixed(1) },
+    { key: 'yearlyBookings', icon: Calendar, label: 'Reservas/año', value: settings.stats.yearlyBookings.toLocaleString('es-ES') },
+    { key: 'repeatClientsPercentage', icon: Repeat, label: 'Clientes que repiten', value: `${settings.stats.repeatClientsPercentage}%` },
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -532,24 +557,57 @@ const AdminSettings: React.FC = () => {
               />
             </div>
           </div>
-          <div className="grid md:grid-cols-4 gap-3">
-            {[
-              { icon: Sparkles, label: 'Años de experiencia', value: `${experienceYears}+` },
-              { icon: Star, label: 'Valoración media', value: settings.stats.averageRating.toFixed(1) },
-              { icon: Calendar, label: 'Reservas/año', value: settings.stats.yearlyBookings.toLocaleString('es-ES') },
-              { icon: Repeat, label: 'Clientes que repiten', value: `${settings.stats.repeatClientsPercentage}%` },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 flex items-center gap-3"
-              >
-                <stat.icon className="w-4 h-4 text-primary" />
-                <div>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-lg font-semibold text-foreground leading-tight">{stat.value}</p>
+          <div className="rounded-xl border border-border/70 bg-muted/30 px-4 py-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">Visibilidad en la landing</p>
+              <p className="text-xs text-muted-foreground">Elige qué estadísticas mostrar.</p>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { key: 'experienceYears', label: 'Experiencia' },
+                { key: 'averageRating', label: 'Valoración' },
+                { key: 'yearlyBookings', label: 'Reservas/año' },
+                { key: 'repeatClientsPercentage', label: 'Repetición' },
+              ].map((stat) => (
+                <div
+                  key={stat.key}
+                  className="flex items-center justify-between rounded-lg border border-border/60 bg-background/80 px-3 py-2"
+                >
+                  <span className="text-xs font-medium text-foreground">{stat.label}</span>
+                  <Switch
+                    checked={statsVisibility[stat.key as keyof typeof statsVisibility]}
+                    onCheckedChange={(checked) =>
+                      handleStatsVisibilityChange(
+                        stat.key as keyof SiteSettings['stats']['visibility'],
+                        checked,
+                      )
+                    }
+                    disabled={isLoading}
+                  />
                 </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid md:grid-cols-4 gap-3">
+            {statsPreviewItems
+              .filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false)
+              .map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 flex items-center gap-3"
+                >
+                  <stat.icon className="w-4 h-4 text-primary" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-lg font-semibold text-foreground leading-tight">{stat.value}</p>
+                  </div>
+                </div>
+              ))}
+            {statsPreviewItems.filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false).length === 0 && (
+              <div className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm text-muted-foreground md:col-span-4">
+                No hay estadísticas visibles en la landing.
               </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>

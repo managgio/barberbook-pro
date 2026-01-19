@@ -39,6 +39,7 @@ export type TenantAiConfig = {
 
 export type TenantThemeConfig = {
   primary?: string;
+  mode?: 'dark' | 'light';
 };
 
 export type TenantAdminSidebarConfig = {
@@ -63,10 +64,16 @@ export type TenantBrandingConfig = {
   shortName?: string;
   logoUrl?: string;
   logoFileId?: string;
+  logoLightUrl?: string;
+  logoLightFileId?: string;
+  logoDarkUrl?: string;
+  logoDarkFileId?: string;
   heroBackgroundUrl?: string;
   heroBackgroundFileId?: string;
+  heroBackgroundDimmed?: boolean;
   heroImageUrl?: string;
   heroImageFileId?: string;
+  heroImageEnabled?: boolean;
   signImageUrl?: string;
   signImageFileId?: string;
 };

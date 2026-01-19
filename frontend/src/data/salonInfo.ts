@@ -30,6 +30,12 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     averageRating: 4.9,
     yearlyBookings: 5000,
     repeatClientsPercentage: 80,
+    visibility: {
+      experienceYears: true,
+      averageRating: true,
+      yearlyBookings: true,
+      repeatClientsPercentage: true,
+    },
   },
   openingHours: {
     monday: {

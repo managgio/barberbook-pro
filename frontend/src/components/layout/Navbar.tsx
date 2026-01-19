@@ -7,6 +7,7 @@ import { useSiteSettings } from '@/hooks/useSiteSettings';
 import LocationSwitcher from '@/components/common/LocationSwitcher';
 import { useTenant } from '@/context/TenantContext';
 import { cn } from '@/lib/utils';
+import { resolveBrandLogo } from '@/lib/branding';
 
 const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -14,7 +15,7 @@ const Navbar: React.FC = () => {
   const { tenant, locations } = useTenant();
   const location = useLocation();
   const leBlondLogo = '/leBlondLogo.png';
-  const logoUrl = tenant?.config?.branding?.logoUrl || leBlondLogo;
+  const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const isLanding = location.pathname === '/';
   const hasMultipleLocations = locations.length > 1;
   const brandNameClass = cn(

@@ -143,4 +143,12 @@ export const applyTheme = (primaryColor?: string | null) => {
   applyTokens(tokens);
 };
 
+export const applyThemeMode = (mode?: string | null) => {
+  if (typeof window === 'undefined') return;
+  const root = document.documentElement;
+  const normalized = mode === 'light' ? 'light' : 'dark';
+  root.dataset.theme = normalized;
+  root.classList.toggle('dark', normalized === 'dark');
+};
+
 export const MANAGGIO_PRIMARY = '#fcbc23';

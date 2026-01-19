@@ -62,13 +62,23 @@ const stripEmptyTheme = <T extends Record<string, any>>(config: T): T => {
   const theme = config.theme;
   if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return config;
   const primary = typeof theme.primary === 'string' ? theme.primary.trim() : '';
-  if (primary) {
-    if (primary === theme.primary) return config;
-    return { ...config, theme: { ...theme, primary } };
+  const rawMode = typeof theme.mode === 'string' ? theme.mode.trim().toLowerCase() : '';
+  const mode = rawMode === 'light' || rawMode === 'dark' ? rawMode : '';
+  if (primary || mode) {
+    if (primary === theme.primary && mode === theme.mode) return config;
+    return {
+      ...config,
+      theme: {
+        ...theme,
+        ...(primary ? { primary } : {}),
+        ...(mode ? { mode } : {}),
+      },
+    };
   }
   const next = { ...config };
   const nextTheme = { ...theme };
   delete nextTheme.primary;
+  delete nextTheme.mode;
   if (Object.keys(nextTheme).length === 0) {
     delete next.theme;
   } else {
@@ -113,12 +123,19 @@ const colorPickerValue = (value?: string) => {
   return normalized || '#000000';
 };
 
-const BRAND_FILE_ID_FIELDS = ['logoFileId', 'heroBackgroundFileId', 'heroImageFileId', 'signImageFileId'] as const;
+const BRAND_FILE_ID_FIELDS = [
+  'logoFileId',
+  'logoLightFileId',
+  'logoDarkFileId',
+  'heroBackgroundFileId',
+  'heroImageFileId',
+  'signImageFileId',
+] as const;
 type BrandFileIdField = typeof BRAND_FILE_ID_FIELDS[number];
 const LOCATION_LANDING_FILE_ID_FIELDS = ['heroBackgroundFileId', 'heroImageFileId', 'signImageFileId'] as const;
 type LocationLandingFileIdField = typeof LOCATION_LANDING_FILE_ID_FIELDS[number];
 
-type BrandAssetKey = 'logo' | 'heroBackground' | 'heroImage' | 'signImage';
+type BrandAssetKey = 'logo' | 'logoLight' | 'logoDark' | 'heroBackground' | 'heroImage' | 'signImage';
 
 const BRAND_ASSET_META: Record<BrandAssetKey, {
   label: string;
@@ -130,10 +147,26 @@ const BRAND_ASSET_META: Record<BrandAssetKey, {
   imageClass: string;
 }> = {
   logo: {
-    label: 'Logo del cliente',
-    description: 'Navbar, login y panel admin del cliente.',
+    label: 'Logo base',
+    description: 'Fallback si no hay logo específico por modo.',
     urlField: 'logoUrl',
     fileIdField: 'logoFileId',
+    previewClass: 'h-16 w-16',
+    imageClass: 'object-contain',
+  },
+  logoLight: {
+    label: 'Logo modo claro',
+    description: 'Se muestra cuando el modo es claro.',
+    urlField: 'logoLightUrl',
+    fileIdField: 'logoLightFileId',
+    previewClass: 'h-16 w-16',
+    imageClass: 'object-contain',
+  },
+  logoDark: {
+    label: 'Logo modo oscuro',
+    description: 'Se muestra cuando el modo es oscuro.',
+    urlField: 'logoDarkUrl',
+    fileIdField: 'logoDarkFileId',
     previewClass: 'h-16 w-16',
     imageClass: 'object-contain',
   },
@@ -275,6 +308,8 @@ const PlatformBrands: React.FC = () => {
   const [uploadingAsset, setUploadingAsset] = useState<BrandAssetKey | null>(null);
   const [persistedBrandFileIds, setPersistedBrandFileIds] = useState<Record<BrandFileIdField, string | null>>({
     logoFileId: null,
+    logoLightFileId: null,
+    logoDarkFileId: null,
     heroBackgroundFileId: null,
     heroImageFileId: null,
     signImageFileId: null,
@@ -376,6 +411,8 @@ const PlatformBrands: React.FC = () => {
       setPersistedBrandConfig(JSON.parse(JSON.stringify(normalizedBrandConfig)));
       setPersistedBrandFileIds({
         logoFileId: config?.branding?.logoFileId || null,
+        logoLightFileId: config?.branding?.logoLightFileId || null,
+        logoDarkFileId: config?.branding?.logoDarkFileId || null,
         heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
         heroImageFileId: config?.branding?.heroImageFileId || null,
         signImageFileId: config?.branding?.signImageFileId || null,
@@ -507,6 +544,24 @@ const PlatformBrands: React.FC = () => {
     sms: brandConfig?.notificationPrefs?.sms !== false,
   };
   const isLocationBrandingOverride = Boolean(locationConfig?.branding);
+  const resolveThemeMode = (value?: string) => (value === 'light' || value === 'dark' ? value : 'dark');
+  const resolveHeroFlag = (value?: boolean) => value !== false;
+  const brandThemeMode = resolveThemeMode(brandConfig?.theme?.mode);
+  const brandHeroImageEnabled = resolveHeroFlag(brandConfig?.branding?.heroImageEnabled);
+  const brandHeroBackgroundDimmed = resolveHeroFlag(brandConfig?.branding?.heroBackgroundDimmed);
+  const locationThemeModeValue = locationConfig?.theme?.mode
+    ? resolveThemeMode(locationConfig?.theme?.mode)
+    : 'inherit';
+  const locationHeroImageEnabled = resolveHeroFlag(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroImageEnabled
+      : brandConfig?.branding?.heroImageEnabled,
+  );
+  const locationHeroBackgroundDimmed = resolveHeroFlag(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroBackgroundDimmed
+      : brandConfig?.branding?.heroBackgroundDimmed,
+  );
   const locationNotificationPrefsSource = isLocationNotificationOverride
     ? locationConfig.notificationPrefs
     : brandConfig.notificationPrefs;
@@ -515,6 +570,7 @@ const PlatformBrands: React.FC = () => {
     whatsapp: locationNotificationPrefsSource?.whatsapp !== false,
     sms: locationNotificationPrefsSource?.sms !== false,
   };
+  const hasMultipleLocations = (selectedBrand?.locations?.length || 0) > 1;
 
   const updateSidebarVisibility = (
     setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
@@ -647,6 +703,8 @@ const PlatformBrands: React.FC = () => {
           heroBackgroundFileId: baseBranding.heroBackgroundFileId || '',
           heroImageUrl: baseBranding.heroImageUrl || '',
           heroImageFileId: baseBranding.heroImageFileId || '',
+          heroBackgroundDimmed: baseBranding.heroBackgroundDimmed ?? true,
+          heroImageEnabled: baseBranding.heroImageEnabled ?? true,
           signImageUrl: baseBranding.signImageUrl || '',
           signImageFileId: baseBranding.signImageFileId || '',
         }),
@@ -743,11 +801,29 @@ const PlatformBrands: React.FC = () => {
       );
       setPersistedBrandFileIds(currentFileIds);
       if (selectedLocationId) {
-        setPersistedLocationFileIds({
+        const currentLocationFileIds = {
           heroBackgroundFileId: locationConfig?.branding?.heroBackgroundFileId || null,
           heroImageFileId: locationConfig?.branding?.heroImageFileId || null,
           signImageFileId: locationConfig?.branding?.signImageFileId || null,
-        });
+        };
+        await Promise.all(
+          LOCATION_LANDING_FILE_ID_FIELDS.map(async (field) => {
+            const previous = persistedLocationFileIds[field];
+            const next = currentLocationFileIds[field];
+            if (!previous || previous === next) return;
+            try {
+              await deleteFromImageKit(previous, { subdomainOverride: selectedBrand.subdomain });
+            } catch (cleanupError) {
+              console.error(cleanupError);
+              toast({
+                title: 'Aviso',
+                description: 'No se pudo borrar una imagen anterior del local.',
+                variant: 'destructive',
+              });
+            }
+          }),
+        );
+        setPersistedLocationFileIds(currentLocationFileIds);
       }
       setPersistedBrandConfig(JSON.parse(JSON.stringify(sanitizedBrandConfig)));
       setBrandConfig(sanitizedBrandConfig);
@@ -906,7 +982,7 @@ const PlatformBrands: React.FC = () => {
     }
   };
 
-  const updateBrandingFields = (updates: Record<string, string>) => {
+  const updateBrandingFields = (updates: Record<string, string | boolean>) => {
     setBrandConfig((prev) => {
       let next = { ...prev };
       Object.entries(updates).forEach(([field, value]) => {
@@ -916,7 +992,7 @@ const PlatformBrands: React.FC = () => {
     });
   };
 
-  const updateLocationBrandingFields = (updates: Record<string, string>) => {
+  const updateLocationBrandingFields = (updates: Record<string, string | boolean>) => {
     setLocationConfig((prev) => {
       let next = { ...prev };
       Object.entries(updates).forEach(([field, value]) => {
@@ -1121,8 +1197,12 @@ const PlatformBrands: React.FC = () => {
     }
   };
 
-  const renderBrandAssetInput = (assetKey: BrandAssetKey, className = '') => {
-    const asset = BRAND_ASSET_META[assetKey];
+  const renderBrandAssetInput = (
+    assetKey: BrandAssetKey,
+    className = '',
+    overrides?: Partial<Pick<(typeof BRAND_ASSET_META)[BrandAssetKey], 'label' | 'description'>>,
+  ) => {
+    const asset = { ...BRAND_ASSET_META[assetKey], ...(overrides || {}) };
     const urlValue = (brandConfig?.branding?.[asset.urlField] as string | undefined) || '';
     const isUploading = uploadingAsset === assetKey;
     const isAnyUpload = Boolean(uploadingAsset);
@@ -1558,7 +1638,7 @@ const PlatformBrands: React.FC = () => {
                   <Settings2 className="h-4 w-4 text-primary" />
                   Visibilidad del sidebar admin
                 </div>
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className={`grid gap-6 ${hasMultipleLocations ? 'lg:grid-cols-2' : ''}`}>
                   <Card className="border border-border/60 bg-card/80">
                     <CardHeader>
                       <CardTitle className="text-base">Por marca</CardTitle>
@@ -1739,12 +1819,39 @@ const PlatformBrands: React.FC = () => {
                           );
                         })}
                       </div>
-                      <div className="pt-4 border-t border-border/60 space-y-3">
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
-                        <div className="grid gap-4">
-                          {renderBrandAssetInput('heroBackground')}
-                          {renderBrandAssetInput('heroImage')}
-                          {renderBrandAssetInput('signImage')}
+                      <div className="pt-4 border-t border-border/60 space-y-4">
+                        <div className="space-y-3">
+                          <p className="text-xs uppercase tracking-widest text-muted-foreground">Hero principal</p>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">Mostrar imagen principal</div>
+                                <p className="text-xs text-muted-foreground">Controla la foto destacada del hero.</p>
+                              </div>
+                              <Switch
+                                checked={brandHeroImageEnabled}
+                                onCheckedChange={(checked) => updateBrandingFields({ heroImageEnabled: checked })}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">Opacidad sobre el fondo</div>
+                                <p className="text-xs text-muted-foreground">Mejora la legibilidad del hero.</p>
+                              </div>
+                              <Switch
+                                checked={brandHeroBackgroundDimmed}
+                                onCheckedChange={(checked) => updateBrandingFields({ heroBackgroundDimmed: checked })}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
+                          <div className="grid gap-4">
+                            {renderBrandAssetInput('heroBackground')}
+                            {renderBrandAssetInput('heroImage')}
+                            {renderBrandAssetInput('signImage')}
+                          </div>
                         </div>
                       </div>
                     </CardContent>
@@ -1847,9 +1954,9 @@ const PlatformBrands: React.FC = () => {
                               );
                             })}
                           </div>
-                          <div className="pt-4 border-t border-border/60 space-y-3">
+                          <div className="pt-4 border-t border-border/60 space-y-4">
                             <div className="flex items-center justify-between gap-3">
-                              <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
+                              <p className="text-xs uppercase tracking-widest text-muted-foreground">Hero principal</p>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-muted-foreground">Personalizar</span>
                                 <Switch
@@ -1858,19 +1965,48 @@ const PlatformBrands: React.FC = () => {
                                 />
                               </div>
                             </div>
-                            <div className={`grid gap-4 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
-                              {renderLocationAssetInput('heroBackground', {
-                                disabled: !isLocationBrandingOverride,
-                                inheritedLabel: 'Hereda marca',
-                              })}
-                              {renderLocationAssetInput('heroImage', {
-                                disabled: !isLocationBrandingOverride,
-                                inheritedLabel: 'Hereda marca',
-                              })}
-                              {renderLocationAssetInput('signImage', {
-                                disabled: !isLocationBrandingOverride,
-                                inheritedLabel: 'Hereda marca',
-                              })}
+                            <div className={`grid gap-3 md:grid-cols-2 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
+                              <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-foreground">Mostrar imagen principal</div>
+                                  <p className="text-xs text-muted-foreground">Hereda o sobrescribe el hero.</p>
+                                </div>
+                                <Switch
+                                  checked={locationHeroImageEnabled}
+                                  disabled={!isLocationBrandingOverride}
+                                  onCheckedChange={(checked) => updateLocationBrandingFields({ heroImageEnabled: checked })}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-foreground">Opacidad sobre el fondo</div>
+                                  <p className="text-xs text-muted-foreground">Legibilidad en el hero.</p>
+                                </div>
+                                <Switch
+                                  checked={locationHeroBackgroundDimmed}
+                                  disabled={!isLocationBrandingOverride}
+                                  onCheckedChange={(checked) =>
+                                    updateLocationBrandingFields({ heroBackgroundDimmed: checked })
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-3">
+                              <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
+                              <div className={`grid gap-4 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
+                                {renderLocationAssetInput('heroBackground', {
+                                  disabled: !isLocationBrandingOverride,
+                                  inheritedLabel: 'Hereda marca',
+                                })}
+                                {renderLocationAssetInput('heroImage', {
+                                  disabled: !isLocationBrandingOverride,
+                                  inheritedLabel: 'Hereda marca',
+                                })}
+                                {renderLocationAssetInput('signImage', {
+                                  disabled: !isLocationBrandingOverride,
+                                  inheritedLabel: 'Hereda marca',
+                                })}
+                              </div>
                             </div>
                           </div>
                         </>
@@ -1954,7 +2090,39 @@ const PlatformBrands: React.FC = () => {
                               Las variantes se calculan automáticamente a partir del color base.
                             </p>
                           </div>
-                          {renderBrandAssetInput('logo', 'md:col-span-2')}
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Modo visual</Label>
+                            <Select
+                              value={brandThemeMode}
+                              onValueChange={(value) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['theme', 'mode'], value))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona modo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="dark">Oscuro</SelectItem>
+                                <SelectItem value="light">Claro</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Aplica a landing, auth y panel admin de la marca.
+                            </p>
+                          </div>
+                          <div className="space-y-3 md:col-span-2">
+                            <p className="text-xs uppercase tracking-widest text-muted-foreground">Logo del cliente</p>
+                            <div className="grid gap-4">
+                              {renderBrandAssetInput(
+                                brandThemeMode === 'light' ? 'logoLight' : 'logoDark',
+                                '',
+                                {
+                                  label: `Logo (${brandThemeMode === 'light' ? 'modo claro' : 'modo oscuro'})`,
+                                  description: 'Cambia el modo visual para subir el logo del otro tema.',
+                                },
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -2089,151 +2257,189 @@ const PlatformBrands: React.FC = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="border border-border/60 bg-card/80">
-                    <CardHeader>
-                      <CardTitle className="text-base">Local config</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Local a configurar</Label>
-                        <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona local" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectedBrand?.locations?.map((location: any) => (
-                              <SelectItem key={location.id} value={location.id}>
-                                {location.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Cambia de local aquí para editar su color e ImageKit.
-                        </p>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">Notificaciones en perfil</p>
-                            <p className="text-xs text-muted-foreground">
-                              Sobrescribe las opciones visibles para este local.
-                            </p>
+                  {hasMultipleLocations && (
+                    <Card className="border border-border/60 bg-card/80">
+                      <CardHeader>
+                        <CardTitle className="text-base">Local config</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>Local a configurar</Label>
+                          <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona local" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectedBrand?.locations?.map((location: any) => (
+                                <SelectItem key={location.id} value={location.id}>
+                                  {location.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Cambia de local aquí para editar su color e ImageKit.
+                          </p>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">Notificaciones en perfil</p>
+                              <p className="text-xs text-muted-foreground">
+                                Sobrescribe las opciones visibles para este local.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">Personalizar</span>
+                              <Switch
+                                checked={isLocationNotificationOverride}
+                                onCheckedChange={handleLocationNotificationOverride}
+                              />
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Personalizar</span>
-                            <Switch
-                              checked={isLocationNotificationOverride}
-                              onCheckedChange={handleLocationNotificationOverride}
-                            />
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">Email</div>
+                                <p className="text-xs text-muted-foreground">Visible para clientes.</p>
+                              </div>
+                              <Switch
+                                checked={locationNotificationPrefs.email}
+                                disabled={!isLocationNotificationOverride}
+                                onCheckedChange={(checked) =>
+                                  setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'email'], checked))
+                                }
+                              />
+                            </div>
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">WhatsApp</div>
+                                <p className="text-xs text-muted-foreground">Visible para clientes.</p>
+                              </div>
+                              <Switch
+                                checked={locationNotificationPrefs.whatsapp}
+                                disabled={!isLocationNotificationOverride}
+                                onCheckedChange={(checked) =>
+                                  setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'whatsapp'], checked))
+                                }
+                              />
+                            </div>
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">SMS</div>
+                                <p className="text-xs text-muted-foreground">Visible para clientes.</p>
+                              </div>
+                              <Switch
+                                checked={locationNotificationPrefs.sms}
+                                disabled={!isLocationNotificationOverride}
+                                onCheckedChange={(checked) =>
+                                  setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'sms'], checked))
+                                }
+                              />
+                            </div>
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                            <div>
-                              <div className="text-sm font-semibold text-foreground">Email</div>
-                              <p className="text-xs text-muted-foreground">Visible para clientes.</p>
-                            </div>
-                            <Switch
-                              checked={locationNotificationPrefs.email}
-                              disabled={!isLocationNotificationOverride}
-                              onCheckedChange={(checked) =>
-                                setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'email'], checked))
+                          <Label>Color local (opcional)</Label>
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <Input
+                              type="color"
+                              value={colorPickerValue(locationConfig.theme?.primary)}
+                              onChange={(e) =>
+                                setLocationConfig((prev) =>
+                                  updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
+                                )
+                              }
+                              className="h-10 w-full sm:w-16 p-1"
+                            />
+                            <Input
+                              value={locationConfig.theme?.primary || ''}
+                              placeholder="#fcbc23"
+                              onChange={(e) =>
+                                setLocationConfig((prev) =>
+                                  updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
+                                )
                               }
                             />
                           </div>
-                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                            <div>
-                              <div className="text-sm font-semibold text-foreground">WhatsApp</div>
-                              <p className="text-xs text-muted-foreground">Visible para clientes.</p>
-                            </div>
-                            <Switch
-                              checked={locationNotificationPrefs.whatsapp}
-                              disabled={!isLocationNotificationOverride}
-                              onCheckedChange={(checked) =>
-                                setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'whatsapp'], checked))
-                              }
-                            />
-                          </div>
-                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                            <div>
-                              <div className="text-sm font-semibold text-foreground">SMS</div>
-                              <p className="text-xs text-muted-foreground">Visible para clientes.</p>
-                            </div>
-                            <Switch
-                              checked={locationNotificationPrefs.sms}
-                              disabled={!isLocationNotificationOverride}
-                              onCheckedChange={(checked) =>
-                                setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs', 'sms'], checked))
-                              }
-                            />
-                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Si se define, sobrescribe el color de la marca.
+                          </p>
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Color local (opcional)</Label>
-                        <div className="flex flex-col sm:flex-row gap-3">
-                          <Input
-                            type="color"
-                            value={colorPickerValue(locationConfig.theme?.primary)}
-                            onChange={(e) =>
-                              setLocationConfig((prev) =>
-                                updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
-                              )
-                            }
-                            className="h-10 w-full sm:w-16 p-1"
-                          />
-                          <Input
-                            value={locationConfig.theme?.primary || ''}
-                            placeholder="#fcbc23"
-                            onChange={(e) =>
-                              setLocationConfig((prev) =>
-                                updateNestedValue(prev, ['theme', 'primary'], normalizeHexInput(e.target.value))
-                              )
-                            }
-                          />
+                        <div className="space-y-2">
+                          <Label>Modo visual local</Label>
+                          <Select
+                            value={locationThemeModeValue}
+                            onValueChange={(value) => {
+                              if (value === 'inherit') {
+                                setLocationConfig((prev) => {
+                                  const next = { ...prev } as Record<string, any>;
+                                  if (!next.theme) return next;
+                                  const theme = { ...(next.theme as Record<string, any>) };
+                                  delete theme.mode;
+                                  if (Object.keys(theme).length === 0) {
+                                    delete next.theme;
+                                  } else {
+                                    next.theme = theme;
+                                  }
+                                  return next;
+                                });
+                                return;
+                              }
+                              setLocationConfig((prev) => updateNestedValue(prev, ['theme', 'mode'], value));
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Hereda marca" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="inherit">Hereda marca</SelectItem>
+                              <SelectItem value="dark">Oscuro</SelectItem>
+                              <SelectItem value="light">Claro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Si se define, sobrescribe el modo de la marca para este local.
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Si se define, sobrescribe el color de la marca.
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Subcarpeta local (opcional)</Label>
-                        <Input
-                          value={locationConfig.imagekit?.folder || ''}
-                          placeholder="landing"
-                          onChange={(e) =>
-                            setLocationConfig((prev) => updateNestedValue(prev, ['imagekit', 'folder'], e.target.value))
-                          }
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Ruta final:{' '}
-                          <span className="font-mono text-foreground">
-                            {buildImagekitPreview(
-                              imagekitPrefix,
-                              selectedBrand?.subdomain,
-                              locationConfig.imagekit?.folder || '',
-                            )}
+                        <div className="space-y-2">
+                          <Label>Subcarpeta local (opcional)</Label>
+                          <Input
+                            value={locationConfig.imagekit?.folder || ''}
+                            placeholder="landing"
+                            onChange={(e) =>
+                              setLocationConfig((prev) => updateNestedValue(prev, ['imagekit', 'folder'], e.target.value))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Ruta final:{' '}
+                            <span className="font-mono text-foreground">
+                              {buildImagekitPreview(
+                                imagekitPrefix,
+                                selectedBrand?.subdomain,
+                                locationConfig.imagekit?.folder || '',
+                              )}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Nota</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Si se define, sobrescribe el de la marca. El prefijo global y el subdominio se añaden automáticamente.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 pt-2">
+                          <Switch
+                            checked={applyThemeToAll}
+                            onCheckedChange={(checked) => setApplyThemeToAll(checked)}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            Aplicar este color a todos los locales de la marca
                           </span>
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Nota</Label>
-                        <p className="text-xs text-muted-foreground">
-                          Si se define, sobrescribe el de la marca. El prefijo global y el subdominio se añaden automáticamente.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 pt-2">
-                        <Switch
-                          checked={applyThemeToAll}
-                          onCheckedChange={(checked) => setApplyThemeToAll(checked)}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          Aplicar este color a todos los locales de la marca
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
                 <div className="flex justify-end">
                   <Button onClick={handleSaveBrand} disabled={isSaving}>

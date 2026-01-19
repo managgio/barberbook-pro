@@ -28,6 +28,7 @@ import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import LocationSwitcher from '@/components/common/LocationSwitcher';
 import { useTenant } from '@/context/TenantContext';
+import { resolveBrandLogo } from '@/lib/branding';
 
 interface NavItem {
   href: string;
@@ -63,7 +64,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
   const leBlondLogo = '/leBlondLogo.png';
-  const logoUrl = tenant?.config?.branding?.logoUrl || leBlondLogo;
+  const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const { isLoading, canAccessSection } = useAdminPermissions();
 
   const shouldAutoClose = () =>

@@ -3,7 +3,7 @@ import { Location, SiteSettings, TenantBootstrap } from '@/data/types';
 import { getSiteSettings, getTenantBootstrap } from '@/data/api';
 import { getStoredLocalId, setStoredLocalId } from '@/lib/tenant';
 import { initFirebase } from '@/lib/firebaseConfig';
-import { applyTheme, MANAGGIO_PRIMARY } from '@/lib/theme';
+import { applyTheme, applyThemeMode, MANAGGIO_PRIMARY } from '@/lib/theme';
 import managgioLogo from '@/assets/img/managgio/logo.png';
 
 interface TenantContextValue {
@@ -213,6 +213,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCurrentLocationId(resolvedLocalId);
       applyMeta(buildTenantMeta(bootstrap));
       const tenantTheme = bootstrap.isPlatform ? MANAGGIO_PRIMARY : bootstrap.config?.theme?.primary;
+      const themeMode = bootstrap.isPlatform ? 'dark' : bootstrap.config?.theme?.mode;
+      applyThemeMode(themeMode);
       applyTheme(tenantTheme);
       if (bootstrap.isPlatform && typeof document !== 'undefined') {
         const root = document.documentElement;

@@ -58,10 +58,16 @@ export interface TenantBootstrap {
       shortName?: string;
       logoUrl?: string;
       logoFileId?: string;
+      logoLightUrl?: string;
+      logoLightFileId?: string;
+      logoDarkUrl?: string;
+      logoDarkFileId?: string;
       heroBackgroundUrl?: string;
       heroBackgroundFileId?: string;
+      heroBackgroundDimmed?: boolean;
       heroImageUrl?: string;
       heroImageFileId?: string;
+      heroImageEnabled?: boolean;
       signImageUrl?: string;
       signImageFileId?: string;
     } | null;
@@ -70,6 +76,7 @@ export interface TenantBootstrap {
     } | null;
     theme?: {
       primary?: string;
+      mode?: 'dark' | 'light';
     } | null;
     notificationPrefs?: {
       email?: boolean;
@@ -215,6 +222,12 @@ export interface SiteStats {
   averageRating: number;
   yearlyBookings: number;
   repeatClientsPercentage: number;
+  visibility: {
+    experienceYears: boolean;
+    averageRating: boolean;
+    yearlyBookings: boolean;
+    repeatClientsPercentage: boolean;
+  };
 }
 
 export interface SocialLinks {
