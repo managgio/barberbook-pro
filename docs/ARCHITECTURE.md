@@ -42,12 +42,13 @@ Infra/Dev:
 - Soporta `customDomain` por marca.
 - `PLATFORM_SUBDOMAIN` redirige al panel de plataforma.
 - Contexto de tenant via `AsyncLocalStorage` (brandId/localId/host/subdomain).
-- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar).
+- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing, logos por modo y flags de hero).
 
 **Frontend**
 - `TenantProvider` llama `GET /api/tenant/bootstrap`.
 - Guarda `localId` en localStorage (`managgio.localId`).
-- Aplica theme por marca/local (`theme.primary`) y overrides para plataforma.
+- Aplica theme por marca/local (`theme.primary`) y modo visual (`theme.mode` light/dark).
+- Config publica incluye landing (orden + secciones ocultas) con override por local.
 - Puede forzar subdominio con `VITE_TENANT_SUBDOMAIN`.
 
 ## Arquitectura backend (NestJS)
@@ -70,7 +71,7 @@ Modulos principales:
 - **Schedules**: horario del local y horarios por barbero (JSON).
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
-- **Settings**: configuracion del sitio (branding/contacto/horarios/sociales).
+- **Settings**: configuracion del sitio (branding/contacto/horarios/sociales/stats visibles).
 - **ImageKit**: firma y borrado de archivos.
 - **Notifications**: emails + SMS + WhatsApp de recordatorio.
 - **Cash Register**: movimientos de caja y agregados diarios por local/barbero.
@@ -97,7 +98,7 @@ Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
 - Cliente: Dashboard, Booking Wizard, Appointments, Profile.
 - Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register.
-- Plataforma: Dashboard, Brands (gestion multi-tenant).
+- Plataforma: Dashboard, Brands (gestion multi-tenant, landing reordenable por drag & drop y overrides por local).
 
 ## Modelo de datos (Prisma / MySQL)
 Tabla | Para que existe | Que guarda
@@ -108,8 +109,8 @@ Location | Local/sucursal | Relacion con Brand, nombre, slug, estado
 AdminRole | Rol admin por local | Permisos por seccion (JSON)
 BrandUser | Membresia marca-usuario | Vinculo usuario <-> marca + `isBlocked`
 LocationStaff | Staff local | Vinculo usuario <-> local y rol admin
-BrandConfig | Configuracion por marca | JSON (branding, theme, twilio, email, imagekit, ai, etc)
-LocationConfig | Configuracion por local | JSON (theme, imagekit folder, adminSidebar)
+BrandConfig | Configuracion por marca | JSON (branding, theme, landing order/hidden, twilio, email, imagekit, ai, etc)
+LocationConfig | Configuracion por local | JSON (branding overrides, theme, landing order/hidden, imagekit folder, adminSidebar)
 Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
 Service | Servicio | Precio, duracion, categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
@@ -126,7 +127,7 @@ GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
 ShopSchedule | Horario local | JSON con turnos diarios
 BarberSchedule | Horario barbero | JSON con turnos diarios
-SiteSettings | Configuracion sitio | JSON con branding, contacto, horarios, stats, etc
+SiteSettings | Configuracion sitio | JSON con branding, contacto, horarios y stats visibles (toggle por admin)
 AiChatSession | Sesiones IA | Conversaciones por admin/local
 AiChatMessage | Mensajes IA | Historial y tool payload
 AiBusinessFact | Hechos IA | Datos fijos para contexto del asistente
@@ -181,7 +182,7 @@ Flujos:
    - Job cron de recordatorios envia SMS y marca `reminderSent`.
 
 7) **Asistente IA**
-   - `/api/admin/ai-assistant/chat` con tools para crear citas y festivos.
+   - `/api/admin/ai-assistant/chat` con tools para crear citas, alertas festivos.
    - Guarda sesiones/mensajes y resumen para contexto.
    - Transcripcion de audio con OpenAI (whisper-1).
  
@@ -194,8 +195,16 @@ Flujos:
    - Productos se agregan a las citas (admin y cliente si esta habilitado).
    - Al cancelar o marcar ausencia se revierte stock automaticamente.
 
+10) **Branding y landing**
+   - Configuracion por marca/local en plataforma (orden y visibilidad de secciones con drag & drop).
+   - Los overrides de local tienen prioridad sobre la marca; hero siempre fijo primero.
+   - Secciones opcionales (ej. productos) se excluyen si el modulo esta desactivado.
+   - Hero: se puede ocultar la imagen principal y activar/desactivar opacidad del fondo.
+   - Logos por modo: se guarda logo para modo claro/oscuro y se usa segun `theme.mode`.
+   - Estadisticas destacadas se pueden mostrar/ocultar desde admin settings.
+
 ## Integraciones externas
-- **ImageKit**: firma y subida de imagenes. Carpetas por marca/local.
+- **ImageKit**: firma y subida de imagenes. Carpetas por marca/local; al reemplazar activos se elimina el archivo anterior.
 - **Twilio**: SMS y WhatsApp (templates) 24h antes de la cita.
 - **Firebase**: Auth en frontend + Admin SDK en backend (borrado usuario).
 - **OpenAI**: chat + transcripcion para asistente admin.
