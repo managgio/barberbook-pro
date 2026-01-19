@@ -64,13 +64,14 @@ Modulos principales:
 - **Services**: servicios con precio/duracion, categorias opcionales.
 - **Service Categories**: categorias de servicios (configurable).
 - **Offers**: ofertas con descuentos (por servicios, categorias o global).
-- **Appointments**: CRUD citas, disponibilidad, estados y pricing final.
+- **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
 - **Schedules**: horario del local y horarios por barbero (JSON).
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
 - **Settings**: configuracion del sitio (branding/contacto/horarios/sociales).
 - **ImageKit**: firma y borrado de archivos.
-- **Notifications**: emails + SMS de recordatorio.
+- **Notifications**: emails + SMS + WhatsApp de recordatorio.
+- **Cash Register**: movimientos de caja y agregados diarios por local/barbero.
 - **AI Assistant**: chat/admin con tools y transcripcion.
 - **Platform Admin**: gestion de marcas, locales y configuracion global.
 
@@ -93,7 +94,7 @@ Contextos principales:
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
 - Cliente: Dashboard, Booking Wizard, Appointments, Profile.
-- Admin: Dashboard, Calendar, Search, Clients, Services, Barbers, Alerts, Holidays, Roles, Settings.
+- Admin: Dashboard, Calendar, Search, Clients, Services, Barbers, Alerts, Holidays, Roles, Settings, Cash Register.
 - Plataforma: Dashboard, Brands (gestion multi-tenant).
 
 ## Modelo de datos (Prisma / MySQL)
@@ -103,7 +104,7 @@ User | Identidad y perfil | Datos del usuario, rol, preferencias, firebaseUid, f
 Brand | Marca/cliente | Subdominio, dominio custom, estado y local por defecto
 Location | Local/sucursal | Relacion con Brand, nombre, slug, estado
 AdminRole | Rol admin por local | Permisos por seccion (JSON)
-BrandUser | Membresia marca-usuario | Vinculo usuario <-> marca
+BrandUser | Membresia marca-usuario | Vinculo usuario <-> marca + `isBlocked`
 LocationStaff | Staff local | Vinculo usuario <-> local y rol admin
 BrandConfig | Configuracion por marca | JSON (branding, theme, twilio, email, imagekit, ai, etc)
 LocationConfig | Configuracion por local | JSON (theme, imagekit folder, adminSidebar)
@@ -111,7 +112,10 @@ Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
 Service | Servicio | Precio, duracion, categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
 Offer | Ofertas | Descuento por scope (all/categories/services)
-Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, estado
+Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado
+ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
+CashMovement | Movimiento de caja | Entradas/salidas manuales y metodo de pago
+PaymentMethod | Enum | Tarjeta, efectivo, bizum u otros metodos
 Alert | Avisos | Mensajes con tipo y rango de fechas
 GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
@@ -149,6 +153,7 @@ Flujos:
    - Firebase Auth maneja login/registro.
    - Front crea/actualiza User en backend.
    - Se guarda `x-admin-user-id` en localStorage para endpoints admin.
+   - Si `BrandUser.isBlocked` esta activo, se bloquea el acceso del cliente a la app.
 
 3) **Disponibilidad de citas**
    - Se calcula por horario del barbero + horario local.
@@ -158,11 +163,13 @@ Flujos:
 4) **Pricing y ofertas**
    - Price base del servicio.
    - Se aplica la mejor oferta activa (rango de fechas).
-   - Se guarda `price` final en Appointment.
+   - Se guarda `price` final en Appointment (editable en admin).
+   - Caja registradora y KPIs usan el precio final.
 
 5) **Notificaciones**
    - Email: al crear/actualizar/cancelar cita (SMTP via Nodemailer).
-   - SMS: recordatorio 24h antes (Twilio), respeta `notificationWhatsapp`.
+   - SMS/WhatsApp: recordatorio 24h antes (Twilio), respeta config por marca/local y preferencias del usuario.
+   - Las preferencias del local sobrescriben las de marca.
 
 6) **Sincronizacion de estados**
    - Job cron cada 5 min marca citas completadas cuando pasa el fin + grace.
@@ -172,10 +179,14 @@ Flujos:
    - `/api/admin/ai-assistant/chat` con tools para crear citas y festivos.
    - Guarda sesiones/mensajes y resumen para contexto.
    - Transcripcion de audio con OpenAI (whisper-1).
+ 
+8) **Caja registradora**
+   - Combina citas (precio final) + movimientos manuales.
+   - KPIs por local y desglose por barbero/metodo de pago.
 
 ## Integraciones externas
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local.
-- **Twilio**: SMS 24h antes de la cita.
+- **Twilio**: SMS y WhatsApp (templates) 24h antes de la cita.
 - **Firebase**: Auth en frontend + Admin SDK en backend (borrado usuario).
 - **OpenAI**: chat + transcripcion para asistente admin.
 - **SMTP (Nodemailer)**: emails transaccionales.
@@ -186,7 +197,7 @@ Backend (`backend/.env`):
 - DB: `DATABASE_URL`.
 - Tenant defaults: `DEFAULT_BRAND_ID`, `DEFAULT_LOCAL_ID`, `DEFAULT_BRAND_SUBDOMAIN`, `TENANT_BASE_DOMAIN`, `PLATFORM_SUBDOMAIN`, `TENANT_REQUIRE_SUBDOMAIN`, `PLATFORM_ADMIN_EMAILS`.
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`, `IMAGEKIT_FOLDER`.
-- Twilio: `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_SID`, `TWILIO_ACCOUNT_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`.
+- Twilio: `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_SID`, `TWILIO_ACCOUNT_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_WHATSAPP_FROM`, `TWILIO_WHATSAPP_TEMPLATE_SID`, `TWILIO_SMS_COST_USD` (opcional).
 - Email: `EMAIL`, `PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_FROM_NAME`.
 - AI: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`, `AI_TRANSCRIPTION_MODEL`.
 - Firebase Admin: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`.
@@ -221,7 +232,7 @@ Frontend (`frontend/.env*`):
 - Sin `x-admin-user-id`: endpoints admin devuelven 401/403.
 - Precio de cita incorrecto: revisar ofertas activas y categoria/servicio.
 - Slots vacios: revisar horario del barbero, festivos o duracion.
-- No llegan recordatorios: revisar Twilio + `notificationWhatsapp`.
+- No llegan recordatorios: revisar Twilio + `notificationPrefs` (sms/whatsapp) + preferencias del usuario.
 
 ## Principios de desarrollo continuo
 - Mantener componentes/servicios pequenos y reutilizables.

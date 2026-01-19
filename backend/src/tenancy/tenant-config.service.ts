@@ -35,7 +35,15 @@ export class TenantConfigService {
       select: { data: true },
     });
     if (!config?.data) return fallback;
-    return mergeConfig(fallback, config.data as BrandConfigData);
+    const merged = mergeConfig(fallback, config.data as BrandConfigData);
+    const smsSenderId = (config.data as BrandConfigData)?.twilio?.smsSenderId?.trim() || undefined;
+    return {
+      ...merged,
+      twilio: {
+        ...fallback.twilio,
+        ...(smsSenderId ? { smsSenderId } : {}),
+      },
+    };
   }
 
   async getLocationConfig(localId = getCurrentLocalId()): Promise<LocationConfigData> {

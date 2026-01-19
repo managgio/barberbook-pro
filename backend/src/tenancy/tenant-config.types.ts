@@ -9,6 +9,9 @@ export type TenantTwilioConfig = {
   accountSid?: string;
   authToken?: string;
   messagingServiceSid?: string;
+  smsSenderId?: string;
+  whatsappFrom?: string;
+  whatsappTemplateSid?: string;
 };
 
 export type TenantEmailConfig = {

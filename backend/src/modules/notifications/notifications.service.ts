@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
-import twilio from 'twilio';
+import * as twilio from 'twilio';
 import * as path from 'path';
 import * as fs from 'fs';
 import { SettingsService } from '../settings/settings.service';
@@ -26,7 +26,13 @@ interface AppointmentInfo {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly transporterCache = new Map<string, nodemailer.Transporter | null>();
-  private readonly twilioCache = new Map<string, { client: twilio.Twilio; messagingServiceSid: string } | null>();
+  private readonly twilioCache = new Map<string, {
+    client: twilio.Twilio;
+    messagingServiceSid?: string | null;
+    smsSenderId?: string | null;
+    whatsappFrom?: string | null;
+    whatsappTemplateSid?: string | null;
+  } | null>();
   private settingsCache: Record<string, SiteSettings> = {};
 
   constructor(
@@ -71,24 +77,28 @@ export class NotificationsService {
     }
     const config = await this.tenantConfig.getEffectiveConfig();
     const twilioConfig = config.twilio;
-    if (!twilioConfig?.accountSid || !twilioConfig.authToken || !twilioConfig.messagingServiceSid) {
+    if (!twilioConfig?.accountSid || !twilioConfig.authToken) {
       this.logger.warn('Twilio credentials missing, SMS reminders disabled');
       this.twilioCache.set(brandId, null);
       return null;
     }
     const payload = {
       client: twilio(twilioConfig.accountSid, twilioConfig.authToken),
-      messagingServiceSid: twilioConfig.messagingServiceSid,
+      messagingServiceSid: twilioConfig.messagingServiceSid || null,
+      smsSenderId: twilioConfig.smsSenderId || null,
+      whatsappFrom: twilioConfig.whatsappFrom || null,
+      whatsappTemplateSid: twilioConfig.whatsappTemplateSid || null,
     };
     this.twilioCache.set(brandId, payload);
     return payload;
   }
 
   async sendAppointmentEmail(contact: ContactInfo, appointment: AppointmentInfo, action: 'creada' | 'actualizada' | 'cancelada') {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    if (config.notificationPrefs?.email === false) return;
     const transporter = await this.getTransporter();
     if (!transporter || !contact.email) return;
     const settings = await this.getSettings();
-    const config = await this.tenantConfig.getEffectiveConfig();
     const formattedDate = appointment.date.toLocaleString('es-ES', {
       weekday: 'long',
       year: 'numeric',
@@ -223,6 +233,12 @@ export class NotificationsService {
   async sendReminderSms(contact: ContactInfo, appointment: AppointmentInfo) {
     const twilioConfig = await this.getTwilio();
     if (!twilioConfig || !contact.phone) return;
+    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
+    if (!normalizedPhone) {
+      this.logger.warn(`SMS skipped due to invalid phone: ${contact.phone}`);
+      return;
+    }
+    const senderId = await this.resolveSmsSenderId(twilioConfig.smsSenderId || null);
     const formattedDate = appointment.date.toLocaleString('es-ES', {
       weekday: 'short',
       day: '2-digit',
@@ -233,9 +249,13 @@ export class NotificationsService {
     const message = `Recordatorio: cita ${formattedDate}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
 
     try {
+      if (!twilioConfig.messagingServiceSid && !senderId) {
+        this.logger.warn('Twilio sender missing, SMS reminders disabled');
+        return;
+      }
       const result = await twilioConfig.client.messages.create({
-        messagingServiceSid: twilioConfig.messagingServiceSid,
-        to: contact.phone,
+        ...(twilioConfig.messagingServiceSid ? { messagingServiceSid: twilioConfig.messagingServiceSid } : { from: senderId! }),
+        to: normalizedPhone,
         body: message,
       });
       const rawPrice = result.price ? Math.abs(Number(result.price)) : null;
@@ -254,6 +274,139 @@ export class NotificationsService {
       }
     } catch (error) {
       this.logger.error(`Error sending SMS to ${contact.phone}: ${error}`);
+    }
+  }
+
+  async sendTestSms(phone: string, message?: string | null) {
+    const twilioConfig = await this.getTwilio();
+    if (!twilioConfig) {
+      throw new BadRequestException('Twilio no está configurado.');
+    }
+    const normalizedPhone = this.normalizePhoneNumber(phone);
+    if (!normalizedPhone) {
+      throw new BadRequestException('El teléfono debe tener formato internacional (ej: +346XXXXXXXX).');
+    }
+    const senderId = await this.resolveSmsSenderId(twilioConfig.smsSenderId || null);
+    if (!twilioConfig.messagingServiceSid && !senderId) {
+      throw new BadRequestException('El sender ID alfanumérico no es válido.');
+    }
+    const settings = await this.getSettings();
+    const fallbackMessage = `SMS de prueba de ${settings.branding.shortName || settings.branding.name || 'Managgio'}.`;
+    const body = (message || fallbackMessage).trim();
+    if (!body) {
+      throw new BadRequestException('El mensaje no puede estar vacío.');
+    }
+
+    try {
+      const result = await twilioConfig.client.messages.create({
+        ...(twilioConfig.messagingServiceSid
+          ? { messagingServiceSid: twilioConfig.messagingServiceSid }
+          : { from: senderId! }),
+        to: normalizedPhone,
+        body,
+      });
+      return { success: true, sid: result.sid };
+    } catch (error) {
+      this.logger.error(`Error sending test SMS to ${normalizedPhone}: ${error}`);
+      throw new BadRequestException('No se pudo enviar el SMS de prueba.');
+    }
+  }
+
+  async sendReminderWhatsapp(contact: ContactInfo, appointment: AppointmentInfo) {
+    const twilioConfig = await this.getTwilio();
+    if (!twilioConfig || !contact.phone) return;
+    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
+    if (!normalizedPhone) {
+      this.logger.warn(`WhatsApp skipped due to invalid phone: ${contact.phone}`);
+      return;
+    }
+    const whatsappFrom = this.normalizePhoneNumber(twilioConfig.whatsappFrom || '');
+    if (!whatsappFrom) {
+      this.logger.warn('Twilio WhatsApp sender missing, WhatsApp reminders disabled');
+      return;
+    }
+    const brandName = await this.resolveBrandName();
+    const { dateValue, timeValue } = this.formatDateTime(appointment.date);
+    const templateVariables = this.buildWhatsappTemplateVariables({
+      name: contact.name || 'Cliente',
+      brand: brandName,
+      date: dateValue,
+      time: timeValue,
+    });
+    const message = `Recordatorio: cita ${dateValue} ${timeValue}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
+
+    try {
+      const basePayload = {
+        from: `whatsapp:${whatsappFrom}`,
+        to: `whatsapp:${normalizedPhone}`,
+      };
+      const result = await twilioConfig.client.messages.create(
+        twilioConfig.whatsappTemplateSid
+          ? { ...basePayload, contentSid: twilioConfig.whatsappTemplateSid, contentVariables: templateVariables }
+          : { ...basePayload, body: message },
+      );
+      const rawPrice = result.price ? Math.abs(Number(result.price)) : null;
+      const priceUnit = result.priceUnit?.toUpperCase();
+      const fallbackCost = this.getTwilioSmsCostUsd();
+      const costUsd = priceUnit && priceUnit !== 'USD'
+        ? fallbackCost
+        : (Number.isFinite(rawPrice) ? rawPrice : fallbackCost);
+      if (costUsd !== null || fallbackCost !== null) {
+        void this.usageMetrics.recordTwilioUsage({
+          costUsd,
+          messages: 1,
+        });
+      } else {
+        void this.usageMetrics.recordTwilioUsage({ messages: 1 });
+      }
+    } catch (error) {
+      this.logger.error(`Error sending WhatsApp to ${normalizedPhone}: ${error}`);
+    }
+  }
+
+  async sendTestWhatsapp(phone: string, options?: { message?: string | null; name?: string; brand?: string; date?: string; time?: string }) {
+    const twilioConfig = await this.getTwilio();
+    if (!twilioConfig) {
+      throw new BadRequestException('Twilio no está configurado.');
+    }
+    const normalizedPhone = this.normalizePhoneNumber(phone);
+    if (!normalizedPhone) {
+      throw new BadRequestException('El teléfono debe tener formato internacional (ej: +346XXXXXXXX).');
+    }
+    const whatsappFrom = this.normalizePhoneNumber(twilioConfig.whatsappFrom || '');
+    if (!whatsappFrom) {
+      throw new BadRequestException('El número de WhatsApp de Twilio no está configurado.');
+    }
+    const settings = await this.getSettings();
+    const brandName = options?.brand?.trim()
+      || settings.branding.shortName
+      || settings.branding.name
+      || 'Managgio';
+    const fallbackMessage = `WhatsApp de prueba de ${brandName}.`;
+    const body = (options?.message || fallbackMessage).trim();
+    const now = new Date();
+    const { dateValue, timeValue } = this.formatDateTime(now);
+    const templateVariables = this.buildWhatsappTemplateVariables({
+      name: options?.name?.trim() || 'Cliente',
+      brand: brandName,
+      date: options?.date?.trim() || dateValue,
+      time: options?.time?.trim() || timeValue,
+    });
+
+    try {
+      const basePayload = {
+        from: `whatsapp:${whatsappFrom}`,
+        to: `whatsapp:${normalizedPhone}`,
+      };
+      const result = await twilioConfig.client.messages.create(
+        twilioConfig.whatsappTemplateSid
+          ? { ...basePayload, contentSid: twilioConfig.whatsappTemplateSid, contentVariables: templateVariables }
+          : { ...basePayload, body },
+      );
+      return { success: true, sid: result.sid };
+    } catch (error) {
+      this.logger.error(`Error sending test WhatsApp to ${normalizedPhone}: ${error}`);
+      throw new BadRequestException('No se pudo enviar el WhatsApp de prueba.');
     }
   }
 
@@ -277,5 +430,87 @@ export class NotificationsService {
     const raw = process.env.TWILIO_SMS_COST_USD || '';
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private async resolveSmsSenderId(explicit?: string | null) {
+    const candidate = explicit?.trim() || '';
+    if (candidate) {
+      return this.sanitizeSmsSenderId(candidate);
+    }
+    const settings = await this.getSettings();
+    const config = await this.tenantConfig.getEffectiveConfig();
+    const brandName =
+      settings.branding.shortName ||
+      settings.branding.name ||
+      config.branding?.shortName ||
+      config.branding?.name ||
+      '';
+    return this.sanitizeSmsSenderId(brandName);
+  }
+
+  private sanitizeSmsSenderId(value: string) {
+    const cleaned = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 11);
+    if (cleaned.length < 3) return null;
+    return cleaned;
+  }
+
+  private buildWhatsappTemplateVariables(data: { name: string; brand: string; date: string; time: string }) {
+    return JSON.stringify({
+      1: data.name,
+      2: data.brand,
+      3: data.date,
+      4: data.time,
+    });
+  }
+
+  private formatDateTime(value: Date) {
+    const dateValue = value.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+    const timeValue = value.toLocaleTimeString('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return { dateValue, timeValue };
+  }
+
+  private async resolveBrandName() {
+    const settings = await this.getSettings();
+    const config = await this.tenantConfig.getEffectiveConfig();
+    return (
+      settings.branding.shortName ||
+      settings.branding.name ||
+      config.branding?.shortName ||
+      config.branding?.name ||
+      'Managgio'
+    );
+  }
+
+  private normalizePhoneNumber(value?: string | null) {
+    const raw = value?.trim();
+    if (!raw) return null;
+    if (raw.startsWith('+')) {
+      const digits = raw.replace(/\D/g, '');
+      return digits ? `+${digits}` : null;
+    }
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return null;
+    if (digits.startsWith('00')) {
+      const rest = digits.slice(2);
+      return rest ? `+${rest}` : null;
+    }
+    if (digits.startsWith('34') && digits.length >= 11) {
+      return `+${digits}`;
+    }
+    if (digits.length === 10 && digits.startsWith('0')) {
+      return `+34${digits.slice(1)}`;
+    }
+    if (digits.length === 9) {
+      return `+34${digits}`;
+    }
+    return null;
   }
 }

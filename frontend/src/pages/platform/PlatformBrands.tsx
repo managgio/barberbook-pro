@@ -462,6 +462,15 @@ const PlatformBrands: React.FC = () => {
       const previousPrimary = normalizeHexInput(persistedBrandConfig?.theme?.primary || '');
       const nextPrimary = normalizeHexInput(brandConfig.theme?.primary || '');
       const sanitizedBrandConfig = stripEmptyTheme(brandConfig);
+      const sanitizedTwilioSender = typeof sanitizedBrandConfig.twilio?.smsSenderId === 'string'
+        ? sanitizedBrandConfig.twilio.smsSenderId.trim()
+        : '';
+      const cleanedBrandConfig = { ...sanitizedBrandConfig } as Record<string, any>;
+      if (sanitizedTwilioSender) {
+        cleanedBrandConfig.twilio = { smsSenderId: sanitizedTwilioSender };
+      } else {
+        delete cleanedBrandConfig.twilio;
+      }
       const sanitizedLocationConfig = stripEmptyTheme(locationConfig);
       await updatePlatformBrand(user.id, selectedBrand.id, {
         name: brandForm.name,
@@ -470,7 +479,7 @@ const PlatformBrands: React.FC = () => {
         isActive: brandForm.isActive,
         defaultLocationId: selectedLocationId,
       });
-      await updatePlatformBrandConfig(user.id, selectedBrand.id, sanitizedBrandConfig);
+      await updatePlatformBrandConfig(user.id, selectedBrand.id, cleanedBrandConfig);
       if (selectedLocationId) {
         await updatePlatformLocationConfig(user.id, selectedLocationId, sanitizedLocationConfig);
       }
@@ -1525,31 +1534,18 @@ const PlatformBrands: React.FC = () => {
 
                       <div className="space-y-3">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Twilio</p>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label>Account SID</Label>
-                            <Input
-                              value={brandConfig.twilio?.accountSid || ''}
-                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'accountSid'], e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Auth token</Label>
-                            <Input
-                              type="password"
-                              value={brandConfig.twilio?.authToken || ''}
-                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'authToken'], e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-2 md:col-span-2">
-                            <Label>Messaging service SID</Label>
-                            <Input
-                              value={brandConfig.twilio?.messagingServiceSid || ''}
-                              onChange={(e) =>
-                                setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'messagingServiceSid'], e.target.value))
-                              }
-                            />
-                          </div>
+                        <div className="space-y-2">
+                          <Label>Alphanumeric sender ID</Label>
+                          <Input
+                            placeholder="LEBLOND"
+                            value={brandConfig.twilio?.smsSenderId || ''}
+                            onChange={(e) =>
+                              setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'smsSenderId'], e.target.value))
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Define el remitente por marca.
+                          </p>
                         </div>
                       </div>
 

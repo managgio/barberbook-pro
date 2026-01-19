@@ -314,6 +314,17 @@ const AdminCashRegister: React.FC = () => {
     setSelectedDate(format(subDays(new Date(), daysAgo), 'yyyy-MM-dd'));
   };
 
+  const PieTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const entry = payload[0];
+    return (
+      <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground shadow-lg">
+        <p className="font-medium">{entry.name || 'Sin etiqueta'}</p>
+        <p className="text-muted-foreground">{currencyFormatter.format(entry.value ?? 0)}</p>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -446,10 +457,7 @@ const AdminCashRegister: React.FC = () => {
                         <Cell key={entry.key} fill={entry.color} />
                       ))}
                     </Pie>
-                    <RechartsTooltip
-                      contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
-                      formatter={(value: number) => currencyFormatter.format(value)}
-                    />
+                    <RechartsTooltip content={<PieTooltip />} />
                   </PieChart>
                 </ResponsiveContainer>
               )}

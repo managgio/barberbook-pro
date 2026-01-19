@@ -51,7 +51,8 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   private async handleRemindersForLocal() {
     const config = await this.tenantConfig.getEffectiveConfig();
     const smsEnabled = config.notificationPrefs?.sms !== false;
-    if (!smsEnabled) {
+    const whatsappEnabled = config.notificationPrefs?.whatsapp !== false;
+    if (!smsEnabled && !whatsappEnabled) {
       return 0;
     }
 
@@ -79,16 +80,23 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     let sentCount = 0;
     for (const appointment of appointments) {
       const allowSms = appointment.user ? appointment.user.notificationSms === true : false;
-      if (!allowSms) {
+      const allowWhatsapp = appointment.user ? appointment.user.notificationWhatsapp === true : false;
+      if (!allowSms && !allowWhatsapp) {
         continue;
       }
 
       const contact = this.getContact(appointment.user, appointment.guestName, appointment.guestContact);
-      await this.notificationsService.sendReminderSms(contact, {
+      const payload = {
         date: appointment.startDateTime,
         serviceName: appointment.service?.name,
         barberName: appointment.barber?.name,
-      });
+      };
+      if (smsEnabled && allowSms) {
+        await this.notificationsService.sendReminderSms(contact, payload);
+      }
+      if (whatsappEnabled && allowWhatsapp) {
+        await this.notificationsService.sendReminderWhatsapp(contact, payload);
+      }
 
       await this.prisma.appointment.update({
         where: { id: appointment.id },
