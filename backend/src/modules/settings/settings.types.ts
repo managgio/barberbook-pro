@@ -48,6 +48,12 @@ export type SiteSettings = {
   services: {
     categoriesEnabled: boolean;
   };
+  products: {
+    enabled: boolean;
+    categoriesEnabled: boolean;
+    clientPurchaseEnabled: boolean;
+    showOnLanding: boolean;
+  };
   qrSticker: QrSticker | null;
 };
 
@@ -89,6 +95,12 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   services: {
     categoriesEnabled: false,
   },
+  products: {
+    enabled: false,
+    categoriesEnabled: false,
+    clientPurchaseEnabled: false,
+    showOnLanding: false,
+  },
   qrSticker: null,
 };
 
@@ -108,6 +120,10 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
   services: {
     ...DEFAULT_SITE_SETTINGS.services,
     ...(data?.services ?? {}),
+  },
+  products: {
+    ...DEFAULT_SITE_SETTINGS.products,
+    ...(data?.products ?? {}),
   },
   qrSticker: data?.qrSticker ?? null,
 });

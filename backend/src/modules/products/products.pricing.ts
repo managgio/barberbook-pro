@@ -1,33 +1,18 @@
-import { DiscountType, Offer, OfferScope, OfferTarget, Service, ServiceCategory } from '@prisma/client';
+import { DiscountType, Offer, OfferScope, OfferTarget, Product, ProductCategory } from '@prisma/client';
+import { isOfferActiveNow } from '../services/services.pricing';
 
-type OfferWithRelations = Offer & { categories: ServiceCategory[]; services: Service[] };
-type ServiceWithCategory = Service & { categoryId?: string | null };
+type OfferWithRelations = Offer & { productCategories: ProductCategory[]; products: Product[] };
+type ProductWithCategory = Product & { categoryId?: string | null };
 
-export const isOfferActiveNow = (offer: Offer, now: Date = new Date()) => {
-  if (!offer.active) return false;
-  const reference = now;
-  if (offer.startDate) {
-    const start = new Date(offer.startDate);
-    start.setHours(0, 0, 0, 0);
-    if (reference < start) return false;
-  }
-  if (offer.endDate) {
-    const end = new Date(offer.endDate);
-    end.setHours(23, 59, 59, 999);
-    if (reference > end) return false;
-  }
-  return true;
-};
-
-const appliesToService = (offer: OfferWithRelations, service: ServiceWithCategory) => {
-  if (offer.target !== OfferTarget.service) return false;
+const appliesToProduct = (offer: OfferWithRelations, product: ProductWithCategory) => {
+  if (offer.target !== OfferTarget.product) return false;
   switch (offer.scope) {
     case OfferScope.all:
       return true;
     case OfferScope.categories:
-      return !!service.categoryId && offer.categories.some((cat) => cat.id === service.categoryId);
-    case OfferScope.services:
-      return offer.services.some((srv) => srv.id === service.id);
+      return !!product.categoryId && offer.productCategories.some((cat) => cat.id === product.categoryId);
+    case OfferScope.products:
+      return offer.products.some((item) => item.id === product.id);
     default:
       return false;
   }
@@ -41,18 +26,18 @@ const calculateFinalPrice = (basePrice: number, offer: OfferWithRelations) => {
   return Math.max(0, basePrice - Number(offer.discountValue));
 };
 
-export const computeServicePricing = (
-  service: ServiceWithCategory,
+export const computeProductPricing = (
+  product: ProductWithCategory,
   offers: OfferWithRelations[],
   referenceDate: Date = new Date(),
 ) => {
-  const basePrice = Number(service.price);
+  const basePrice = Number(product.price);
   let finalPrice = basePrice;
   let appliedOffer: OfferWithRelations | null = null;
 
   offers.forEach((offer) => {
     if (!isOfferActiveNow(offer, referenceDate)) return;
-    if (!appliesToService(offer, service)) return;
+    if (!appliesToProduct(offer, product)) return;
     const priceAfter = calculateFinalPrice(basePrice, offer);
     if (priceAfter < finalPrice) {
       finalPrice = priceAfter;

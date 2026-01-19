@@ -1,11 +1,22 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { SiteSettings, normalizeSettings, cloneSettings } from './settings.types';
 
 @Injectable()
 export class SettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantConfig: TenantConfigService,
+  ) {}
+
+  private async resolveProductsEnabled() {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    const hidden = config.adminSidebar?.hiddenSections;
+    if (!Array.isArray(hidden)) return true;
+    return !hidden.includes('stock');
+  }
 
   private async ensureSettings(): Promise<SiteSettings> {
     const localId = getCurrentLocalId();
@@ -23,12 +34,17 @@ export class SettingsService {
 
   async getSettings(): Promise<SiteSettings> {
     const settings = await this.ensureSettings();
-    return cloneSettings(settings);
+    const productsEnabled = await this.resolveProductsEnabled();
+    return cloneSettings({
+      ...settings,
+      products: { ...settings.products, enabled: productsEnabled },
+    });
   }
 
   async updateSettings(settings: SiteSettings): Promise<SiteSettings> {
     const localId = getCurrentLocalId();
     const normalized = normalizeSettings(settings);
+    normalized.products.enabled = await this.resolveProductsEnabled();
 
     if (normalized.services.categoriesEnabled) {
       const uncategorized = await this.prisma.service.count({
@@ -37,6 +53,17 @@ export class SettingsService {
       if (uncategorized > 0) {
         throw new BadRequestException(
           'Asigna una categoría a todos los servicios antes de activar la categorización.',
+        );
+      }
+    }
+
+    if (normalized.products.categoriesEnabled) {
+      const uncategorizedProducts = await this.prisma.product.count({
+        where: { categoryId: null, localId },
+      });
+      if (uncategorizedProducts > 0) {
+        throw new BadRequestException(
+          'Asigna una categoría a todos los productos antes de activar la categorización.',
         );
       }
     }

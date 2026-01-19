@@ -56,6 +56,12 @@ enum OfferScope {
   all
   categories
   services
+  products
+}
+
+enum OfferTarget {
+  service
+  product
 }
 
 enum AiChatRole {
@@ -127,7 +133,9 @@ model Location {
   adminRoles AdminRole[]
   staffRoles LocationStaff[]
   barbers   Barber[]
-  services  Service[]
+  productCategories ProductCategory[]
+  products    Product[]
+  services    Service[]
   appointments Appointment[]
   cashMovements CashMovement[]
   alerts    Alert[]
@@ -279,6 +287,31 @@ model Service {
   @@index([localId])
 }
 
+model Product {
+  id          String          @id @default(cuid())
+  localId     String
+  local       Location        @relation(fields: [localId], references: [id])
+  categoryId  String?
+  category    ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  name        String
+  description String?
+  sku         String?
+  price       Decimal         @db.Decimal(10, 2)
+  stock       Int             @default(0)
+  minStock    Int             @default(0)
+  imageUrl    String?
+  imageFileId String?
+  isActive    Boolean         @default(true)
+  isPublic    Boolean         @default(true)
+  offers      Offer[]         @relation("OfferProducts")
+  appointmentItems AppointmentProduct[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([categoryId])
+  @@index([localId])
+}
+
 model Appointment {
   id            String             @id @default(cuid())
   localId       String
@@ -289,6 +322,7 @@ model Appointment {
   barber        Barber             @relation(fields: [barberId], references: [id])
   serviceId     String
   service       Service            @relation(fields: [serviceId], references: [id])
+  products      AppointmentProduct[]
   startDateTime DateTime
   price         Decimal            @db.Decimal(10, 2)
   paymentMethod PaymentMethod?
@@ -303,6 +337,21 @@ model Appointment {
   updatedAt     DateTime           @updatedAt
 
   @@index([localId])
+}
+
+model AppointmentProduct {
+  id            String       @id @default(cuid())
+  appointmentId String
+  appointment   Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product      @relation(fields: [productId], references: [id])
+  quantity      Int
+  unitPrice     Decimal      @db.Decimal(10, 2)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([appointmentId, productId])
+  @@index([productId])
 }
 
 model CashMovement {
@@ -465,6 +514,21 @@ model ServiceCategory {
   @@index([localId])
 }
 
+model ProductCategory {
+  id          String    @id @default(cuid())
+  localId     String
+  local       Location  @relation(fields: [localId], references: [id])
+  name        String
+  description String?
+  position    Int       @default(0)
+  products    Product[]
+  offers      Offer[]   @relation("OfferProductCategories")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([localId])
+}
+
 model Offer {
   id            String           @id @default(cuid())
   localId       String
@@ -474,11 +538,14 @@ model Offer {
   discountType  DiscountType
   discountValue Decimal          @db.Decimal(10, 2)
   scope         OfferScope
+  target        OfferTarget      @default(service)
   startDate     DateTime?
   endDate       DateTime?
   active        Boolean          @default(true)
   categories    ServiceCategory[] @relation("OfferCategories")
   services      Service[]        @relation("ServiceOffers")
+  productCategories ProductCategory[] @relation("OfferProductCategories")
+  products      Product[]        @relation("OfferProducts")
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 

@@ -1,5 +1,5 @@
 import { IsArray, IsBoolean, IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, ArrayNotEmpty } from 'class-validator';
-import { DiscountType, OfferScope } from '@prisma/client';
+import { DiscountType, OfferScope, OfferTarget } from '@prisma/client';
 
 export class CreateOfferDto {
   @IsString()
@@ -21,6 +21,10 @@ export class CreateOfferDto {
   scope!: OfferScope;
 
   @IsOptional()
+  @IsEnum(OfferTarget)
+  target?: OfferTarget;
+
+  @IsOptional()
   @IsArray()
   @ArrayNotEmpty()
   @IsString({ each: true })
@@ -31,6 +35,18 @@ export class CreateOfferDto {
   @ArrayNotEmpty()
   @IsString({ each: true })
   serviceIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  productCategoryIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  productIds?: string[];
 
   @IsOptional()
   @IsDateString()

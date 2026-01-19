@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { OfferTarget } from '@prisma/client';
 import { OffersService } from './offers.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { UpdateOfferDto } from './dto/update-offer.dto';
@@ -9,13 +10,13 @@ export class OffersController {
   constructor(private readonly offersService: OffersService) {}
 
   @Get()
-  findAll() {
-    return this.offersService.findAll();
+  findAll(@Query('target') target?: OfferTarget) {
+    return this.offersService.findAll(target);
   }
 
   @Get('active')
-  findActive() {
-    return this.offersService.findActive();
+  findActive(@Query('target') target?: OfferTarget) {
+    return this.offersService.findActive(target);
   }
 
   @Post()

@@ -1,5 +1,7 @@
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { AppointmentStatus, PaymentMethod } from '@prisma/client';
+import { AppointmentProductDto } from './appointment-product.dto';
 
 export class UpdateAppointmentDto {
   @IsOptional()
@@ -43,4 +45,9 @@ export class UpdateAppointmentDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod | null;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => AppointmentProductDto)
+  products?: AppointmentProductDto[];
 }

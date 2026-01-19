@@ -1,5 +1,7 @@
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { AppointmentStatus } from '@prisma/client';
+import { AppointmentProductDto } from './appointment-product.dto';
 
 export class CreateAppointmentDto {
   @IsOptional()
@@ -35,4 +37,9 @@ export class CreateAppointmentDto {
   @IsOptional()
   @IsBoolean()
   privacyConsentGiven?: boolean;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => AppointmentProductDto)
+  products?: AppointmentProductDto[];
 }

@@ -20,7 +20,7 @@ export class ServicesService {
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true, localId },
+        where: { active: true, localId, target: 'service' },
         include: { categories: true, services: true },
       }),
     ]);
@@ -37,7 +37,7 @@ export class ServicesService {
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true, localId },
+        where: { active: true, localId, target: 'service' },
         include: { categories: true, services: true },
       }),
     ]);
@@ -86,7 +86,7 @@ export class ServicesService {
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true, localId },
+        where: { active: true, localId, target: 'service' },
         include: { categories: true, services: true },
       }),
     ]);
@@ -113,7 +113,7 @@ export class ServicesService {
         include: { category: true },
       }),
       this.prisma.offer.findMany({
-        where: { active: true, localId },
+        where: { active: true, localId, target: 'service' },
         include: { categories: true, services: true },
       }),
     ]);

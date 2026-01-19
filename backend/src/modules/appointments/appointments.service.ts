@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentStatus, Prisma } from '@prisma/client';
+import { AppointmentStatus, OfferTarget, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -14,6 +14,7 @@ import { computeServicePricing, isOfferActiveNow } from '../services/services.pr
 import { LegalService } from '../legal/legal.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { SettingsService } from '../settings/settings.service';
+import { computeProductPricing } from '../products/products.pricing';
 
 const DEFAULT_SERVICE_DURATION = 30;
 const SLOT_INTERVAL_MINUTES = 15;
@@ -45,6 +46,73 @@ export class AppointmentsService {
     return service?.duration ?? DEFAULT_SERVICE_DURATION;
   }
 
+  private shouldHoldStock(status: AppointmentStatus) {
+    return status !== 'cancelled' && status !== 'no_show';
+  }
+
+  private async getProductOffers(referenceDate: Date) {
+    const localId = getCurrentLocalId();
+    const offers = await this.prisma.offer.findMany({
+      where: { active: true, localId, target: OfferTarget.product },
+      include: { productCategories: true, products: true },
+    });
+    return offers.filter((offer) => isOfferActiveNow(offer, referenceDate));
+  }
+
+  private async resolveProductSelection(
+    items: Array<{ productId: string; quantity: number }>,
+    options: { allowInactive: boolean; allowPrivate: boolean; referenceDate: Date; existingPrices?: Map<string, number> },
+  ) {
+    const normalized = (items || [])
+      .map((item) => ({
+        productId: item.productId,
+        quantity: Math.max(0, Math.floor(item.quantity)),
+      }))
+      .filter((item) => item.productId && item.quantity > 0);
+    if (normalized.length === 0) {
+      return { items: [], total: 0 };
+    }
+
+    const localId = getCurrentLocalId();
+    const productIds = Array.from(new Set(normalized.map((item) => item.productId)));
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, localId },
+      include: { category: true },
+    });
+    if (products.length !== productIds.length) {
+      throw new BadRequestException('Uno o varios productos no existen en este local.');
+    }
+
+    const productById = new Map(products.map((product) => [product.id, product]));
+    for (const product of products) {
+      if (!options.allowInactive && product.isActive === false) {
+        throw new BadRequestException(`El producto "${product.name}" no está disponible.`);
+      }
+      if (!options.allowPrivate && product.isPublic === false) {
+        throw new BadRequestException(`El producto "${product.name}" no está disponible para clientes.`);
+      }
+    }
+
+    const offers = await this.getProductOffers(options.referenceDate);
+    const itemsDetailed = normalized.map((item) => {
+      const product = productById.get(item.productId)!;
+      const overridePrice = options.existingPrices?.get(product.id);
+      const pricing = overridePrice === undefined
+        ? computeProductPricing(product, offers, options.referenceDate)
+        : null;
+      const unitPrice = overridePrice ?? pricing?.finalPrice ?? Number(product.price);
+      return {
+        productId: product.id,
+        quantity: item.quantity,
+        unitPrice,
+        product,
+      };
+    });
+
+    const total = itemsDetailed.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
+    return { items: itemsDetailed, total };
+  }
+
   async findAll(filters?: { userId?: string; barberId?: string; date?: string }) {
     const localId = getCurrentLocalId();
     const where: any = { localId };
@@ -59,7 +127,7 @@ export class AppointmentsService {
     const appointments = await this.prisma.appointment.findMany({
       where,
       orderBy: { startDateTime: 'asc' },
-      include: { service: true },
+      include: { service: true, products: { include: { product: true } } },
     });
     await this.syncAppointmentStatuses(appointments);
     return appointments.map(mapAppointment);
@@ -69,7 +137,7 @@ export class AppointmentsService {
     const localId = getCurrentLocalId();
     const appointment = await this.prisma.appointment.findFirst({
       where: { id, localId },
-      include: { service: true },
+      include: { service: true, products: { include: { product: true } } },
     });
     if (!appointment) throw new NotFoundException('Appointment not found');
     await this.syncAppointmentStatuses([appointment]);
@@ -86,7 +154,7 @@ export class AppointmentsService {
     }
 
     const offers = await this.prisma.offer.findMany({
-      where: { active: true, localId },
+      where: { active: true, localId, target: OfferTarget.service },
       include: { categories: true, services: true },
     });
 
@@ -117,23 +185,69 @@ export class AppointmentsService {
 
     const localId = getCurrentLocalId();
     const startDateTime = new Date(data.startDateTime);
-    const price = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
+    const isAdminActor = Boolean(context?.actorUserId);
+    const settings = await this.settingsService.getSettings();
+    const productsConfig = settings.products;
+    const requestedProducts = data.products ?? [];
+    if (requestedProducts.length > 0) {
+      if (!productsConfig.enabled) {
+        throw new BadRequestException('Los productos no están habilitados en este local.');
+      }
+      if (!isAdminActor && !productsConfig.clientPurchaseEnabled) {
+        throw new BadRequestException('La compra de productos no está disponible en este local.');
+      }
+    }
 
-    const appointment = await this.prisma.appointment.create({
-      data: {
-        localId,
-        userId: data.userId,
-        barberId: data.barberId,
-        serviceId: data.serviceId,
-        startDateTime,
-        price: new Prisma.Decimal(price),
-        status: data.status || 'scheduled',
-        notes: data.notes,
-        guestName: data.guestName,
-        guestContact: data.guestContact,
-        reminderSent: false,
-      },
-      include: { user: true, barber: true, service: true },
+    const servicePrice = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
+    const productSelection = await this.resolveProductSelection(requestedProducts, {
+      allowInactive: isAdminActor,
+      allowPrivate: isAdminActor,
+      referenceDate: startDateTime,
+    });
+    const totalPrice = servicePrice + productSelection.total;
+    const nextStatus = data.status || 'scheduled';
+    const shouldHoldStock = this.shouldHoldStock(nextStatus);
+
+    const appointment = await this.prisma.$transaction(async (tx) => {
+      if (shouldHoldStock && productSelection.items.length > 0) {
+        for (const item of productSelection.items) {
+          if (item.product.stock < item.quantity) {
+            throw new BadRequestException(`Stock insuficiente para "${item.product.name}".`);
+          }
+        }
+        for (const item of productSelection.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
+      }
+
+      return tx.appointment.create({
+        data: {
+          localId,
+          userId: data.userId,
+          barberId: data.barberId,
+          serviceId: data.serviceId,
+          startDateTime,
+          price: new Prisma.Decimal(totalPrice),
+          status: nextStatus,
+          notes: data.notes,
+          guestName: data.guestName,
+          guestContact: data.guestContact,
+          reminderSent: false,
+          products: productSelection.items.length > 0
+            ? {
+                create: productSelection.items.map((item) => ({
+                  productId: item.productId,
+                  quantity: item.quantity,
+                  unitPrice: new Prisma.Decimal(item.unitPrice),
+                })),
+              }
+            : undefined,
+        },
+        include: { user: true, barber: true, service: true, products: { include: { product: true } } },
+      });
     });
 
     if (consentRequired) {
@@ -181,7 +295,10 @@ export class AppointmentsService {
 
   async update(id: string, data: UpdateAppointmentDto, context?: { actorUserId?: string | null }) {
     const localId = getCurrentLocalId();
-    const current = await this.prisma.appointment.findFirst({ where: { id, localId } });
+    const current = await this.prisma.appointment.findFirst({
+      where: { id, localId },
+      include: { products: { include: { product: true } } },
+    });
     if (!current) throw new NotFoundException('Appointment not found');
     if ((current.status === 'no_show' || current.status === 'cancelled') && data.status === 'completed') {
       throw new BadRequestException('Appointment marked as no-show or cancelled cannot be completed.');
@@ -201,15 +318,19 @@ export class AppointmentsService {
       }
     }
 
+    const nextStatus = data.status ?? current.status;
     const startChanged =
       data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
     const serviceChanged = data.serviceId !== undefined && data.serviceId !== current.serviceId;
     const barberChanged = data.barberId !== undefined && data.barberId !== current.barberId;
-    const statusChanged = data.status && data.status !== current.status;
-    const isCancelled = statusChanged && data.status === 'cancelled';
+    const statusChanged = nextStatus !== current.status;
+    const isCancelled = statusChanged && nextStatus === 'cancelled';
+    const productsInputProvided = Array.isArray(data.products);
 
-    if (isCancelled && !context?.actorUserId) {
-      const settings = await this.settingsService.getSettings();
+    const isAdminActor = Boolean(context?.actorUserId);
+    const settings = await this.settingsService.getSettings();
+
+    if (isCancelled && !isAdminActor) {
       const cutoffHours = settings.appointments?.cancellationCutoffHours ?? 0;
       if (cutoffHours > 0) {
         const cutoffMs = cutoffHours * 60 * 60 * 1000;
@@ -222,14 +343,48 @@ export class AppointmentsService {
       }
     }
 
+    const productsConfig = settings.products;
+    if (productsInputProvided && (data.products?.length ?? 0) > 0) {
+      if (!productsConfig.enabled) {
+        throw new BadRequestException('Los productos no están habilitados en este local.');
+      }
+      if (!isAdminActor && !productsConfig.clientPurchaseEnabled) {
+        throw new BadRequestException('La compra de productos no está disponible en este local.');
+      }
+    }
+
+    const currentProducts = current.products ?? [];
+    const currentProductsTotal = currentProducts.reduce(
+      (acc, item) => acc + Number(item.unitPrice) * item.quantity,
+      0,
+    );
+    const existingPriceMap = new Map(
+      currentProducts.map((item) => [item.productId, Number(item.unitPrice)]),
+    );
+    const nextProductSelection = productsInputProvided
+      ? await this.resolveProductSelection(data.products ?? [], {
+          allowInactive: isAdminActor,
+          allowPrivate: isAdminActor,
+          referenceDate: nextStartDateTime,
+          existingPrices: existingPriceMap,
+        })
+      : {
+          items: currentProducts.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: Number(item.unitPrice),
+            product: item.product,
+          })),
+          total: currentProductsTotal,
+        };
+
     let reminderSent: boolean | undefined;
     if (statusChanged) {
-      reminderSent = data.status === 'cancelled' ? true : false;
+      reminderSent = nextStatus === 'cancelled' || nextStatus === 'no_show' ? true : false;
     } else if (startChanged) {
       reminderSent = false;
     }
 
-    const isAdminActor = Boolean(context?.actorUserId);
     if (data.price !== undefined && !isAdminActor) {
       throw new ForbiddenException('Solo un admin puede modificar el precio final.');
     }
@@ -241,26 +396,102 @@ export class AppointmentsService {
     let price: Prisma.Decimal | undefined;
     if (data.price !== undefined) {
       price = new Prisma.Decimal(data.price);
-    } else if (shouldRecalculatePrice) {
-      price = new Prisma.Decimal(await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime));
+    } else if (shouldRecalculatePrice || productsInputProvided) {
+      const baseServicePrice = shouldRecalculatePrice
+        ? await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime)
+        : Math.max(0, Number(current.price) - currentProductsTotal);
+      price = new Prisma.Decimal(baseServicePrice + nextProductSelection.total);
     }
 
-    const updated = await this.prisma.appointment.update({
-      where: { id },
-      data: {
-        userId: data.userId,
-        barberId: data.barberId,
-        serviceId: data.serviceId,
-        startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
-        price,
-        paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,
-        status: data.status,
-        notes: data.notes,
-        guestName: data.guestName,
-        guestContact: data.guestContact,
-        reminderSent,
-      },
-      include: { user: true, barber: true, service: true },
+    const shouldHoldCurrent = this.shouldHoldStock(current.status);
+    const shouldHoldNext = this.shouldHoldStock(nextStatus);
+    const productById = new Map<string, { stock: number; name: string }>();
+    currentProducts.forEach((item) => {
+      if (!item.product) return;
+      productById.set(item.productId, { stock: item.product.stock, name: item.product.name });
+    });
+    nextProductSelection.items.forEach((item) => {
+      if (!item.product) return;
+      productById.set(item.productId, { stock: item.product.stock, name: item.product.name });
+    });
+
+    const stockAdjustments: Array<{ productId: string; delta: number }> = [];
+    if (shouldHoldCurrent && !shouldHoldNext) {
+      currentProducts.forEach((item) => {
+        if (item.quantity > 0) {
+          stockAdjustments.push({ productId: item.productId, delta: -item.quantity });
+        }
+      });
+    } else if (!shouldHoldCurrent && shouldHoldNext) {
+      nextProductSelection.items.forEach((item) => {
+        if (item.quantity > 0) {
+          stockAdjustments.push({ productId: item.productId, delta: item.quantity });
+        }
+      });
+    } else if (shouldHoldCurrent && shouldHoldNext && productsInputProvided) {
+      const currentQty = new Map(currentProducts.map((item) => [item.productId, item.quantity]));
+      const nextQty = new Map(nextProductSelection.items.map((item) => [item.productId, item.quantity]));
+      const ids = new Set([...currentQty.keys(), ...nextQty.keys()]);
+      ids.forEach((id) => {
+        const delta = (nextQty.get(id) ?? 0) - (currentQty.get(id) ?? 0);
+        if (delta !== 0) {
+          stockAdjustments.push({ productId: id, delta });
+        }
+      });
+    }
+
+    for (const adjustment of stockAdjustments) {
+      if (adjustment.delta <= 0) continue;
+      const productInfo = productById.get(adjustment.productId);
+      if (!productInfo || productInfo.stock < adjustment.delta) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${productInfo?.name ?? 'producto'}".`,
+        );
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      for (const adjustment of stockAdjustments) {
+        if (adjustment.delta > 0) {
+          await tx.product.update({
+            where: { id: adjustment.productId },
+            data: { stock: { decrement: adjustment.delta } },
+          });
+        } else if (adjustment.delta < 0) {
+          await tx.product.update({
+            where: { id: adjustment.productId },
+            data: { stock: { increment: Math.abs(adjustment.delta) } },
+          });
+        }
+      }
+
+      return tx.appointment.update({
+        where: { id },
+        data: {
+          userId: data.userId,
+          barberId: data.barberId,
+          serviceId: data.serviceId,
+          startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
+          price,
+          paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,
+          status: data.status,
+          notes: data.notes,
+          guestName: data.guestName,
+          guestContact: data.guestContact,
+          reminderSent,
+          products: productsInputProvided
+            ? {
+                deleteMany: {},
+                create: nextProductSelection.items.map((item) => ({
+                  productId: item.productId,
+                  quantity: item.quantity,
+                  unitPrice: new Prisma.Decimal(item.unitPrice),
+                })),
+              }
+            : undefined,
+        },
+        include: { user: true, barber: true, service: true, products: { include: { product: true } } },
+      });
     });
 
     const shouldNotify = serviceChanged || barberChanged || startChanged;
@@ -272,9 +503,22 @@ export class AppointmentsService {
 
   async remove(id: string) {
     const localId = getCurrentLocalId();
-    const existing = await this.prisma.appointment.findFirst({ where: { id, localId } });
+    const existing = await this.prisma.appointment.findFirst({
+      where: { id, localId },
+      include: { products: { include: { product: true } } },
+    });
     if (!existing) throw new NotFoundException('Appointment not found');
-    await this.prisma.appointment.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      if (this.shouldHoldStock(existing.status) && existing.products.length > 0) {
+        for (const item of existing.products) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+      }
+      await tx.appointment.delete({ where: { id } });
+    });
     await this.auditLogs.log({
       locationId: localId,
       action: 'appointment.deleted',
