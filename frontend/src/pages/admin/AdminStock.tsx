@@ -385,7 +385,7 @@ const AdminStock: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="pl-12 md:pl-0">
           <h1 className="text-2xl font-bold text-foreground">Control de stock</h1>
           <p className="text-sm text-muted-foreground">
             Gestiona el inventario y el catálogo de productos por local.

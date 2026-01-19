@@ -31,6 +31,10 @@ const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
 const signImageFallback = '/placeholder.svg';
 const productImageFallback = '/placeholder.svg';
+const LANDING_SECTION_ORDER = ['services', 'products', 'barbers', 'cta'] as const;
+type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
+const isLandingSectionKey = (value: string): value is LandingSectionKey =>
+  (LANDING_SECTION_ORDER as readonly string[]).includes(value);
 
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
@@ -76,7 +80,22 @@ const LandingPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const categoriesEnabled = settings.products.categoriesEnabled;
-  const showProducts = settings.products.showOnLanding && products.length > 0;
+  const landingConfig = tenant?.config?.landing || null;
+  const productsModuleEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
+  const showProducts = productsModuleEnabled && settings.products.showOnLanding && products.length > 0;
+  const landingOrder = useMemo(() => {
+    const configured = (landingConfig?.order || [])
+      .filter((key): key is LandingSectionKey => isLandingSectionKey(key))
+      .filter((key, index, list) => list.indexOf(key) === index);
+    return [
+      ...configured,
+      ...LANDING_SECTION_ORDER.filter((key) => !configured.includes(key)),
+    ];
+  }, [landingConfig]);
+  const hiddenSections = useMemo(
+    () => new Set((landingConfig?.hiddenSections || []).filter(isLandingSectionKey)),
+    [landingConfig],
+  );
 
   const renderProductCard = (product: Product, index: number) => {
     const price = product.finalPrice ?? product.price;
@@ -168,8 +187,8 @@ const LandingPage: React.FC = () => {
         const [barbersData, servicesData, productsData, productCategoriesData] = await Promise.all([
           getBarbers(),
           getServices(),
-          settings.products.showOnLanding ? getProducts('landing') : Promise.resolve([]),
-          settings.products.showOnLanding && settings.products.categoriesEnabled
+          settings.products.showOnLanding && productsModuleEnabled ? getProducts('landing') : Promise.resolve([]),
+          settings.products.showOnLanding && settings.products.categoriesEnabled && productsModuleEnabled
             ? getProductCategories(true)
             : Promise.resolve([]),
         ]);
@@ -182,7 +201,201 @@ const LandingPage: React.FC = () => {
       }
     };
     loadData();
-  }, [settings.products.showOnLanding, settings.products.categoriesEnabled]);
+  }, [settings.products.showOnLanding, settings.products.categoriesEnabled, productsModuleEnabled]);
+
+  const servicesSection = (
+    <section className="py-24 bg-card/50">
+      <div className="container px-4">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+            Nuestros servicios
+          </h2>
+          <p className="text-muted-foreground max-w-lg mx-auto">
+            Cada servicio incluye una experiencia completa con los mejores productos del mercado.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {services.slice(0, 6).map((service, index) => (
+            <Card
+              key={service.id}
+              variant="interactive"
+              className="animate-slide-up"
+              style={{ animationDelay: `${index * 0.1}s` }}
+            >
+              <CardContent className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Scissors className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="text-right">
+                    {service.appliedOffer && service.finalPrice !== undefined && Math.abs(service.price - service.finalPrice) > 0.001 && (
+                      <div className="text-xs line-through text-muted-foreground">{service.price}€</div>
+                    )}
+                    <span className="text-2xl font-bold text-primary">
+                      {(service.finalPrice ?? service.price).toFixed(2)}€
+                    </span>
+                  </div>
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">{service.name}</h3>
+                <p className="text-sm text-muted-foreground mb-4">{service.description}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {services.length === 0 && (
+            <div className="md:col-span-2 lg:col-span-3 text-center text-muted-foreground">
+              Cargando servicios...
+            </div>
+          )}
+        </div>
+
+        <div className="text-center mt-12">
+          <Button variant="outline" size="lg" asChild>
+            <Link to={isAuthenticated ? '/app/book' : '/auth'}>
+              Ver todos los servicios
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+
+  const productsSection = showProducts ? (
+    <section className="py-24">
+      <div className="container px-4">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+            Productos destacados
+          </h2>
+          <p className="text-muted-foreground max-w-lg mx-auto">
+            Selección profesional para cuidar tu estilo en casa.
+          </p>
+        </div>
+
+        {categoriesEnabled ? (
+          <div className="space-y-10 max-w-5xl mx-auto">
+            {productGroups.map((group) => (
+              <div key={group.key} className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-semibold text-foreground">
+                      {group.category?.name ?? 'Otros productos'}
+                    </h3>
+                    {group.category?.description && (
+                      <p className="text-sm text-muted-foreground">{group.category.description}</p>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {group.items.length} producto(s)
+                  </span>
+                </div>
+                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6">
+                  {group.items.map((product, index) => (
+                    <div
+                      key={product.id}
+                      className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-[260px] lg:w-[240px] xl:w-[230px] md:h-full"
+                    >
+                      {renderProductCard(product, index)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+            <div className="max-w-5xl mx-auto">
+              <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6">
+                {products.slice(0, 6).map((product, index) => (
+                  <div
+                    key={product.id}
+                    className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-[260px] lg:w-[240px] xl:w-[230px] md:h-full"
+                  >
+                    {renderProductCard(product, index)}
+                  </div>
+                ))}
+              </div>
+            </div>
+        )}
+      </div>
+    </section>
+  ) : null;
+
+  const barbersSection = (
+    <section className="py-24">
+      <div className="container px-4">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+            Nuestro equipo
+          </h2>
+          <p className="text-muted-foreground max-w-lg mx-auto">
+            Profesionales apasionados por su oficio, siempre al día con las últimas tendencias.
+          </p>
+        </div>
+
+        <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 max-w-6xl lg:mx-auto lg:justify-center">
+          {barbers.map((barber, index) => (
+            <div key={barber.id} className="min-w-[220px] sm:min-w-[260px] md:min-w-0 md:w-auto">
+              <Card
+                variant="interactive"
+                className="overflow-hidden animate-slide-up h-full"
+                style={{ animationDelay: `${index * 0.1}s` }}
+              >
+                <div className="aspect-square relative overflow-hidden">
+                  <img
+                    src={barber.photo || defaultAvatar}
+                    alt={barber.name}
+                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-4" />
+                </div>
+                <CardContent className="p-4">
+                  <h3 className="font-semibold text-foreground">{barber.name}</h3>
+                  <p className="text-sm text-muted-foreground">{barber.specialty}</p>
+                </CardContent>
+              </Card>
+            </div>
+          ))}
+          {barbers.length === 0 && (
+            <div className="md:col-span-2 lg:col-span-4 text-center text-muted-foreground">
+              Cargando equipo...
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+
+  const ctaSection = (
+    <section className="py-24 bg-card/50 relative overflow-hidden">
+      <div className="absolute inset-0">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${signImageUrl})`, backgroundPosition: 'top center' }}
+        />
+        <div className="absolute inset-0 bg-card/80" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl" />
+      </div>
+      
+      <div className="container px-4 relative z-10">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
+            ¿Listo para tu<br />
+            <span className="text-gradient">nuevo look?</span>
+          </h2>
+            <p className="text-xl text-muted-foreground mb-10">
+              Reserva tu cita en menos de un minuto y vive la experiencia {settings.branding.name}.
+            </p>
+          <Button variant="hero" size="xl" asChild>
+            <Link to={isAuthenticated ? '/app/book' : '/auth?tab=signup'}>
+              <Calendar className="w-5 h-5 mr-2" />
+              Reservar mi cita
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -290,196 +503,23 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Services Section */}
-      <section className="py-24 bg-card/50">
-        <div className="container px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Nuestros servicios
-            </h2>
-            <p className="text-muted-foreground max-w-lg mx-auto">
-              Cada servicio incluye una experiencia completa con los mejores productos del mercado.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {services.slice(0, 6).map((service, index) => (
-              <Card 
-                key={service.id} 
-                variant="interactive"
-                className="animate-slide-up"
-                style={{ animationDelay: `${index * 0.1}s` }}
-              >
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Scissors className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="text-right">
-                      {service.appliedOffer && service.finalPrice !== undefined && Math.abs(service.price - service.finalPrice) > 0.001 && (
-                        <div className="text-xs line-through text-muted-foreground">{service.price}€</div>
-                      )}
-                      <span className="text-2xl font-bold text-primary">
-                        {(service.finalPrice ?? service.price).toFixed(2)}€
-                      </span>
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">{service.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-4">{service.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-            {services.length === 0 && (
-              <div className="md:col-span-2 lg:col-span-3 text-center text-muted-foreground">
-                Cargando servicios...
-              </div>
-            )}
-          </div>
-
-          <div className="text-center mt-12">
-            <Button variant="outline" size="lg" asChild>
-              <Link to={isAuthenticated ? '/app/book' : '/auth'}>
-                Ver todos los servicios
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {showProducts && (
-        <section className="py-24">
-          <div className="container px-4">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-                Productos destacados
-              </h2>
-              <p className="text-muted-foreground max-w-lg mx-auto">
-                Selección profesional para cuidar tu estilo en casa.
-              </p>
-            </div>
-
-            {categoriesEnabled ? (
-              <div className="space-y-10 max-w-5xl mx-auto">
-                {productGroups.map((group) => (
-                  <div key={group.key} className="space-y-4">
-                    <div className="flex flex-wrap items-end justify-between gap-3">
-                      <div>
-                        <h3 className="text-xl font-semibold text-foreground">
-                          {group.category?.name ?? 'Otros productos'}
-                        </h3>
-                        {group.category?.description && (
-                          <p className="text-sm text-muted-foreground">{group.category.description}</p>
-                        )}
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {group.items.length} producto(s)
-                      </span>
-                    </div>
-                    <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 md:gap-6">
-                      {group.items.map((product, index) => (
-                        <div
-                          key={product.id}
-                          className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-auto md:h-full"
-                        >
-                          {renderProductCard(product, index)}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="max-w-5xl mx-auto">
-                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 md:gap-6">
-                  {products.slice(0, 6).map((product, index) => (
-                    <div
-                      key={product.id}
-                      className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-auto md:h-full"
-                    >
-                      {renderProductCard(product, index)}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Barbers Section */}
-      <section className="py-24">
-        <div className="container px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Nuestro equipo
-            </h2>
-            <p className="text-muted-foreground max-w-lg mx-auto">
-              Profesionales apasionados por su oficio, siempre al día con las últimas tendencias.
-            </p>
-          </div>
-
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 max-w-6xl mx-auto">
-            {barbers.map((barber, index) => (
-              <div key={barber.id} className="min-w-[220px] sm:min-w-[260px] md:min-w-0 md:w-auto">
-                <Card
-                  variant="interactive"
-                  className="overflow-hidden animate-slide-up h-full"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  <div className="aspect-square relative overflow-hidden">
-                    <img
-                      src={barber.photo || defaultAvatar}
-                      alt={barber.name}
-                      className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                    />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-4" />
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-foreground">{barber.name}</h3>
-                    <p className="text-sm text-muted-foreground">{barber.specialty}</p>
-                  </CardContent>
-                </Card>
-              </div>
-            ))}
-            {barbers.length === 0 && (
-              <div className="md:col-span-2 lg:col-span-4 text-center text-muted-foreground">
-                Cargando equipo...
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-24 bg-card/50 relative overflow-hidden">
-        <div className="absolute inset-0">
-          <div
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${signImageUrl})`, backgroundPosition: 'top center' }}
-          />
-          <div className="absolute inset-0 bg-card/80" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl" />
-        </div>
-        
-        <div className="container px-4 relative z-10">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
-              ¿Listo para tu<br />
-              <span className="text-gradient">nuevo look?</span>
-            </h2>
-              <p className="text-xl text-muted-foreground mb-10">
-                Reserva tu cita en menos de un minuto y vive la experiencia {settings.branding.name}.
-              </p>
-            <Button variant="hero" size="xl" asChild>
-              <Link to={isAuthenticated ? '/app/book' : '/auth?tab=signup'}>
-                <Calendar className="w-5 h-5 mr-2" />
-                Reservar mi cita
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+      {landingOrder.map((sectionKey) => {
+        if (hiddenSections.has(sectionKey)) return null;
+        if (sectionKey === 'products' && !showProducts) return null;
+        if (sectionKey === 'services') {
+          return <React.Fragment key={sectionKey}>{servicesSection}</React.Fragment>;
+        }
+        if (sectionKey === 'products') {
+          return productsSection ? <React.Fragment key={sectionKey}>{productsSection}</React.Fragment> : null;
+        }
+        if (sectionKey === 'barbers') {
+          return <React.Fragment key={sectionKey}>{barbersSection}</React.Fragment>;
+        }
+        if (sectionKey === 'cta') {
+          return <React.Fragment key={sectionKey}>{ctaSection}</React.Fragment>;
+        }
+        return null;
+      })}
 
       {/* Footer */}
       <footer className="py-12 border-t border-border">

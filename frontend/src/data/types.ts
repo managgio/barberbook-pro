@@ -76,6 +76,10 @@ export interface TenantBootstrap {
       whatsapp?: boolean;
       sms?: boolean;
     } | null;
+    landing?: {
+      order?: string[];
+      hiddenSections?: string[];
+    } | null;
   };
 }
 

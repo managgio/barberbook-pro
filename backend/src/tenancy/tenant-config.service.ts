@@ -87,11 +87,20 @@ export class TenantConfigService {
       brandConfig.notificationPrefs || {},
       locationConfig.notificationPrefs || {},
     );
+    const branding = mergeConfig(
+      brandConfig.branding || {},
+      locationConfig.branding || {},
+    );
+    const landing = mergeConfig(
+      brandConfig.landing || {},
+      locationConfig.landing || {},
+    );
     return {
-      branding: brandConfig.branding || null,
+      branding: Object.keys(branding).length ? branding : null,
       theme: Object.keys(theme).length ? theme : null,
       adminSidebar: Object.keys(adminSidebar).length ? adminSidebar : null,
       notificationPrefs: Object.keys(notificationPrefs).length ? notificationPrefs : null,
+      landing: Object.keys(landing).length ? landing : null,
     };
   }
 }

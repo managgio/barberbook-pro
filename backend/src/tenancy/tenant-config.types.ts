@@ -45,10 +45,30 @@ export type TenantAdminSidebarConfig = {
   hiddenSections?: string[];
 };
 
+export type TenantLandingSectionKey = 'services' | 'products' | 'barbers' | 'cta';
+
+export type TenantLandingConfig = {
+  order?: TenantLandingSectionKey[];
+  hiddenSections?: TenantLandingSectionKey[];
+};
+
 export type TenantNotificationPrefs = {
   email?: boolean;
   whatsapp?: boolean;
   sms?: boolean;
+};
+
+export type TenantBrandingConfig = {
+  name?: string;
+  shortName?: string;
+  logoUrl?: string;
+  logoFileId?: string;
+  heroBackgroundUrl?: string;
+  heroBackgroundFileId?: string;
+  heroImageUrl?: string;
+  heroImageFileId?: string;
+  signImageUrl?: string;
+  signImageFileId?: string;
 };
 
 export type BrandConfigData = {
@@ -59,25 +79,17 @@ export type BrandConfigData = {
   firebaseAdmin?: TenantFirebaseAdminConfig;
   ai?: TenantAiConfig;
   adminSidebar?: TenantAdminSidebarConfig;
+  landing?: TenantLandingConfig;
   notificationPrefs?: TenantNotificationPrefs;
-  branding?: {
-    name?: string;
-    shortName?: string;
-    logoUrl?: string;
-    logoFileId?: string;
-    heroBackgroundUrl?: string;
-    heroBackgroundFileId?: string;
-    heroImageUrl?: string;
-    heroImageFileId?: string;
-    signImageUrl?: string;
-    signImageFileId?: string;
-  };
+  branding?: TenantBrandingConfig;
   theme?: TenantThemeConfig;
 };
 
 export type LocationConfigData = {
   imagekit?: Pick<TenantImageKitConfig, 'folder'>;
   adminSidebar?: TenantAdminSidebarConfig;
+  landing?: TenantLandingConfig;
+  branding?: Partial<TenantBrandingConfig>;
   theme?: TenantThemeConfig;
   notificationPrefs?: TenantNotificationPrefs;
 };

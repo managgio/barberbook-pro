@@ -31,7 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Building2, Image as ImageIcon, Loader2, MapPin, Plus, RefreshCcw, Save, Settings2, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, GripVertical, Image as ImageIcon, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
@@ -115,6 +115,8 @@ const colorPickerValue = (value?: string) => {
 
 const BRAND_FILE_ID_FIELDS = ['logoFileId', 'heroBackgroundFileId', 'heroImageFileId', 'signImageFileId'] as const;
 type BrandFileIdField = typeof BRAND_FILE_ID_FIELDS[number];
+const LOCATION_LANDING_FILE_ID_FIELDS = ['heroBackgroundFileId', 'heroImageFileId', 'signImageFileId'] as const;
+type LocationLandingFileIdField = typeof LOCATION_LANDING_FILE_ID_FIELDS[number];
 
 type BrandAssetKey = 'logo' | 'heroBackground' | 'heroImage' | 'signImage';
 
@@ -166,6 +168,69 @@ const BRAND_ASSET_META: Record<BrandAssetKey, {
 
 const ADMIN_SECTION_SET = new Set(ADMIN_SECTIONS.map((section) => section.key));
 
+type LandingSectionKey = 'services' | 'products' | 'barbers' | 'cta';
+
+const LANDING_SECTION_ORDER: LandingSectionKey[] = ['services', 'products', 'barbers', 'cta'];
+
+const LANDING_SECTION_META: Record<LandingSectionKey, { label: string; description: string; icon: React.ElementType }> = {
+  services: {
+    label: 'Servicios',
+    description: 'Catálogo principal con precios y ofertas.',
+    icon: Scissors,
+  },
+  products: {
+    label: 'Productos',
+    description: 'Catálogo de productos destacados en la landing.',
+    icon: Package,
+  },
+  barbers: {
+    label: 'Equipo',
+    description: 'Presentación de barberos y especialistas.',
+    icon: Users,
+  },
+  cta: {
+    label: 'CTA final',
+    description: 'Bloque de llamada a la acción para reservar.',
+    icon: Sparkles,
+  },
+};
+
+const normalizeLandingOrder = (order?: string[]): LandingSectionKey[] => {
+  if (!Array.isArray(order)) return [];
+  const seen = new Set<string>();
+  return order.filter((key): key is LandingSectionKey => {
+    if (!LANDING_SECTION_ORDER.includes(key as LandingSectionKey)) return false;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const buildLandingItems = (config: Record<string, any>) => {
+  const landing = config?.landing || {};
+  const hidden = new Set<string>((landing.hiddenSections || []) as string[]);
+  const configuredOrder = normalizeLandingOrder(landing.order);
+  const order = [...configuredOrder, ...LANDING_SECTION_ORDER.filter((key) => !configuredOrder.includes(key))];
+  return order.map((key) => ({ key, enabled: !hidden.has(key) }));
+};
+
+const buildLandingConfigValue = (items: Array<{ key: LandingSectionKey; enabled: boolean }>) => ({
+  order: items.map((item) => item.key),
+  hiddenSections: items.filter((item) => !item.enabled).map((item) => item.key),
+});
+
+const reorderLandingItems = (
+  items: Array<{ key: LandingSectionKey; enabled: boolean }>,
+  fromIndex: number,
+  toIndex: number,
+) => {
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  if (!moved) return items;
+  next.splice(toIndex, 0, moved);
+  return next;
+};
+
 const getAdminSidebarHiddenSections = (config: Record<string, any>): AdminSectionKey[] => {
   const hidden = config?.adminSidebar?.hiddenSections;
   if (!Array.isArray(hidden)) return [];
@@ -214,10 +279,15 @@ const PlatformBrands: React.FC = () => {
     heroImageFileId: null,
     signImageFileId: null,
   });
+  const [persistedLocationFileIds, setPersistedLocationFileIds] = useState<Record<LocationLandingFileIdField, string | null>>({
+    heroBackgroundFileId: null,
+    heroImageFileId: null,
+    signImageFileId: null,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isAdminSaving, setIsAdminSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'datos' | 'locales' | 'admins' | 'sidebar' | 'config' | 'legal'>('datos');
+  const [activeTab, setActiveTab] = useState<'datos' | 'locales' | 'admins' | 'sidebar' | 'landing' | 'config' | 'legal'>('datos');
   const [createBrandOpen, setCreateBrandOpen] = useState(false);
   const [createLocationOpen, setCreateLocationOpen] = useState(false);
   const [editLocationOpen, setEditLocationOpen] = useState(false);
@@ -225,6 +295,9 @@ const PlatformBrands: React.FC = () => {
   const [newBrandForm, setNewBrandForm] = useState({ name: '', subdomain: '', customDomain: '', isActive: true });
   const [newLocationForm, setNewLocationForm] = useState({ name: '', slug: '', isActive: true });
   const [editLocationForm, setEditLocationForm] = useState({ name: '', slug: '', isActive: true });
+  const [draggingLandingKey, setDraggingLandingKey] = useState<LandingSectionKey | null>(null);
+  const [dragOverLandingIndex, setDragOverLandingIndex] = useState<number | null>(null);
+  const [draggingLandingScope, setDraggingLandingScope] = useState<'brand' | 'location' | null>(null);
 
   const selectedBrand = useMemo(
     () => brands.find((brand) => brand.id === selectedBrandId) || null,
@@ -325,8 +398,18 @@ const PlatformBrands: React.FC = () => {
           };
         }
         setLocationConfig(normalizedLocationCfg);
+        setPersistedLocationFileIds({
+          heroBackgroundFileId: locationCfg?.branding?.heroBackgroundFileId || null,
+          heroImageFileId: locationCfg?.branding?.heroImageFileId || null,
+          signImageFileId: locationCfg?.branding?.signImageFileId || null,
+        });
       } else {
         setLocationConfig({});
+        setPersistedLocationFileIds({
+          heroBackgroundFileId: null,
+          heroImageFileId: null,
+          signImageFileId: null,
+        });
       }
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo cargar la marca.', variant: 'destructive' });
@@ -384,6 +467,11 @@ const PlatformBrands: React.FC = () => {
         };
       }
       setLocationConfig(normalizedConfig);
+      setPersistedLocationFileIds({
+        heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
+        heroImageFileId: config?.branding?.heroImageFileId || null,
+        signImageFileId: config?.branding?.signImageFileId || null,
+      });
     };
     loadLocationConfig();
   }, [selectedLocationId, selectedBrand, user?.id]);
@@ -398,12 +486,27 @@ const PlatformBrands: React.FC = () => {
 
   const isLocationSidebarOverride = Array.isArray(locationConfig?.adminSidebar?.hiddenSections);
   const locationSidebarConfig = isLocationSidebarOverride ? locationConfig : brandConfig;
+  const brandStockVisible = isAdminSectionVisible(brandConfig, 'stock');
+  const locationStockVisible = isAdminSectionVisible(locationSidebarConfig, 'stock');
+  const brandLandingItems = useMemo(
+    () => buildLandingItems(brandConfig).filter((item) => brandStockVisible || item.key !== 'products'),
+    [brandConfig, brandStockVisible],
+  );
+  const isLocationLandingOverride = Boolean(locationConfig?.landing);
+  const locationLandingItems = useMemo(
+    () =>
+      buildLandingItems(isLocationLandingOverride ? locationConfig : brandConfig).filter(
+        (item) => locationStockVisible || item.key !== 'products',
+      ),
+    [locationConfig, brandConfig, isLocationLandingOverride, locationStockVisible],
+  );
   const isLocationNotificationOverride = Boolean(locationConfig?.notificationPrefs);
   const brandNotificationPrefs = {
     email: brandConfig?.notificationPrefs?.email !== false,
     whatsapp: brandConfig?.notificationPrefs?.whatsapp !== false,
     sms: brandConfig?.notificationPrefs?.sms !== false,
   };
+  const isLocationBrandingOverride = Boolean(locationConfig?.branding);
   const locationNotificationPrefsSource = isLocationNotificationOverride
     ? locationConfig.notificationPrefs
     : brandConfig.notificationPrefs;
@@ -451,6 +554,108 @@ const PlatformBrands: React.FC = () => {
     setLocationConfig((prev) => {
       if (!prev.notificationPrefs) return prev;
       const { notificationPrefs, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const updateLandingConfig = (
+    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    items: Array<{ key: LandingSectionKey; enabled: boolean }>,
+  ) => {
+    setConfig((prev) => updateNestedValue(prev, ['landing'], buildLandingConfigValue(items)));
+  };
+
+  const handleLandingDragStart = (
+    event: React.DragEvent<HTMLDivElement>,
+    index: number,
+    scope: 'brand' | 'location',
+  ) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+    const key = event.currentTarget.dataset.sectionKey as LandingSectionKey | undefined;
+    if (key) {
+      setDraggingLandingKey(key);
+    }
+    setDraggingLandingScope(scope);
+    setDragOverLandingIndex(index);
+  };
+
+  const handleLandingDrop = (
+    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    items: Array<{ key: LandingSectionKey; enabled: boolean }>,
+    event: React.DragEvent<HTMLDivElement>,
+    index: number,
+  ) => {
+    event.preventDefault();
+    const fromIndex = Number(event.dataTransfer.getData('text/plain'));
+    if (Number.isNaN(fromIndex) || fromIndex === index) return;
+    updateLandingConfig(setConfig, reorderLandingItems(items, fromIndex, index));
+    setDraggingLandingKey(null);
+    setDragOverLandingIndex(null);
+    setDraggingLandingScope(null);
+  };
+
+  const handleLandingDragOver = (
+    event: React.DragEvent<HTMLDivElement>,
+    index: number,
+    scope: 'brand' | 'location',
+  ) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverLandingIndex(index);
+    if (!draggingLandingScope) {
+      setDraggingLandingScope(scope);
+    }
+  };
+
+  const handleLandingToggle = (
+    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    items: Array<{ key: LandingSectionKey; enabled: boolean }>,
+    key: LandingSectionKey,
+    enabled: boolean,
+  ) => {
+    updateLandingConfig(
+      setConfig,
+      items.map((item) => (item.key === key ? { ...item, enabled } : item)),
+    );
+  };
+
+  const handleLandingDragEnd = () => {
+    setDraggingLandingKey(null);
+    setDragOverLandingIndex(null);
+    setDraggingLandingScope(null);
+  };
+
+  const handleLocationLandingOverride = (checked: boolean) => {
+    if (checked) {
+      updateLandingConfig(setLocationConfig, brandLandingItems);
+      return;
+    }
+    setLocationConfig((prev) => {
+      if (!prev.landing) return prev;
+      const { landing, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const handleLocationLandingImagesOverride = (checked: boolean) => {
+    if (checked) {
+      const baseBranding = brandConfig?.branding || {};
+      setLocationConfig((prev) =>
+        updateNestedValue(prev, ['branding'], {
+          heroBackgroundUrl: baseBranding.heroBackgroundUrl || '',
+          heroBackgroundFileId: baseBranding.heroBackgroundFileId || '',
+          heroImageUrl: baseBranding.heroImageUrl || '',
+          heroImageFileId: baseBranding.heroImageFileId || '',
+          signImageUrl: baseBranding.signImageUrl || '',
+          signImageFileId: baseBranding.signImageFileId || '',
+        }),
+      );
+      return;
+    }
+    setLocationConfig((prev) => {
+      if (!prev.branding) return prev;
+      const { branding, ...rest } = prev;
       return rest;
     });
   };
@@ -537,6 +742,13 @@ const PlatformBrands: React.FC = () => {
         }),
       );
       setPersistedBrandFileIds(currentFileIds);
+      if (selectedLocationId) {
+        setPersistedLocationFileIds({
+          heroBackgroundFileId: locationConfig?.branding?.heroBackgroundFileId || null,
+          heroImageFileId: locationConfig?.branding?.heroImageFileId || null,
+          signImageFileId: locationConfig?.branding?.signImageFileId || null,
+        });
+      }
       setPersistedBrandConfig(JSON.parse(JSON.stringify(sanitizedBrandConfig)));
       setBrandConfig(sanitizedBrandConfig);
       setLocationConfig(sanitizedLocationConfig);
@@ -704,6 +916,16 @@ const PlatformBrands: React.FC = () => {
     });
   };
 
+  const updateLocationBrandingFields = (updates: Record<string, string>) => {
+    setLocationConfig((prev) => {
+      let next = { ...prev };
+      Object.entries(updates).forEach(([field, value]) => {
+        next = updateNestedValue(next, ['branding', field], value);
+      });
+      return next;
+    });
+  };
+
   const handleBrandAssetUpload = async (file: File | null, assetKey: BrandAssetKey) => {
     if (!file || !user?.id || !selectedBrand) return;
     const asset = BRAND_ASSET_META[assetKey];
@@ -742,6 +964,51 @@ const PlatformBrands: React.FC = () => {
   const handleRemoveBrandAsset = (assetKey: BrandAssetKey) => {
     const asset = BRAND_ASSET_META[assetKey];
     updateBrandingFields({
+      [asset.urlField]: '',
+      [asset.fileIdField]: '',
+    });
+    toast({ title: 'Imagen eliminada', description: 'Guarda los cambios para aplicar.' });
+  };
+
+  const handleLocationAssetUpload = async (file: File | null, assetKey: BrandAssetKey) => {
+    if (!file || !user?.id || !selectedBrand || !selectedLocationId) return;
+    const asset = BRAND_ASSET_META[assetKey];
+    const previousFileId = (locationConfig?.branding?.[asset.fileIdField] as string | undefined) || '';
+    const persistedFileId = persistedLocationFileIds[asset.fileIdField as LocationLandingFileIdField] || null;
+    setUploadingAsset(assetKey);
+    try {
+      const fileName = `location-${assetKey}-${selectedLocationId}-${Date.now()}`;
+      const folder = locationConfig?.imagekit?.folder || asset.folder;
+      const { url, fileId } = await uploadToImageKit(file, fileName, folder, {
+        subdomainOverride: selectedBrand.subdomain,
+      });
+      updateLocationBrandingFields({
+        [asset.urlField]: url,
+        [asset.fileIdField]: fileId,
+      });
+      if (previousFileId && previousFileId !== fileId && previousFileId !== persistedFileId) {
+        try {
+          await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
+        } catch (cleanupError) {
+          console.error(cleanupError);
+          toast({
+            title: 'Aviso',
+            description: 'No se pudo borrar la imagen anterior en storage.',
+            variant: 'destructive',
+          });
+        }
+      }
+      toast({ title: 'Imagen subida', description: 'Guarda los cambios para aplicarla.' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo subir la imagen.', variant: 'destructive' });
+    } finally {
+      setUploadingAsset(null);
+    }
+  };
+
+  const handleRemoveLocationAsset = (assetKey: BrandAssetKey) => {
+    const asset = BRAND_ASSET_META[assetKey];
+    updateLocationBrandingFields({
       [asset.urlField]: '',
       [asset.fileIdField]: '',
     });
@@ -908,6 +1175,73 @@ const PlatformBrands: React.FC = () => {
     );
   };
 
+  const renderLocationAssetInput = (
+    assetKey: BrandAssetKey,
+    options?: { disabled?: boolean; inheritedLabel?: string },
+  ) => {
+    const asset = BRAND_ASSET_META[assetKey];
+    const isDisabled = Boolean(options?.disabled);
+    const locationUrlValue = (locationConfig?.branding?.[asset.urlField] as string | undefined) || '';
+    const brandUrlValue = (brandConfig?.branding?.[asset.urlField] as string | undefined) || '';
+    const urlValue = isDisabled ? brandUrlValue : locationUrlValue;
+    const isUploading = uploadingAsset === assetKey;
+    const isAnyUpload = Boolean(uploadingAsset);
+
+    return (
+      <div key={assetKey} className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <Label>{asset.label}</Label>
+          {isDisabled && options?.inheritedLabel && (
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              {options.inheritedLabel}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div
+            className={`${asset.previewClass} rounded-xl border border-border/60 bg-muted/40 flex items-center justify-center overflow-hidden`}
+          >
+            {urlValue ? (
+              <img
+                src={urlValue}
+                alt={asset.label}
+                className={`h-full w-full ${asset.imageClass}`}
+              />
+            ) : (
+              <ImageIcon className="h-6 w-6 text-muted-foreground" />
+            )}
+          </div>
+          <div className="flex-1 space-y-2">
+            <Input
+              type="file"
+              accept="image/*"
+              disabled={isAnyUpload || isDisabled}
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                event.target.value = '';
+                handleLocationAssetUpload(file, assetKey);
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRemoveLocationAsset(assetKey)}
+                disabled={isAnyUpload || isDisabled}
+              >
+                Quitar imagen
+              </Button>
+              {isUploading && (
+                <span className="text-xs text-muted-foreground self-center">Subiendo...</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">{asset.description}</p>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return <div className="text-muted-foreground">Cargando marcas...</div>;
   }
@@ -984,11 +1318,12 @@ const PlatformBrands: React.FC = () => {
           <CardContent className="flex-1 overflow-y-auto">
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-6">
               <div className="sticky top-0 z-10 -mx-6 border-b border-border/60 bg-card px-6 py-3 shadow-[0_10px_24px_-20px_hsl(var(--background)/0.9)]">
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-7">
                   <TabsTrigger value="datos">Datos</TabsTrigger>
                   <TabsTrigger value="locales">Locales</TabsTrigger>
                   <TabsTrigger value="admins">Admins</TabsTrigger>
                   <TabsTrigger value="sidebar">Sidebar</TabsTrigger>
+                  <TabsTrigger value="landing">Landing</TabsTrigger>
                   <TabsTrigger value="config">Config</TabsTrigger>
                   <TabsTrigger value="legal">Legal</TabsTrigger>
                 </TabsList>
@@ -1342,6 +1677,217 @@ const PlatformBrands: React.FC = () => {
                 </div>
               </TabsContent>
 
+              <TabsContent value="landing" className="space-y-6">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <LayoutTemplate className="h-4 w-4 text-primary" />
+                  Secciones de la landing
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <Card className="border border-border/60 bg-card/80">
+                    <CardHeader>
+                      <CardTitle className="text-base">Por marca</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-xs text-muted-foreground">
+                        Organiza el orden general. El hero siempre se muestra primero.
+                      </p>
+                      <div className="rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                        Hero (cabecera principal) · fijo en la primera posición
+                      </div>
+                      <div className="space-y-3">
+                        {brandLandingItems.map((item, index) => {
+                          const meta = LANDING_SECTION_META[item.key];
+                          const Icon = meta.icon;
+                          const isDragging = draggingLandingScope === 'brand' && draggingLandingKey === item.key;
+                          const isDragOver = draggingLandingScope === 'brand' && dragOverLandingIndex === index && !isDragging;
+                          return (
+                            <div
+                              key={item.key}
+                              draggable
+                              onDragStart={(event) => handleLandingDragStart(event, index, 'brand')}
+                              onDragOver={(event) => handleLandingDragOver(event, index, 'brand')}
+                              onDrop={(event) => handleLandingDrop(setBrandConfig, brandLandingItems, event, index)}
+                              onDragEnd={handleLandingDragEnd}
+                              data-section-key={item.key}
+                              className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 select-none cursor-grab active:cursor-grabbing ${
+                                isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''
+                              } ${
+                                isDragOver
+                                  ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
+                                  : ''
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                                <div className="flex items-start gap-3">
+                                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                    <Icon className="h-4 w-4" />
+                                  </div>
+                                  <div>
+                                    <div className="text-sm font-semibold text-foreground">{meta.label}</div>
+                                    <p className="text-xs text-muted-foreground">{meta.description}</p>
+                                  </div>
+                                </div>
+                              </div>
+                              <Switch
+                                checked={item.enabled}
+                                onCheckedChange={(checked) =>
+                                  handleLandingToggle(setBrandConfig, brandLandingItems, item.key, checked)
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="pt-4 border-t border-border/60 space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
+                        <div className="grid gap-4">
+                          {renderBrandAssetInput('heroBackground')}
+                          {renderBrandAssetInput('heroImage')}
+                          {renderBrandAssetInput('signImage')}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-border/60 bg-card/80">
+                    <CardHeader>
+                      <CardTitle className="text-base">Por local</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {selectedBrand.locations?.length ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label>Local a configurar</Label>
+                            <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona local" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {selectedBrand.locations?.map((location: any) => (
+                                  <SelectItem key={location.id} value={location.id}>
+                                    {location.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Switch
+                              checked={isLocationLandingOverride}
+                              onCheckedChange={handleLocationLandingOverride}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              Personalizar landing para este local
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Si está desactivado, el local hereda el orden y visibilidad de la marca.
+                          </p>
+                          <div
+                            className={`rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm ${
+                              isLocationLandingOverride ? 'text-muted-foreground' : 'text-muted-foreground/70'
+                            }`}
+                          >
+                            Hero (cabecera principal) · fijo en la primera posición
+                          </div>
+                          <div className="space-y-3">
+                            {locationLandingItems.map((item, index) => {
+                              const meta = LANDING_SECTION_META[item.key];
+                              const Icon = meta.icon;
+                              const isDisabled = !isLocationLandingOverride;
+                              const isDragging = draggingLandingScope === 'location' && draggingLandingKey === item.key;
+                              const isDragOver =
+                                draggingLandingScope === 'location' && dragOverLandingIndex === index && !isDragging;
+                              return (
+                                <div
+                                  key={item.key}
+                                  draggable={!isDisabled}
+                                  onDragStart={(event) => {
+                                    if (!isDisabled) handleLandingDragStart(event, index, 'location');
+                                  }}
+                                  onDragOver={(event) => {
+                                    if (!isDisabled) handleLandingDragOver(event, index, 'location');
+                                  }}
+                                  onDrop={(event) => {
+                                    if (!isDisabled) {
+                                      handleLandingDrop(setLocationConfig, locationLandingItems, event, index);
+                                    }
+                                  }}
+                                  onDragEnd={handleLandingDragEnd}
+                                  data-section-key={item.key}
+                                  className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 ${
+                                    isDisabled ? 'opacity-60 cursor-not-allowed' : 'select-none cursor-grab active:cursor-grabbing'
+                                  } ${!isDisabled && isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''} ${
+                                    !isDisabled && isDragOver
+                                      ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
+                                      : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                                    <div className="flex items-start gap-3">
+                                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                        <Icon className="h-4 w-4" />
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-semibold text-foreground">{meta.label}</div>
+                                        <p className="text-xs text-muted-foreground">{meta.description}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <Switch
+                                    checked={item.enabled}
+                                    disabled={isDisabled}
+                                    onCheckedChange={(checked) =>
+                                      handleLandingToggle(setLocationConfig, locationLandingItems, item.key, checked)
+                                    }
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="pt-4 border-t border-border/60 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">Personalizar</span>
+                                <Switch
+                                  checked={isLocationBrandingOverride}
+                                  onCheckedChange={handleLocationLandingImagesOverride}
+                                />
+                              </div>
+                            </div>
+                            <div className={`grid gap-4 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
+                              {renderLocationAssetInput('heroBackground', {
+                                disabled: !isLocationBrandingOverride,
+                                inheritedLabel: 'Hereda marca',
+                              })}
+                              {renderLocationAssetInput('heroImage', {
+                                disabled: !isLocationBrandingOverride,
+                                inheritedLabel: 'Hereda marca',
+                              })}
+                              {renderLocationAssetInput('signImage', {
+                                disabled: !isLocationBrandingOverride,
+                                inheritedLabel: 'Hereda marca',
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Selecciona una marca con locales activos.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveBrand} disabled={isSaving}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Guardar cambios
+                  </Button>
+                </div>
+              </TabsContent>
+
               <TabsContent value="config" className="space-y-6">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Settings2 className="h-4 w-4 text-primary" />
@@ -1451,15 +1997,6 @@ const PlatformBrands: React.FC = () => {
                               }
                             />
                           </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
-                        <div className="grid gap-4">
-                          {renderBrandAssetInput('heroBackground')}
-                          {renderBrandAssetInput('heroImage')}
-                          {renderBrandAssetInput('signImage')}
                         </div>
                       </div>
 
