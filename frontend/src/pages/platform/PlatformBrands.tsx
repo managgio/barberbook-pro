@@ -31,7 +31,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Building2, GripVertical, Image as ImageIcon, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Building2, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
@@ -1516,7 +1517,25 @@ const PlatformBrands: React.FC = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        <Label>Email del usuario</Label>
+                        <div className="flex items-center gap-2">
+                          <Label>Email del usuario</Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground transition-colors hover:text-foreground"
+                                  aria-label="El correo debe estar registrado"
+                                >
+                                  <Info className="h-4 w-4" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="text-xs">
+                                Puedes asignarlo aunque no esté registrado: se activará cuando se registre.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
                         <Input
                           value={adminForm.email}
                           onChange={(e) => setAdminForm((prev) => ({ ...prev, email: e.target.value }))}
@@ -1679,75 +1698,77 @@ const PlatformBrands: React.FC = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="border border-border/60 bg-card/80">
-                    <CardHeader>
-                      <CardTitle className="text-base">Por local</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {selectedBrand.locations?.length ? (
-                        <>
-                          <div className="space-y-2">
-                            <Label>Local a configurar</Label>
-                            <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecciona local" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {selectedBrand.locations?.map((location: any) => (
-                                  <SelectItem key={location.id} value={location.id}>
-                                    {location.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <Switch
-                              checked={isLocationSidebarOverride}
-                              onCheckedChange={handleLocationSidebarOverride}
-                            />
-                            <span className="text-sm text-muted-foreground">
-                              Personalizar visibilidad para este local
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Si está desactivado, el local hereda la configuración de la marca.
-                          </p>
-                          <div className="space-y-3">
-                            {ADMIN_SECTIONS.map((section) => {
-                              const isRequired = isAdminSectionRequired(section.key);
-                              const isVisible = isAdminSectionVisible(locationSidebarConfig, section.key);
-                              return (
-                                <div
-                                  key={section.key}
-                                  className="border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                  <div>
-                                    <div className="text-sm font-semibold text-foreground">{section.label}</div>
-                                    <p className="text-xs text-muted-foreground">{section.description}</p>
+                  {hasMultipleLocations && (
+                    <Card className="border border-border/60 bg-card/80">
+                      <CardHeader>
+                        <CardTitle className="text-base">Por local</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {selectedBrand.locations?.length ? (
+                          <>
+                            <div className="space-y-2">
+                              <Label>Local a configurar</Label>
+                              <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona local" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {selectedBrand.locations?.map((location: any) => (
+                                    <SelectItem key={location.id} value={location.id}>
+                                      {location.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Switch
+                                checked={isLocationSidebarOverride}
+                                onCheckedChange={handleLocationSidebarOverride}
+                              />
+                              <span className="text-sm text-muted-foreground">
+                                Personalizar visibilidad para este local
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Si está desactivado, el local hereda la configuración de la marca.
+                            </p>
+                            <div className="space-y-3">
+                              {ADMIN_SECTIONS.map((section) => {
+                                const isRequired = isAdminSectionRequired(section.key);
+                                const isVisible = isAdminSectionVisible(locationSidebarConfig, section.key);
+                                return (
+                                  <div
+                                    key={section.key}
+                                    className="border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                                  >
+                                    <div>
+                                      <div className="text-sm font-semibold text-foreground">{section.label}</div>
+                                      <p className="text-xs text-muted-foreground">{section.description}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {isRequired && (
+                                        <span className="text-[10px] uppercase tracking-widest text-primary">Obligatorio</span>
+                                      )}
+                                      <Switch
+                                        checked={isVisible}
+                                        disabled={!isLocationSidebarOverride || isRequired}
+                                        onCheckedChange={(checked) =>
+                                          updateSidebarVisibility(setLocationConfig, section.key, checked)
+                                        }
+                                      />
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    {isRequired && (
-                                      <span className="text-[10px] uppercase tracking-widest text-primary">Obligatorio</span>
-                                    )}
-                                    <Switch
-                                      checked={isVisible}
-                                      disabled={!isLocationSidebarOverride || isRequired}
-                                      onCheckedChange={(checked) =>
-                                        updateSidebarVisibility(setLocationConfig, section.key, checked)
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Crea al menos un local para configurar su menú.</p>
-                      )}
-                    </CardContent>
-                  </Card>
+                                );
+                              })}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Crea al menos un local para configurar su menú.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
                 <div className="flex justify-end">
                   <Button onClick={handleSaveBrand} disabled={isSaving}>
@@ -1762,7 +1783,7 @@ const PlatformBrands: React.FC = () => {
                   <LayoutTemplate className="h-4 w-4 text-primary" />
                   Secciones de la landing
                 </div>
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className={`grid gap-6 ${hasMultipleLocations ? 'lg:grid-cols-2' : ''}`}>
                   <Card className="border border-border/60 bg-card/80">
                     <CardHeader>
                       <CardTitle className="text-base">Por marca</CardTitle>
@@ -1857,164 +1878,166 @@ const PlatformBrands: React.FC = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="border border-border/60 bg-card/80">
-                    <CardHeader>
-                      <CardTitle className="text-base">Por local</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {selectedBrand.locations?.length ? (
-                        <>
-                          <div className="space-y-2">
-                            <Label>Local a configurar</Label>
-                            <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecciona local" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {selectedBrand.locations?.map((location: any) => (
-                                  <SelectItem key={location.id} value={location.id}>
-                                    {location.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <Switch
-                              checked={isLocationLandingOverride}
-                              onCheckedChange={handleLocationLandingOverride}
-                            />
-                            <span className="text-sm text-muted-foreground">
-                              Personalizar landing para este local
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Si está desactivado, el local hereda el orden y visibilidad de la marca.
-                          </p>
-                          <div
-                            className={`rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm ${
-                              isLocationLandingOverride ? 'text-muted-foreground' : 'text-muted-foreground/70'
-                            }`}
-                          >
-                            Hero (cabecera principal) · fijo en la primera posición
-                          </div>
-                          <div className="space-y-3">
-                            {locationLandingItems.map((item, index) => {
-                              const meta = LANDING_SECTION_META[item.key];
-                              const Icon = meta.icon;
-                              const isDisabled = !isLocationLandingOverride;
-                              const isDragging = draggingLandingScope === 'location' && draggingLandingKey === item.key;
-                              const isDragOver =
-                                draggingLandingScope === 'location' && dragOverLandingIndex === index && !isDragging;
-                              return (
-                                <div
-                                  key={item.key}
-                                  draggable={!isDisabled}
-                                  onDragStart={(event) => {
-                                    if (!isDisabled) handleLandingDragStart(event, index, 'location');
-                                  }}
-                                  onDragOver={(event) => {
-                                    if (!isDisabled) handleLandingDragOver(event, index, 'location');
-                                  }}
-                                  onDrop={(event) => {
-                                    if (!isDisabled) {
-                                      handleLandingDrop(setLocationConfig, locationLandingItems, event, index);
-                                    }
-                                  }}
-                                  onDragEnd={handleLandingDragEnd}
-                                  data-section-key={item.key}
-                                  className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 ${
-                                    isDisabled ? 'opacity-60 cursor-not-allowed' : 'select-none cursor-grab active:cursor-grabbing'
-                                  } ${!isDisabled && isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''} ${
-                                    !isDisabled && isDragOver
-                                      ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
-                                      : ''
-                                  }`}
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                  {hasMultipleLocations && (
+                    <Card className="border border-border/60 bg-card/80">
+                      <CardHeader>
+                        <CardTitle className="text-base">Por local</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {selectedBrand.locations?.length ? (
+                          <>
+                            <div className="space-y-2">
+                              <Label>Local a configurar</Label>
+                              <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona local" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {selectedBrand.locations?.map((location: any) => (
+                                    <SelectItem key={location.id} value={location.id}>
+                                      {location.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Switch
+                                checked={isLocationLandingOverride}
+                                onCheckedChange={handleLocationLandingOverride}
+                              />
+                              <span className="text-sm text-muted-foreground">
+                                Personalizar landing para este local
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Si está desactivado, el local hereda el orden y visibilidad de la marca.
+                            </p>
+                            <div
+                              className={`rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm ${
+                                isLocationLandingOverride ? 'text-muted-foreground' : 'text-muted-foreground/70'
+                              }`}
+                            >
+                              Hero (cabecera principal) · fijo en la primera posición
+                            </div>
+                            <div className="space-y-3">
+                              {locationLandingItems.map((item, index) => {
+                                const meta = LANDING_SECTION_META[item.key];
+                                const Icon = meta.icon;
+                                const isDisabled = !isLocationLandingOverride;
+                                const isDragging = draggingLandingScope === 'location' && draggingLandingKey === item.key;
+                                const isDragOver =
+                                  draggingLandingScope === 'location' && dragOverLandingIndex === index && !isDragging;
+                                return (
+                                  <div
+                                    key={item.key}
+                                    draggable={!isDisabled}
+                                    onDragStart={(event) => {
+                                      if (!isDisabled) handleLandingDragStart(event, index, 'location');
+                                    }}
+                                    onDragOver={(event) => {
+                                      if (!isDisabled) handleLandingDragOver(event, index, 'location');
+                                    }}
+                                    onDrop={(event) => {
+                                      if (!isDisabled) {
+                                        handleLandingDrop(setLocationConfig, locationLandingItems, event, index);
+                                      }
+                                    }}
+                                    onDragEnd={handleLandingDragEnd}
+                                    data-section-key={item.key}
+                                    className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 ${
+                                      isDisabled ? 'opacity-60 cursor-not-allowed' : 'select-none cursor-grab active:cursor-grabbing'
+                                    } ${!isDisabled && isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''} ${
+                                      !isDisabled && isDragOver
+                                        ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
+                                        : ''
+                                    }`}
+                                  >
                                     <div className="flex items-start gap-3">
-                                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                                        <Icon className="h-4 w-4" />
-                                      </div>
-                                      <div>
-                                        <div className="text-sm font-semibold text-foreground">{meta.label}</div>
-                                        <p className="text-xs text-muted-foreground">{meta.description}</p>
+                                      <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                                      <div className="flex items-start gap-3">
+                                        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                          <Icon className="h-4 w-4" />
+                                        </div>
+                                        <div>
+                                          <div className="text-sm font-semibold text-foreground">{meta.label}</div>
+                                          <p className="text-xs text-muted-foreground">{meta.description}</p>
+                                        </div>
                                       </div>
                                     </div>
+                                    <Switch
+                                      checked={item.enabled}
+                                      disabled={isDisabled}
+                                      onCheckedChange={(checked) =>
+                                        handleLandingToggle(setLocationConfig, locationLandingItems, item.key, checked)
+                                      }
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="pt-4 border-t border-border/60 space-y-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs uppercase tracking-widest text-muted-foreground">Hero principal</p>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-muted-foreground">Personalizar</span>
+                                  <Switch
+                                    checked={isLocationBrandingOverride}
+                                    onCheckedChange={handleLocationLandingImagesOverride}
+                                  />
+                                </div>
+                              </div>
+                              <div className={`grid gap-3 md:grid-cols-2 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
+                                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                  <div>
+                                    <div className="text-sm font-semibold text-foreground">Mostrar imagen principal</div>
+                                    <p className="text-xs text-muted-foreground">Hereda o sobrescribe el hero.</p>
                                   </div>
                                   <Switch
-                                    checked={item.enabled}
-                                    disabled={isDisabled}
+                                    checked={locationHeroImageEnabled}
+                                    disabled={!isLocationBrandingOverride}
+                                    onCheckedChange={(checked) => updateLocationBrandingFields({ heroImageEnabled: checked })}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                  <div>
+                                    <div className="text-sm font-semibold text-foreground">Opacidad sobre el fondo</div>
+                                    <p className="text-xs text-muted-foreground">Legibilidad en el hero.</p>
+                                  </div>
+                                  <Switch
+                                    checked={locationHeroBackgroundDimmed}
+                                    disabled={!isLocationBrandingOverride}
                                     onCheckedChange={(checked) =>
-                                      handleLandingToggle(setLocationConfig, locationLandingItems, item.key, checked)
+                                      updateLocationBrandingFields({ heroBackgroundDimmed: checked })
                                     }
                                   />
                                 </div>
-                              );
-                            })}
-                          </div>
-                          <div className="pt-4 border-t border-border/60 space-y-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-xs uppercase tracking-widest text-muted-foreground">Hero principal</p>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">Personalizar</span>
-                                <Switch
-                                  checked={isLocationBrandingOverride}
-                                  onCheckedChange={handleLocationLandingImagesOverride}
-                                />
                               </div>
-                            </div>
-                            <div className={`grid gap-3 md:grid-cols-2 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
-                              <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                                <div>
-                                  <div className="text-sm font-semibold text-foreground">Mostrar imagen principal</div>
-                                  <p className="text-xs text-muted-foreground">Hereda o sobrescribe el hero.</p>
+                              <div className="space-y-3">
+                                <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
+                                <div className={`grid gap-4 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
+                                  {renderLocationAssetInput('heroBackground', {
+                                    disabled: !isLocationBrandingOverride,
+                                    inheritedLabel: 'Hereda marca',
+                                  })}
+                                  {renderLocationAssetInput('heroImage', {
+                                    disabled: !isLocationBrandingOverride,
+                                    inheritedLabel: 'Hereda marca',
+                                  })}
+                                  {renderLocationAssetInput('signImage', {
+                                    disabled: !isLocationBrandingOverride,
+                                    inheritedLabel: 'Hereda marca',
+                                  })}
                                 </div>
-                                <Switch
-                                  checked={locationHeroImageEnabled}
-                                  disabled={!isLocationBrandingOverride}
-                                  onCheckedChange={(checked) => updateLocationBrandingFields({ heroImageEnabled: checked })}
-                                />
-                              </div>
-                              <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                                <div>
-                                  <div className="text-sm font-semibold text-foreground">Opacidad sobre el fondo</div>
-                                  <p className="text-xs text-muted-foreground">Legibilidad en el hero.</p>
-                                </div>
-                                <Switch
-                                  checked={locationHeroBackgroundDimmed}
-                                  disabled={!isLocationBrandingOverride}
-                                  onCheckedChange={(checked) =>
-                                    updateLocationBrandingFields({ heroBackgroundDimmed: checked })
-                                  }
-                                />
                               </div>
                             </div>
-                            <div className="space-y-3">
-                              <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
-                              <div className={`grid gap-4 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
-                                {renderLocationAssetInput('heroBackground', {
-                                  disabled: !isLocationBrandingOverride,
-                                  inheritedLabel: 'Hereda marca',
-                                })}
-                                {renderLocationAssetInput('heroImage', {
-                                  disabled: !isLocationBrandingOverride,
-                                  inheritedLabel: 'Hereda marca',
-                                })}
-                                {renderLocationAssetInput('signImage', {
-                                  disabled: !isLocationBrandingOverride,
-                                  inheritedLabel: 'Hereda marca',
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Selecciona una marca con locales activos.</p>
-                      )}
-                    </CardContent>
-                  </Card>
+                          </>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Selecciona una marca con locales activos.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
                 <div className="flex justify-end">
                   <Button onClick={handleSaveBrand} disabled={isSaving}>
@@ -2029,7 +2052,7 @@ const PlatformBrands: React.FC = () => {
                   <Settings2 className="h-4 w-4 text-primary" />
                   Configuración por marca y local
                 </div>
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className={`grid gap-6 ${hasMultipleLocations ? 'lg:grid-cols-2' : ''}`}>
                   <Card className="border border-border/60 bg-card/80">
                     <CardHeader>
                       <CardTitle className="text-base">Brand config</CardTitle>

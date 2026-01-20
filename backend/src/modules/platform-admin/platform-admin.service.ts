@@ -224,9 +224,16 @@ export class PlatformAdminService {
     }
 
     const email = data.email.toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    let user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new NotFoundException('Usuario no encontrado.');
+      const fallbackName = email.split('@')[0]?.trim() || 'Admin pendiente';
+      user = await this.prisma.user.create({
+        data: {
+          name: fallbackName,
+          email,
+          role: 'admin',
+        },
+      });
     }
 
     const locations = applyToAll

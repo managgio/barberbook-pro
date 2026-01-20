@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode, useRef } from 'react';
 import { User, UserRole } from '@/data/types';
 import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api';
 import {
@@ -120,6 +120,45 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { isReady: tenantReady, currentLocationId } = useTenant();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const syncRef = useRef<{ key: string | null; promise: Promise<User | null> | null }>({
+    key: null,
+    promise: null,
+  });
+  const lastSyncKeyRef = useRef<string | null>(null);
+
+  const syncFirebaseProfile = async (firebaseUser: FirebaseUser): Promise<User | null> => {
+    const key = `${firebaseUser.uid}:${currentLocationId || 'none'}`;
+    if (lastSyncKeyRef.current === key && user?.firebaseUid === firebaseUser.uid) {
+      return user;
+    }
+    const inFlight = syncRef.current;
+    if (inFlight.promise) {
+      if (inFlight.key === key) {
+        return inFlight.promise;
+      }
+      try {
+        await inFlight.promise;
+      } catch {
+        // Ignore to allow the new sync attempt.
+      }
+    }
+
+    const promise = (async () => {
+      const profile = await mapFirebaseUserToProfile(firebaseUser);
+      setUser(profile);
+      lastSyncKeyRef.current = key;
+      return profile;
+    })();
+
+    syncRef.current = { key, promise };
+    try {
+      return await promise;
+    } finally {
+      if (syncRef.current.key === key) {
+        syncRef.current = { key: null, promise: null };
+      }
+    }
+  };
 
   useEffect(() => {
     if (!tenantReady) {
@@ -136,8 +175,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       try {
-        const profile = await mapFirebaseUserToProfile(firebaseUser);
-        setUser(profile);
+        await syncFirebaseProfile(firebaseUser);
       } catch (error) {
         console.error('Error al sincronizar el usuario de Firebase', error);
         setUser(null);
@@ -154,8 +192,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const auth = getFirebaseAuth();
     if (!auth.currentUser) return;
     setIsLoading(true);
-    mapFirebaseUserToProfile(auth.currentUser)
-      .then((profile) => setUser(profile))
+    syncFirebaseProfile(auth.currentUser)
       .catch((error) => {
         console.error('Error al refrescar el usuario por local', error);
       })
@@ -174,9 +211,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const auth = getFirebaseAuth();
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      const profile = await mapFirebaseUserToProfile(credential.user);
-      setUser(profile);
+      await signInWithEmailAndPassword(auth, email, password);
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
@@ -186,9 +221,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
       const auth = getFirebaseAuth();
-      const credential = await signInWithPopup(auth, googleProvider);
-      const profile = await mapFirebaseUserToProfile(credential.user);
-      setUser(profile);
+      await signInWithPopup(auth, googleProvider);
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
@@ -202,8 +235,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (auth.currentUser) {
         await updateFirebaseProfile(auth.currentUser, { displayName: name });
       }
-      const profile = await mapFirebaseUserToProfile(credential.user, { name });
-      setUser(profile);
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };

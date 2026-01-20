@@ -111,6 +111,14 @@ const LandingPage: React.FC = () => {
     { key: 'yearlyBookings', icon: Calendar, value: `${formatYearlyBookings(settings.stats.yearlyBookings)}`, label: 'Reservas/año' },
     { key: 'repeatClientsPercentage', icon: Repeat, value: `${settings.stats.repeatClientsPercentage}%`, label: 'Clientes que repiten' },
   ].filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false);
+  const statsGridClass =
+    statsHighlights.length >= 4
+      ? 'grid-cols-2 md:grid-cols-4'
+      : statsHighlights.length === 3
+        ? 'grid-cols-2 md:grid-cols-3'
+        : statsHighlights.length === 2
+          ? 'grid-cols-2 md:grid-cols-2'
+          : 'grid-cols-1 md:grid-cols-1';
   const heroLayoutClass = heroImageEnabled ? 'flex-col lg:flex-row' : 'flex-col';
   const heroTextAlignClass = heroImageEnabled ? 'text-center lg:text-left' : 'text-center';
   const heroActionsClass = heroImageEnabled ? 'justify-center lg:justify-start' : 'justify-center';
@@ -351,9 +359,9 @@ const LandingPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 max-w-6xl lg:mx-auto lg:justify-center">
+        <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 md:gap-6 md:overflow-visible lg:flex lg:flex-wrap lg:justify-center max-w-6xl lg:mx-auto">
           {barbers.map((barber, index) => (
-            <div key={barber.id} className="min-w-[220px] sm:min-w-[260px] md:min-w-0 md:w-auto">
+            <div key={barber.id} className="min-w-[220px] sm:min-w-[260px] md:min-w-0 md:w-auto lg:w-[240px]">
               <Card
                 variant="interactive"
                 className="overflow-hidden animate-slide-up h-full"
@@ -509,7 +517,10 @@ const LandingPage: React.FC = () => {
           </div>
 
           {statsHighlights.length > 0 && (
-            <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
+            <div
+              className={`mt-20 grid gap-8 max-w-4xl mx-auto animate-fade-in ${statsGridClass}`}
+              style={{ animationDelay: '0.4s' }}
+            >
               {statsHighlights.map((stat, index) => (
                 <div key={stat.label} className="text-center" style={{ animationDelay: `${0.5 + index * 0.1}s` }}>
                   <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-3">

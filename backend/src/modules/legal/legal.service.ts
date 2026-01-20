@@ -253,18 +253,26 @@ export class LegalService {
       : null;
     const contactData = (siteSettings?.data as { contact?: { email?: string; phone?: string } } | undefined)?.contact;
 
-    return this.prisma.brandLegalSettings.create({
-      data: {
-        brandId,
-        legalOwnerName: brand.name,
-        legalContactEmail: contactData?.email || null,
-        legalContactPhone: contactData?.phone || null,
-        aiDisclosureEnabled: true,
-        aiProviderNames: DEFAULT_AI_PROVIDERS,
-        subProcessors: DEFAULT_SUBPROCESSORS,
-        optionalCustomSections: {},
-      },
-    });
+    try {
+      return await this.prisma.brandLegalSettings.create({
+        data: {
+          brandId,
+          legalOwnerName: brand.name,
+          legalContactEmail: contactData?.email || null,
+          legalContactPhone: contactData?.phone || null,
+          aiDisclosureEnabled: true,
+          aiProviderNames: DEFAULT_AI_PROVIDERS,
+          subProcessors: DEFAULT_SUBPROCESSORS,
+          optionalCustomSections: {},
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existingSettings = await this.prisma.brandLegalSettings.findUnique({ where: { brandId } });
+        if (existingSettings) return existingSettings;
+      }
+      throw error;
+    }
   }
 
   private async resolveSettings(
