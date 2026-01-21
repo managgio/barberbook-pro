@@ -18,12 +18,19 @@ const Navbar: React.FC = () => {
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const isLanding = location.pathname === '/';
   const hasMultipleLocations = locations.length > 1;
+  const isAdmin =
+    user?.role === 'admin' || user?.isLocalAdmin || user?.isSuperAdmin;
+  const userTarget = tenant?.isPlatform
+    ? '/platform'
+    : isAdmin
+      ? '/admin'
+      : '/app/profile';
   const brandNameClass = cn(
     'text-xl font-bold text-foreground',
     isLanding && hasMultipleLocations ? 'hidden sm:inline' : 'inline'
   );
   const userBadgeClass = cn(
-    'flex items-center gap-2 pl-[.3rem] pr-3 py-1 rounded-full border border-primary/20 bg-primary/5',
+    'flex items-center gap-2 pl-[.3rem] pr-3 py-1 rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10',
     isLanding && hasMultipleLocations ? 'hidden sm:flex' : 'flex'
   );
 
@@ -46,12 +53,12 @@ const Navbar: React.FC = () => {
             <LocationSwitcher />
             {isAuthenticated && user ? (
               <>
-                <div className={userBadgeClass}>
+                <Link to={userTarget} className={userBadgeClass}>
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <User className="w-4 h-4 text-primary" />
                   </div>
                   <span className="text-sm font-medium text-foreground">{user.name}</span>
-                </div>
+                </Link>
                 <Button variant="ghost" size="sm" onClick={logout} className="flex items-center gap-2">
                   <LogOut className="w-4 h-4" />
                   <span>Salir</span>

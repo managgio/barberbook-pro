@@ -200,7 +200,7 @@ Flujos:
    - Configuracion por marca/local en plataforma (orden y visibilidad de secciones con drag & drop).
    - Los overrides de local tienen prioridad sobre la marca; hero siempre fijo primero.
    - Secciones opcionales (ej. productos) se excluyen si el modulo esta desactivado.
-   - Hero: se puede ocultar la imagen principal y activar/desactivar opacidad del fondo.
+   - Hero: se puede ocultar la imagen principal, cambiar su posicion, definir color del texto, ajustar opacidad del fondo, mostrar/ocultar la card de ubicacion, activar el badge de reserva online y alinear el contenido cuando no hay imagen.
    - Logos por modo: se guarda logo para modo claro/oscuro y se usa segun `theme.mode`.
    - Estadisticas destacadas se pueden mostrar/ocultar desde admin settings.
 

@@ -36,6 +36,15 @@ const LANDING_SECTION_ORDER = ['services', 'products', 'barbers', 'cta'] as cons
 type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
 const isLandingSectionKey = (value: string): value is LandingSectionKey =>
   (LANDING_SECTION_ORDER as readonly string[]).includes(value);
+type HeroTextColorKey = 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
+
+const HERO_TEXT_COLOR_STYLES: Record<HeroTextColorKey, { title: string; description: string; stats: string }> = {
+  auto: { title: 'text-foreground', description: 'text-muted-foreground', stats: 'text-muted-foreground' },
+  white: { title: 'text-white', description: 'text-white/80', stats: 'text-white/80' },
+  black: { title: 'text-black', description: 'text-black/70', stats: 'text-black/70' },
+  'gray-dark': { title: 'text-slate-200', description: 'text-slate-300/80', stats: 'text-slate-300/80' },
+  'gray-light': { title: 'text-slate-700', description: 'text-slate-600', stats: 'text-slate-600' },
+};
 
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
@@ -48,6 +57,21 @@ const LandingPage: React.FC = () => {
   const signImageUrl = tenant?.config?.branding?.signImageUrl || signImageFallback;
   const heroImageEnabled = tenant?.config?.branding?.heroImageEnabled !== false;
   const heroBackgroundDimmed = tenant?.config?.branding?.heroBackgroundDimmed !== false;
+  const heroTextColor = (tenant?.config?.branding?.heroTextColor || 'auto') as HeroTextColorKey;
+  const heroBadgeEnabled = tenant?.config?.branding?.heroBadgeEnabled !== false;
+  const heroLocationCardEnabled = tenant?.config?.branding?.heroLocationCardEnabled !== false;
+  const heroImagePosition = tenant?.config?.branding?.heroImagePosition === 'left' ? 'left' : 'right';
+  const heroNoImageAlign = tenant?.config?.branding?.heroNoImageAlign === 'right'
+    ? 'right'
+    : tenant?.config?.branding?.heroNoImageAlign === 'left'
+      ? 'left'
+      : 'center';
+  const heroBackgroundOpacity = (() => {
+    const value = Number(tenant?.config?.branding?.heroBackgroundOpacity ?? 90);
+    if (Number.isNaN(value)) return 0.9;
+    const clamped = Math.min(100, Math.max(0, value));
+    return clamped / 100;
+  })();
   const currentYear = new Date().getFullYear();
   const experienceYears = Math.max(0, currentYear - settings.stats.experienceStartYear);
   const formatYearlyBookings = (value: number) => {
@@ -111,6 +135,40 @@ const LandingPage: React.FC = () => {
     { key: 'yearlyBookings', icon: Calendar, value: `${formatYearlyBookings(settings.stats.yearlyBookings)}`, label: 'Reservas/año' },
     { key: 'repeatClientsPercentage', icon: Repeat, value: `${settings.stats.repeatClientsPercentage}%`, label: 'Clientes que repiten' },
   ].filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false);
+  const heroTextStyles = HERO_TEXT_COLOR_STYLES[heroTextColor] || HERO_TEXT_COLOR_STYLES.auto;
+  const heroLayoutClass = heroImageEnabled
+    ? heroImagePosition === 'left'
+      ? 'flex-col lg:flex-row-reverse'
+      : 'flex-col lg:flex-row'
+    : 'flex-col';
+  const heroItemsClass = heroImageEnabled
+    ? 'items-center'
+    : heroNoImageAlign === 'right'
+      ? 'items-end'
+      : heroNoImageAlign === 'left'
+        ? 'items-start'
+        : 'items-center';
+  const heroTextAlignClass = heroImageEnabled
+    ? 'text-center lg:text-left'
+    : heroNoImageAlign === 'right'
+      ? 'text-right'
+      : heroNoImageAlign === 'left'
+        ? 'text-left'
+        : 'text-center';
+  const heroActionsClass = heroImageEnabled
+    ? 'justify-center lg:justify-start'
+    : heroNoImageAlign === 'right'
+      ? 'justify-end'
+      : heroNoImageAlign === 'left'
+        ? 'justify-start'
+        : 'justify-center';
+  const heroDescriptionAlignClass = heroImageEnabled
+    ? 'mx-auto lg:mx-0'
+    : heroNoImageAlign === 'right'
+      ? 'ml-auto'
+      : heroNoImageAlign === 'left'
+        ? 'mr-auto'
+        : 'mx-auto';
   const statsGridClass =
     statsHighlights.length >= 4
       ? 'grid-cols-2 md:grid-cols-4'
@@ -119,9 +177,6 @@ const LandingPage: React.FC = () => {
         : statsHighlights.length === 2
           ? 'grid-cols-2 md:grid-cols-2'
           : 'grid-cols-1 md:grid-cols-1';
-  const heroLayoutClass = heroImageEnabled ? 'flex-col lg:flex-row' : 'flex-col';
-  const heroTextAlignClass = heroImageEnabled ? 'text-center lg:text-left' : 'text-center';
-  const heroActionsClass = heroImageEnabled ? 'justify-center lg:justify-start' : 'justify-center';
 
   const renderProductCard = (product: Product, index: number) => {
     const price = product.finalPrice ?? product.price;
@@ -434,7 +489,12 @@ const LandingPage: React.FC = () => {
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${heroBackgroundUrl})` }}
           />
-          {heroBackgroundDimmed && <div className="absolute inset-0 bg-background/90" />}
+          {heroBackgroundDimmed && heroBackgroundOpacity > 0 && (
+            <div
+              className="absolute inset-0"
+              style={{ backgroundColor: `hsl(var(--background) / ${heroBackgroundOpacity})` }}
+            />
+          )}
         </div>
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-glow" />
@@ -442,22 +502,22 @@ const LandingPage: React.FC = () => {
         </div>
         
         <div className="container relative z-10 px-4 py-20">
-          <div className={`flex ${heroLayoutClass} items-center gap-12`}>
+          <div className={`flex ${heroLayoutClass} ${heroItemsClass} gap-12`}>
             <div className={`flex-1 ${heroTextAlignClass} animate-slide-up`}>
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-8">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                <span className="text-sm text-primary font-medium">Reserva online disponible</span>
-              </div>
+              {heroBadgeEnabled && (
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-8">
+                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  <span className="text-sm text-primary font-medium">Reserva online disponible</span>
+                </div>
+              )}
               
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-foreground mb-6 leading-tight">
-                {settings.branding.name}<br />
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
+                <span className={heroTextStyles.title}>{settings.branding.name}</span><br />
                 <span className="text-gradient">{settings.branding.tagline}</span>
               </h1>
               
               <p
-                className={`text-xl text-muted-foreground max-w-2xl mb-10 ${
-                  heroImageEnabled ? 'mx-auto lg:mx-0' : 'mx-auto'
-                }`}
+                className={`text-xl max-w-2xl mb-10 ${heroTextStyles.description} ${heroDescriptionAlignClass}`}
               >
                 {settings.branding.description}
               </p>
@@ -497,20 +557,22 @@ const LandingPage: React.FC = () => {
                     alt={`Experiencia premium en ${settings.branding.name}`}
                     className="relative w-full rounded-[36px] border border-border/60 shadow-2xl object-cover"
                   />
-                  <div className="absolute left-6 right-auto bottom-6 bg-background/80 backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl border border-border/60">
-                    <MapPin className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
-                      <a
-                        href={settings.location.mapUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-semibold text-foreground hover:text-primary transition-colors"
-                      >
-                        {settings.location.label}
-                      </a>
+                  {heroLocationCardEnabled && (
+                    <div className="absolute left-6 right-auto bottom-6 bg-background/80 backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl border border-border/60">
+                      <MapPin className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
+                        <a
+                          href={settings.location.mapUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-semibold text-foreground hover:text-primary transition-colors"
+                        >
+                          {settings.location.label}
+                        </a>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
@@ -527,7 +589,7 @@ const LandingPage: React.FC = () => {
                     <stat.icon className="w-6 h-6 text-primary" />
                   </div>
                   <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                  <p className={`text-sm ${heroTextStyles.stats}`}>{stat.label}</p>
                 </div>
               ))}
             </div>

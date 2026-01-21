@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -199,6 +200,29 @@ const BRAND_ASSET_META: Record<BrandAssetKey, {
     imageClass: 'object-cover',
   },
 };
+
+type HeroTextColorOption = 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
+type HeroImagePositionOption = 'left' | 'right';
+type HeroNoImageAlignOption = 'center' | 'right' | 'left';
+
+const HERO_TEXT_COLOR_OPTIONS: Array<{ value: HeroTextColorOption; label: string }> = [
+  { value: 'auto', label: 'Automático' },
+  { value: 'white', label: 'Blanco' },
+  { value: 'black', label: 'Negro' },
+  { value: 'gray-dark', label: 'Gris tema oscuro' },
+  { value: 'gray-light', label: 'Gris tema claro' },
+];
+
+const HERO_IMAGE_POSITION_OPTIONS: Array<{ value: HeroImagePositionOption; label: string }> = [
+  { value: 'right', label: 'Imagen a la derecha' },
+  { value: 'left', label: 'Imagen a la izquierda' },
+];
+
+const HERO_NO_IMAGE_ALIGN_OPTIONS: Array<{ value: HeroNoImageAlignOption; label: string }> = [
+  { value: 'center', label: 'Centrado' },
+  { value: 'left', label: 'Alineado a la izquierda' },
+  { value: 'right', label: 'Alineado a la derecha' },
+];
 
 const ADMIN_SECTION_SET = new Set(ADMIN_SECTIONS.map((section) => section.key));
 
@@ -547,9 +571,25 @@ const PlatformBrands: React.FC = () => {
   const isLocationBrandingOverride = Boolean(locationConfig?.branding);
   const resolveThemeMode = (value?: string) => (value === 'light' || value === 'dark' ? value : 'dark');
   const resolveHeroFlag = (value?: boolean) => value !== false;
+  const resolveHeroBackgroundOpacity = (value?: number) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return 90;
+    return Math.min(100, Math.max(0, Math.round(value)));
+  };
+  const resolveHeroTextColor = (value?: string): HeroTextColorOption =>
+    HERO_TEXT_COLOR_OPTIONS.some((option) => option.value === value) ? (value as HeroTextColorOption) : 'auto';
+  const resolveHeroImagePosition = (value?: string): HeroImagePositionOption =>
+    value === 'left' ? 'left' : 'right';
+  const resolveHeroNoImageAlign = (value?: string): HeroNoImageAlignOption =>
+    value === 'right' || value === 'left' ? value : 'center';
   const brandThemeMode = resolveThemeMode(brandConfig?.theme?.mode);
   const brandHeroImageEnabled = resolveHeroFlag(brandConfig?.branding?.heroImageEnabled);
   const brandHeroBackgroundDimmed = resolveHeroFlag(brandConfig?.branding?.heroBackgroundDimmed);
+  const brandHeroBackgroundOpacity = resolveHeroBackgroundOpacity(brandConfig?.branding?.heroBackgroundOpacity);
+  const brandHeroBadgeEnabled = resolveHeroFlag(brandConfig?.branding?.heroBadgeEnabled);
+  const brandHeroTextColor = resolveHeroTextColor(brandConfig?.branding?.heroTextColor);
+  const brandHeroLocationCardEnabled = resolveHeroFlag(brandConfig?.branding?.heroLocationCardEnabled);
+  const brandHeroImagePosition = resolveHeroImagePosition(brandConfig?.branding?.heroImagePosition);
+  const brandHeroNoImageAlign = resolveHeroNoImageAlign(brandConfig?.branding?.heroNoImageAlign);
   const locationThemeModeValue = locationConfig?.theme?.mode
     ? resolveThemeMode(locationConfig?.theme?.mode)
     : 'inherit';
@@ -562,6 +602,36 @@ const PlatformBrands: React.FC = () => {
     isLocationBrandingOverride
       ? locationConfig?.branding?.heroBackgroundDimmed
       : brandConfig?.branding?.heroBackgroundDimmed,
+  );
+  const locationHeroBackgroundOpacity = resolveHeroBackgroundOpacity(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroBackgroundOpacity
+      : brandConfig?.branding?.heroBackgroundOpacity,
+  );
+  const locationHeroBadgeEnabled = resolveHeroFlag(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroBadgeEnabled
+      : brandConfig?.branding?.heroBadgeEnabled,
+  );
+  const locationHeroTextColor = resolveHeroTextColor(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroTextColor
+      : brandConfig?.branding?.heroTextColor,
+  );
+  const locationHeroLocationCardEnabled = resolveHeroFlag(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroLocationCardEnabled
+      : brandConfig?.branding?.heroLocationCardEnabled,
+  );
+  const locationHeroImagePosition = resolveHeroImagePosition(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroImagePosition
+      : brandConfig?.branding?.heroImagePosition,
+  );
+  const locationHeroNoImageAlign = resolveHeroNoImageAlign(
+    isLocationBrandingOverride
+      ? locationConfig?.branding?.heroNoImageAlign
+      : brandConfig?.branding?.heroNoImageAlign,
   );
   const locationNotificationPrefsSource = isLocationNotificationOverride
     ? locationConfig.notificationPrefs
@@ -705,7 +775,13 @@ const PlatformBrands: React.FC = () => {
           heroImageUrl: baseBranding.heroImageUrl || '',
           heroImageFileId: baseBranding.heroImageFileId || '',
           heroBackgroundDimmed: baseBranding.heroBackgroundDimmed ?? true,
+          heroBackgroundOpacity: baseBranding.heroBackgroundOpacity ?? 90,
+          heroBadgeEnabled: baseBranding.heroBadgeEnabled ?? true,
           heroImageEnabled: baseBranding.heroImageEnabled ?? true,
+          heroTextColor: baseBranding.heroTextColor || 'auto',
+          heroLocationCardEnabled: baseBranding.heroLocationCardEnabled ?? true,
+          heroImagePosition: baseBranding.heroImagePosition || 'right',
+          heroNoImageAlign: baseBranding.heroNoImageAlign || 'center',
           signImageUrl: baseBranding.signImageUrl || '',
           signImageFileId: baseBranding.signImageFileId || '',
         }),
@@ -983,7 +1059,7 @@ const PlatformBrands: React.FC = () => {
     }
   };
 
-  const updateBrandingFields = (updates: Record<string, string | boolean>) => {
+  const updateBrandingFields = (updates: Record<string, string | boolean | number>) => {
     setBrandConfig((prev) => {
       let next = { ...prev };
       Object.entries(updates).forEach(([field, value]) => {
@@ -993,7 +1069,7 @@ const PlatformBrands: React.FC = () => {
     });
   };
 
-  const updateLocationBrandingFields = (updates: Record<string, string | boolean>) => {
+  const updateLocationBrandingFields = (updates: Record<string, string | boolean | number>) => {
     setLocationConfig((prev) => {
       let next = { ...prev };
       Object.entries(updates).forEach(([field, value]) => {
@@ -1864,6 +1940,97 @@ const PlatformBrands: React.FC = () => {
                                 onCheckedChange={(checked) => updateBrandingFields({ heroBackgroundDimmed: checked })}
                               />
                             </div>
+                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <Label className="text-xs text-muted-foreground">Opacidad del fondo</Label>
+                                <span className="text-xs font-medium text-foreground">{brandHeroBackgroundOpacity}%</span>
+                              </div>
+                              <Slider
+                                min={0}
+                                max={100}
+                                step={5}
+                                value={[brandHeroBackgroundOpacity]}
+                                onValueChange={(value) => updateBrandingFields({ heroBackgroundOpacity: value[0] })}
+                                disabled={!brandHeroBackgroundDimmed}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Ajusta la intensidad del overlay sobre la imagen de fondo.
+                              </p>
+                            </div>
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">Card de ubicación</div>
+                                <p className="text-xs text-muted-foreground">Mostrar sobre la imagen principal.</p>
+                              </div>
+                              <Switch
+                                checked={brandHeroLocationCardEnabled}
+                                onCheckedChange={(checked) => updateBrandingFields({ heroLocationCardEnabled: checked })}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">Badge de reserva online</div>
+                                <p className="text-xs text-muted-foreground">Etiqueta "Reserva online disponible".</p>
+                              </div>
+                              <Switch
+                                checked={brandHeroBadgeEnabled}
+                                onCheckedChange={(checked) => updateBrandingFields({ heroBadgeEnabled: checked })}
+                              />
+                            </div>
+                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                              <Label className="text-xs text-muted-foreground">Color del texto del hero</Label>
+                              <Select
+                                value={brandHeroTextColor}
+                                onValueChange={(value) => updateBrandingFields({ heroTextColor: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona color" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {HERO_TEXT_COLOR_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                              <Label className="text-xs text-muted-foreground">Posición de la imagen</Label>
+                              <Select
+                                value={brandHeroImagePosition}
+                                onValueChange={(value) => updateBrandingFields({ heroImagePosition: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona posición" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {HERO_IMAGE_POSITION_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                              <Label className="text-xs text-muted-foreground">Alineación sin imagen</Label>
+                              <Select
+                                value={brandHeroNoImageAlign}
+                                onValueChange={(value) => updateBrandingFields({ heroNoImageAlign: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona alineación" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {HERO_NO_IMAGE_ALIGN_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         </div>
                         <div className="space-y-3">
@@ -2011,6 +2178,108 @@ const PlatformBrands: React.FC = () => {
                                       updateLocationBrandingFields({ heroBackgroundDimmed: checked })
                                     }
                                   />
+                                </div>
+                                <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <Label className="text-xs text-muted-foreground">Opacidad del fondo</Label>
+                                    <span className="text-xs font-medium text-foreground">{locationHeroBackgroundOpacity}%</span>
+                                  </div>
+                                  <Slider
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={[locationHeroBackgroundOpacity]}
+                                    onValueChange={(value) =>
+                                      updateLocationBrandingFields({ heroBackgroundOpacity: value[0] })
+                                    }
+                                    disabled={!isLocationBrandingOverride || !locationHeroBackgroundDimmed}
+                                  />
+                                  <p className="text-xs text-muted-foreground">
+                                    Ajusta la intensidad del overlay para este local.
+                                  </p>
+                                </div>
+                                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                  <div>
+                                    <div className="text-sm font-semibold text-foreground">Card de ubicación</div>
+                                    <p className="text-xs text-muted-foreground">Mostrar sobre la imagen principal.</p>
+                                  </div>
+                                  <Switch
+                                    checked={locationHeroLocationCardEnabled}
+                                    disabled={!isLocationBrandingOverride}
+                                    onCheckedChange={(checked) =>
+                                      updateLocationBrandingFields({ heroLocationCardEnabled: checked })
+                                    }
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                  <div>
+                                    <div className="text-sm font-semibold text-foreground">Badge de reserva online</div>
+                                    <p className="text-xs text-muted-foreground">Etiqueta "Reserva online disponible".</p>
+                                  </div>
+                                  <Switch
+                                    checked={locationHeroBadgeEnabled}
+                                    disabled={!isLocationBrandingOverride}
+                                    onCheckedChange={(checked) =>
+                                      updateLocationBrandingFields({ heroBadgeEnabled: checked })
+                                    }
+                                  />
+                                </div>
+                                <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Color del texto del hero</Label>
+                                  <Select
+                                    value={locationHeroTextColor}
+                                    onValueChange={(value) => updateLocationBrandingFields({ heroTextColor: value })}
+                                    disabled={!isLocationBrandingOverride}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Selecciona color" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {HERO_TEXT_COLOR_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Posición de la imagen</Label>
+                                  <Select
+                                    value={locationHeroImagePosition}
+                                    onValueChange={(value) => updateLocationBrandingFields({ heroImagePosition: value })}
+                                    disabled={!isLocationBrandingOverride}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Selecciona posición" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {HERO_IMAGE_POSITION_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Alineación sin imagen</Label>
+                                  <Select
+                                    value={locationHeroNoImageAlign}
+                                    onValueChange={(value) => updateLocationBrandingFields({ heroNoImageAlign: value })}
+                                    disabled={!isLocationBrandingOverride}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Selecciona alineación" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {HERO_NO_IMAGE_ALIGN_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                               </div>
                               <div className="space-y-3">

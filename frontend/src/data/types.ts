@@ -65,9 +65,15 @@ export interface TenantBootstrap {
       heroBackgroundUrl?: string;
       heroBackgroundFileId?: string;
       heroBackgroundDimmed?: boolean;
+      heroBackgroundOpacity?: number;
+      heroBadgeEnabled?: boolean;
       heroImageUrl?: string;
       heroImageFileId?: string;
       heroImageEnabled?: boolean;
+      heroTextColor?: 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
+      heroLocationCardEnabled?: boolean;
+      heroImagePosition?: 'left' | 'right';
+      heroNoImageAlign?: 'center' | 'right' | 'left';
       signImageUrl?: string;
       signImageFileId?: string;
     } | null;
