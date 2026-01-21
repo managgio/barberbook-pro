@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { DEFAULT_SHOP_SCHEDULE, ShopSchedule } from './schedule.types';
-import { cloneSchedule, normalizeSchedule } from './schedule.utils';
+import { DAY_KEYS, cloneSchedule, normalizeSchedule } from './schedule.utils';
 
 @Injectable()
 export class SchedulesService {
@@ -33,9 +33,13 @@ export class SchedulesService {
     });
     const existingSettings = await this.prisma.siteSettings.findUnique({ where: { localId } });
     if (existingSettings) {
+      const openingHours = DAY_KEYS.reduce((acc, key) => {
+        acc[key] = normalized[key];
+        return acc;
+      }, {} as Pick<ShopSchedule, typeof DAY_KEYS[number]>);
       await this.prisma.siteSettings.update({
         where: { localId },
-        data: { data: { ...(existingSettings.data as Record<string, unknown>), openingHours: normalized } },
+        data: { data: { ...(existingSettings.data as Record<string, unknown>), openingHours } },
       });
     }
     return cloneSchedule(normalized);

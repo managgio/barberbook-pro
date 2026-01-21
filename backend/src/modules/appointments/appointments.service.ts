@@ -8,7 +8,7 @@ import { mapAppointment } from './appointments.mapper';
 import { generateSlotsForShift, isDateInRange, normalizeRange, timeToMinutes } from '../schedules/schedule.utils';
 import { HolidaysService } from '../holidays/holidays.service';
 import { SchedulesService } from '../schedules/schedules.service';
-import { DEFAULT_SHOP_SCHEDULE, ShopSchedule } from '../schedules/schedule.types';
+import { DayKey, DEFAULT_SHOP_SCHEDULE, ShopSchedule } from '../schedules/schedule.types';
 import { NotificationsService } from '../notifications/notifications.service';
 import { computeServicePricing, isOfferActiveNow } from '../services/services.pricing';
 import { LegalService } from '../legal/legal.service';
@@ -44,6 +44,26 @@ export class AppointmentsService {
       where: { id: serviceId, localId },
     });
     return service?.duration ?? DEFAULT_SERVICE_DURATION;
+  }
+
+  private async assertSlotAvailable(params: {
+    barberId: string;
+    serviceId?: string;
+    startDateTime: string;
+    appointmentIdToIgnore?: string;
+  }) {
+    const [dateOnly, timePart] = params.startDateTime.split('T');
+    const slotTime = timePart?.slice(0, 5);
+    if (!dateOnly || !slotTime) {
+      throw new BadRequestException('Horario no disponible.');
+    }
+    const availableSlots = await this.getAvailableSlots(params.barberId, dateOnly, {
+      serviceId: params.serviceId,
+      appointmentIdToIgnore: params.appointmentIdToIgnore,
+    });
+    if (!availableSlots.includes(slotTime)) {
+      throw new BadRequestException('Horario no disponible.');
+    }
   }
 
   private shouldHoldStock(status: AppointmentStatus) {
@@ -198,6 +218,12 @@ export class AppointmentsService {
       }
     }
 
+    await this.assertSlotAvailable({
+      barberId: data.barberId,
+      serviceId: data.serviceId,
+      startDateTime: data.startDateTime,
+    });
+
     const servicePrice = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
     const productSelection = await this.resolveProductSelection(requestedProducts, {
       allowInactive: isAdminActor,
@@ -323,6 +349,14 @@ export class AppointmentsService {
       data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
     const serviceChanged = data.serviceId !== undefined && data.serviceId !== current.serviceId;
     const barberChanged = data.barberId !== undefined && data.barberId !== current.barberId;
+    if (startChanged || serviceChanged || barberChanged) {
+      await this.assertSlotAvailable({
+        barberId: data.barberId || current.barberId,
+        serviceId: data.serviceId || current.serviceId,
+        startDateTime: data.startDateTime || current.startDateTime.toISOString(),
+        appointmentIdToIgnore: current.id,
+      });
+    }
     const statusChanged = nextStatus !== current.status;
     const isCancelled = statusChanged && nextStatus === 'cancelled';
     const productsInputProvided = Array.isArray(data.products);
@@ -556,11 +590,14 @@ export class AppointmentsService {
     if (endDate && dateOnly > endDate) return [];
 
     const schedule = await this.schedulesService.getBarberSchedule(barberId);
+    const shopSchedule = await this.schedulesService.getShopSchedule();
+    const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
     const dayKey = new Date(`${dateOnly}T12:00:00`)
       .toLocaleDateString('en-US', { weekday: 'long' })
-      .toLowerCase() as keyof ShopSchedule;
+      .toLowerCase() as DayKey;
     const daySchedule = (schedule || DEFAULT_SHOP_SCHEDULE)[dayKey];
     if (!daySchedule || daySchedule.closed) return [];
+    const dayBreaks = shopSchedule.breaks?.[dayKey] ?? [];
 
     const generalHolidays = await this.holidaysService.getGeneralHolidays();
     if (generalHolidays.some((range) => isDateInRange(dateOnly, normalizeRange(range)))) return [];
@@ -568,9 +605,10 @@ export class AppointmentsService {
     if (barberHolidays.some((range) => isDateInRange(dateOnly, normalizeRange(range)))) return [];
 
     const targetDuration = await this.getServiceDuration(options?.serviceId);
+    const targetDurationWithBuffer = targetDuration + Math.max(0, bufferMinutes);
     const rawSlots = [
-      ...generateSlotsForShift(daySchedule.morning, targetDuration, SLOT_INTERVAL_MINUTES),
-      ...generateSlotsForShift(daySchedule.afternoon, targetDuration, SLOT_INTERVAL_MINUTES),
+      ...generateSlotsForShift(daySchedule.morning, targetDurationWithBuffer, SLOT_INTERVAL_MINUTES),
+      ...generateSlotsForShift(daySchedule.afternoon, targetDurationWithBuffer, SLOT_INTERVAL_MINUTES),
     ];
     if (rawSlots.length === 0) return [];
     const uniqueSlots = Array.from(new Set(rawSlots));
@@ -590,12 +628,18 @@ export class AppointmentsService {
       const start = appointment.startDateTime;
       const startMinutes = start.getHours() * 60 + start.getMinutes();
       const duration = appointment.service?.duration ?? DEFAULT_SERVICE_DURATION;
-      return { start: startMinutes, end: startMinutes + duration };
+      return { start: startMinutes, end: startMinutes + duration + Math.max(0, bufferMinutes) };
     });
 
     return uniqueSlots.filter((slot) => {
       const slotStart = timeToMinutes(slot);
-      const slotEnd = slotStart + targetDuration;
+      const slotEnd = slotStart + targetDurationWithBuffer;
+      const overlapsBreak = dayBreaks.some((range) => {
+        const breakStart = timeToMinutes(range.start);
+        const breakEnd = timeToMinutes(range.end);
+        return slotStart < breakEnd && slotEnd > breakStart;
+      });
+      if (overlapsBreak) return false;
       return bookedRanges.every((range) => slotEnd <= range.start || slotStart >= range.end);
     });
   }

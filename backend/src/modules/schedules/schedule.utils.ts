@@ -1,6 +1,15 @@
-import { DaySchedule, HolidayRange, ShiftSchedule, ShopSchedule, DEFAULT_SHOP_SCHEDULE } from './schedule.types';
+import {
+  BreakRange,
+  BreakSchedule,
+  DayKey,
+  DaySchedule,
+  HolidayRange,
+  ShiftSchedule,
+  ShopSchedule,
+  DEFAULT_SHOP_SCHEDULE,
+} from './schedule.types';
 
-export const DAY_KEYS: (keyof ShopSchedule)[] = [
+export const DAY_KEYS: DayKey[] = [
   'monday',
   'tuesday',
   'wednesday',
@@ -51,6 +60,52 @@ const cloneDaySchedule = (day: DaySchedule): DaySchedule => ({
 export const cloneSchedule = (schedule: ShopSchedule): ShopSchedule =>
   JSON.parse(JSON.stringify(schedule));
 
+const normalizeBufferMinutes = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.floor(parsed));
+};
+
+const parseTime = (value?: string | null): number | null => {
+  if (!value) return null;
+  const [hour, minute] = value.split(':').map((part) => Number(part));
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+};
+
+const normalizeBreaks = (input?: unknown): BreakSchedule => {
+  const fallback: BreakSchedule = {
+    monday: [],
+    tuesday: [],
+    wednesday: [],
+    thursday: [],
+    friday: [],
+    saturday: [],
+    sunday: [],
+  };
+  if (!input || typeof input !== 'object') return fallback;
+  const record = input as Record<string, unknown>;
+  const normalized: BreakSchedule = { ...fallback };
+  DAY_KEYS.forEach((day) => {
+    const ranges = record[day];
+    if (!Array.isArray(ranges)) return;
+    normalized[day] = (ranges as BreakRange[])
+      .map((range) => {
+        const startMinutes = parseTime(range?.start);
+        const endMinutes = parseTime(range?.end);
+        if (startMinutes === null || endMinutes === null) return null;
+        if (startMinutes === endMinutes) return null;
+        if (startMinutes > endMinutes) {
+          return { start: range.end, end: range.start };
+        }
+        return { start: range.start, end: range.end };
+      })
+      .filter((range): range is BreakRange => Boolean(range));
+  });
+  return normalized;
+};
+
 const normalizeShift = (
   shift: Partial<ShiftSchedule> | undefined,
   fallback: ShiftSchedule,
@@ -86,6 +141,8 @@ const convertLegacyDay = (
 
 export const normalizeSchedule = (schedule?: Partial<ShopSchedule>): ShopSchedule => {
   const normalized: Partial<ShopSchedule> = {};
+  normalized.bufferMinutes = normalizeBufferMinutes(schedule?.bufferMinutes);
+  normalized.breaks = normalizeBreaks(schedule?.breaks);
   DAY_KEYS.forEach((day) => {
     const fallback = cloneDaySchedule(DEFAULT_SHOP_SCHEDULE[day]);
     const dayData = schedule?.[day] as Partial<DaySchedule> | undefined;

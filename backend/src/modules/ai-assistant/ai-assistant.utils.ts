@@ -1,5 +1,5 @@
 import { minutesToTime, timeToMinutes } from '../schedules/schedule.utils';
-import { ShopSchedule } from '../schedules/schedule.types';
+import { DayKey, ShopSchedule } from '../schedules/schedule.types';
 
 export const AI_TIME_ZONE = 'Europe/Madrid';
 export const DEFAULT_SERVICE_DURATION_MINUTES = 30;
@@ -165,7 +165,7 @@ export const getDayKeyInTimeZone = (dateString: string, timeZone = AI_TIME_ZONE)
   const date = new Date(`${dateString}T12:00:00Z`);
   return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long' })
     .format(date)
-    .toLowerCase() as keyof ShopSchedule;
+    .toLowerCase() as DayKey;
 };
 
 export const getScheduleRange = (schedule: ShopSchedule, dateString: string, timeZone = AI_TIME_ZONE) => {

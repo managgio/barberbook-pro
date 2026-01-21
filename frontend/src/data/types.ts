@@ -185,6 +185,15 @@ export interface ClientNote {
   updatedAt: string;
 }
 
+export type DayKey =
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday'
+  | 'sunday';
+
 export interface ShiftSchedule {
   enabled: boolean;
   start: string; // "09:00"
@@ -197,7 +206,14 @@ export interface DaySchedule {
   afternoon: ShiftSchedule;
 }
 
+export interface BreakRange {
+  start: string;
+  end: string;
+}
+
 export interface ShopSchedule {
+  bufferMinutes?: number;
+  breaks?: Record<DayKey, BreakRange[]>;
   monday: DaySchedule;
   tuesday: DaySchedule;
   wednesday: DaySchedule;

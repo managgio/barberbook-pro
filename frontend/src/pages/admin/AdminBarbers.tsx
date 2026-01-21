@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { getBarbers, createBarber, updateBarber, deleteBarber, getBarberSchedule, updateBarberSchedule } from '@/data/api';
-import { Barber, ShopSchedule } from '@/data/types';
+import { Barber, DayKey, ShopSchedule } from '@/data/types';
 import { Plus, Pencil, Trash2, Calendar, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
@@ -19,7 +19,7 @@ import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/comp
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 
-const DAY_LABELS: { key: keyof ShopSchedule; label: string; short: string }[] = [
+const DAY_LABELS: { key: DayKey; label: string; short: string }[] = [
   { key: 'monday', label: 'Lunes', short: 'Lun' },
   { key: 'tuesday', label: 'Martes', short: 'Mar' },
   { key: 'wednesday', label: 'Miércoles', short: 'Mié' },
@@ -170,7 +170,7 @@ const AdminBarbers: React.FC = () => {
   };
 
   const handleShiftTimeChange = (
-    day: keyof ShopSchedule,
+    day: DayKey,
     shift: ShiftKey,
     field: 'start' | 'end',
     value: string
@@ -191,7 +191,7 @@ const AdminBarbers: React.FC = () => {
     );
   };
 
-  const handleShiftToggle = (day: keyof ShopSchedule, shift: ShiftKey, enabled: boolean) => {
+  const handleShiftToggle = (day: DayKey, shift: ShiftKey, enabled: boolean) => {
     setScheduleForm(prev => {
       if (!prev) return prev;
       const updatedDay = {
@@ -213,7 +213,7 @@ const AdminBarbers: React.FC = () => {
     });
   };
 
-  const handleScheduleClosed = (day: keyof ShopSchedule, closed: boolean) => {
+  const handleScheduleClosed = (day: DayKey, closed: boolean) => {
     setScheduleForm(prev => {
       if (!prev) return prev;
       const updatedDay = {

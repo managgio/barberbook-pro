@@ -68,7 +68,7 @@ Modulos principales:
 - **Products**: catalogo de productos con stock, precio y visibilidad publica.
 - **Product Categories**: categorias de productos (configurable).
 - **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
-- **Schedules**: horario del local y horarios por barbero (JSON).
+- **Schedules**: horario del local y horarios por barbero (JSON), con descansos y buffer entre citas.
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
 - **Settings**: configuracion del sitio (branding/contacto/horarios/sociales/stats visibles).
@@ -125,7 +125,7 @@ PaymentMethod | Enum | Tarjeta, efectivo, bizum u otros metodos
 Alert | Avisos | Mensajes con tipo y rango de fechas
 GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
-ShopSchedule | Horario local | JSON con turnos diarios
+ShopSchedule | Horario local | JSON con turnos diarios, descansos por dia y `bufferMinutes`
 BarberSchedule | Horario barbero | JSON con turnos diarios
 SiteSettings | Configuracion sitio | JSON con branding, contacto, horarios y stats visibles (toggle por admin)
 AiChatSession | Sesiones IA | Conversaciones por admin/local
@@ -164,6 +164,7 @@ Flujos:
 3) **Disponibilidad de citas**
    - Se calcula por horario del barbero + horario local.
    - Se excluyen festivos (local y por barbero).
+   - Se aplican descansos configurados por dia y buffer entre servicios.
    - Slots por intervalos de 15 min y duracion de servicio.
 
 4) **Pricing y ofertas**
