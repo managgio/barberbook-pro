@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { AlertTriangle, Globe, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { applyTheme, MANAGGIO_PRIMARY } from '@/lib/theme';
 
 type TenantErrorProps = {
   error: {
@@ -18,6 +20,11 @@ const getBaseDomain = (hostname: string) => {
 };
 
 const TenantError = ({ error }: TenantErrorProps) => {
+  useEffect(() => {
+    applyTheme(MANAGGIO_PRIMARY);
+    return () => applyTheme();
+  }, []);
+
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const baseDomain = getBaseDomain(hostname);
   const showExample = baseDomain === 'localhost' || hostname.includes('managgio');
@@ -50,11 +57,11 @@ const TenantError = ({ error }: TenantErrorProps) => {
           <div className="mt-6 rounded-xl border border-border/60 bg-muted/40 p-4 space-y-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Globe className="h-4 w-4" />
-              <span>Dominio actual: {hostname || 'desconocido'}</span>
+              <span>Dominio: {hostname || 'desconocido'}</span>
             </div>
             {showExample && (
               <div className="text-sm text-muted-foreground">
-                Usa un subdominio válido, por ejemplo: <span className="font-medium text-foreground">leblond.{baseDomain}</span>
+                Usa un subdominio válido, con estructura: <span className="font-medium text-foreground">nombre.{baseDomain}</span>
               </div>
             )}
           </div>
