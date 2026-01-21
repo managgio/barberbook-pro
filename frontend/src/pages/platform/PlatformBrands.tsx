@@ -59,7 +59,7 @@ const normalizeHexInput = (value: string) => {
   return raw.startsWith('#') ? raw : `#${raw}`;
 };
 
-const stripEmptyTheme = <T extends Record<string, any>>(config: T): T => {
+const stripEmptyTheme = <T extends { theme?: Record<string, any> }>(config: T): T => {
   if (!config || typeof config !== 'object') return config;
   const theme = config.theme;
   if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return config;
