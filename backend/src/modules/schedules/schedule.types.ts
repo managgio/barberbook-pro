@@ -1,3 +1,12 @@
+export type DayKey =
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday'
+  | 'sunday';
+
 export type ShiftSchedule = {
   enabled: boolean;
   start: string;
@@ -10,7 +19,16 @@ export type DaySchedule = {
   afternoon: ShiftSchedule;
 };
 
+export type BreakRange = {
+  start: string;
+  end: string;
+};
+
+export type BreakSchedule = Record<DayKey, BreakRange[]>;
+
 export type ShopSchedule = {
+  bufferMinutes?: number;
+  breaks?: BreakSchedule;
   monday: DaySchedule;
   tuesday: DaySchedule;
   wednesday: DaySchedule;
@@ -26,6 +44,16 @@ export type HolidayRange = {
 };
 
 export const DEFAULT_SHOP_SCHEDULE: ShopSchedule = {
+  bufferMinutes: 0,
+  breaks: {
+    monday: [],
+    tuesday: [],
+    wednesday: [],
+    thursday: [],
+    friday: [],
+    saturday: [],
+    sunday: [],
+  },
   monday: createDaySchedule(['09:00', '14:00'], ['15:00', '20:00']),
   tuesday: createDaySchedule(['09:00', '14:00'], ['15:00', '20:00']),
   wednesday: createDaySchedule(['09:00', '14:00'], ['15:00', '20:00']),

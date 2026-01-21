@@ -1,5 +1,14 @@
+import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
+import { getAdminUserId } from '@/lib/authStorage';
+
 const UPLOAD_URL = 'https://upload.imagekit.io/api/v1/files/upload';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+
+export type ImageKitRequestOptions = {
+  subdomainOverride?: string;
+  localIdOverride?: string;
+  adminUserIdOverride?: string;
+};
 
 export type ImageKitAuth = {
   token: string;
@@ -7,11 +16,20 @@ export type ImageKitAuth = {
   signature: string;
   publicKey: string;
   urlEndpoint: string;
-  folder: string;
+  folder?: string;
 };
 
-export const requestImageKitAuth = async (): Promise<ImageKitAuth> => {
-  const response = await fetch(`${API_BASE}/imagekit/sign`);
+export const requestImageKitAuth = async (options: ImageKitRequestOptions = {}): Promise<ImageKitAuth> => {
+  const localId = options.localIdOverride ?? getStoredLocalId();
+  const tenantOverride = options.subdomainOverride ?? getTenantSubdomainOverride();
+  const adminUserId = options.adminUserIdOverride ?? getAdminUserId();
+  const response = await fetch(`${API_BASE}/imagekit/sign`, {
+    headers: {
+      ...(localId ? { 'x-local-id': localId } : {}),
+      ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
+      ...(adminUserId ? { 'x-admin-user-id': adminUserId } : {}),
+    },
+  });
   if (!response.ok) {
     throw new Error('No se pudo obtener la firma de ImageKit.');
   }
@@ -32,9 +50,10 @@ export const requestImageKitAuth = async (): Promise<ImageKitAuth> => {
 export const uploadToImageKit = async (
   file: Blob,
   fileName: string,
-  folder?: string
+  folder?: string,
+  options?: ImageKitRequestOptions
 ): Promise<{ url: string; fileId: string }> => {
-  const auth = await requestImageKitAuth();
+  const auth = await requestImageKitAuth(options);
   const formData = new FormData();
   formData.append('file', file);
   formData.append('fileName', fileName);
@@ -43,7 +62,17 @@ export const uploadToImageKit = async (
   formData.append('signature', auth.signature);
   formData.append('publicKey', auth.publicKey);
   formData.append('useUniqueFileName', 'true');
-  const targetFolder = folder || auth.folder;
+  const resolveFolder = (baseFolder?: string, overrideFolder?: string) => {
+    const normalizedOverride = overrideFolder?.trim();
+    if (!normalizedOverride) return baseFolder;
+    if (normalizedOverride.startsWith('/') || !baseFolder) {
+      return normalizedOverride.startsWith('/') ? normalizedOverride : `/${normalizedOverride}`;
+    }
+    const normalizedBase = baseFolder.replace(/\/+$/, '');
+    const normalizedChild = normalizedOverride.replace(/^\/+/, '');
+    return `${normalizedBase}/${normalizedChild}`;
+  };
+  const targetFolder = resolveFolder(auth.folder, folder);
   if (targetFolder) {
     formData.append('folder', targetFolder);
   }
@@ -62,8 +91,18 @@ export const uploadToImageKit = async (
   return { url: result.url as string, fileId: result.fileId as string };
 };
 
-export const deleteFromImageKit = async (fileId: string): Promise<void> => {
-  const response = await fetch(`${API_BASE}/imagekit/file/${fileId}`, { method: 'DELETE' });
+export const deleteFromImageKit = async (fileId: string, options: ImageKitRequestOptions = {}): Promise<void> => {
+  const localId = options.localIdOverride ?? getStoredLocalId();
+  const tenantOverride = options.subdomainOverride ?? getTenantSubdomainOverride();
+  const adminUserId = options.adminUserIdOverride ?? getAdminUserId();
+  const response = await fetch(`${API_BASE}/imagekit/file/${fileId}`, {
+    method: 'DELETE',
+    headers: {
+      ...(localId ? { 'x-local-id': localId } : {}),
+      ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
+      ...(adminUserId ? { 'x-admin-user-id': adminUserId } : {}),
+    },
+  });
   if (!response.ok) {
     const message = await response.text();
     throw new Error(message || 'No se pudo eliminar la imagen.');

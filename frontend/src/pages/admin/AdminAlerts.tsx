@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
+import { ADMIN_EVENTS } from '@/lib/adminEvents';
 
 const AdminAlerts: React.FC = () => {
   const { toast } = useToast();
@@ -35,15 +36,25 @@ const AdminAlerts: React.FC = () => {
     endDate: '',
   });
 
-  useEffect(() => {
-    fetchAlerts();
-  }, []);
-
   const fetchAlerts = async () => {
     const data = await getAlerts();
     setAlerts(data);
     setIsLoading(false);
   };
+
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void fetchAlerts();
+    };
+    window.addEventListener(ADMIN_EVENTS.alertsUpdated, handleRefresh);
+    return () => {
+      window.removeEventListener(ADMIN_EVENTS.alertsUpdated, handleRefresh);
+    };
+  }, []);
 
   const openCreateDialog = () => {
     setEditingAlert(null);
@@ -156,7 +167,7 @@ const AdminAlerts: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Alertas</h1>
           <p className="text-muted-foreground mt-1">
             Crea alertas para mostrar a los usuarios.

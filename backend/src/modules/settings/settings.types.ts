@@ -6,6 +6,12 @@ export type SiteStats = {
   averageRating: number;
   yearlyBookings: number;
   repeatClientsPercentage: number;
+  visibility: {
+    experienceYears: boolean;
+    averageRating: boolean;
+    yearlyBookings: boolean;
+    repeatClientsPercentage: boolean;
+  };
 };
 
 export type SocialLinks = {
@@ -14,6 +20,13 @@ export type SocialLinks = {
   tiktok?: string;
   youtube?: string;
   linkedin?: string;
+};
+
+export type QrSticker = {
+  url: string;
+  imageUrl: string;
+  imageFileId: string;
+  createdAt: string;
 };
 
 export type SiteSettings = {
@@ -35,9 +48,19 @@ export type SiteSettings = {
   socials: SocialLinks;
   stats: SiteStats;
   openingHours: ShopSchedule;
+  appointments: {
+    cancellationCutoffHours: number;
+  };
   services: {
     categoriesEnabled: boolean;
   };
+  products: {
+    enabled: boolean;
+    categoriesEnabled: boolean;
+    clientPurchaseEnabled: boolean;
+    showOnLanding: boolean;
+  };
+  qrSticker: QrSticker | null;
 };
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -70,27 +93,59 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     averageRating: 4.9,
     yearlyBookings: 5000,
     repeatClientsPercentage: 80,
+    visibility: {
+      experienceYears: true,
+      averageRating: true,
+      yearlyBookings: true,
+      repeatClientsPercentage: true,
+    },
   },
   openingHours: cloneSchedule(DEFAULT_SHOP_SCHEDULE),
+  appointments: {
+    cancellationCutoffHours: 0,
+  },
   services: {
     categoriesEnabled: false,
   },
+  products: {
+    enabled: false,
+    categoriesEnabled: false,
+    clientPurchaseEnabled: false,
+    showOnLanding: false,
+  },
+  qrSticker: null,
 };
 
-export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings => ({
+export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings => {
+  const stats = { ...DEFAULT_SITE_SETTINGS.stats, ...(data?.stats ?? {}) };
+  const visibility = {
+    ...DEFAULT_SITE_SETTINGS.stats.visibility,
+    ...(data?.stats?.visibility ?? {}),
+  };
+  return {
   branding: { ...DEFAULT_SITE_SETTINGS.branding, ...(data?.branding ?? {}) },
   location: { ...DEFAULT_SITE_SETTINGS.location, ...(data?.location ?? {}) },
   contact: { ...DEFAULT_SITE_SETTINGS.contact, ...(data?.contact ?? {}) },
   socials: { ...DEFAULT_SITE_SETTINGS.socials, ...(data?.socials ?? {}) },
-  stats: { ...DEFAULT_SITE_SETTINGS.stats, ...(data?.stats ?? {}) },
+  stats: { ...stats, visibility },
   openingHours: data?.openingHours
     ? normalizeSchedule(data.openingHours)
     : cloneSchedule(DEFAULT_SITE_SETTINGS.openingHours),
+  appointments: {
+    ...DEFAULT_SITE_SETTINGS.appointments,
+    ...(data?.appointments ?? {}),
+  },
   services: {
     ...DEFAULT_SITE_SETTINGS.services,
     ...(data?.services ?? {}),
   },
-});
+  products: {
+    ...DEFAULT_SITE_SETTINGS.products,
+    ...(data?.products ?? {}),
+  },
+  qrSticker: data?.qrSticker ?? null,
+  };
+};
 
 export const cloneSettings = (settings: SiteSettings): SiteSettings =>
   JSON.parse(JSON.stringify(settings));

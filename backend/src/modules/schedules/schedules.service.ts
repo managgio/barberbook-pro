@@ -1,18 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { DEFAULT_SHOP_SCHEDULE, ShopSchedule } from './schedule.types';
-import { cloneSchedule, normalizeSchedule } from './schedule.utils';
+import { DAY_KEYS, cloneSchedule, normalizeSchedule } from './schedule.utils';
 
 @Injectable()
 export class SchedulesService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async ensureShopSchedule(): Promise<ShopSchedule> {
-    const existing = await this.prisma.shopSchedule.findUnique({ where: { id: 1 } });
+    const localId = getCurrentLocalId();
+    const existing = await this.prisma.shopSchedule.findUnique({ where: { localId } });
     if (existing) {
       return normalizeSchedule(existing.data as Partial<ShopSchedule>);
     }
-    await this.prisma.shopSchedule.create({ data: { id: 1, data: DEFAULT_SHOP_SCHEDULE } });
+    await this.prisma.shopSchedule.create({ data: { localId, data: DEFAULT_SHOP_SCHEDULE } });
     return cloneSchedule(DEFAULT_SHOP_SCHEDULE);
   }
 
@@ -22,24 +24,31 @@ export class SchedulesService {
   }
 
   async updateShopSchedule(schedule: ShopSchedule): Promise<ShopSchedule> {
+    const localId = getCurrentLocalId();
     const normalized = normalizeSchedule(schedule);
     await this.prisma.shopSchedule.upsert({
-      where: { id: 1 },
+      where: { localId },
       update: { data: normalized },
-      create: { id: 1, data: normalized },
+      create: { localId, data: normalized },
     });
-    const existingSettings = await this.prisma.siteSettings.findUnique({ where: { id: 1 } });
+    const existingSettings = await this.prisma.siteSettings.findUnique({ where: { localId } });
     if (existingSettings) {
+      const openingHours = DAY_KEYS.reduce((acc, key) => {
+        acc[key] = normalized[key];
+        return acc;
+      }, {} as Pick<ShopSchedule, typeof DAY_KEYS[number]>);
       await this.prisma.siteSettings.update({
-        where: { id: 1 },
-        data: { data: { ...(existingSettings.data as Record<string, unknown>), openingHours: normalized } },
+        where: { localId },
+        data: { data: { ...(existingSettings.data as Record<string, unknown>), openingHours } },
       });
     }
     return cloneSchedule(normalized);
   }
 
   async getBarberSchedule(barberId: string): Promise<ShopSchedule> {
-    const record = await this.prisma.barberSchedule.findUnique({ where: { barberId } });
+    const record = await this.prisma.barberSchedule.findFirst({
+      where: { barberId, localId: getCurrentLocalId() },
+    });
     if (!record) {
       return cloneSchedule(DEFAULT_SHOP_SCHEDULE);
     }
@@ -47,11 +56,12 @@ export class SchedulesService {
   }
 
   async updateBarberSchedule(barberId: string, schedule: ShopSchedule): Promise<ShopSchedule> {
+    const localId = getCurrentLocalId();
     const normalized = normalizeSchedule(schedule);
     await this.prisma.barberSchedule.upsert({
       where: { barberId },
       update: { data: normalized },
-      create: { barberId, data: normalized },
+      create: { barberId, localId, data: normalized },
     });
     return cloneSchedule(normalized);
   }

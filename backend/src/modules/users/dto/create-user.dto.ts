@@ -29,6 +29,14 @@ export class CreateUserDto {
   notificationWhatsapp?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  notificationSms?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  prefersBarberSelection?: boolean;
+
+  @IsOptional()
   @IsString()
   avatar?: string;
 
@@ -39,4 +47,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isSuperAdmin?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPlatformAdmin?: boolean;
 }

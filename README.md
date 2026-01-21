@@ -41,9 +41,7 @@ npm run dev
 
 - Copia `frontend/.env.example` a `frontend/.env.local` y rellena:
   - `VITE_API_BASE_URL` (URL del backend, por defecto `http://localhost:3000/api`)
-  - `VITE_IMAGEKIT_PUBLIC_KEY`
-  - `VITE_IMAGEKIT_URL_ENDPOINT`
-- El backend expone `/api/imagekit/sign` para firmar subidas; ya no se firma en el dev server de Vite.
+- El backend expone `/api/imagekit/sign` para firmar subidas; las credenciales viven en el backend.
 
 ## Backend (NestJS + Prisma + MySQL)
 
@@ -61,12 +59,42 @@ npm run prisma:seed     # datos de ejemplo que sustituyen los mocks del frontend
 npm run start:dev
 ```
 
+### Base de datos local con Docker (MySQL)
+
+En desarrollo puedes levantar MySQL con Docker desde la raiz del repo.
+
+```sh
+docker compose up -d
+```
+
+La configuracion por defecto coincide con `backend/.env`:
+
+- `DATABASE_URL="mysql://prisma:password@127.0.0.1:3306/leblond"`
+
+Para parar el contenedor:
+
+```sh
+docker compose down
+```
+
+#### Backup y restore
+
+Scripts sencillos en `scripts/` para exportar o importar datos:
+
+```sh
+# Crear dump
+./scripts/db_dump.sh ./db_dump.sql
+
+# Restaurar dump
+./scripts/db_restore.sh ./db_dump.sql
+```
+
 ### Dependencias principales
 
 - NestJS (REST API con validación y CORS)
 - Prisma ORM (MySQL) con seed inicial (usuarios, barberos, servicios, citas, festivos y horarios)
 - ImageKit (firma de subidas desde `/api/imagekit/sign`)
-- Superadmin configurable por email (env `SUPER_ADMIN_EMAIL` en backend y `VITE_SUPER_ADMIN_EMAIL` en frontend)
+- Superadmin configurable por email (env `SUPER_ADMIN_EMAIL` en backend)
 - Notificaciones: correo al crear/editar citas y recordatorio SMS 24h antes (Twilio)
 
 ### Variables de entorno clave (backend)
@@ -76,6 +104,12 @@ npm run start:dev
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`
 - Twilio (SMS): `TWILIO_AUTH_SID` (o `TWILIO_ACCOUNT_SID`), `TWILIO_ACCOUNT_TOKEN` (auth token), `TWILIO_MESSAGING_SERVICE_SID`
 - Email (avisos): `EMAIL`, `PASSWORD` y opcional `EMAIL_HOST` (default `smtp.gmail.com`), `EMAIL_PORT` (default `587`)
+- Asistente IA: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`
+
+### Asistente IA (Admin)
+
+- Endpoint: `POST /api/admin/ai-assistant/chat`
+- Capacidades y tools actuales: `backend/src/modules/ai-assistant/AI_ASSISTANT_CAPABILITIES.md`
 
 ## Uso de Git en el monorepo
 

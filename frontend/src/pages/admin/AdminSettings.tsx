@@ -6,10 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
-import { SiteSettings } from '@/data/types';
-import { getSiteSettings, updateSiteSettings } from '@/data/api';
+import { BreakRange, DayKey, ShopSchedule, SiteSettings } from '@/data/types';
+import { getServices, getShopSchedule, getSiteSettings, updateShopSchedule, updateSiteSettings } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
+import { useTenant } from '@/context/TenantContext';
 import {
   Loader2,
   MapPin,
@@ -21,13 +22,16 @@ import {
   Repeat,
   Settings,
   Clock,
+  Plus,
+  Trash2,
   Instagram,
   Music2,
   Youtube,
   Linkedin,
+  Boxes,
 } from 'lucide-react';
 
-const DAY_LABELS: { key: keyof SiteSettings['openingHours']; label: string }[] = [
+const DAY_LABELS: { key: DayKey; label: string }[] = [
   { key: 'monday', label: 'Lunes' },
   { key: 'tuesday', label: 'Martes' },
   { key: 'wednesday', label: 'Miércoles' },
@@ -41,6 +45,7 @@ const SHIFT_KEYS = ['morning', 'afternoon'] as const;
 type ShiftKey = (typeof SHIFT_KEYS)[number];
 
 const cloneSettings = (data: SiteSettings): SiteSettings => JSON.parse(JSON.stringify(data));
+const DEFAULT_BREAK_RANGE: BreakRange = { start: '13:30', end: '14:00' };
 
 const AdminSettings: React.FC = () => {
   const XBrandIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -56,10 +61,15 @@ const AdminSettings: React.FC = () => {
   );
 
   const { toast } = useToast();
+  const { tenant } = useTenant();
+  const productsModuleEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('stock');
   const [settings, setSettings] = useState<SiteSettings>(() => cloneSettings(DEFAULT_SITE_SETTINGS));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [shopSchedule, setShopSchedule] = useState<ShopSchedule | null>(null);
+  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
+  const [isSavingAvailability, setIsSavingAvailability] = useState(false);
   const [{ prefix: phonePrefix, number: phoneNumber }, setPhoneParts] = useState(() =>
     normalizePhoneParts(DEFAULT_SITE_SETTINGS.contact.phone)
   );
@@ -81,38 +91,101 @@ const AdminSettings: React.FC = () => {
     }
   };
 
+  const loadShopSchedule = async () => {
+    setIsScheduleLoading(true);
+    try {
+      const schedule = await getShopSchedule();
+      setShopSchedule(schedule);
+    } catch (error) {
+      toast({
+        title: 'No se pudo cargar la disponibilidad',
+        description: 'Intenta de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsScheduleLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSettings();
+    loadShopSchedule();
   }, []);
+
+  const buildSettingsPayload = (nextSettings: SiteSettings) => {
+    const phone = composePhone(phonePrefix, phoneNumber);
+    const payload: SiteSettings = {
+      ...nextSettings,
+      contact: { ...nextSettings.contact, phone },
+      socials: { ...nextSettings.socials },
+    };
+    Object.entries(payload.socials).forEach(([key, value]) => {
+      payload.socials[key as keyof SiteSettings['socials']] = value?.trim() || '';
+    });
+    return payload;
+  };
 
   const handleSave = async (fromSchedule = false) => {
     fromSchedule ? setIsSavingSchedule(true) : setIsSaving(true);
     try {
-      const phone = composePhone(phonePrefix, phoneNumber);
-      const payload: SiteSettings = {
-        ...settings,
-        contact: { ...settings.contact, phone },
-        socials: { ...settings.socials },
-      };
-      Object.entries(payload.socials).forEach(([key, value]) => {
-        payload.socials[key as keyof SiteSettings['socials']] = value?.trim() || '';
-      });
+      const payload = buildSettingsPayload(settings);
+      if (payload.services.categoriesEnabled) {
+        const servicesData = await getServices();
+        const missingCategory = servicesData.filter((service) => !service.categoryId);
+        if (missingCategory.length > 0) {
+          toast({
+            title: 'No se pudo guardar',
+            description: 'Asigna una categoría a todos los servicios o desactiva la categorización.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
 
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
       setPhoneParts(normalizePhoneParts(updated.contact.phone));
+      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
       toast({
         title: 'Configuración actualizada',
         description: fromSchedule ? 'Horario guardado.' : 'Los cambios se han guardado correctamente.',
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Revisa los campos e intenta nuevamente.';
       toast({
         title: 'Error al guardar',
-        description: 'Revisa los campos e intenta nuevamente.',
+        description: message,
         variant: 'destructive',
       });
     } finally {
       fromSchedule ? setIsSavingSchedule(false) : setIsSaving(false);
+    }
+  };
+
+  const saveProductsPreference = async (nextProducts: SiteSettings['products']) => {
+    if (isLoading || isSaving || isSavingSchedule) return;
+    const nextSettings = { ...settings, products: nextProducts };
+    setSettings(nextSettings);
+    setIsSaving(true);
+    try {
+      const payload = buildSettingsPayload(nextSettings);
+      const updated = await updateSiteSettings(payload);
+      setSettings(updated);
+      setPhoneParts(normalizePhoneParts(updated.contact.phone));
+      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      toast({
+        title: 'Preferencias actualizadas',
+        description: 'Los cambios se han guardado correctamente.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudieron guardar los cambios.';
+      toast({
+        title: 'Error al guardar',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -137,15 +210,103 @@ const AdminSettings: React.FC = () => {
     }));
   };
 
-  const handleStatsChange = (field: keyof SiteSettings['stats'], value: number) => {
+  const handleStatsChange = (field: Exclude<keyof SiteSettings['stats'], 'visibility'>, value: number) => {
     setSettings((prev) => ({
       ...prev,
       stats: { ...prev.stats, [field]: value },
     }));
   };
 
+  const handleStatsVisibilityChange = (field: keyof SiteSettings['stats']['visibility'], enabled: boolean) => {
+    setSettings((prev) => ({
+      ...prev,
+      stats: {
+        ...prev.stats,
+        visibility: {
+          ...prev.stats.visibility,
+          [field]: enabled,
+        },
+      },
+    }));
+  };
+
+  const ensureBreaksRecord = (current?: Record<DayKey, BreakRange[]>) =>
+    DAY_LABELS.reduce((acc, { key }) => {
+      acc[key] = current?.[key] ? [...current[key]] : [];
+      return acc;
+    }, {} as Record<DayKey, BreakRange[]>);
+
+  const handleBufferMinutesChange = (value: number) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      return { ...prev, bufferMinutes: Math.max(0, Math.floor(value)) };
+    });
+  };
+
+  const handleAddBreak = (day: DayKey) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaks = ensureBreaksRecord(prev.breaks);
+      const newRange = { ...DEFAULT_BREAK_RANGE };
+      breaks[day] = [...breaks[day], { ...newRange }];
+      return { ...prev, breaks };
+    });
+  };
+
+  const handleCopyBreaksToAll = (day: DayKey) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaks = ensureBreaksRecord(prev.breaks);
+      const source = breaks[day].map((range) => ({ ...range }));
+      DAY_LABELS.forEach(({ key }) => {
+        breaks[key] = [...breaks[key], ...source.map((range) => ({ ...range }))];
+      });
+      return { ...prev, breaks };
+    });
+  };
+
+  const handleUpdateBreak = (day: DayKey, index: number, field: 'start' | 'end', value: string) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaks = ensureBreaksRecord(prev.breaks);
+      breaks[day] = breaks[day].map((range, idx) => (idx === index ? { ...range, [field]: value } : range));
+      return { ...prev, breaks };
+    });
+  };
+
+  const handleRemoveBreak = (day: DayKey, index: number) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaks = ensureBreaksRecord(prev.breaks);
+      breaks[day] = breaks[day].filter((_, idx) => idx !== index);
+      return { ...prev, breaks };
+    });
+  };
+
+  const handleSaveAvailability = async () => {
+    if (!shopSchedule || isSavingAvailability) return;
+    setIsSavingAvailability(true);
+    try {
+      const updated = await updateShopSchedule(shopSchedule);
+      setShopSchedule(updated);
+      toast({
+        title: 'Disponibilidad actualizada',
+        description: 'Los descansos y tiempos entre servicios se han guardado.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudieron guardar los cambios.';
+      toast({
+        title: 'Error al guardar',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingAvailability(false);
+    }
+  };
+
   const handleShiftTimeChange = (
-    day: keyof SiteSettings['openingHours'],
+    day: DayKey,
     shift: ShiftKey,
     field: 'start' | 'end',
     value: string,
@@ -164,7 +325,7 @@ const AdminSettings: React.FC = () => {
   };
 
   const handleShiftToggle = (
-    day: keyof SiteSettings['openingHours'],
+    day: DayKey,
     shift: ShiftKey,
     enabled: boolean,
   ) => {
@@ -182,7 +343,7 @@ const AdminSettings: React.FC = () => {
     });
   };
 
-  const handleScheduleClosed = (day: keyof SiteSettings['openingHours'], closed: boolean) => {
+  const handleScheduleClosed = (day: DayKey, closed: boolean) => {
     setSettings((prev) => {
       const dayData = prev.openingHours[day];
       const updatedDay = {
@@ -199,11 +360,23 @@ const AdminSettings: React.FC = () => {
   };
 
   const experienceYears = Math.max(0, new Date().getFullYear() - settings.stats.experienceStartYear);
+  const statsVisibility = settings.stats.visibility || {
+    experienceYears: true,
+    averageRating: true,
+    yearlyBookings: true,
+    repeatClientsPercentage: true,
+  };
+  const statsPreviewItems = [
+    { key: 'experienceYears', icon: Sparkles, label: 'Años de experiencia', value: `${experienceYears}+` },
+    { key: 'averageRating', icon: Star, label: 'Valoración media', value: settings.stats.averageRating.toFixed(1) },
+    { key: 'yearlyBookings', icon: Calendar, label: 'Reservas/año', value: settings.stats.yearlyBookings.toLocaleString('es-ES') },
+    { key: 'repeatClientsPercentage', icon: Repeat, label: 'Clientes que repiten', value: `${settings.stats.repeatClientsPercentage}%` },
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
+        <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Configuración general</h1>
           <p className="text-muted-foreground mt-1">
             Ajusta los datos públicos del sitio, las estadísticas destacadas y el horario de apertura.
@@ -482,24 +655,256 @@ const AdminSettings: React.FC = () => {
               />
             </div>
           </div>
-          <div className="grid md:grid-cols-4 gap-3">
-            {[
-              { icon: Sparkles, label: 'Años de experiencia', value: `${experienceYears}+` },
-              { icon: Star, label: 'Valoración media', value: settings.stats.averageRating.toFixed(1) },
-              { icon: Calendar, label: 'Reservas/año', value: settings.stats.yearlyBookings.toLocaleString('es-ES') },
-              { icon: Repeat, label: 'Clientes que repiten', value: `${settings.stats.repeatClientsPercentage}%` },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 flex items-center gap-3"
-              >
-                <stat.icon className="w-4 h-4 text-primary" />
-                <div>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-lg font-semibold text-foreground leading-tight">{stat.value}</p>
+          <div className="rounded-xl border border-border/70 bg-muted/30 px-4 py-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">Visibilidad en la landing</p>
+              <p className="text-xs text-muted-foreground">Elige qué estadísticas mostrar.</p>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { key: 'experienceYears', label: 'Experiencia' },
+                { key: 'averageRating', label: 'Valoración' },
+                { key: 'yearlyBookings', label: 'Reservas/año' },
+                { key: 'repeatClientsPercentage', label: 'Repetición' },
+              ].map((stat) => (
+                <div
+                  key={stat.key}
+                  className="flex items-center justify-between rounded-lg border border-border/60 bg-background/80 px-3 py-2"
+                >
+                  <span className="text-xs font-medium text-foreground">{stat.label}</span>
+                  <Switch
+                    checked={statsVisibility[stat.key as keyof typeof statsVisibility]}
+                    onCheckedChange={(checked) =>
+                      handleStatsVisibilityChange(
+                        stat.key as keyof SiteSettings['stats']['visibility'],
+                        checked,
+                      )
+                    }
+                    disabled={isLoading}
+                  />
                 </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid md:grid-cols-4 gap-3">
+            {statsPreviewItems
+              .filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false)
+              .map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 flex items-center gap-3"
+                >
+                  <stat.icon className="w-4 h-4 text-primary" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-lg font-semibold text-foreground leading-tight">{stat.value}</p>
+                  </div>
+                </div>
+              ))}
+            {statsPreviewItems.filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false).length === 0 && (
+              <div className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm text-muted-foreground md:col-span-4">
+                No hay estadísticas visibles en la landing.
               </div>
-            ))}
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Products */}
+      {productsModuleEnabled && (
+        <Card variant="elevated">
+          <CardHeader className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Boxes className="w-5 h-5 text-primary" />
+              <CardTitle>Productos y stock</CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Gestiona la visibilidad pública y la compra desde la app.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Compra de clientes</p>
+                  <p className="text-xs text-muted-foreground">Permite añadir productos a la cita.</p>
+                </div>
+                <Switch
+                  checked={settings.products.clientPurchaseEnabled}
+                  onCheckedChange={(checked) =>
+                    saveProductsPreference({ ...settings.products, clientPurchaseEnabled: checked })
+                  }
+                  disabled={isLoading || isSaving || isSavingSchedule}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Mostrar en landing</p>
+                  <p className="text-xs text-muted-foreground">Sección pública de productos.</p>
+                </div>
+                <Switch
+                  checked={settings.products.showOnLanding}
+                  onCheckedChange={(checked) =>
+                    saveProductsPreference({ ...settings.products, showOnLanding: checked })
+                  }
+                  disabled={isLoading || isSaving || isSavingSchedule}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cancellation policy */}
+      <Card variant="elevated">
+        <CardHeader className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary" />
+            <CardTitle>Política de cancelación</CardTitle>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Define con cuántas horas de antelación se puede cancelar una cita.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2 max-w-xs">
+            <Label>Horas mínimas antes de la cita</Label>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={settings.appointments.cancellationCutoffHours}
+              onChange={(e) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  appointments: {
+                    ...prev.appointments,
+                    cancellationCutoffHours: Math.max(0, parseInt(e.target.value, 10) || 0),
+                  },
+                }))
+              }
+              disabled={isLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Usa 0 si no quieres aplicar límite de cancelación.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Breaks and buffers */}
+      <Card variant="elevated">
+        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-primary" />
+              Descansos y tiempos entre servicios
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Bloquea huecos en la agenda y añade minutos de preparación entre citas.
+            </p>
+          </div>
+          <Button onClick={handleSaveAvailability} disabled={isScheduleLoading || isSavingAvailability || isLoading}>
+            {isSavingAvailability && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Guardar disponibilidad
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 max-w-xs">
+              <Label>Tiempo entre servicios (minutos)</Label>
+              <Input
+                type="number"
+                min={0}
+                step={5}
+                value={shopSchedule?.bufferMinutes ?? 0}
+                onChange={(e) => handleBufferMinutesChange(parseInt(e.target.value, 10) || 0)}
+                disabled={isScheduleLoading || !shopSchedule}
+              />
+              <p className="text-xs text-muted-foreground">
+                Se aplica a todos los barberos para limpieza, preparación o descanso.
+              </p>
+            </div>
+            <div className="rounded-xl border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+              Estos bloques impiden reservar en las franjas indicadas y se aplican a todo el equipo.
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Huecos por día</p>
+              <p className="text-xs text-muted-foreground">Añade tantos huecos como necesites.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {DAY_LABELS.map(({ key, label }) => {
+              const dayBreaks = shopSchedule?.breaks?.[key] ?? [];
+              return (
+                <div key={key} className="rounded-xl border border-border/70 bg-muted/30 p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-foreground">{label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {dayBreaks.length ? `${dayBreaks.length} huecos` : 'Sin huecos definidos'}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCopyBreaksToAll(key)}
+                        disabled={isScheduleLoading || !shopSchedule}
+                      >
+                        Copiar a toda la semana
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddBreak(key)}
+                        disabled={isScheduleLoading || !shopSchedule}
+                        className="gap-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Añadir hueco
+                      </Button>
+                    </div>
+                  </div>
+
+                  {dayBreaks.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      {dayBreaks.map((range, index) => (
+                        <div key={`${key}-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                          <Input
+                            type="time"
+                            value={range.start}
+                            onChange={(e) => handleUpdateBreak(key, index, 'start', e.target.value)}
+                            disabled={isScheduleLoading || !shopSchedule}
+                          />
+                          <Input
+                            type="time"
+                            value={range.end}
+                            onChange={(e) => handleUpdateBreak(key, index, 'end', e.target.value)}
+                            disabled={isScheduleLoading || !shopSchedule}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveBreak(key, index)}
+                            disabled={isScheduleLoading || !shopSchedule}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-4 text-xs text-muted-foreground">No hay huecos configurados.</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -522,7 +927,7 @@ const AdminSettings: React.FC = () => {
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3">
+          <div className="grid gap-4 xl:grid-cols-3">
             {DAY_LABELS.map(({ key, label }) => {
               const day = settings.openingHours[key];
               return (

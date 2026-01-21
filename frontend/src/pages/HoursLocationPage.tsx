@@ -1,8 +1,9 @@
 import React from 'react';
 import Navbar from '@/components/layout/Navbar';
+import LegalFooter from '@/components/layout/LegalFooter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clock, MapPin, Phone, Instagram, Mail, Twitter, Linkedin, Youtube, Music2 } from 'lucide-react';
-import { ShopSchedule } from '@/data/types';
+import { DayKey, ShopSchedule } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
 
@@ -16,7 +17,7 @@ const dayNames: Record<string, string> = {
   sunday: 'Domingo',
 };
 
-const formatDaySchedule = (schedule: ShopSchedule[keyof ShopSchedule]) => {
+const formatDaySchedule = (schedule: ShopSchedule[DayKey]) => {
   if (schedule.closed) return 'Cerrado';
   const segments: string[] = [];
   if (schedule.morning.enabled) {
@@ -227,6 +228,7 @@ const HoursLocationPage: React.FC = () => {
           </div>
         </div>
       </main>
+      <LegalFooter />
     </div>
   );
 };

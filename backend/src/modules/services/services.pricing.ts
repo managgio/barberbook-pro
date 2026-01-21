@@ -1,4 +1,4 @@
-import { Offer, OfferScope, DiscountType, Service, ServiceCategory } from '@prisma/client';
+import { DiscountType, Offer, OfferScope, OfferTarget, Service, ServiceCategory } from '@prisma/client';
 
 type OfferWithRelations = Offer & { categories: ServiceCategory[]; services: Service[] };
 type ServiceWithCategory = Service & { categoryId?: string | null };
@@ -20,6 +20,7 @@ export const isOfferActiveNow = (offer: Offer, now: Date = new Date()) => {
 };
 
 const appliesToService = (offer: OfferWithRelations, service: ServiceWithCategory) => {
+  if (offer.target !== OfferTarget.service) return false;
   switch (offer.scope) {
     case OfferScope.all:
       return true;

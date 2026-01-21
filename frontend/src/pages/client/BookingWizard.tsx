@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
-import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer } from '@/data/types';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus } from '@/data/api';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -18,12 +21,13 @@ import {
   Loader2,
   CheckCircle,
 } from 'lucide-react';
-import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter } from 'date-fns';
+import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter, isWithinInterval, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import AlertBanner from '@/components/common/AlertBanner';
+import ProductSelector from '@/components/common/ProductSelector';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const STEPS = ['Servicio', 'Barbero y horario', 'Confirmación'];
@@ -43,11 +47,19 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const [productsEnabled, setProductsEnabled] = useState(false);
+  const [clientPurchaseEnabled, setClientPurchaseEnabled] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
+  const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [privacyConsent, setPrivacyConsent] = useState(false);
+  const [privacyConsentRequired, setPrivacyConsentRequired] = useState(true);
 
   const [booking, setBooking] = useState<BookingState>({
     serviceId: null,
@@ -55,25 +67,67 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     dateTime: null,
   });
   const [guestInfo, setGuestInfo] = useState({ name: '', email: '', phone: '' });
+  const [appointmentNote, setAppointmentNote] = useState('');
+  const [selectBarber, setSelectBarber] = useState(true);
+  const [preferenceInitialized, setPreferenceInitialized] = useState(false);
+  const [slotsByBarber, setSlotsByBarber] = useState<Record<string, string[]>>({});
+  const [barberWeeklyLoad, setBarberWeeklyLoad] = useState<Record<string, number>>({});
+  const slotsRequestRef = useRef(0);
+  const weeklyLoadRequestRef = useRef(0);
 
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(new Date()));
   const today = startOfDay(new Date());
+  const allowProductSelection = !isGuest && Boolean(user?.id) && productsEnabled && clientPurchaseEnabled;
+
+  const selectedProductsTotal = useMemo(() => {
+    return selectedProducts.reduce((acc, item) => {
+      const product = products.find((prod) => prod.id === item.productId);
+      if (!product) return acc;
+      const unitPrice = product.finalPrice ?? product.price;
+      return acc + unitPrice * item.quantity;
+    }, 0);
+  }, [products, selectedProducts]);
+  const selectedProductDetails = useMemo(
+    () =>
+      selectedProducts
+        .map((item) => {
+          const product = products.find((prod) => prod.id === item.productId);
+          if (!product) return null;
+          const unitPrice = product.finalPrice ?? product.price;
+          return {
+            id: product.id,
+            name: product.name,
+            imageUrl: product.imageUrl,
+            quantity: item.quantity,
+            unitPrice,
+            total: unitPrice * item.quantity,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+    [products, selectedProducts],
+  );
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [servicesData, barbersData, categoriesData, settingsData] = await Promise.all([
+        const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
           getServices(),
           getBarbers(),
           getServiceCategories(true),
           getSiteSettings(),
+          getProducts('booking'),
+          getProductCategories(true),
         ]);
         setServices(servicesData);
         setBarbers(barbersData);
         setServiceCategories(categoriesData);
         setCategoriesEnabled(settingsData.services.categoriesEnabled);
+        setProductsEnabled(settingsData.products.enabled);
+        setClientPurchaseEnabled(settingsData.products.clientPurchaseEnabled);
+        setProducts(productsData);
+        setProductCategories(productCategoriesData);
       } catch (error) {
         toast({
           title: 'No pudimos cargar los servicios',
@@ -89,6 +143,59 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     };
     fetchData();
   }, [searchParams, toast]);
+
+  useEffect(() => {
+    const preselected = searchParams.get('product');
+    if (!preselected || !allowProductSelection || products.length === 0) return;
+    setSelectedProducts((prev) => {
+      if (prev.some((item) => item.productId === preselected)) return prev;
+      return [...prev, { productId: preselected, quantity: 1 }];
+    });
+  }, [allowProductSelection, products, searchParams]);
+
+  useEffect(() => {
+    if (isGuest || !user?.id) {
+      setPrivacyConsentRequired(true);
+      setPrivacyConsent(false);
+      return;
+    }
+    let isMounted = true;
+    const loadStatus = async () => {
+      try {
+        const status = await getPrivacyConsentStatus(user.id);
+        if (!isMounted) return;
+        setPrivacyConsentRequired(status.required);
+        setPrivacyConsent(status.required ? false : true);
+      } catch (error) {
+        if (!isMounted) return;
+        setPrivacyConsentRequired(true);
+        setPrivacyConsent(false);
+      }
+    };
+    loadStatus();
+    return () => {
+      isMounted = false;
+    };
+  }, [isGuest, user?.id]);
+
+  useEffect(() => {
+    if (preferenceInitialized) return;
+    const barberParam = searchParams.get('barber');
+    if (barberParam) {
+      setSelectBarber(true);
+      setPreferenceInitialized(true);
+      return;
+    }
+    if (user) {
+      setSelectBarber(user.prefersBarberSelection ?? true);
+      setPreferenceInitialized(true);
+      return;
+    }
+    if (isGuest) {
+      setSelectBarber(true);
+      setPreferenceInitialized(true);
+    }
+  }, [isGuest, preferenceInitialized, searchParams, user]);
 
   useEffect(() => {
     if (booking.barberId) {
@@ -151,22 +258,113 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     [services],
   );
 
+  const getService = () => services.find(s => s.id === booking.serviceId);
+  const getBarber = () => barbers.find(b => b.id === booking.barberId);
+  const availableBarbers = useMemo(
+    () => barbers.filter((barber) => barber.isActive !== false),
+    [barbers],
+  );
+  const canPickSlots = selectBarber ? !!booking.barberId : true;
+  const assignedBarber = useMemo(
+    () => barbers.find((barber) => barber.id === booking.barberId) || null,
+    [barbers, booking.barberId],
+  );
+
   const fetchSlots = useCallback(async () => {
-    if (!booking.barberId || !booking.serviceId) return;
+    if (!booking.serviceId) return;
+    const requestId = ++slotsRequestRef.current;
     setIsSlotsLoading(true);
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    const slots = await getAvailableSlots(booking.barberId, dateStr, {
-      serviceId: booking.serviceId,
-    });
-    setAvailableSlots(slots);
-    setIsSlotsLoading(false);
-  }, [booking.barberId, booking.serviceId, selectedDate]);
+    try {
+      if (selectBarber) {
+        if (!booking.barberId) {
+          if (requestId === slotsRequestRef.current) {
+            setAvailableSlots([]);
+            setSlotsByBarber({});
+          }
+          return;
+        }
+        const slots = await getAvailableSlots(booking.barberId, dateStr, {
+          serviceId: booking.serviceId,
+        });
+        if (requestId !== slotsRequestRef.current) return;
+        setAvailableSlots(slots);
+        setSlotsByBarber({});
+      } else {
+        if (availableBarbers.length === 0) {
+          if (requestId === slotsRequestRef.current) {
+            setAvailableSlots([]);
+            setSlotsByBarber({});
+          }
+          return;
+        }
+        const results = await Promise.all(
+          availableBarbers.map((barber) =>
+            getAvailableSlots(barber.id, dateStr, { serviceId: booking.serviceId }),
+          ),
+        );
+        if (requestId !== slotsRequestRef.current) return;
+        const nextMap: Record<string, string[]> = {};
+        availableBarbers.forEach((barber, index) => {
+          nextMap[barber.id] = results[index] || [];
+        });
+        const merged = Array.from(new Set(results.flat())).sort();
+        setSlotsByBarber(nextMap);
+        setAvailableSlots(merged);
+      }
+    } catch (error) {
+      if (requestId === slotsRequestRef.current) {
+        setAvailableSlots([]);
+        setSlotsByBarber({});
+      }
+    } finally {
+      if (requestId === slotsRequestRef.current) {
+        setIsSlotsLoading(false);
+      }
+    }
+  }, [availableBarbers, booking.barberId, booking.serviceId, selectedDate, selectBarber]);
+
+  const fetchWeeklyLoad = useCallback(async () => {
+    const requestId = ++weeklyLoadRequestRef.current;
+    if (!booking.serviceId || availableBarbers.length === 0) {
+      setBarberWeeklyLoad({});
+      return;
+    }
+    try {
+      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
+      const appts = await getAppointments();
+      const counts = availableBarbers.reduce<Record<string, number>>((acc, barber) => {
+        acc[barber.id] = 0;
+        return acc;
+      }, {});
+      appts.forEach((appointment) => {
+        if (appointment.status === 'cancelled') return;
+        const date = parseISO(appointment.startDateTime);
+        if (!isWithinInterval(date, { start: weekStart, end: weekEnd })) return;
+        if (counts[appointment.barberId] !== undefined) {
+          counts[appointment.barberId] += 1;
+        }
+      });
+      if (requestId !== weeklyLoadRequestRef.current) return;
+      setBarberWeeklyLoad(counts);
+    } catch (error) {
+      if (requestId === weeklyLoadRequestRef.current) {
+        setBarberWeeklyLoad({});
+      }
+    }
+  }, [availableBarbers, booking.serviceId, selectedDate]);
 
   useEffect(() => {
-    if (booking.barberId && booking.serviceId && currentStep === 1) {
-      fetchSlots();
-    }
-  }, [booking.barberId, booking.serviceId, selectedDate, currentStep, fetchSlots]);
+    if (!booking.serviceId || currentStep !== 1) return;
+    if (selectBarber && !booking.barberId) return;
+    fetchSlots();
+  }, [booking.barberId, booking.serviceId, selectedDate, currentStep, fetchSlots, selectBarber]);
+
+  useEffect(() => {
+    if (selectBarber || !booking.serviceId || currentStep !== 1) return;
+    fetchWeeklyLoad();
+  }, [selectBarber, booking.serviceId, selectedDate, currentStep, fetchWeeklyLoad]);
 
   const handleSelectService = (serviceId: string) => {
     setBooking({
@@ -177,6 +375,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
     setAvailableSlots([]);
+    setSlotsByBarber({});
+    setBarberWeeklyLoad({});
     setCurrentStep(1);
   };
 
@@ -252,11 +452,22 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
     setAvailableSlots([]);
+    setSlotsByBarber({});
   };
 
-  const getService = () => services.find(s => s.id === booking.serviceId);
-  const getBarber = () => barbers.find(b => b.id === booking.barberId);
-  const availableBarbers = barbers.filter((barber) => barber.isActive !== false);
+  const handleBarberSelectionToggle = (checked: boolean) => {
+    setSelectBarber(checked);
+    setBooking((prev) => ({
+      ...prev,
+      barberId: checked ? prev.barberId : null,
+      dateTime: null,
+    }));
+    setAvailableSlots([]);
+    setSlotsByBarber({});
+    if (checked) {
+      setBarberWeeklyLoad({});
+    }
+  };
 
   const isOfferActiveOnDate = (offer?: AppliedOffer | null, date?: Date | null) => {
     if (!offer || !date) return false;
@@ -290,6 +501,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     }
     return { basePrice, finalPrice: basePrice, appliedOffer: null, amountOff: 0 };
   }, [booking.dateTime, selectedDate, services, booking.serviceId]);
+
+  const totalWithProducts = useMemo(
+    () => (selectedPricing?.finalPrice ?? 0) + selectedProductsTotal,
+    [selectedPricing, selectedProductsTotal],
+  );
 
   const activeOffers = useMemo(() => {
     const refDate = selectedDate;
@@ -358,20 +574,32 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       });
       return;
     }
+    if (privacyConsentRequired && !privacyConsent) {
+      toast({
+        title: 'Falta consentimiento',
+        description: 'Debes aceptar la Política de Privacidad para continuar.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsSubmitting(true);
 
     try {
       const guestContact = [guestInfo.email.trim(), guestInfo.phone.trim()].filter(Boolean).join(' · ');
       const userId = isGuest ? null : (user as User).id;
+      const productsPayload = allowProductSelection ? selectedProducts : undefined;
       await createAppointment({
         userId,
         serviceId: booking.serviceId,
         barberId: booking.barberId,
         startDateTime: booking.dateTime,
-        status: 'confirmed',
+        status: 'scheduled',
+        notes: appointmentNote.trim() ? appointmentNote.trim() : undefined,
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
+        privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
+        ...(productsPayload ? { products: productsPayload } : {}),
       });
 
       setShowSuccess(true);
@@ -381,7 +609,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           title: '¡Cita reservada!',
           description: isGuest
             ? 'Hemos registrado tu cita. Te contactaremos para confirmar cualquier detalle.'
-            : 'Tu cita ha sido confirmada correctamente.',
+            : 'Tu cita ha sido programada correctamente.',
         });
         if (isGuest) {
           navigate('/');
@@ -403,6 +631,30 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     const [hours, minutes] = slot.split(':');
     const dateTime = new Date(selectedDate);
     dateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    if (!selectBarber) {
+      const eligibleBarbers = availableBarbers.filter((barber) =>
+        slotsByBarber[barber.id]?.includes(slot),
+      );
+      if (eligibleBarbers.length === 0) {
+        toast({
+          title: 'No hay barberos disponibles',
+          description: 'Elige otro horario para asignarte un barbero disponible.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const chosen = [...eligibleBarbers].sort((a, b) => {
+        const loadDiff = (barberWeeklyLoad[a.id] ?? 0) - (barberWeeklyLoad[b.id] ?? 0);
+        if (loadDiff !== 0) return loadDiff;
+        return a.name.localeCompare(b.name);
+      })[0];
+      setBooking((prev) => ({
+        ...prev,
+        barberId: chosen.id,
+        dateTime: dateTime.toISOString(),
+      }));
+      return;
+    }
     setBooking((prev) => ({ ...prev, dateTime: dateTime.toISOString() }));
   };
 
@@ -414,7 +666,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           <div className="w-24 h-24 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="w-12 h-12 text-green-500" />
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">¡Reserva confirmada!</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-2">¡Reserva programada!</h2>
           <p className="text-muted-foreground">
             {isGuest
               ? 'Para cambios o cancelaciones, contáctanos directamente.'
@@ -564,51 +816,85 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           {/* Step 1: Select Barber & Schedule */}
           {currentStep === 1 && (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground mb-1">Elige tu barbero y horario</h2>
-                <p className="text-sm text-muted-foreground">
-                  Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.
-                </p>
-              </div>
-              <div className="grid gap-6 lg:grid-cols-[280px,1fr]">
-                <div className="space-y-4">
-                  <p className="text-sm font-medium text-muted-foreground">Selecciona a tu estilista preferido</p>
-                  <div className="space-y-3 pr-1 max-h-[420px] overflow-y-auto">
-                    {availableBarbers.length > 0 ? (
-                      availableBarbers.map((barber) => (
-                        <button
-                          key={barber.id}
-                          onClick={() => handleSelectBarber(barber.id)}
-                          className={cn(
-                            'w-full rounded-2xl border p-3 flex items-center gap-3 text-left transition-all',
-                            booking.barberId === barber.id
-                              ? 'border-primary bg-primary/5 shadow-glow'
-                              : 'border-border bg-card hover:border-primary/40'
-                          )}
-                        >
-                          <img 
-                            src={barber.photo || defaultAvatar} 
-                            alt={barber.name}
-                            className="w-14 h-14 rounded-xl object-cover"
-                          />
-                          <div className="flex-1">
-                            <p className="font-semibold text-foreground">{barber.name}</p>
-                            <p className="text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Disponible desde {new Date(barber.startDate).toLocaleDateString()}
-                              {barber.endDate && ` · hasta ${new Date(barber.endDate).toLocaleDateString()}`}
-                            </p>
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No hay barberos activos disponibles.</p>
-                    )}
-                  </div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground mb-1">
+                    {selectBarber ? 'Elige tu barbero y horario' : 'Elige tu horario'}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {selectBarber
+                      ? 'Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.'
+                      : 'Selecciona el día y la hora; asignaremos automáticamente a un barbero disponible.'}
+                  </p>
                 </div>
+                <div className="flex items-center gap-3 rounded-full border border-border bg-secondary/40 px-4 py-2">
+                  <span className="text-xs font-medium text-muted-foreground">Elegir barbero</span>
+                  <Switch checked={selectBarber} onCheckedChange={handleBarberSelectionToggle} />
+                </div>
+              </div>
+
+              {!selectBarber && (
+                <div className="rounded-2xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                  <p>
+                    Barbero asignado: {!assignedBarber?.name ? 'A determinar' : ''}
+                  </p>
+                  {assignedBarber && booking.dateTime && (
+                    <div className="mt-3 flex items-center gap-3 rounded-xl border border-border/60 bg-background/70 p-3 text-foreground">
+                      <img
+                        src={assignedBarber.photo || defaultAvatar}
+                        alt={assignedBarber.name}
+                        className="w-12 h-12 rounded-xl object-cover"
+                      />
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Barbero asignado</p>
+                        <p className="font-semibold text-foreground">{assignedBarber.name}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className={cn('grid gap-6', selectBarber && 'lg:grid-cols-[280px,1fr]')}>
+                {selectBarber && (
+                  <div className="space-y-4">
+                    <p className="text-sm font-medium text-muted-foreground">Selecciona a tu estilista preferido</p>
+                    <div className="space-y-3 pr-1 max-h-[420px] overflow-y-auto">
+                      {availableBarbers.length > 0 ? (
+                        availableBarbers.map((barber) => (
+                          <button
+                            key={barber.id}
+                            onClick={() => handleSelectBarber(barber.id)}
+                            className={cn(
+                              'w-full rounded-2xl border p-3 flex items-center gap-3 text-left transition-all',
+                              booking.barberId === barber.id
+                                ? 'border-primary bg-primary/5 shadow-glow'
+                                : 'border-border bg-card hover:border-primary/40'
+                            )}
+                          >
+                            <img 
+                              src={barber.photo || defaultAvatar} 
+                              alt={barber.name}
+                              className="w-14 h-14 rounded-xl object-cover"
+                            />
+                            <div className="flex-1">
+                              <p className="font-semibold text-foreground">{barber.name}</p>
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Disponible desde {new Date(barber.startDate).toLocaleDateString()}
+                                {barber.endDate && ` · hasta ${new Date(barber.endDate).toLocaleDateString()}`}
+                              </p>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No hay barberos activos disponibles.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-5 rounded-3xl border border-border bg-muted/5 p-3 sm:p-4">
-                  {booking.barberId ? (
+                  {canPickSlots ? (
                     <>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -653,7 +939,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                 disabled={isPast}
                                 onClick={() => {
                                   setSelectedDate(startOfDay(date));
-                                  setBooking((prev) => ({ ...prev, dateTime: null }));
+                                  setBooking((prev) => ({
+                                    ...prev,
+                                    dateTime: null,
+                                    barberId: selectBarber ? prev.barberId : null,
+                                  }));
+                                  setAvailableSlots([]);
+                                  setSlotsByBarber({});
+                                  setBarberWeeklyLoad({});
                                 }}
                                 className={cn(
                                   'rounded-lg px-0 py-1.5 text-center text-xs transition-all border flex flex-col items-center justify-center min-h-[52px]',
@@ -788,6 +1081,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         {selectedPricing?.finalPrice.toFixed(2)}€
                       </span>
                     )}
+                    {selectedProductsTotal > 0 && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Total con productos: {totalWithProducts.toFixed(2)}€
+                      </div>
+                    )}
                   </div>
                 </div>
                 {getService()?.appliedOffer && !selectedPricing?.appliedOffer && (
@@ -800,6 +1098,63 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     Precio promocional válido para citas hasta{' '}
                     {format(new Date(selectedPricing.appliedOffer.endDate), "d 'de' MMMM", { locale: es })}.
                   </div>
+                )}
+
+                {allowProductSelection && productsEnabled && (
+                  <>
+                    <hr className="border-border" />
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Productos añadidos</p>
+                          <p className="text-xs text-muted-foreground">
+                            Puedes incluir productos en esta cita.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground">
+                            Total productos: {selectedProductsTotal.toFixed(2)}€
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsProductsDialogOpen(true)}
+                          >
+                            {selectedProducts.length > 0 ? 'Editar productos' : 'Añadir productos'}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-muted/30 p-4 space-y-3">
+                        {selectedProductDetails.length > 0 ? (
+                          <div className="space-y-3">
+                            {selectedProductDetails.map((item) => (
+                              <div key={item.id} className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
+                                    {item.imageUrl ? (
+                                      <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <span className="text-[11px] text-muted-foreground">Sin foto</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-foreground">{item.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {item.quantity} x {item.unitPrice.toFixed(2)}€
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-medium text-foreground">{item.total.toFixed(2)}€</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <hr className="border-border" />
@@ -831,6 +1186,28 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     </p>
                   </div>
                 </div>
+                <hr className="border-border" />
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="appointment-note">Comentario para la cita</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {appointmentNote.length}/250
+                    </span>
+                  </div>
+                  <Textarea
+                    id="appointment-note"
+                    placeholder="¿Algo que debamos tener en cuenta?"
+                    maxLength={250}
+                    value={appointmentNote}
+                    onChange={(e) => setAppointmentNote(e.target.value)}
+                    className="min-h-[110px] resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    El comentario lo verá tu barbero para preparar la cita.
+                  </p>
+                </div>
+
                 <hr className="border-border" />
 
                 {isGuest && (
@@ -875,6 +1252,33 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </>
                 )}
 
+                {privacyConsentRequired && (
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="privacy-consent"
+                      checked={privacyConsent}
+                      onCheckedChange={(value) => setPrivacyConsent(Boolean(value))}
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="privacy-consent" className="text-sm leading-5 text-foreground">
+                        He leído y acepto la{' '}
+                        <a
+                          href="/legal/privacy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline underline-offset-4"
+                        >
+                          Política de Privacidad
+                        </a>
+                        .
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Necesitamos tu consentimiento para gestionar la reserva.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
               </div>
             </div>
           )}
@@ -903,7 +1307,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             <Button 
               variant="glow" 
               onClick={handleConfirm} 
-              disabled={isSubmitting || (isGuest && (guestInfo.name.trim().length === 0 || guestInfo.email.trim().length === 0))}
+              disabled={
+                isSubmitting ||
+                !privacyConsent ||
+                (isGuest && (guestInfo.name.trim().length === 0 || guestInfo.email.trim().length === 0))
+              }
             >
               {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Confirmar reserva
@@ -911,6 +1319,29 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           )}
         </div>
       </div>
+      <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Seleccionar productos</DialogTitle>
+            <DialogDescription>
+              Busca y añade productos a tu cita. Solo se guardarán los seleccionados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto pr-2">
+            <ProductSelector
+              products={products}
+              categories={productCategories}
+              selected={selectedProducts}
+              onChange={setSelectedProducts}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setIsProductsDialogOpen(false)}>
+              Listo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
+import { ADMIN_EVENTS, dispatchHolidaysUpdated } from '@/lib/adminEvents';
 
 const AdminHolidays: React.FC = () => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -23,36 +24,68 @@ const AdminHolidays: React.FC = () => {
   const [barberHolidays, setBarberHolidays] = useState<HolidayRange[]>([]);
   const [generalRange, setGeneralRange] = useState<DateRange | undefined>();
   const [barberRange, setBarberRange] = useState<DateRange | undefined>();
+  const [monthsToShow, setMonthsToShow] = useState(2);
   const [selectedBarber, setSelectedBarber] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
+  const loadInitialData = useCallback(async () => {
+    setIsLoading(true);
+    try {
       const [holidays, barbersData] = await Promise.all([
         getHolidaysGeneral(),
         getBarbers(),
       ]);
       setGeneralHolidays(holidays);
       setBarbers(barbersData);
-      if (barbersData.length > 0) {
-        setSelectedBarber(barbersData[0].id);
-      }
+      setSelectedBarber((prev) => prev || barbersData[0]?.id || '');
+    } finally {
       setIsLoading(false);
-    };
-    fetchData();
+    }
+  }, []);
+
+  const refreshGeneralHolidays = useCallback(async () => {
+    const holidays = await getHolidaysGeneral();
+    setGeneralHolidays(holidays);
+  }, []);
+
+  const refreshBarberHolidays = useCallback(async (barberId: string) => {
+    const holidays = await getHolidaysByBarber(barberId);
+    setBarberHolidays(holidays);
   }, []);
 
   useEffect(() => {
-    const loadBarberHolidays = async () => {
-      if (!selectedBarber) {
-        setBarberHolidays([]);
-        return;
-      }
-      const holidays = await getHolidaysByBarber(selectedBarber);
-      setBarberHolidays(holidays);
+    loadInitialData();
+  }, [loadInitialData]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleChange = () => {
+      const width = window.innerWidth;
+      setMonthsToShow(width >= 1024 && width < 1280 ? 1 : 2);
     };
-    loadBarberHolidays();
-  }, [selectedBarber]);
+    handleChange();
+    window.addEventListener('resize', handleChange);
+    return () => window.removeEventListener('resize', handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBarber) {
+      setBarberHolidays([]);
+      return;
+    }
+    void refreshBarberHolidays(selectedBarber);
+  }, [selectedBarber, refreshBarberHolidays]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void refreshGeneralHolidays();
+      if (selectedBarber) {
+        void refreshBarberHolidays(selectedBarber);
+      }
+    };
+    window.addEventListener(ADMIN_EVENTS.holidaysUpdated, handleRefresh);
+    return () => window.removeEventListener(ADMIN_EVENTS.holidaysUpdated, handleRefresh);
+  }, [refreshGeneralHolidays, refreshBarberHolidays, selectedBarber]);
 
   const rangeToPayload = (range?: DateRange): HolidayRange | null => {
     if (!range?.from) return null;
@@ -70,11 +103,13 @@ const AdminHolidays: React.FC = () => {
     const updated = await addGeneralHolidayRange(payload);
     setGeneralHolidays(updated);
     setGeneralRange(undefined);
+    dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
 
   const handleRemoveGeneralHoliday = async (range: HolidayRange) => {
     const updated = await removeGeneralHolidayRange(range);
     setGeneralHolidays(updated);
+    dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
 
   const handleAddBarberHoliday = async () => {
@@ -83,12 +118,14 @@ const AdminHolidays: React.FC = () => {
     const updated = await addBarberHolidayRange(selectedBarber, payload);
     setBarberHolidays(updated);
     setBarberRange(undefined);
+    dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
 
   const handleRemoveBarberHoliday = async (range: HolidayRange) => {
     if (!selectedBarber) return;
     const updated = await removeBarberHolidayRange(selectedBarber, range);
     setBarberHolidays(updated);
+    dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
 
   const formatRangeLabel = (range: HolidayRange) => {
@@ -114,7 +151,7 @@ const AdminHolidays: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
+      <div className="pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Festivos</h1>
         <p className="text-muted-foreground mt-1">
           Administra los días no laborables generales y por barbero.
@@ -130,7 +167,7 @@ const AdminHolidays: React.FC = () => {
             <div className="border rounded-2xl p-4 bg-card/60">
               <Calendar
                 mode="range"
-                numberOfMonths={2}
+                numberOfMonths={monthsToShow}
                 selected={generalRange}
                 onSelect={setGeneralRange}
                 className="mx-auto"
@@ -192,7 +229,7 @@ const AdminHolidays: React.FC = () => {
             <div className="border rounded-2xl p-4 bg-card/60">
               <Calendar
                 mode="range"
-                numberOfMonths={2}
+                numberOfMonths={monthsToShow}
                 selected={barberRange}
                 onSelect={setBarberRange}
                 className="mx-auto"

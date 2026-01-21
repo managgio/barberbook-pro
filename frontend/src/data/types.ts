@@ -10,10 +10,90 @@ export interface User {
   notificationPrefs: {
     email: boolean;
     whatsapp: boolean;
+    sms?: boolean;
   };
+  isBlocked?: boolean;
+  prefersBarberSelection?: boolean;
   avatar?: string;
   isSuperAdmin?: boolean;
+  isPlatformAdmin?: boolean;
+  isLocalAdmin?: boolean;
   adminRoleId?: string | null;
+}
+
+export interface Brand {
+  id: string;
+  name: string;
+  subdomain: string;
+  customDomain?: string | null;
+  defaultLocationId?: string | null;
+  isActive?: boolean;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  slug?: string | null;
+  isActive?: boolean;
+}
+
+export interface FirebaseWebConfig {
+  apiKey?: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  measurementId?: string;
+}
+
+export interface TenantBootstrap {
+  brand: Brand | null;
+  locations: Location[];
+  currentLocalId: string;
+  isPlatform?: boolean;
+  config?: {
+    branding?: {
+      name?: string;
+      shortName?: string;
+      logoUrl?: string;
+      logoFileId?: string;
+      logoLightUrl?: string;
+      logoLightFileId?: string;
+      logoDarkUrl?: string;
+      logoDarkFileId?: string;
+      heroBackgroundUrl?: string;
+      heroBackgroundFileId?: string;
+      heroBackgroundDimmed?: boolean;
+      heroBackgroundOpacity?: number;
+      heroBadgeEnabled?: boolean;
+      heroImageUrl?: string;
+      heroImageFileId?: string;
+      heroImageEnabled?: boolean;
+      heroTextColor?: 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
+      heroLocationCardEnabled?: boolean;
+      heroImagePosition?: 'left' | 'right';
+      heroNoImageAlign?: 'center' | 'right' | 'left';
+      signImageUrl?: string;
+      signImageFileId?: string;
+    } | null;
+    adminSidebar?: {
+      hiddenSections?: string[];
+    } | null;
+    theme?: {
+      primary?: string;
+      mode?: 'dark' | 'light';
+    } | null;
+    notificationPrefs?: {
+      email?: boolean;
+      whatsapp?: boolean;
+      sms?: boolean;
+    } | null;
+    landing?: {
+      order?: string[];
+      hiddenSections?: string[];
+    } | null;
+  };
 }
 
 export interface Barber {
@@ -41,7 +121,38 @@ export interface Service {
   appliedOffer?: AppliedOffer | null;
 }
 
-export type AppointmentStatus = 'confirmed' | 'completed' | 'cancelled';
+export interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  sku?: string | null;
+  price: number;
+  finalPrice?: number;
+  stock: number;
+  minStock?: number;
+  imageUrl?: string | null;
+  imageFileId?: string | null;
+  isActive: boolean;
+  isPublic: boolean;
+  categoryId?: string | null;
+  category?: ProductCategory | null;
+  appliedOffer?: AppliedOffer | null;
+}
+
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+export type PaymentMethod = 'cash' | 'card' | 'bizum';
+export type CashMovementType = 'in' | 'out';
+
+export interface AppointmentProductItem {
+  id: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  imageUrl?: string | null;
+  isPublic?: boolean;
+}
 
 export interface Appointment {
   id: string;
@@ -50,11 +161,44 @@ export interface Appointment {
   serviceId: string;
   startDateTime: string; // ISO string
   price: number;
+  paymentMethod?: PaymentMethod | null;
   status: AppointmentStatus;
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  products?: AppointmentProductItem[];
 }
+
+export interface CashMovement {
+  id: string;
+  localId: string;
+  type: CashMovementType;
+  amount: number;
+  method?: PaymentMethod | null;
+  note?: string | null;
+  occurredAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClientNote {
+  id: string;
+  userId: string;
+  localId: string;
+  authorId?: string | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DayKey =
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday'
+  | 'sunday';
 
 export interface ShiftSchedule {
   enabled: boolean;
@@ -68,7 +212,14 @@ export interface DaySchedule {
   afternoon: ShiftSchedule;
 }
 
+export interface BreakRange {
+  start: string;
+  end: string;
+}
+
 export interface ShopSchedule {
+  bufferMinutes?: number;
+  breaks?: Record<DayKey, BreakRange[]>;
   monday: DaySchedule;
   tuesday: DaySchedule;
   wednesday: DaySchedule;
@@ -93,6 +244,12 @@ export interface SiteStats {
   averageRating: number;
   yearlyBookings: number;
   repeatClientsPercentage: number;
+  visibility: {
+    experienceYears: boolean;
+    averageRating: boolean;
+    yearlyBookings: boolean;
+    repeatClientsPercentage: boolean;
+  };
 }
 
 export interface SocialLinks {
@@ -103,12 +260,27 @@ export interface SocialLinks {
   linkedin?: string;
 }
 
+export interface QrSticker {
+  url: string;
+  imageUrl: string;
+  imageFileId: string;
+  createdAt: string;
+}
+
 export interface ServiceCategory {
   id: string;
   name: string;
   description?: string;
   position?: number;
   services?: Service[];
+}
+
+export interface ProductCategory {
+  id: string;
+  name: string;
+  description?: string;
+  position?: number;
+  products?: Product[];
 }
 
 export interface SiteSettings {
@@ -130,13 +302,24 @@ export interface SiteSettings {
   socials: SocialLinks;
   stats: SiteStats;
   openingHours: ShopSchedule;
+  appointments: {
+    cancellationCutoffHours: number;
+  };
   services: {
     categoriesEnabled: boolean;
   };
+  products: {
+    enabled: boolean;
+    categoriesEnabled: boolean;
+    clientPurchaseEnabled: boolean;
+    showOnLanding: boolean;
+  };
+  qrSticker: QrSticker | null;
 }
 
 export type DiscountType = 'percentage' | 'amount';
-export type OfferScope = 'all' | 'categories' | 'services';
+export type OfferScope = 'all' | 'categories' | 'services' | 'products';
+export type OfferTarget = 'service' | 'product';
 
 export interface AppliedOffer {
   id: string;
@@ -157,24 +340,32 @@ export interface Offer {
   discountType: DiscountType;
   discountValue: number;
   scope: OfferScope;
+  target?: OfferTarget;
   startDate?: string | null;
   endDate?: string | null;
   active: boolean;
   categories: ServiceCategory[];
   services: Service[];
+  productCategories?: ProductCategory[];
+  products?: Product[];
 }
 
 export type AdminSectionKey =
   | 'dashboard'
   | 'calendar'
   | 'search'
+  | 'offers'
+  | 'cash-register'
+  | 'stock'
   | 'clients'
   | 'services'
   | 'barbers'
   | 'alerts'
   | 'holidays'
   | 'roles'
-  | 'settings';
+  | 'settings'
+  | 'legal'
+  | 'audit';
 
 export interface AdminRole {
   id: string;
@@ -187,6 +378,7 @@ export interface BookingState {
   serviceId: string | null;
   barberId: string | null;
   dateTime: string | null;
+  notes?: string;
 }
 
 export interface CreateAppointmentPayload {
@@ -198,9 +390,144 @@ export interface CreateAppointmentPayload {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  privacyConsentGiven?: boolean;
+  products?: Array<{ productId: string; quantity: number }>;
+}
+
+export interface LegalSection {
+  heading: string;
+  bodyMarkdown: string;
+}
+
+export interface LegalBusinessIdentity {
+  ownerName: string;
+  taxId?: string | null;
+  address?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  country?: string | null;
+}
+
+export interface SubProcessor {
+  name: string;
+  purpose: string;
+  country: string;
+  dataTypes: string;
+  link?: string | null;
+}
+
+export interface LegalAiDisclosure {
+  title: string;
+  bodyMarkdown: string;
+  providerNames: string[];
+}
+
+export interface LegalPolicyResponse {
+  title: string;
+  effectiveDate: string;
+  version: number;
+  sections: LegalSection[];
+  businessIdentity: LegalBusinessIdentity;
+  subProcessors?: SubProcessor[];
+  aiDisclosure?: LegalAiDisclosure | null;
+}
+
+export interface PrivacyConsentStatus {
+  required: boolean;
+  policyVersion: number;
+}
+
+export interface LegalCustomSections {
+  privacy?: LegalSection[];
+  cookies?: LegalSection[];
+  notice?: LegalSection[];
+  dpa?: LegalSection[];
+}
+
+export interface LegalSettings {
+  legalOwnerName?: string | null;
+  legalOwnerTaxId?: string | null;
+  legalOwnerAddress?: string | null;
+  legalContactEmail?: string | null;
+  legalContactPhone?: string | null;
+  country: string;
+  privacyPolicyVersion: number;
+  cookiePolicyVersion: number;
+  legalNoticeVersion: number;
+  aiDisclosureEnabled: boolean;
+  aiProviderNames: string[];
+  subProcessors: SubProcessor[];
+  optionalCustomSections?: LegalCustomSections;
+  retentionDays?: number | null;
+}
+
+export interface AuditLogActor {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface AuditLog {
+  id: string;
+  brandId: string;
+  locationId?: string | null;
+  actorUserId?: string | null;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  actorUser?: AuditLogActor | null;
 }
 
 export interface HolidayRange {
   start: string;
   end: string;
+}
+
+export interface AiChatResponse {
+  sessionId: string;
+  assistantMessage: string;
+  actions?: {
+    appointmentsChanged?: boolean;
+    holidaysChanged?: boolean;
+    alertsChanged?: boolean;
+  };
+}
+
+export interface AiChatSessionMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface AiChatSessionResponse {
+  sessionId: string;
+  summary: string;
+  messages: AiChatSessionMessage[];
+}
+
+export interface PlatformUsageSeriesPoint {
+  dateKey: string;
+  costUsd: number;
+  tokensInput: number;
+  tokensOutput: number;
+  tokensTotal: number;
+  messagesCount: number;
+  storageUsedBytes: number;
+  storageLimitBytes: number;
+}
+
+export interface PlatformUsageMetrics {
+  windowDays: number;
+  range: { start: string; end: string };
+  thresholds: {
+    openaiDailyCostUsd: number | null;
+    twilioDailyCostUsd: number | null;
+    imagekitStorageBytes: number | null;
+  };
+  openai: { series: PlatformUsageSeriesPoint[] };
+  twilio: { series: PlatformUsageSeriesPoint[] };
+  imagekit: { series: PlatformUsageSeriesPoint[] };
 }

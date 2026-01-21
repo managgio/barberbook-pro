@@ -25,7 +25,7 @@ import { Loader2, Shield, Users } from 'lucide-react';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
 
-const isSuperAdminUser = (candidate: User) => Boolean(candidate.isSuperAdmin);
+const isSuperAdminUser = (candidate: User) => Boolean(candidate.isSuperAdmin || candidate.isPlatformAdmin);
 
 const AdminRoles: React.FC = () => {
   const { user } = useAuth();
@@ -206,7 +206,7 @@ const AdminRoles: React.FC = () => {
   }, [userSearch, users]);
   const renderUserCard = (currentUser: User, highlight?: boolean) => {
     const isAdmin = currentUser.role === 'admin';
-    const isSuperAdminUser = currentUser.isSuperAdmin;
+    const isSuperAdminUser = currentUser.isSuperAdmin || currentUser.isPlatformAdmin;
     const isUpdating = updatingUserId === currentUser.id;
 
     return (
@@ -278,7 +278,7 @@ const AdminRoles: React.FC = () => {
     );
   };
 
-  if (!user?.isSuperAdmin) {
+  if (!user?.isSuperAdmin && !user?.isPlatformAdmin) {
     return (
       <div className="max-w-3xl mx-auto mt-10">
         <Card>
@@ -297,7 +297,7 @@ const AdminRoles: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Roles y permisos</h1>
         <p className="text-muted-foreground">
           Define qué secciones del panel puede ver cada administrador y asigna roles personalizados.

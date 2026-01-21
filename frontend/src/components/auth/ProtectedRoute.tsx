@@ -5,10 +5,11 @@ import { Loader2 } from 'lucide-react';
 
 interface ProtectedRouteProps {
   requiredRole?: 'client' | 'admin';
+  requirePlatformAdmin?: boolean;
   children?: React.ReactNode;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole, children }) => {
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole, requirePlatformAdmin, children }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   const location = useLocation();
 
@@ -24,12 +25,23 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole, children 
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  if (requiredRole && user?.role !== requiredRole) {
-    // Redirect admin to admin dashboard, client to client dashboard
-    if (user?.role === 'admin') {
-      return <Navigate to="/admin" replace />;
+  if (requirePlatformAdmin && !user?.isPlatformAdmin) {
+    return <Navigate to={user?.role === 'admin' ? '/admin' : '/app'} replace />;
+  }
+
+  if (requiredRole) {
+    if (requiredRole === 'admin') {
+      const hasAdminAccess = Boolean(user?.isSuperAdmin || user?.isPlatformAdmin || user?.isLocalAdmin);
+      if (!hasAdminAccess) {
+        return <Navigate to="/app" replace />;
+      }
+    } else if (user?.role !== requiredRole) {
+      // Redirect admin to admin dashboard, client to client dashboard
+      if (user?.role === 'admin') {
+        return <Navigate to="/admin" replace />;
+      }
+      return <Navigate to="/app" replace />;
     }
-    return <Navigate to="/app" replace />;
   }
 
   return children ? <>{children}</> : <Outlet />;

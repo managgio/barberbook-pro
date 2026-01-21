@@ -30,6 +30,12 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     averageRating: 4.9,
     yearlyBookings: 5000,
     repeatClientsPercentage: 80,
+    visibility: {
+      experienceYears: true,
+      averageRating: true,
+      yearlyBookings: true,
+      repeatClientsPercentage: true,
+    },
   },
   openingHours: {
     monday: {
@@ -68,7 +74,17 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
       afternoon: { enabled: false, start: '00:00', end: '00:00' },
     },
   },
+  appointments: {
+    cancellationCutoffHours: 0,
+  },
   services: {
     categoriesEnabled: false,
   },
+  products: {
+    enabled: false,
+    categoriesEnabled: false,
+    clientPurchaseEnabled: false,
+    showOnLanding: false,
+  },
+  qrSticker: null,
 };

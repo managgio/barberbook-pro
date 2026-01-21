@@ -11,6 +11,7 @@ import { format, isPast, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 
 const ClientDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -39,7 +40,10 @@ const ClientDashboard: React.FC = () => {
   }, [user]);
 
   const upcomingAppointments = appointments
-    .filter(a => !isPast(parseISO(a.startDateTime)) && a.status === 'confirmed')
+    .filter(
+      (appointment) =>
+        !isPast(parseISO(appointment.startDateTime)) && isAppointmentUpcomingStatus(appointment.status),
+    )
     .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
 
   const completedAppointments = appointments.filter(a => a.status === 'completed');

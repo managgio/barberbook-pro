@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAppointments, getBarbers, getServices, getUsers, deleteAppointment } from '@/data/api';
+import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, Service, User } from '@/data/types';
 import { Search, Calendar, Clock, User, Pencil, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -12,9 +12,12 @@ import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
+import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
+import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
@@ -32,24 +35,42 @@ const AdminSearch: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    const [appts, barbersData, servicesData, usersData] = await Promise.all([
-      getAppointments(),
-      getBarbers(),
-      getServices(),
-      getUsers(),
-    ]);
-    setAppointments(appts);
-    setBarbers(barbersData);
-    setServices(servicesData);
-    setClients(usersData.filter((user) => user.role === 'client'));
-    setIsLoading(false);
-  };
+  const loadData = useCallback(async (withLoading = true) => {
+    if (withLoading) setIsLoading(true);
+    try {
+      const [appts, barbersData, servicesData, usersData] = await Promise.all([
+        getAppointments(),
+        getBarbers(),
+        getServices(),
+        getUsers(),
+      ]);
+      setAppointments(appts);
+      setBarbers(barbersData);
+      setServices(servicesData);
+      setClients(usersData.filter((user) => user.role === 'client'));
+    } finally {
+      if (withLoading) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void loadData(false);
+    };
+    window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+    return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+  }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadData(false);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   useEffect(() => {
     let filtered = [...appointments];
@@ -85,7 +106,7 @@ const AdminSearch: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
+      <div className="pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Buscar citas</h1>
         <p className="text-muted-foreground mt-1">
           Busca citas por barbero y fecha.
@@ -178,7 +199,12 @@ const AdminSearch: React.FC = () => {
                         </p>
                         <p className="text-sm text-muted-foreground">{clientInfo.contact}</p>
                       </td>
-                      <td className="py-3 px-4 text-foreground">{getService(apt.serviceId)?.name}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2 text-foreground">
+                          <span>{getService(apt.serviceId)?.name}</span>
+                          <AppointmentNoteIndicator note={apt.notes} variant="icon" />
+                        </div>
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <img 
@@ -190,16 +216,18 @@ const AdminSearch: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          apt.status === 'confirmed' 
-                            ? 'bg-primary/10 text-primary' 
-                            : apt.status === 'completed'
-                            ? 'bg-green-500/10 text-green-500'
-                            : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {apt.status === 'confirmed' ? 'Confirmada' : 
-                           apt.status === 'completed' ? 'Completada' : 'Cancelada'}
-                        </span>
+                        <AppointmentStatusPicker
+                          appointment={apt}
+                          serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
+                          onStatusUpdated={(updated) => {
+                            setAppointments((prev) =>
+                              prev.map((appointment) =>
+                                appointment.id === updated.id ? updated : appointment,
+                              ),
+                            );
+                            dispatchAppointmentsUpdated({ source: 'admin-search' });
+                          }}
+                        />
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-2">
@@ -256,9 +284,9 @@ const AdminSearch: React.FC = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar cita?</AlertDialogTitle>
+            <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita será eliminada permanentemente.
+              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -269,19 +297,20 @@ const AdminSearch: React.FC = () => {
                 if (!deleteTarget) return;
                 setIsDeleting(true);
                 try {
-                  await deleteAppointment(deleteTarget.id);
-                  toast({ title: 'Cita eliminada', description: 'La cita ha sido cancelada.' });
+                  await updateAppointment(deleteTarget.id, { status: 'cancelled' });
+                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
+                  dispatchAppointmentsUpdated({ source: 'admin-search' });
                   await loadData();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo eliminar la cita.', variant: 'destructive' });
+                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? 'Cancelando...' : 'Cancelar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

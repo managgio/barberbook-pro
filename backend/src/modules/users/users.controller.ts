@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserBlockDto } from './dto/update-user-block.dto';
+import { AdminEndpoint } from '../../auth/admin.decorator';
 
 @Controller('users')
 export class UsersController {
@@ -36,6 +38,12 @@ export class UsersController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() data: UpdateUserDto) {
     return this.usersService.update(id, data);
+  }
+
+  @AdminEndpoint()
+  @Patch(':id/block')
+  updateBlockStatus(@Param('id') id: string, @Body() data: UpdateUserBlockDto) {
+    return this.usersService.setBrandBlockStatus(id, data.blocked);
   }
 
   @Delete(':id')

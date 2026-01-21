@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useTenant } from '@/context/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import { deleteUser } from '@/data/api';
 
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
+  const { tenant } = useTenant();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -24,7 +26,16 @@ const ProfilePage: React.FC = () => {
   const [notificationPrefs, setNotificationPrefs] = useState({
     email: user?.notificationPrefs?.email ?? true,
     whatsapp: user?.notificationPrefs?.whatsapp ?? true,
+    sms: user?.notificationPrefs?.sms ?? true,
   });
+  const [prefersBarberSelection, setPrefersBarberSelection] = useState(
+    user?.prefersBarberSelection ?? true,
+  );
+
+  const notificationConfig = tenant?.config?.notificationPrefs;
+  const allowEmail = notificationConfig?.email !== false;
+  const allowWhatsapp = notificationConfig?.whatsapp !== false;
+  const allowSms = notificationConfig?.sms !== false;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,11 +45,18 @@ const ProfilePage: React.FC = () => {
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 800));
 
+      const normalizedPrefs = {
+        email: allowEmail ? notificationPrefs.email : false,
+        whatsapp: allowWhatsapp ? notificationPrefs.whatsapp : false,
+        sms: allowSms ? notificationPrefs.sms : false,
+      };
+
       await updateProfile({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
-        notificationPrefs,
+        notificationPrefs: normalizedPrefs,
+        prefersBarberSelection,
       });
 
       toast({
@@ -148,50 +166,106 @@ const ProfilePage: React.FC = () => {
         </Card>
 
         {/* Notification Preferences */}
+        {(allowEmail || allowWhatsapp || allowSms) && (
+          <Card variant="elevated">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="w-5 h-5 text-primary" />
+                Preferencias de notificación
+              </CardTitle>
+              <CardDescription>
+                Elige cómo quieres recibir recordatorios de tus citas.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {allowEmail && (
+                <div className="flex items-center justify-between py-2">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="email-notif">Notificaciones por email</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Recibe recordatorios por correo electrónico.
+                    </p>
+                  </div>
+                  <Switch
+                    id="email-notif"
+                    checked={notificationPrefs.email}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs({ ...notificationPrefs, email: checked })
+                    }
+                  />
+                </div>
+              )}
+
+              {allowEmail && (allowWhatsapp || allowSms) && <hr className="border-border" />}
+
+              {allowWhatsapp && (
+                <div className="flex items-center justify-between py-2">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="whatsapp-notif">Notificaciones por WhatsApp</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Recibe recordatorios por WhatsApp.
+                    </p>
+                  </div>
+                  <Switch
+                    id="whatsapp-notif"
+                    checked={notificationPrefs.whatsapp}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs({ ...notificationPrefs, whatsapp: checked })
+                    }
+                  />
+                </div>
+              )}
+
+              {allowWhatsapp && allowSms && <hr className="border-border" />}
+
+              {allowSms && (
+                <div className="flex items-center justify-between py-2">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="sms-notif">Notificaciones por SMS</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Recibe recordatorios por mensaje de texto.
+                    </p>
+                  </div>
+                  <Switch
+                    id="sms-notif"
+                    checked={notificationPrefs.sms}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs({ ...notificationPrefs, sms: checked })
+                    }
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card variant="elevated">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-primary" />
-              Preferencias de notificación
+              <User className="w-5 h-5 text-primary" />
+              Preferencias de reserva
             </CardTitle>
             <CardDescription>
-              Elige cómo quieres recibir recordatorios de tus citas.
+              Decide si quieres elegir barbero al pedir tu cita.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between py-2">
               <div className="space-y-0.5">
-                <Label htmlFor="email-notif">Notificaciones por email</Label>
+                <Label htmlFor="barber-select-pref">Elegir barbero</Label>
                 <p className="text-sm text-muted-foreground">
-                  Recibe recordatorios por correo electrónico.
+                  Si lo desactivas, asignaremos automáticamente a un barbero disponible.
                 </p>
               </div>
               <Switch
-                id="email-notif"
-                checked={notificationPrefs.email}
-                onCheckedChange={(checked) => 
-                  setNotificationPrefs({ ...notificationPrefs, email: checked })
-                }
+                id="barber-select-pref"
+                checked={prefersBarberSelection}
+                onCheckedChange={setPrefersBarberSelection}
               />
             </div>
-
-            <hr className="border-border" />
-
-            <div className="flex items-center justify-between py-2">
-              <div className="space-y-0.5">
-                <Label htmlFor="whatsapp-notif">Notificaciones por WhatsApp</Label>
-                <p className="text-sm text-muted-foreground">
-                  Recibe recordatorios por WhatsApp.
-                </p>
-              </div>
-              <Switch
-                id="whatsapp-notif"
-                checked={notificationPrefs.whatsapp}
-                onCheckedChange={(checked) => 
-                  setNotificationPrefs({ ...notificationPrefs, whatsapp: checked })
-                }
-              />
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Podrás cambiar esta decisión en cada reserva.
+            </p>
           </CardContent>
         </Card>
 

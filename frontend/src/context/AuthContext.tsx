@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode, useRef } from 'react';
 import { User, UserRole } from '@/data/types';
 import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api';
 import {
@@ -10,7 +10,9 @@ import {
   updateProfile as updateFirebaseProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { auth, googleProvider } from '@/lib/firebaseConfig';
+import { getFirebaseAuth, googleProvider } from '@/lib/firebaseConfig';
+import { setAdminUserId } from '@/lib/authStorage';
+import { useTenant } from './TenantContext';
 
 interface AuthContextType {
   user: User | null;
@@ -25,7 +27,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const defaultNotificationPrefs = { email: true, whatsapp: true };
+const defaultNotificationPrefs = { email: true, whatsapp: true, sms: true };
 
 const getDisplayName = (firebaseUser: FirebaseUser, providedName?: string) => {
   const email = firebaseUser.email || '';
@@ -45,9 +47,12 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
   const existing = existingByUid || (await getUserByEmail(email));
 
   const phone = extras?.phone || firebaseUser.phoneNumber || existing?.phone;
-  const notificationPrefs =
-    existing?.notificationPrefs ||
-    { email: true, whatsapp: true };
+  const notificationPrefs = {
+    email: existing?.notificationPrefs?.email ?? true,
+    whatsapp: existing?.notificationPrefs?.whatsapp ?? true,
+    sms: existing?.notificationPrefs?.sms ?? true,
+  };
+  const prefersBarberSelection = existing?.prefersBarberSelection ?? true;
 
   const payload: Partial<User> = {
     firebaseUid: firebaseUser.uid,
@@ -58,11 +63,22 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     role: existing?.role ?? 'client',
     adminRoleId: existing?.adminRoleId ?? null,
     isSuperAdmin: existing?.isSuperAdmin,
+    isPlatformAdmin: existing?.isPlatformAdmin,
     notificationPrefs,
+    prefersBarberSelection,
   };
 
   if (existing) {
-    return updateUser(existing.id, payload);
+    const updatePayload: Partial<User> = {
+      firebaseUid: payload.firebaseUid,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      avatar: payload.avatar,
+      notificationPrefs: payload.notificationPrefs,
+      prefersBarberSelection: payload.prefersBarberSelection,
+    };
+    return updateUser(existing.id, updatePayload);
   }
 
   return createUser({
@@ -72,9 +88,11 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     phone: payload.phone,
     role: (payload.role || 'client') as UserRole,
     notificationPrefs: payload.notificationPrefs || notificationPrefs,
+    prefersBarberSelection,
     avatar: payload.avatar,
     adminRoleId: payload.adminRoleId ?? null,
     isSuperAdmin: payload.isSuperAdmin,
+    isPlatformAdmin: payload.isPlatformAdmin,
   });
 };
 
@@ -99,10 +117,55 @@ const getFriendlyError = (error: unknown) => {
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { isReady: tenantReady, currentLocationId } = useTenant();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const syncRef = useRef<{ key: string | null; promise: Promise<User | null> | null }>({
+    key: null,
+    promise: null,
+  });
+  const lastSyncKeyRef = useRef<string | null>(null);
+
+  const syncFirebaseProfile = async (firebaseUser: FirebaseUser): Promise<User | null> => {
+    const key = `${firebaseUser.uid}:${currentLocationId || 'none'}`;
+    if (lastSyncKeyRef.current === key && user?.firebaseUid === firebaseUser.uid) {
+      return user;
+    }
+    const inFlight = syncRef.current;
+    if (inFlight.promise) {
+      if (inFlight.key === key) {
+        return inFlight.promise;
+      }
+      try {
+        await inFlight.promise;
+      } catch {
+        // Ignore to allow the new sync attempt.
+      }
+    }
+
+    const promise = (async () => {
+      const profile = await mapFirebaseUserToProfile(firebaseUser);
+      setUser(profile);
+      lastSyncKeyRef.current = key;
+      return profile;
+    })();
+
+    syncRef.current = { key, promise };
+    try {
+      return await promise;
+    } finally {
+      if (syncRef.current.key === key) {
+        syncRef.current = { key: null, promise: null };
+      }
+    }
+  };
 
   useEffect(() => {
+    if (!tenantReady) {
+      setIsLoading(true);
+      return;
+    }
+    const auth = getFirebaseAuth();
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setIsLoading(true);
       if (!firebaseUser) {
@@ -112,8 +175,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       try {
-        const profile = await mapFirebaseUserToProfile(firebaseUser);
-        setUser(profile);
+        await syncFirebaseProfile(firebaseUser);
       } catch (error) {
         console.error('Error al sincronizar el usuario de Firebase', error);
         setUser(null);
@@ -123,13 +185,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [tenantReady]);
+
+  useEffect(() => {
+    if (!tenantReady) return;
+    const auth = getFirebaseAuth();
+    if (!auth.currentUser) return;
+    setIsLoading(true);
+    syncFirebaseProfile(auth.currentUser)
+      .catch((error) => {
+        console.error('Error al refrescar el usuario por local', error);
+      })
+      .finally(() => setIsLoading(false));
+  }, [tenantReady, currentLocationId]);
+
+  useLayoutEffect(() => {
+    if (!user) {
+      setAdminUserId(null);
+      return;
+    }
+    const hasAdminAccess = user.isSuperAdmin || user.isPlatformAdmin || user.isLocalAdmin;
+    setAdminUserId(hasAdminAccess ? user.id : null);
+  }, [user]);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      const profile = await mapFirebaseUserToProfile(credential.user);
-      setUser(profile);
+      const auth = getFirebaseAuth();
+      await signInWithEmailAndPassword(auth, email, password);
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
@@ -138,9 +220,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      const credential = await signInWithPopup(auth, googleProvider);
-      const profile = await mapFirebaseUserToProfile(credential.user);
-      setUser(profile);
+      const auth = getFirebaseAuth();
+      await signInWithPopup(auth, googleProvider);
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
@@ -149,12 +230,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      const auth = getFirebaseAuth();
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       if (auth.currentUser) {
         await updateFirebaseProfile(auth.currentUser, { displayName: name });
       }
-      const profile = await mapFirebaseUserToProfile(credential.user, { name });
-      setUser(profile);
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
@@ -162,6 +242,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    const auth = getFirebaseAuth();
     await signOut(auth);
     setUser(null);
   };
@@ -178,10 +259,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (data.notificationPrefs) {
       payload.notificationEmail = data.notificationPrefs.email;
       payload.notificationWhatsapp = data.notificationPrefs.whatsapp;
+      payload.notificationSms = data.notificationPrefs.sms;
+    }
+    if (data.prefersBarberSelection !== undefined) {
+      payload.prefersBarberSelection = data.prefersBarberSelection;
     }
 
     const updated = await updateUser(user.id, payload);
     setUser(updated);
+    const auth = getFirebaseAuth();
     if (auth.currentUser && data.name) {
       await updateFirebaseProfile(auth.currentUser, { displayName: data.name });
     }

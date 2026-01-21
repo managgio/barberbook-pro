@@ -4,11 +4,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getUsers, getBarbers, getServices, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings } from '@/data/api';
-import { Barber, Service, ServiceCategory, User } from '@/data/types';
+import { getUsers, getBarbers, getServices, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings, getAdminProducts, getProductCategories } from '@/data/api';
+import { Barber, Product, ProductCategory, Service, ServiceCategory, User } from '@/data/types';
 import { Plus, Search, Loader2, UserCircle2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import ProductSelector from '@/components/common/ProductSelector';
 
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
@@ -19,6 +21,10 @@ const QuickAppointmentButton: React.FC = () => {
   const [services, setServices] = useState<Service[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
+  const [productsEnabled, setProductsEnabled] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
 
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -40,18 +46,23 @@ const QuickAppointmentButton: React.FC = () => {
     const fetchData = async () => {
       setIsLoadingData(true);
       try {
-        const [usersData, barbersData, servicesData, categoriesData, settingsData] = await Promise.all([
+        const [usersData, barbersData, servicesData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
           getUsers(),
           getBarbers(),
           getServices(),
           getServiceCategories(true),
           getSiteSettings(),
+          getAdminProducts(),
+          getProductCategories(true),
         ]);
         setClients(usersData.filter((user) => user.role === 'client'));
         setBarbers(barbersData);
         setServices(servicesData);
         setServiceCategories(categoriesData);
         setCategoriesEnabled(settingsData.services.categoriesEnabled);
+        setProductsEnabled(settingsData.products.enabled);
+        setProducts(productsData);
+        setProductCategories(productCategoriesData);
       } catch (error) {
         console.error(error);
         toast({
@@ -143,6 +154,7 @@ const QuickAppointmentButton: React.FC = () => {
     setSelectedDate('');
     setSelectedTime('');
     setAvailableSlots([]);
+    setSelectedProducts([]);
   };
 
   const handleOpenChange = (value: boolean) => {
@@ -155,6 +167,7 @@ const QuickAppointmentButton: React.FC = () => {
   const handleSelectClient = (clientId: string) => {
     setSelectedClientId(clientId);
     setUseGuest(false);
+    setClientSearch('');
   };
 
   const canCreate = useMemo(() => {
@@ -179,10 +192,12 @@ const QuickAppointmentButton: React.FC = () => {
         barberId: selectedBarberId,
         serviceId: selectedServiceId,
         startDateTime: appointmentDate.toISOString(),
-        status: 'confirmed',
+        status: 'scheduled',
         guestName: useGuest ? guestName : undefined,
         guestContact: useGuest ? guestContact : undefined,
+        products: productsEnabled ? selectedProducts : undefined,
       });
+      dispatchAppointmentsUpdated({ source: 'quick-appointment' });
       toast({
         title: 'Cita creada',
         description: 'La reserva se ha registrado correctamente.',
@@ -212,20 +227,22 @@ const QuickAppointmentButton: React.FC = () => {
       </Button>
 
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Crear nueva cita</DialogTitle>
-            <DialogDescription>
-              Registra una cita manual para clientes habituales o visitas sin cuenta.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-3xl p-0 max-h-[85vh] flex flex-col gap-0">
+          <div className="sticky top-0 z-10 border-b bg-background px-6 py-4">
+            <DialogHeader>
+              <DialogTitle>Crear nueva cita</DialogTitle>
+              <DialogDescription>
+                Registra una cita manual para clientes habituales o visitas sin cuenta.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
           {isLoadingData ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-6 overflow-y-auto px-6 py-4">
               {/* Client selection */}
               <div className="space-y-3">
                 <Label className="text-base text-foreground block">Cliente</Label>
@@ -272,35 +289,36 @@ const QuickAppointmentButton: React.FC = () => {
                         className="pl-9"
                       />
                     </div>
-                    <div className="max-h-48 overflow-y-auto rounded-2xl border border-border divide-y divide-border/60">
-                      {filteredClients.length === 0 ? (
-                        <p className="text-sm text-muted-foreground px-4 py-3">
-                          No se encontraron clientes
+                    {clientSearch.trim().length > 0 ? (
+                      <div className="max-h-48 overflow-y-auto rounded-2xl border border-border divide-y divide-border/60">
+                        {filteredClients.length === 0 ? (
+                          <p className="text-sm text-muted-foreground px-4 py-3">
+                            No se encontraron clientes
+                          </p>
+                        ) : (
+                          filteredClients.map((client) => (
+                            <button
+                              key={client.id}
+                              type="button"
+                              onClick={() => handleSelectClient(client.id)}
+                              className="w-full text-left px-4 py-3 hover:bg-secondary/40 transition-colors"
+                            >
+                              <p className="font-medium">{client.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {client.email} {client.phone ? `· ${client.phone}` : ''}
+                              </p>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    ) : selectedClientId ? (
+                      <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3">
+                        <p className="text-xs text-muted-foreground mb-1">Cliente seleccionado</p>
+                        <p className="font-medium text-foreground">
+                          {clients.find((client) => client.id === selectedClientId)?.name}
                         </p>
-                      ) : (
-                        filteredClients.map((client) => (
-                          <button
-                            key={client.id}
-                            type="button"
-                            onClick={() => handleSelectClient(client.id)}
-                            className={cn(
-                              'w-full text-left px-4 py-3 hover:bg-secondary/40 transition-colors',
-                              selectedClientId === client.id && 'bg-primary/10 text-primary'
-                            )}
-                          >
-                            <p className="font-medium">{client.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {client.email} {client.phone ? `· ${client.phone}` : ''}
-                            </p>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                    {selectedClientId && (
-                      <p className="text-xs text-muted-foreground">
-                        Cliente seleccionado: {clients.find((c) => c.id === selectedClientId)?.name}
-                      </p>
-                    )}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2">
@@ -408,6 +426,18 @@ const QuickAppointmentButton: React.FC = () => {
                   </Select>
                 </div>
               </div>
+
+              {productsEnabled && (
+                <div className="space-y-3">
+                  <Label className="text-base">Productos</Label>
+                  <ProductSelector
+                    products={products}
+                    categories={productCategories}
+                    selected={selectedProducts}
+                    onChange={setSelectedProducts}
+                  />
+                </div>
+              )}
 
               {/* Date & time */}
               <div className="space-y-3">

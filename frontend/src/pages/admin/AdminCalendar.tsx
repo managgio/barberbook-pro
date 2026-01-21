@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { getAppointments, getBarbers, getServices, getUsers, deleteAppointment } from '@/data/api';
+import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, Service, User } from '@/data/types';
 import { 
   ChevronLeft, 
@@ -12,6 +12,8 @@ import {
   Clock,
   User as UserIcon,
   Scissors,
+  MessageSquare,
+  Package,
 } from 'lucide-react';
 import { 
   format, 
@@ -19,17 +21,33 @@ import {
   addDays, 
   addWeeks, 
   subWeeks,
+  addMinutes,
+  differenceInMinutes,
   parseISO,
   isSameDay,
   startOfDay,
+  setHours,
+  setMinutes,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
+import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
+import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 9); // 9:00 - 20:00
+const START_HOUR = 9;
+const END_HOUR = 20;
+const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR);
+const HOUR_HEIGHT = 60;
+const MINUTES_IN_DAY_VIEW = HOURS.length * 60;
+const currencyFormatter = new Intl.NumberFormat('es-ES', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+});
 
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
@@ -46,24 +64,45 @@ const AdminCalendar: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    const [appts, barbersData, servicesData, usersData] = await Promise.all([
-      getAppointments(),
-      getBarbers(),
-      getServices(),
-      getUsers(),
-    ]);
-    setAppointments(appts);
-    setBarbers(barbersData);
-    setServices(servicesData);
-    setClients(usersData.filter((user) => user.role === 'client'));
-    setIsLoading(false);
-  };
+  const getProductsTotal = (appointment: Appointment) =>
+    appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0;
+
+  const loadData = useCallback(async (withLoading = true) => {
+    if (withLoading) setIsLoading(true);
+    try {
+      const [appts, barbersData, servicesData, usersData] = await Promise.all([
+        getAppointments(),
+        getBarbers(),
+        getServices(),
+        getUsers(),
+      ]);
+      setAppointments(appts);
+      setBarbers(barbersData);
+      setServices(servicesData);
+      setClients(usersData.filter((user) => user.role === 'client'));
+    } finally {
+      if (withLoading) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void loadData(false);
+    };
+    window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+    return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
+  }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadData(false);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
@@ -77,17 +116,79 @@ const AdminCalendar: React.FC = () => {
     };
   };
   const selectedClientInfo = selectedAppointment ? getClientInfo(selectedAppointment) : null;
+  const selectedProductsTotal = selectedAppointment ? getProductsTotal(selectedAppointment) : 0;
+  const hasSelectedProducts = selectedProductsTotal > 0;
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
 
-  const getAppointmentsForSlot = (day: Date, hour: number) => {
-    return appointments.filter(apt => {
+  const getAppointmentsForDay = (day: Date) => {
+    return appointments.filter((apt) => {
       const aptDate = parseISO(apt.startDateTime);
-      const aptHour = aptDate.getHours();
       const sameDay = isSameDay(aptDate, day);
-      const sameHour = aptHour === hour || (aptHour === hour - 0.5);
       const matchesBarber = selectedBarberId === 'all' || apt.barberId === selectedBarberId;
-      return sameDay && sameHour && matchesBarber && apt.status !== 'cancelled';
+      return sameDay && matchesBarber && apt.status !== 'cancelled';
+    });
+  };
+
+  const getAppointmentDuration = (apt: Appointment) => {
+    const service = getService(apt.serviceId);
+    return service?.duration ?? 30;
+  };
+
+  const buildDayEvents = (day: Date) => {
+    const dayStart = setMinutes(setHours(startOfDay(day), START_HOUR), 0);
+    const dayEvents = getAppointmentsForDay(day)
+      .map((apt) => {
+        const start = parseISO(apt.startDateTime);
+        const duration = getAppointmentDuration(apt);
+        const end = addMinutes(start, duration);
+        const startMinutes = Math.max(0, differenceInMinutes(start, dayStart));
+        const endMinutes = Math.min(MINUTES_IN_DAY_VIEW, differenceInMinutes(end, dayStart));
+        if (endMinutes <= 0 || startMinutes >= MINUTES_IN_DAY_VIEW) {
+          return null;
+        }
+        return {
+          appointment: apt,
+          start,
+          end,
+          startMinutes,
+          endMinutes,
+        };
+      })
+      .filter((event): event is NonNullable<typeof event> => !!event)
+      .sort((a, b) => a.startMinutes - b.startMinutes || a.endMinutes - b.endMinutes);
+
+    const groups: Array<{ events: typeof dayEvents; maxEnd: number }> = [];
+    dayEvents.forEach((event) => {
+      const lastGroup = groups[groups.length - 1];
+      if (!lastGroup || event.startMinutes >= lastGroup.maxEnd) {
+        groups.push({ events: [event], maxEnd: event.endMinutes });
+        return;
+      }
+      lastGroup.events.push(event);
+      lastGroup.maxEnd = Math.max(lastGroup.maxEnd, event.endMinutes);
+    });
+
+    return groups.flatMap((group) => {
+      const columnsEnd: number[] = [];
+      const withColumns = group.events.map((event) => {
+        let columnIndex = columnsEnd.findIndex((end) => event.startMinutes >= end);
+        if (columnIndex === -1) {
+          columnIndex = columnsEnd.length;
+          columnsEnd.push(event.endMinutes);
+        } else {
+          columnsEnd[columnIndex] = event.endMinutes;
+        }
+        return {
+          ...event,
+          column: columnIndex,
+        };
+      });
+      const totalColumns = columnsEnd.length;
+      return withColumns.map((event) => ({
+        ...event,
+        columns: totalColumns,
+      }));
     });
   };
 
@@ -102,7 +203,7 @@ const AdminCalendar: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
+        <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Calendario</h1>
           <p className="text-muted-foreground mt-1">
             Gestiona las citas de la barbería.
@@ -140,7 +241,10 @@ const AdminCalendar: React.FC = () => {
         <CardContent className="p-0 overflow-x-auto">
           <div className="min-w-[800px]">
             {/* Days Header */}
-            <div className="grid grid-cols-8 border-b border-border">
+            <div
+              className="grid border-b border-border"
+              style={{ gridTemplateColumns: '64px repeat(7, minmax(0, 1fr))' }}
+            >
               <div className="p-3 text-center text-sm text-muted-foreground">Hora</div>
               {weekDays.map((day) => (
                 <div 
@@ -163,39 +267,81 @@ const AdminCalendar: React.FC = () => {
               ))}
             </div>
 
-            {/* Time Slots */}
-            {HOURS.map((hour) => (
-              <div key={hour} className="grid grid-cols-8 border-b border-border">
-                <div className="p-2 text-center text-sm text-muted-foreground border-r border-border">
-                  {hour}:00
-                </div>
-                {weekDays.map((day) => {
-                  const dayAppointments = getAppointmentsForSlot(day, hour);
-                  return (
-                    <div 
-                      key={`${day.toISOString()}-${hour}`} 
-                      className="min-h-[60px] p-1 border-l border-border hover:bg-secondary/30 transition-colors"
-                    >
-                      {dayAppointments.map((apt) => {
-                        const service = getService(apt.serviceId);
-                        return (
-                          <button
-                            key={apt.id}
-                            onClick={() => setSelectedAppointment(apt)}
-                            className={cn(
-                              'w-full text-left p-1.5 rounded text-xs text-white truncate mb-1 transition-opacity hover:opacity-80',
-                              barberColors[apt.barberId] || 'bg-primary/80'
-                            )}
-                          >
-                            {format(parseISO(apt.startDateTime), 'HH:mm')} - {service?.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+            {/* Time Grid */}
+            <div
+              className="grid"
+              style={{ gridTemplateColumns: '64px repeat(7, minmax(0, 1fr))' }}
+            >
+              <div className="border-r border-border">
+                {HOURS.map((hour, index) => (
+                  <div
+                    key={hour}
+                    className={cn(
+                      'p-2 text-center text-sm text-muted-foreground',
+                      index < HOURS.length - 1 && 'border-b border-border'
+                    )}
+                    style={{ height: HOUR_HEIGHT }}
+                  >
+                    {hour}:00
+                  </div>
+                ))}
               </div>
-            ))}
+              {weekDays.map((day) => {
+                const dayEvents = buildDayEvents(day);
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={cn(
+                      'relative border-l border-border',
+                      isSameDay(day, new Date()) && 'bg-primary/5'
+                    )}
+                    style={{ height: HOUR_HEIGHT * HOURS.length }}
+                  >
+                    {HOURS.map((hour, index) => (
+                      <div
+                        key={`${day.toISOString()}-${hour}`}
+                        className={cn(
+                          'absolute left-0 right-0 border-b border-border',
+                          index === 0 && 'border-t border-border'
+                        )}
+                        style={{ top: index * HOUR_HEIGHT }}
+                      />
+                    ))}
+                    {dayEvents.map((event) => {
+                      const service = getService(event.appointment.serviceId);
+                      const startLabel = format(event.start, 'HH:mm');
+                      const endLabel = format(event.end, 'HH:mm');
+                      const columnWidth = 100 / event.columns;
+                      return (
+                        <button
+                          key={event.appointment.id}
+                          onClick={() => setSelectedAppointment(event.appointment)}
+                          title={`${startLabel} - ${endLabel} · ${service?.name || 'Servicio'}`}
+                          className={cn(
+                            'relative absolute rounded text-[11px] leading-tight text-white px-2 py-1 overflow-hidden transition-opacity hover:opacity-80',
+                            barberColors[event.appointment.barberId] || 'bg-primary/80'
+                          )}
+                          style={{
+                            top: event.startMinutes * (HOUR_HEIGHT / 60),
+                            height: Math.max(18, (event.endMinutes - event.startMinutes) * (HOUR_HEIGHT / 60)),
+                            left: `calc(${event.column * columnWidth}% + 4px)`,
+                            width: `calc(${columnWidth}% - 8px)`,
+                          }}
+                        >
+                          <AppointmentNoteIndicator
+                            note={event.appointment.notes}
+                            variant="icon"
+                            className="absolute right-1 top-1 border-white/40 bg-white/20 text-white/90"
+                          />
+                          <div className="font-semibold">{startLabel} - {endLabel}</div>
+                          <div className="truncate">{service?.name || 'Servicio'}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -217,6 +363,35 @@ const AdminCalendar: React.FC = () => {
                   </p>
                 </div>
               </div>
+
+              {hasSelectedProducts && (
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Package className="w-4 h-4 text-primary" />
+                      Productos añadidos
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Total productos: {currencyFormatter.format(selectedProductsTotal)}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedAppointment.products?.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between text-sm">
+                        <div>
+                          <p className="font-medium text-foreground">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.quantity} x {currencyFormatter.format(item.unitPrice)}
+                          </p>
+                        </div>
+                        <span className="font-semibold text-foreground">
+                          {currencyFormatter.format(item.totalPrice)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
                 <UserIcon className="w-5 h-5 text-primary" />
@@ -260,21 +435,42 @@ const AdminCalendar: React.FC = () => {
                 </div>
               </div>
 
+              {selectedAppointment.notes?.trim() && (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                    <MessageSquare className="h-4 w-4" />
+                    Comentario del cliente
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                    {selectedAppointment.notes}
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between pt-2">
-                <span className={cn(
-                  'px-3 py-1 rounded-full text-xs font-medium',
-                  selectedAppointment.status === 'confirmed' 
-                    ? 'bg-primary/10 text-primary' 
-                    : selectedAppointment.status === 'completed'
-                    ? 'bg-green-500/10 text-green-500'
-                    : 'bg-muted text-muted-foreground'
-                )}>
-                  {selectedAppointment.status === 'confirmed' ? 'Confirmada' : 
-                   selectedAppointment.status === 'completed' ? 'Completada' : 'Cancelada'}
-                </span>
-                <span className="text-xl font-bold text-primary">
-                  {getService(selectedAppointment.serviceId)?.price}€
-                </span>
+                <AppointmentStatusPicker
+                  appointment={selectedAppointment}
+                  serviceDurationMinutes={getService(selectedAppointment.serviceId)?.duration ?? 30}
+                  onStatusUpdated={(updated) => {
+                    setAppointments((prev) =>
+                      prev.map((appointment) =>
+                        appointment.id === updated.id ? updated : appointment,
+                      ),
+                    );
+                    setSelectedAppointment(updated);
+                    dispatchAppointmentsUpdated({ source: 'admin-calendar' });
+                  }}
+                />
+                <div className="text-right">
+                  <span className="text-xl font-bold text-primary">
+                    {currencyFormatter.format(selectedAppointment.price)}
+                  </span>
+                  {hasSelectedProducts && (
+                    <p className="text-xs text-muted-foreground">
+                      Incluye {currencyFormatter.format(selectedProductsTotal)} en productos
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -291,7 +487,7 @@ const AdminCalendar: React.FC = () => {
                   Editar
                 </Button>
                 <Button variant="ghost" className="text-destructive" onClick={() => setDeleteTarget(selectedAppointment)}>
-                  Eliminar
+                  Cancelar
                 </Button>
               </div>
             </div>
@@ -319,7 +515,7 @@ const AdminCalendar: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita será eliminada permanentemente.
+              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -330,20 +526,21 @@ const AdminCalendar: React.FC = () => {
                 if (!deleteTarget) return;
                 setIsDeleting(true);
                 try {
-                  await deleteAppointment(deleteTarget.id);
-                  toast({ title: 'Cita eliminada', description: 'La cita ha sido cancelada.' });
+                  await updateAppointment(deleteTarget.id, { status: 'cancelled' });
+                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
                   setSelectedAppointment(null);
+                  dispatchAppointmentsUpdated({ source: 'admin-calendar' });
                   await loadData();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo eliminar la cita.', variant: 'destructive' });
+                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? 'Cancelando...' : 'Cancelar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
