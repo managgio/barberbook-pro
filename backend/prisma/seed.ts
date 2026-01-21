@@ -182,7 +182,6 @@ async function main() {
       id: DEFAULT_BRAND_ID,
       name: 'LeBlond',
       subdomain: DEFAULT_BRAND_SUBDOMAIN,
-      defaultLocationId: DEFAULT_LOCAL_ID,
       isActive: true,
       locations: {
         create: {
@@ -193,6 +192,10 @@ async function main() {
         },
       },
     },
+  });
+  await prisma.brand.update({
+    where: { id: DEFAULT_BRAND_ID },
+    data: { defaultLocationId: DEFAULT_LOCAL_ID },
   });
 
   await prisma.brandConfig.create({
