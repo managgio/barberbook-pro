@@ -33,7 +33,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Building2, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, ChevronsLeft, ChevronsRight, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
@@ -358,6 +358,7 @@ const PlatformBrands: React.FC = () => {
   const [draggingLandingKey, setDraggingLandingKey] = useState<LandingSectionKey | null>(null);
   const [dragOverLandingIndex, setDragOverLandingIndex] = useState<number | null>(null);
   const [draggingLandingScope, setDraggingLandingScope] = useState<'brand' | 'location' | null>(null);
+  const [isBrandListCollapsed, setIsBrandListCollapsed] = useState(false);
 
   const selectedBrand = useMemo(
     () => brands.find((brand) => brand.id === selectedBrandId) || null,
@@ -377,6 +378,15 @@ const PlatformBrands: React.FC = () => {
       return name.includes(query) || subdomain.includes(query) || customDomain.includes(query);
     });
   }, [brands, brandQuery]);
+  const brandListLayoutClass = isBrandListCollapsed ? 'lg:grid-cols-[96px_1fr]' : 'lg:grid-cols-[320px_1fr]';
+  const getBrandInitials = (name: string) =>
+    name
+      .split(' ')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('');
   const adminLocations = useMemo(() => adminOverview?.locations || [], [adminOverview]);
   const adminCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1404,17 +1414,34 @@ const PlatformBrands: React.FC = () => {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[320px_1fr] animate-fade-in h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-3rem)] md:h-[calc(100dvh-4rem)] overflow-hidden">
-      <Card className="border border-border/60 bg-card/70 h-full flex flex-col overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">Marcas</CardTitle>
-          <Button size="sm" onClick={() => setCreateBrandOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Nueva
+    <div className={`grid gap-6 ${brandListLayoutClass} items-start lg:items-stretch animate-fade-in h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-3rem)] md:h-[calc(100dvh-4rem)] overflow-hidden`}>
+      <Card className="border border-border/60 bg-card/70 flex flex-col overflow-visible max-h-[420px] sm:max-h-[480px] lg:max-h-none lg:h-full">
+        <CardHeader
+          className={`relative flex ${isBrandListCollapsed ? 'flex-col items-center gap-2 px-3' : 'flex-row items-center justify-between'}`}
+        >
+          <div className={`flex items-center gap-2 ${isBrandListCollapsed ? 'flex-col' : ''}`}>
+            <CardTitle className={`font-semibold ${isBrandListCollapsed ? 'text-xs uppercase tracking-[0.2em] text-muted-foreground' : 'text-base'}`}>
+              Marcas
+            </CardTitle>
+          </div>
+          <div className={`flex items-center gap-2 ${isBrandListCollapsed ? 'flex-col' : ''}`}>
+            <Button size={isBrandListCollapsed ? 'icon' : 'sm'} onClick={() => setCreateBrandOpen(true)}>
+              <Plus className={`h-4 w-4 ${isBrandListCollapsed ? '' : 'mr-1'}`} />
+              {!isBrandListCollapsed && 'Nueva'}
+            </Button>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsBrandListCollapsed((prev) => !prev)}
+            aria-label={isBrandListCollapsed ? 'Expandir marcas' : 'Contraer marcas'}
+            className="absolute right-[-1.35rem] top-4 z-30 hidden lg:inline-flex rounded-full border border-transparent bg-transparent shadow-none transition hover:border-border/60 hover:bg-background hover:shadow-lg"
+          >
+            {isBrandListCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           </Button>
         </CardHeader>
-        <CardContent className="space-y-3 overflow-y-auto flex-1">
-          {brands.length > 10 && (
+        <CardContent className={`space-y-3 overflow-y-auto flex-1 ${isBrandListCollapsed ? 'px-2' : ''}`}>
+          {!isBrandListCollapsed && brands.length > 10 && (
             <div className="space-y-2">
               <Input
                 value={brandQuery}
@@ -1426,33 +1453,72 @@ const PlatformBrands: React.FC = () => {
           {filteredBrands.length === 0 ? (
             <p className="text-xs text-muted-foreground">Sin resultados.</p>
           ) : (
-            filteredBrands.map((brand) => (
-            <button
-              key={brand.id}
-              onClick={() => setSelectedBrandId(brand.id)}
-              className={`w-full text-left rounded-xl border px-4 py-3 transition ${
-                selectedBrandId === brand.id
-                  ? 'border-primary/50 bg-primary/10'
-                  : 'border-border/60 hover:border-primary/40 hover:bg-card/80'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-sm font-semibold text-foreground">{brand.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {brand.customDomain || `${brand.subdomain}.managgio.com`}
+            filteredBrands.map((brand) => {
+              const locationCount = brand.locations?.length || 0;
+              const locationLabel = locationCount === 1 ? 'local' : 'locales';
+              if (isBrandListCollapsed) {
+                return (
+                  <TooltipProvider key={brand.id}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => setSelectedBrandId(brand.id)}
+                          className={`w-full flex items-center justify-center rounded-xl border p-2 transition ${
+                            selectedBrandId === brand.id
+                              ? 'border-primary/50 bg-primary/10'
+                              : 'border-border/60 hover:border-primary/40 hover:bg-card/80'
+                          }`}
+                        >
+                          <div className="relative">
+                            <div className="h-10 w-10 rounded-xl bg-muted/50 border border-border/60 flex items-center justify-center text-sm font-semibold text-foreground">
+                              {getBrandInitials(brand.name || 'M')}
+                            </div>
+                            <span
+                              className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border border-card ${
+                                brand.isActive ? 'bg-emerald-400' : 'bg-muted-foreground'
+                              }`}
+                            />
+                          </div>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">
+                        <div className="font-semibold">{brand.name}</div>
+                        <div className="text-muted-foreground">
+                          {locationCount} {locationLabel}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              }
+              return (
+                <button
+                  key={brand.id}
+                  onClick={() => setSelectedBrandId(brand.id)}
+                  className={`w-full text-left rounded-xl border px-4 py-3 transition ${
+                    selectedBrandId === brand.id
+                      ? 'border-primary/50 bg-primary/10'
+                      : 'border-border/60 hover:border-primary/40 hover:bg-card/80'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">{brand.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {brand.customDomain || `${brand.subdomain}.managgio.com`}
+                      </div>
+                    </div>
+                    <div className={`text-xs px-2 py-1 rounded-full ${brand.isActive ? 'bg-emerald-500/15 text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+                      {brand.isActive ? 'Activo' : 'Inactivo'}
+                    </div>
                   </div>
-                </div>
-                <div className={`text-xs px-2 py-1 rounded-full ${brand.isActive ? 'bg-emerald-500/15 text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
-                  {brand.isActive ? 'Activo' : 'Inactivo'}
-                </div>
-              </div>
-              <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
-                <MapPin className="h-3 w-3" />
-                {brand.locations?.length || 0} locales
-              </div>
-            </button>
-            ))
+                  <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                    <MapPin className="h-3 w-3" />
+                    {locationCount} {locationLabel}
+                  </div>
+                </button>
+              );
+            })
           )}
         </CardContent>
       </Card>
