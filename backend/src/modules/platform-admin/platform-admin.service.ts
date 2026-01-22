@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ImageKitService } from '../imagekit/imagekit.service';
 import { UsageMetricsService } from '../usage-metrics/usage-metrics.service';
 import { AssignBrandAdminDto } from './dto/assign-brand-admin.dto';
 import { RemoveBrandAdminDto } from './dto/remove-brand-admin.dto';
@@ -32,12 +33,57 @@ const sanitizeThemeConfig = (data: Record<string, unknown>) => {
   return next;
 };
 
+const BRANDING_FILE_ID_FIELDS = [
+  'logoFileId',
+  'logoLightFileId',
+  'logoDarkFileId',
+  'heroBackgroundFileId',
+  'heroImageFileId',
+  'signImageFileId',
+] as const;
+
 @Injectable()
 export class PlatformAdminService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly imageKit: ImageKitService,
     private readonly usageMetrics: UsageMetricsService,
   ) {}
+
+  private readonly logger = new Logger(PlatformAdminService.name);
+
+  private collectBrandingFileIds(target: Set<string>, branding?: Record<string, unknown> | null) {
+    if (!branding || typeof branding !== 'object') return;
+    for (const field of BRANDING_FILE_ID_FIELDS) {
+      const value = (branding as Record<string, unknown>)[field];
+      if (typeof value === 'string') {
+        const normalized = value.trim();
+        if (normalized) target.add(normalized);
+      }
+    }
+  }
+
+  private async deleteImageKitFiles(brandId: string, fileIds: Set<string>) {
+    if (fileIds.size === 0) return;
+    try {
+      const result = await this.imageKit.deleteFilesForBrand(Array.from(fileIds), brandId, {
+        continueOnError: true,
+      });
+      if (result.failures.length > 0) {
+        for (const failure of result.failures) {
+          this.logger.warn(
+            `No se pudo eliminar el archivo ${failure.fileId} en ImageKit (brand ${brandId}): ${failure.error}`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo limpiar ImageKit para la marca ${brandId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
 
   async listBrands() {
     return this.prisma.brand.findMany({
@@ -101,6 +147,49 @@ export class PlatformAdminService {
   }
 
   async deleteBrand(id: string) {
+    const brand = await this.prisma.brand.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!brand) throw new NotFoundException('Brand not found');
+
+    const locations = await this.prisma.location.findMany({
+      where: { brandId: id },
+      select: { id: true },
+    });
+    const locationIds = locations.map((location) => location.id);
+
+    const [brandConfig, locationConfigs, barbers, products] = await Promise.all([
+      this.prisma.brandConfig.findUnique({ where: { brandId: id }, select: { data: true } }),
+      this.prisma.locationConfig.findMany({
+        where: { localId: { in: locationIds } },
+        select: { data: true },
+      }),
+      this.prisma.barber.findMany({
+        where: { localId: { in: locationIds } },
+        select: { photoFileId: true },
+      }),
+      this.prisma.product.findMany({
+        where: { localId: { in: locationIds } },
+        select: { imageFileId: true },
+      }),
+    ]);
+
+    const fileIds = new Set<string>();
+    const brandData = (brandConfig?.data || {}) as Record<string, unknown>;
+    this.collectBrandingFileIds(fileIds, brandData.branding as Record<string, unknown>);
+    for (const config of locationConfigs) {
+      const locationData = (config.data || {}) as Record<string, unknown>;
+      this.collectBrandingFileIds(fileIds, locationData.branding as Record<string, unknown>);
+    }
+    for (const barber of barbers) {
+      if (barber.photoFileId) fileIds.add(barber.photoFileId);
+    }
+    for (const product of products) {
+      if (product.imageFileId) fileIds.add(product.imageFileId);
+    }
+
+    await this.deleteImageKitFiles(id, fileIds);
     await this.prisma.brand.delete({ where: { id } });
     return { success: true };
   }

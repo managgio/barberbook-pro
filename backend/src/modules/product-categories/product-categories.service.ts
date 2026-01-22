@@ -16,7 +16,13 @@ export class ProductCategoriesService {
       where: { localId },
       orderBy: [{ position: 'asc' }, { name: 'asc' }],
       include: withProducts
-        ? { products: { orderBy: { name: 'asc' }, include: { category: true } } }
+        ? {
+            products: {
+              where: { isArchived: false },
+              orderBy: { name: 'asc' },
+              include: { category: true },
+            },
+          }
         : undefined,
     });
     return categories.map((category) => mapProductCategory(category, { includeProducts: withProducts }));
@@ -27,7 +33,13 @@ export class ProductCategoriesService {
     const category = await this.prisma.productCategory.findFirst({
       where: { id, localId },
       include: withProducts
-        ? { products: { orderBy: { name: 'asc' }, include: { category: true } } }
+        ? {
+            products: {
+              where: { isArchived: false },
+              orderBy: { name: 'asc' },
+              include: { category: true },
+            },
+          }
         : undefined,
     });
     if (!category) throw new NotFoundException('Category not found');
@@ -69,7 +81,7 @@ export class ProductCategoriesService {
     if (!existing) throw new NotFoundException('Category not found');
     const categoriesEnabled = await areProductCategoriesEnabled(this.prisma);
     const assignedProducts = await this.prisma.product.count({
-      where: { categoryId: id, localId },
+      where: { categoryId: id, localId, isArchived: false },
     });
 
     if (categoriesEnabled && assignedProducts > 0) {

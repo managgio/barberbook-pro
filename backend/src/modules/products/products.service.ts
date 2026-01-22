@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { ImageKitService } from '../imagekit/imagekit.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { mapProduct } from './products.mapper';
@@ -11,7 +12,12 @@ import { normalizeSettings, SiteSettings } from '../settings/settings.types';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ProductsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly imageKit: ImageKitService,
+  ) {}
 
   private normalizeName(value: string) {
     return value.trim().toLowerCase();
@@ -20,7 +26,7 @@ export class ProductsService {
   private async findProductByName(localId: string, name: string) {
     const normalizedName = this.normalizeName(name);
     const candidates = await this.prisma.product.findMany({
-      where: { localId },
+      where: { localId, isArchived: false },
       select: { id: true, name: true },
     });
     return candidates.find((candidate) => this.normalizeName(candidate.name) === normalizedName) ?? null;
@@ -60,7 +66,7 @@ export class ProductsService {
     const localId = getCurrentLocalId();
     const [products, offers] = await Promise.all([
       this.prisma.product.findMany({
-        where: { localId },
+        where: { localId, isArchived: false },
         orderBy: { name: 'asc' },
         include: { category: true },
       }),
@@ -78,7 +84,7 @@ export class ProductsService {
 
     const [products, offers] = await Promise.all([
       this.prisma.product.findMany({
-        where: { localId, isActive: true, isPublic: true },
+        where: { localId, isActive: true, isPublic: true, isArchived: false },
         orderBy: { name: 'asc' },
         include: { category: true },
       }),
@@ -132,7 +138,9 @@ export class ProductsService {
   async update(id: string, data: UpdateProductDto) {
     await this.assertProductsEnabled();
     const localId = getCurrentLocalId();
-    const existing = await this.prisma.product.findFirst({ where: { id, localId } });
+    const existing = await this.prisma.product.findFirst({
+      where: { id, localId, isArchived: false },
+    });
     if (!existing) throw new NotFoundException('Product not found');
     const categoriesEnabled = await areProductCategoriesEnabled(this.prisma);
     const categoryId = data.categoryId === undefined ? existing.categoryId : data.categoryId;
@@ -167,13 +175,36 @@ export class ProductsService {
   async remove(id: string) {
     await this.assertProductsEnabled();
     const localId = getCurrentLocalId();
-    const existing = await this.prisma.product.findFirst({ where: { id, localId } });
+    const existing = await this.prisma.product.findFirst({
+      where: { id, localId, isArchived: false },
+    });
     if (!existing) throw new NotFoundException('Product not found');
     const inAppointments = await this.prisma.appointmentProduct.count({
       where: { productId: id },
     });
+    if (existing.imageFileId) {
+      try {
+        await this.imageKit.deleteFile(existing.imageFileId);
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo eliminar la imagen del producto ${id} en ImageKit: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     if (inAppointments > 0) {
-      throw new BadRequestException('No puedes eliminar un producto que ya se usó en citas.');
+      await this.prisma.product.update({
+        where: { id },
+        data: {
+          isActive: false,
+          isPublic: false,
+          isArchived: true,
+          imageUrl: null,
+          imageFileId: null,
+        },
+      });
+      return { success: true, archived: true };
     }
     await this.prisma.product.delete({ where: { id } });
     return { success: true };
@@ -209,8 +240,11 @@ export class ProductsService {
       const [sourceCategories, destinationCategories, sourceProducts, destinationProducts] = await Promise.all([
         tx.productCategory.findMany({ where: { localId: sourceLocalId } }),
         tx.productCategory.findMany({ where: { localId: destinationLocalId } }),
-        tx.product.findMany({ where: { localId: sourceLocalId }, include: { category: true } }),
-        tx.product.findMany({ where: { localId: destinationLocalId } }),
+        tx.product.findMany({
+          where: { localId: sourceLocalId, isArchived: false },
+          include: { category: true },
+        }),
+        tx.product.findMany({ where: { localId: destinationLocalId, isArchived: false } }),
       ]);
 
       const destinationCategoryByName = new Map(
