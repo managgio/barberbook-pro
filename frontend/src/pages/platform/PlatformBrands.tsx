@@ -1541,7 +1541,7 @@ const PlatformBrands: React.FC = () => {
           <CardContent className="flex-1 overflow-y-auto">
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-6">
               <div className="sticky top-0 z-10 -mx-6 border-b border-border/60 bg-card px-6 py-3 shadow-[0_10px_24px_-20px_hsl(var(--background)/0.9)]">
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-7">
+                <TabsList className="scrollbar-none flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto sm:grid sm:grid-cols-7 sm:justify-center sm:overflow-visible">
                   <TabsTrigger value="datos">Datos</TabsTrigger>
                   <TabsTrigger value="locales">Locales</TabsTrigger>
                   <TabsTrigger value="admins">Admins</TabsTrigger>

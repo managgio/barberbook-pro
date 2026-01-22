@@ -62,6 +62,19 @@ export class AiMemoryService {
     });
   }
 
+  async getDailyUserMessageCount(timeZone = AI_TIME_ZONE) {
+    await this.ensureDailyCleanup(timeZone);
+    const dayKey = getDateStringInTimeZone(new Date(), timeZone);
+    const { start, end } = getDayBoundsInTimeZone(dayKey, timeZone);
+    return this.prisma.aiChatMessage.count({
+      where: {
+        localId: getCurrentLocalId(),
+        role: 'user',
+        createdAt: { gte: start, lte: end },
+      },
+    });
+  }
+
   async appendMessage(params: {
     sessionId: string;
     role: 'user' | 'assistant' | 'tool';

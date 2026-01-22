@@ -8,5 +8,6 @@ import { ImageKitController } from './imagekit.controller';
   imports: [TenancyModule, PrismaModule],
   controllers: [ImageKitController],
   providers: [ImageKitService],
+  exports: [ImageKitService],
 })
 export class ImageKitModule {}

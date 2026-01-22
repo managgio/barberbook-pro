@@ -234,11 +234,22 @@ const AdminAiAssistant: React.FC = () => {
       });
       handleResponse(response);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo completar la solicitud.';
       toast({
         title: 'Error del asistente',
-        description: error instanceof Error ? error.message : 'No se pudo completar la solicitud.',
+        description: errorMessage,
         variant: 'destructive',
       });
+      if (/limite diario/i.test(errorMessage)) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: errorMessage,
+          },
+        ]);
+      }
     } finally {
       setIsSending(false);
     }

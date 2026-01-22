@@ -257,6 +257,7 @@ model Barber {
   startDate   DateTime
   endDate     DateTime?
   isActive    Boolean          @default(true)
+  isArchived  Boolean          @default(false)
   userId      String?          @unique
   user        User?            @relation(fields: [userId], references: [id])
   appointments Appointment[]
@@ -303,6 +304,7 @@ model Product {
   imageFileId String?
   isActive    Boolean         @default(true)
   isPublic    Boolean         @default(true)
+  isArchived  Boolean         @default(false)
   offers      Offer[]         @relation("OfferProducts")
   appointmentItems AppointmentProduct[]
   createdAt   DateTime        @default(now())

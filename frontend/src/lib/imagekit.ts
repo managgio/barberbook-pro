@@ -62,6 +62,8 @@ export const uploadToImageKit = async (
   formData.append('signature', auth.signature);
   formData.append('publicKey', auth.publicKey);
   formData.append('useUniqueFileName', 'true');
+  const envPrefix = (import.meta.env.VITE_IMAGEKIT_FOLDER_PREFIX || '').trim();
+  const normalizePart = (value?: string) => (value || '').trim().replace(/^\/+|\/+$/g, '');
   const resolveFolder = (baseFolder?: string, overrideFolder?: string) => {
     const normalizedOverride = overrideFolder?.trim();
     if (!normalizedOverride) return baseFolder;
@@ -72,7 +74,17 @@ export const uploadToImageKit = async (
     const normalizedChild = normalizedOverride.replace(/^\/+/, '');
     return `${normalizedBase}/${normalizedChild}`;
   };
-  const targetFolder = resolveFolder(auth.folder, folder);
+  const applyPrefix = (value?: string) => {
+    const normalizedPrefix = normalizePart(envPrefix);
+    if (!normalizedPrefix) return value;
+    const normalizedValue = normalizePart(value || '');
+    if (!normalizedValue) return `/${normalizedPrefix}`;
+    if (normalizedValue === normalizedPrefix || normalizedValue.startsWith(`${normalizedPrefix}/`)) {
+      return `/${normalizedValue}`;
+    }
+    return `/${normalizedPrefix}/${normalizedValue}`;
+  };
+  const targetFolder = applyPrefix(resolveFolder(auth.folder, folder));
   if (targetFolder) {
     formData.append('folder', targetFolder);
   }

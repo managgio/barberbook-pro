@@ -14,6 +14,7 @@ import { UsageMetricsService } from '../usage-metrics/usage-metrics.service';
 const MAX_HISTORY_MESSAGES = 16;
 const SUMMARY_EVERY_MESSAGES = 8;
 const SUMMARY_MAX_MESSAGES = 10;
+const DAILY_MESSAGE_LIMIT = 20;
 
 export interface AiChatResult {
   sessionId: string;
@@ -40,6 +41,12 @@ export class AiAssistantService {
 
   async chat(adminUserId: string, message: string, sessionId?: string | null): Promise<AiChatResult> {
     await this.ensureAdminUser(adminUserId);
+    const dailyCount = await this.memory.getDailyUserMessageCount(AI_TIME_ZONE);
+    if (dailyCount >= DAILY_MESSAGE_LIMIT) {
+      throw new BadRequestException(
+        `Límite diario alcanzado (${DAILY_MESSAGE_LIMIT} mensajes). Inténtalo de nuevo mañana.`,
+      );
+    }
 
     const session = await this.memory.getOrCreateSession(adminUserId, sessionId);
     await this.memory.appendMessage({

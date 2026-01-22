@@ -180,6 +180,15 @@
     animation: scaleIn 0.25s ease-out forwards;
   }
 
+  .scrollbar-none {
+    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
   .animate-pulse-glow {
     animation: pulseGlow 2s ease-in-out infinite;
   }
