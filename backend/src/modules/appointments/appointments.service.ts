@@ -191,7 +191,19 @@ export class AppointmentsService {
       startDateTime,
     );
 
-    return pricing.finalPrice ?? Number(service.price);
+    return { price: pricing.finalPrice ?? Number(service.price), serviceName: service.name };
+  }
+
+  private async getBarberNameSnapshot(barberId: string) {
+    const localId = getCurrentLocalId();
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, localId },
+      select: { name: true },
+    });
+    if (!barber) {
+      throw new NotFoundException('Barber not found');
+    }
+    return barber.name;
   }
 
   async create(
@@ -231,7 +243,8 @@ export class AppointmentsService {
       startDateTime: data.startDateTime,
     });
 
-    const servicePrice = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
+    const { price: servicePrice, serviceName } = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
+    const barberNameSnapshot = await this.getBarberNameSnapshot(data.barberId);
     const productSelection = await this.resolveProductSelection(requestedProducts, {
       allowInactive: isAdminActor,
       allowPrivate: isAdminActor,
@@ -262,6 +275,8 @@ export class AppointmentsService {
           userId: data.userId,
           barberId: data.barberId,
           serviceId: data.serviceId,
+          barberNameSnapshot,
+          serviceNameSnapshot: serviceName,
           startDateTime,
           price: new Prisma.Decimal(totalPrice),
           status: nextStatus,
@@ -341,6 +356,7 @@ export class AppointmentsService {
     }
 
     const nextServiceId = data.serviceId ?? current.serviceId;
+    const nextBarberId = data.barberId ?? current.barberId;
     const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
     if (data.status === 'completed') {
       const duration = await this.getServiceDuration(nextServiceId);
@@ -435,13 +451,36 @@ export class AppointmentsService {
 
     const shouldRecalculatePrice = data.serviceId !== undefined || data.startDateTime !== undefined;
     let price: Prisma.Decimal | undefined;
+    let resolvedServiceName: string | null = null;
+    let resolvedServicePrice: number | null = null;
+    if (shouldRecalculatePrice) {
+      const pricing = await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime);
+      resolvedServiceName = pricing.serviceName;
+      resolvedServicePrice = pricing.price;
+    }
     if (data.price !== undefined) {
       price = new Prisma.Decimal(data.price);
     } else if (shouldRecalculatePrice || productsInputProvided) {
       const baseServicePrice = shouldRecalculatePrice
-        ? await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime)
+        ? resolvedServicePrice ?? 0
         : Math.max(0, Number(current.price) - currentProductsTotal);
       price = new Prisma.Decimal(baseServicePrice + nextProductSelection.total);
+    }
+
+    const snapshotUpdates: { barberNameSnapshot?: string; serviceNameSnapshot?: string } = {};
+    if (serviceChanged || !current.serviceNameSnapshot) {
+      if (!resolvedServiceName) {
+        const service = await this.prisma.service.findFirst({
+          where: { id: nextServiceId, localId },
+          select: { name: true },
+        });
+        if (!service) throw new NotFoundException('Service not found');
+        resolvedServiceName = service.name;
+      }
+      snapshotUpdates.serviceNameSnapshot = resolvedServiceName;
+    }
+    if (barberChanged || !current.barberNameSnapshot) {
+      snapshotUpdates.barberNameSnapshot = await this.getBarberNameSnapshot(nextBarberId);
     }
 
     const shouldHoldCurrent = this.shouldHoldStock(current.status);
@@ -512,6 +551,7 @@ export class AppointmentsService {
           userId: data.userId,
           barberId: data.barberId,
           serviceId: data.serviceId,
+          ...snapshotUpdates,
           startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
           price,
           paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,

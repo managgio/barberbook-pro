@@ -83,6 +83,8 @@ const AppointmentsPage: React.FC = () => {
   const generateCalendarLink = (appointment: Appointment) => {
     const service = getService(appointment.serviceId);
     const barber = getBarber(appointment.barberId);
+    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio';
+    const barberName = barber?.name ?? appointment.barberNameSnapshot ?? 'Barbero';
     const startDate = parseISO(appointment.startDateTime);
     const durationMinutes = service?.duration ?? 30;
     const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
@@ -91,9 +93,9 @@ const AppointmentsPage: React.FC = () => {
     
     const params = new URLSearchParams({
       action: 'TEMPLATE',
-      text: `${service?.name} - ${settings.branding.name}`,
+      text: `${serviceName} - ${settings.branding.name}`,
       dates: `${formatDate(startDate)}/${formatDate(endDate)}`,
-      details: `Cita con ${barber?.name}`,
+      details: `Cita con ${barberName}`,
       location: settings.location.label,
     });
     
@@ -106,6 +108,8 @@ const AppointmentsPage: React.FC = () => {
   }) => {
     const barber = getBarber(appointment.barberId);
     const service = getService(appointment.serviceId);
+    const barberName = barber?.name ?? appointment.barberNameSnapshot ?? 'Barbero eliminado';
+    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
     const date = parseISO(appointment.startDateTime);
     const basePrice = service?.price ?? appointment.price;
     const paidPrice = appointment.price;
@@ -118,12 +122,12 @@ const AppointmentsPage: React.FC = () => {
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <img 
               src={barber?.photo || defaultAvatar} 
-              alt={barber?.name}
+              alt={barberName}
               className="w-16 h-16 rounded-xl object-cover"
             />
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground text-lg">{service?.name}</h3>
-              <p className="text-muted-foreground">con {barber?.name}</p>
+              <h3 className="font-semibold text-foreground text-lg">{serviceName}</h3>
+              <p className="text-muted-foreground">con {barberName}</p>
               <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />

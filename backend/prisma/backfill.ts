@@ -112,6 +112,44 @@ async function backfillBrandMemberships() {
   }
 }
 
+async function backfillAppointmentSnapshots() {
+  const [barbers, services] = await Promise.all([
+    prisma.barber.findMany({ select: { id: true, name: true } }),
+    prisma.service.findMany({ select: { id: true, name: true } }),
+  ]);
+  const barberMap = new Map(barbers.map((barber) => [barber.id, barber.name]));
+  const serviceMap = new Map(services.map((service) => [service.id, service.name]));
+
+  const appointments = await prisma.appointment.findMany({
+    select: {
+      id: true,
+      barberId: true,
+      serviceId: true,
+      barberNameSnapshot: true,
+      serviceNameSnapshot: true,
+    },
+  });
+
+  let updatedCount = 0;
+  for (const appointment of appointments) {
+    const barberNameSnapshot = appointment.barberNameSnapshot ?? barberMap.get(appointment.barberId) ?? null;
+    const serviceNameSnapshot = appointment.serviceNameSnapshot ?? serviceMap.get(appointment.serviceId) ?? null;
+    if (
+      barberNameSnapshot === appointment.barberNameSnapshot &&
+      serviceNameSnapshot === appointment.serviceNameSnapshot
+    ) {
+      continue;
+    }
+    await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { barberNameSnapshot, serviceNameSnapshot },
+    });
+    updatedCount += 1;
+  }
+
+  console.log(`Appointment snapshots backfilled: ${updatedCount}`);
+}
+
 async function removeFirebaseWebConfig() {
   const configs = await prisma.brandConfig.findMany({
     select: { id: true, data: true },
@@ -139,6 +177,7 @@ async function main() {
   await removeFirebaseWebConfig();
   await backfillLocalId();
   await backfillBrandMemberships();
+  await backfillAppointmentSnapshots();
   console.log('Backfill complete');
 }
 

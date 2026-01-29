@@ -158,7 +158,9 @@ export interface Appointment {
   id: string;
   userId: string | null;
   barberId: string;
+  barberNameSnapshot?: string | null;
   serviceId: string;
+  serviceNameSnapshot?: string | null;
   startDateTime: string; // ISO string
   price: number;
   paymentMethod?: PaymentMethod | null;

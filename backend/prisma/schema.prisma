@@ -322,8 +322,10 @@ model Appointment {
   user          User?              @relation(fields: [userId], references: [id])
   barberId      String
   barber        Barber             @relation(fields: [barberId], references: [id])
+  barberNameSnapshot String?
   serviceId     String
   service       Service            @relation(fields: [serviceId], references: [id])
+  serviceNameSnapshot String?
   products      AppointmentProduct[]
   startDateTime DateTime
   price         Decimal            @db.Decimal(10, 2)

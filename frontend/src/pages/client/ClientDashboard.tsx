@@ -50,6 +50,10 @@ const ClientDashboard: React.FC = () => {
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
+  const getBarberSnapshot = (id: string) =>
+    appointments.find((item) => item.barberId === id && item.barberNameSnapshot)?.barberNameSnapshot ?? null;
+  const getServiceSnapshot = (id: string) =>
+    appointments.find((item) => item.serviceId === id && item.serviceNameSnapshot)?.serviceNameSnapshot ?? null;
   const getMostFrequentId = (items: Appointment[], key: 'serviceId' | 'barberId') => {
     const counts: Record<string, number> = {};
     items.forEach((item) => {
@@ -62,8 +66,12 @@ const ClientDashboard: React.FC = () => {
 
   const favoriteServiceId = getMostFrequentId(completedAppointments, 'serviceId');
   const favoriteBarberId = getMostFrequentId(completedAppointments, 'barberId');
-  const favoriteServiceName = favoriteServiceId ? getService(favoriteServiceId)?.name ?? 'Sin datos' : 'Sin datos';
-  const favoriteBarberName = favoriteBarberId ? getBarber(favoriteBarberId)?.name ?? 'Sin datos' : 'Sin datos';
+  const favoriteServiceName = favoriteServiceId
+    ? getService(favoriteServiceId)?.name ?? getServiceSnapshot(favoriteServiceId) ?? 'Sin datos'
+    : 'Sin datos';
+  const favoriteBarberName = favoriteBarberId
+    ? getBarber(favoriteBarberId)?.name ?? getBarberSnapshot(favoriteBarberId) ?? 'Sin datos'
+    : 'Sin datos';
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -127,6 +135,8 @@ const ClientDashboard: React.FC = () => {
               {upcomingAppointments.slice(0, 3).map((appointment) => {
                 const barber = getBarber(appointment.barberId);
                 const service = getService(appointment.serviceId);
+                const barberName = barber?.name ?? appointment.barberNameSnapshot ?? 'Barbero eliminado';
+                const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
                 const date = parseISO(appointment.startDateTime);
                 
                 return (
@@ -136,12 +146,12 @@ const ClientDashboard: React.FC = () => {
                   >
                     <img 
                       src={barber?.photo || defaultAvatar} 
-                      alt={barber?.name}
+                      alt={barberName}
                       className="w-12 h-12 rounded-full object-cover"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground">{service?.name}</p>
-                      <p className="text-sm text-muted-foreground">con {barber?.name}</p>
+                      <p className="font-medium text-foreground">{serviceName}</p>
+                      <p className="text-sm text-muted-foreground">con {barberName}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-primary">
