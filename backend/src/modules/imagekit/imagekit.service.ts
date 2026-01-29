@@ -114,6 +114,10 @@ export class ImageKitService {
 
     if (!response.ok) {
       const error = await response.text();
+      const normalizedError = (error || '').toLowerCase();
+      if (response.status === 404 || normalizedError.includes('does not exist')) {
+        return;
+      }
       throw new InternalServerErrorException(
         `No se pudo eliminar la imagen en ImageKit: ${error || response.statusText}`,
       );

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,6 +25,7 @@ const QuickAppointmentButton: React.FC = () => {
   const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const [productsEnabled, setProductsEnabled] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
+  const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
 
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -130,6 +131,40 @@ const QuickAppointmentButton: React.FC = () => {
     return { morning, afternoon };
   }, [availableSlots]);
 
+  const selectedProductsTotal = useMemo(() => {
+    return selectedProducts.reduce((acc, item) => {
+      const product = products.find((prod) => prod.id === item.productId);
+      if (!product) return acc;
+      const unitPrice = product.finalPrice ?? product.price;
+      return acc + unitPrice * item.quantity;
+    }, 0);
+  }, [products, selectedProducts]);
+
+  const selectedProductDetails = useMemo(() => {
+    return selectedProducts
+      .map((item) => {
+        const product = products.find((prod) => prod.id === item.productId);
+        if (!product) return null;
+        const unitPrice = product.finalPrice ?? product.price;
+        return {
+          id: product.id,
+          name: product.name,
+          quantity: item.quantity,
+          unitPrice,
+          total: unitPrice * item.quantity,
+          imageUrl: product.imageUrl ?? null,
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      total: number;
+      imageUrl: string | null;
+    }>;
+  }, [products, selectedProducts]);
+
   const orderedCategories = useMemo(
     () =>
       [...serviceCategories].sort(
@@ -155,6 +190,7 @@ const QuickAppointmentButton: React.FC = () => {
     setSelectedTime('');
     setAvailableSlots([]);
     setSelectedProducts([]);
+    setIsProductsDialogOpen(false);
   };
 
   const handleOpenChange = (value: boolean) => {
@@ -429,13 +465,55 @@ const QuickAppointmentButton: React.FC = () => {
 
               {productsEnabled && (
                 <div className="space-y-3">
-                  <Label className="text-base">Productos</Label>
-                  <ProductSelector
-                    products={products}
-                    categories={productCategories}
-                    selected={selectedProducts}
-                    onChange={setSelectedProducts}
-                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-base">Productos</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Añade productos opcionales a la cita.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground">
+                        Total productos: {selectedProductsTotal.toFixed(2)}€
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsProductsDialogOpen(true)}
+                      >
+                        {selectedProducts.length > 0 ? 'Editar productos' : 'Añadir productos'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-muted/30 p-4 space-y-3">
+                    {selectedProductDetails.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedProductDetails.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
+                                {item.imageUrl ? (
+                                  <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                ) : (
+                                  <span className="text-[11px] text-muted-foreground">Sin foto</span>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">{item.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.quantity} x {item.unitPrice.toFixed(2)}€
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-sm font-medium text-foreground">{item.total.toFixed(2)}€</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -540,6 +618,29 @@ const QuickAppointmentButton: React.FC = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Seleccionar productos</DialogTitle>
+            <DialogDescription>
+              Busca y añade productos a la cita. Solo se guardarán los seleccionados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto pr-2">
+            <ProductSelector
+              products={products}
+              categories={productCategories}
+              selected={selectedProducts}
+              onChange={setSelectedProducts}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setIsProductsDialogOpen(false)}>
+              Listo
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

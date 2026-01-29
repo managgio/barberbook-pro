@@ -8,21 +8,27 @@ import { mapAppointment } from './appointments.mapper';
 import { generateSlotsForShift, isDateInRange, normalizeRange, timeToMinutes } from '../schedules/schedule.utils';
 import { HolidaysService } from '../holidays/holidays.service';
 import { SchedulesService } from '../schedules/schedules.service';
-import { DayKey, DEFAULT_SHOP_SCHEDULE, ShopSchedule } from '../schedules/schedule.types';
+import { DEFAULT_SHOP_SCHEDULE } from '../schedules/schedule.types';
 import { NotificationsService } from '../notifications/notifications.service';
 import { computeServicePricing, isOfferActiveNow } from '../services/services.pricing';
 import { LegalService } from '../legal/legal.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { SettingsService } from '../settings/settings.service';
 import { computeProductPricing } from '../products/products.pricing';
+import {
+  APP_TIMEZONE,
+  endOfDayInTimeZone,
+  formatDateInTimeZone,
+  formatTimeInTimeZone,
+  getWeekdayKey,
+  startOfDayInTimeZone,
+} from '../../utils/timezone';
 
 const DEFAULT_SERVICE_DURATION = 30;
 const SLOT_INTERVAL_MINUTES = 15;
 const CONFIRMATION_GRACE_MS = 60 * 1000;
 const ANONYMIZED_NAME = 'Invitado anonimizado';
 
-const startOfDay = (date: string) => new Date(`${date}T00:00:00`);
-const endOfDay = (date: string) => new Date(`${date}T23:59:59.999`);
 const buildAnonymizedContact = (id: string) => `anonimo+${id.slice(0, 8)}@example.invalid`;
 
 @Injectable()
@@ -52,11 +58,12 @@ export class AppointmentsService {
     startDateTime: string;
     appointmentIdToIgnore?: string;
   }) {
-    const [dateOnly, timePart] = params.startDateTime.split('T');
-    const slotTime = timePart?.slice(0, 5);
-    if (!dateOnly || !slotTime) {
+    const startDate = new Date(params.startDateTime);
+    if (Number.isNaN(startDate.getTime())) {
       throw new BadRequestException('Horario no disponible.');
     }
+    const dateOnly = formatDateInTimeZone(startDate, APP_TIMEZONE);
+    const slotTime = formatTimeInTimeZone(startDate, APP_TIMEZONE);
     const availableSlots = await this.getAvailableSlots(params.barberId, dateOnly, {
       serviceId: params.serviceId,
       appointmentIdToIgnore: params.appointmentIdToIgnore,
@@ -140,8 +147,8 @@ export class AppointmentsService {
     if (filters?.barberId) where.barberId = filters.barberId;
     if (filters?.date) {
       where.startDateTime = {
-        gte: startOfDay(filters.date),
-        lte: endOfDay(filters.date),
+        gte: startOfDayInTimeZone(filters.date, APP_TIMEZONE),
+        lte: endOfDayInTimeZone(filters.date, APP_TIMEZONE),
       };
     }
     const appointments = await this.prisma.appointment.findMany({
@@ -592,9 +599,7 @@ export class AppointmentsService {
     const schedule = await this.schedulesService.getBarberSchedule(barberId);
     const shopSchedule = await this.schedulesService.getShopSchedule();
     const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
-    const dayKey = new Date(`${dateOnly}T12:00:00`)
-      .toLocaleDateString('en-US', { weekday: 'long' })
-      .toLowerCase() as DayKey;
+    const dayKey = getWeekdayKey(dateOnly, APP_TIMEZONE);
     const daySchedule = (schedule || DEFAULT_SHOP_SCHEDULE)[dayKey];
     if (!daySchedule || daySchedule.closed) return [];
     const dayBreaks = shopSchedule.breaks?.[dayKey] ?? [];
@@ -618,7 +623,10 @@ export class AppointmentsService {
         localId,
         barberId,
         status: { not: 'cancelled' },
-        startDateTime: { gte: startOfDay(dateOnly), lte: endOfDay(dateOnly) },
+        startDateTime: {
+          gte: startOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+          lte: endOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+        },
         NOT: options?.appointmentIdToIgnore ? { id: options.appointmentIdToIgnore } : undefined,
       },
       include: { service: true },
