@@ -68,6 +68,7 @@ Modulos principales:
 - **Products**: catalogo de productos con stock, precio y visibilidad publica.
 - **Product Categories**: categorias de productos (configurable).
 - **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
+- **Loyalty**: tarjetas de fidelizacion (global/servicio/categoria), recompensas y progreso por cliente.
 - **Schedules**: horario del local y horarios por barbero (JSON), con descansos y buffer entre citas.
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
@@ -97,7 +98,7 @@ Contextos principales:
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
 - Cliente: Dashboard, Booking Wizard, Appointments, Profile.
-- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register.
+- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register, Loyalty.
 - Plataforma: Dashboard, Brands (gestion multi-tenant, landing reordenable por drag & drop y overrides por local).
 
 ## Modelo de datos (Prisma / MySQL)
@@ -115,10 +116,11 @@ Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
 Service | Servicio | Precio, duracion, categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
 Offer | Ofertas | Descuento por scope (all/categories/services/products) y target (service/product)
+LoyaltyProgram | Fidelizacion | Scope (global/servicio/categoria), visitas requeridas, prioridad, activo
 ProductCategory | Categoria producto | Orden y descripcion de productos
 Product | Producto | Precio, stock, imagen, visibilidad y categoria
 AppointmentProduct | Linea producto | Productos agregados a la cita (qty + precio unitario)
-Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado
+Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion
 ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
 CashMovement | Movimiento de caja | Entradas/salidas manuales y metodo de pago
 PaymentMethod | Enum | Tarjeta, efectivo, bizum u otros metodos
@@ -203,6 +205,14 @@ Flujos:
    - Hero: se puede ocultar la imagen principal, cambiar su posicion, definir color del texto, ajustar opacidad del fondo, mostrar/ocultar la card de ubicacion, activar el badge de reserva online y alinear el contenido cuando no hay imagen.
    - Logos por modo: se guarda logo para modo claro/oscuro y se usa segun `theme.mode`.
    - Estadisticas destacadas se pueden mostrar/ocultar desde admin settings.
+
+11) **Fidelizacion**
+   - Programas por local con scope: global, categoria o servicio (prioridad y orden).
+   - Solo cuentan citas `completed` para el progreso; el resto no suma.
+   - La recompensa aplica solo al precio del servicio (productos se cobran).
+   - Solo clientes registrados participan; invitados no acumulan.
+   - Se guarda `loyaltyProgramId` y `loyaltyRewardApplied` en la cita.
+   - El historial de recompensas se construye desde citas completadas con recompensa aplicada.
 
 ## Integraciones externas
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local; al reemplazar activos se elimina el archivo anterior.

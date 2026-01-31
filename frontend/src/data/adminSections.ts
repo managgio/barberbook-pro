@@ -47,6 +47,11 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
     description: 'Administración del equipo de estilistas.',
   },
   {
+    key: 'loyalty',
+    label: 'Fidelización',
+    description: 'Tarjetas de fidelización y recompensas para clientes.',
+  },
+  {
     key: 'alerts',
     label: 'Alertas',
     description: 'Mensajes destacados o avisos para clientes.',

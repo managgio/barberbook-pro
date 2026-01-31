@@ -9,9 +9,18 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { LegalModule } from '../legal/legal.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { SettingsModule } from '../settings/settings.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
-  imports: [HolidaysModule, SchedulesModule, NotificationsModule, LegalModule, AuditLogsModule, SettingsModule],
+  imports: [
+    HolidaysModule,
+    SchedulesModule,
+    NotificationsModule,
+    LegalModule,
+    AuditLogsModule,
+    SettingsModule,
+    LoyaltyModule,
+  ],
   controllers: [AppointmentsController],
   providers: [AppointmentsService, AppointmentsStatusSyncService, AppointmentsRetentionService],
   exports: [AppointmentsService],

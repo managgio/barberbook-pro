@@ -9,6 +9,8 @@ export const mapAppointment = (appointment: AppointmentWithProducts) => ({
   barberNameSnapshot: appointment.barberNameSnapshot || null,
   serviceId: appointment.serviceId,
   serviceNameSnapshot: appointment.serviceNameSnapshot || null,
+  loyaltyProgramId: appointment.loyaltyProgramId || null,
+  loyaltyRewardApplied: appointment.loyaltyRewardApplied ?? false,
   startDateTime: appointment.startDateTime.toISOString(),
   price: Number(appointment.price),
   paymentMethod: appointment.paymentMethod || null,

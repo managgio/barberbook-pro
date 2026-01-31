@@ -15,6 +15,7 @@ import { LegalService } from '../legal/legal.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { SettingsService } from '../settings/settings.service';
 import { computeProductPricing } from '../products/products.pricing';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import {
   APP_TIMEZONE,
   endOfDayInTimeZone,
@@ -41,6 +42,7 @@ export class AppointmentsService {
     private readonly legalService: LegalService,
     private readonly auditLogs: AuditLogsService,
     private readonly settingsService: SettingsService,
+    private readonly loyaltyService: LoyaltyService,
   ) {}
 
   private async getServiceDuration(serviceId?: string) {
@@ -243,8 +245,16 @@ export class AppointmentsService {
       startDateTime: data.startDateTime,
     });
 
-    const { price: servicePrice, serviceName } = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
+    const pricing = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
+    const serviceName = pricing.serviceName;
+    let servicePrice = pricing.price;
     const barberNameSnapshot = await this.getBarberNameSnapshot(data.barberId);
+    const loyaltyDecision = await this.loyaltyService.resolveRewardDecision(data.userId, data.serviceId);
+    const loyaltyProgramId = loyaltyDecision?.program.id ?? null;
+    const loyaltyRewardApplied = loyaltyDecision?.isFreeNext ?? false;
+    if (loyaltyRewardApplied) {
+      servicePrice = 0;
+    }
     const productSelection = await this.resolveProductSelection(requestedProducts, {
       allowInactive: isAdminActor,
       allowPrivate: isAdminActor,
@@ -277,6 +287,8 @@ export class AppointmentsService {
           serviceId: data.serviceId,
           barberNameSnapshot,
           serviceNameSnapshot: serviceName,
+          loyaltyProgramId,
+          loyaltyRewardApplied,
           startDateTime,
           price: new Prisma.Decimal(totalPrice),
           status: nextStatus,
@@ -357,6 +369,7 @@ export class AppointmentsService {
 
     const nextServiceId = data.serviceId ?? current.serviceId;
     const nextBarberId = data.barberId ?? current.barberId;
+    const nextUserId = data.userId === undefined ? current.userId : data.userId;
     const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
     if (data.status === 'completed') {
       const duration = await this.getServiceDuration(nextServiceId);
@@ -372,6 +385,7 @@ export class AppointmentsService {
       data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
     const serviceChanged = data.serviceId !== undefined && data.serviceId !== current.serviceId;
     const barberChanged = data.barberId !== undefined && data.barberId !== current.barberId;
+    const userChanged = data.userId !== undefined && data.userId !== current.userId;
     if (startChanged || serviceChanged || barberChanged) {
       await this.assertSlotAvailable({
         barberId: data.barberId || current.barberId,
@@ -408,6 +422,15 @@ export class AppointmentsService {
       if (!isAdminActor && !productsConfig.clientPurchaseEnabled) {
         throw new BadRequestException('La compra de productos no está disponible en este local.');
       }
+    }
+
+    const shouldRecalculateLoyalty = serviceChanged || userChanged;
+    let loyaltyProgramId = current.loyaltyProgramId ?? null;
+    let loyaltyRewardApplied = current.loyaltyRewardApplied ?? false;
+    if (shouldRecalculateLoyalty) {
+      const loyaltyDecision = await this.loyaltyService.resolveRewardDecision(nextUserId, nextServiceId);
+      loyaltyProgramId = loyaltyDecision?.program.id ?? null;
+      loyaltyRewardApplied = loyaltyDecision?.isFreeNext ?? false;
     }
 
     const currentProducts = current.products ?? [];
@@ -449,14 +472,15 @@ export class AppointmentsService {
       throw new ForbiddenException('Solo un admin puede actualizar el método de pago.');
     }
 
-    const shouldRecalculatePrice = data.serviceId !== undefined || data.startDateTime !== undefined;
+    const shouldRecalculatePrice =
+      data.serviceId !== undefined || data.startDateTime !== undefined || data.userId !== undefined;
     let price: Prisma.Decimal | undefined;
     let resolvedServiceName: string | null = null;
     let resolvedServicePrice: number | null = null;
     if (shouldRecalculatePrice) {
       const pricing = await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime);
       resolvedServiceName = pricing.serviceName;
-      resolvedServicePrice = pricing.price;
+      resolvedServicePrice = loyaltyRewardApplied ? 0 : pricing.price;
     }
     if (data.price !== undefined) {
       price = new Prisma.Decimal(data.price);
@@ -552,6 +576,8 @@ export class AppointmentsService {
           barberId: data.barberId,
           serviceId: data.serviceId,
           ...snapshotUpdates,
+          loyaltyProgramId,
+          loyaltyRewardApplied,
           startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
           price,
           paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,

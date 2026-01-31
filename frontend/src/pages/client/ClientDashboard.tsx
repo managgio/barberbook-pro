@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { getAppointmentsByUser, getBarbers, getServices } from '@/data/api';
-import { Appointment, Barber, Service } from '@/data/types';
+import { getAppointmentsByUser, getBarbers, getLoyaltySummary, getServices } from '@/data/api';
+import { Appointment, Barber, LoyaltySummary, Service } from '@/data/types';
 import AlertBanner from '@/components/common/AlertBanner';
 import { Calendar, User, ArrowRight, Scissors, Crown } from 'lucide-react';
 import { format, isPast, parseISO } from 'date-fns';
@@ -12,6 +12,7 @@ import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 import { isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
+import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 
 const ClientDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -19,6 +20,7 @@ const ClientDashboard: React.FC = () => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loyaltySummary, setLoyaltySummary] = useState<LoyaltySummary | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -29,10 +31,12 @@ const ClientDashboard: React.FC = () => {
         getBarbers(),
         getServices(),
       ]);
+      const loyaltyData = await getLoyaltySummary(user.id).catch(() => null);
       
       setAppointments(appts);
       setBarbers(barbersData);
       setServices(servicesData);
+      setLoyaltySummary(loyaltyData);
       setIsLoading(false);
     };
     
@@ -117,6 +121,26 @@ const ClientDashboard: React.FC = () => {
           </Card>
         ))}
       </div>
+
+      {loyaltySummary?.enabled && loyaltySummary.programs.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold text-foreground">Fidelización</h2>
+            <Link to="/app/profile#loyalty" className="text-sm text-primary hover:underline">
+              Ver detalle
+            </Link>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {loyaltySummary.programs.map(({ program, progress }) => (
+              <Card key={program.id} variant="glass">
+                <CardContent className="p-4">
+                  <LoyaltyProgressPanel program={program} progress={progress} variant="compact" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Upcoming Appointments */}
       <Card variant="elevated">

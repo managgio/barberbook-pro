@@ -9,8 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus } from '@/data/api';
-import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory } from '@/data/types';
+import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus, getLoyaltyPreview } from '@/data/api';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import AlertBanner from '@/components/common/AlertBanner';
 import ProductSelector from '@/components/common/ProductSelector';
+import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
 
 const STEPS = ['Servicio', 'Barbero y horario', 'Confirmación'];
@@ -57,6 +58,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loyaltyPreview, setLoyaltyPreview] = useState<LoyaltyPreview | null>(null);
+  const [isLoyaltyLoading, setIsLoyaltyLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [privacyConsentRequired, setPrivacyConsentRequired] = useState(true);
@@ -152,6 +155,29 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       return [...prev, { productId: preselected, quantity: 1 }];
     });
   }, [allowProductSelection, products, searchParams]);
+
+  useEffect(() => {
+    if (isGuest || !user?.id || !booking.serviceId) {
+      setLoyaltyPreview(null);
+      setIsLoyaltyLoading(false);
+      return;
+    }
+    let isMounted = true;
+    setIsLoyaltyLoading(true);
+    getLoyaltyPreview(user.id, booking.serviceId)
+      .then((data) => {
+        if (isMounted) setLoyaltyPreview(data);
+      })
+      .catch(() => {
+        if (isMounted) setLoyaltyPreview(null);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoyaltyLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [booking.serviceId, isGuest, user?.id]);
 
   useEffect(() => {
     if (isGuest || !user?.id) {
@@ -502,9 +528,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     return { basePrice, finalPrice: basePrice, appliedOffer: null, amountOff: 0 };
   }, [booking.dateTime, selectedDate, services, booking.serviceId]);
 
+  const loyaltyEligible = Boolean(loyaltyPreview?.enabled && loyaltyPreview.program);
+  const loyaltyFree = loyaltyEligible && Boolean(loyaltyPreview?.isFreeNext);
+  const loyaltyAdjustedPrice = useMemo(() => {
+    if (!selectedPricing) return 0;
+    return loyaltyFree ? 0 : selectedPricing.finalPrice;
+  }, [loyaltyFree, selectedPricing]);
+
   const totalWithProducts = useMemo(
-    () => (selectedPricing?.finalPrice ?? 0) + selectedProductsTotal,
-    [selectedPricing, selectedProductsTotal],
+    () => loyaltyAdjustedPrice + selectedProductsTotal,
+    [loyaltyAdjustedPrice, selectedProductsTotal],
   );
 
   const activeOffers = useMemo(() => {
@@ -1064,7 +1097,19 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <p className="font-semibold text-foreground">{getService()?.name}</p>
                   </div>
                   <div className="text-right">
-                    {selectedPricing?.appliedOffer ? (
+                    {loyaltyFree ? (
+                      <>
+                        <div className="text-xs line-through text-muted-foreground">
+                          {selectedPricing?.finalPrice.toFixed(2)}€
+                        </div>
+                        <div className="text-xl font-bold text-primary">
+                          0.00€
+                        </div>
+                        <div className="text-[11px] text-primary">
+                          Cita gratis por fidelización
+                        </div>
+                      </>
+                    ) : selectedPricing?.appliedOffer ? (
                       <>
                         <div className="text-xs line-through text-muted-foreground">
                           {selectedPricing.basePrice.toFixed(2)}€
@@ -1152,6 +1197,32 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         ) : (
                           <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
                         )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {loyaltyEligible && loyaltyPreview?.program && loyaltyPreview.progress && (
+                  <>
+                    <hr className="border-border" />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Tu tarjeta de fidelización</p>
+                          <p className="text-xs text-muted-foreground">
+                            {loyaltyFree ? 'Esta cita cuenta como recompensa.' : 'Sigue acumulando visitas.'}
+                          </p>
+                        </div>
+                        {isLoyaltyLoading && (
+                          <span className="text-xs text-muted-foreground">Actualizando…</span>
+                        )}
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
+                        <LoyaltyProgressPanel
+                          program={loyaltyPreview.program}
+                          progress={loyaltyPreview.progress}
+                          variant="compact"
+                        />
                       </div>
                     </div>
                   </>

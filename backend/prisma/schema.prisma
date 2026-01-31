@@ -64,6 +64,12 @@ enum OfferTarget {
   product
 }
 
+enum LoyaltyScope {
+  global
+  service
+  category
+}
+
 enum AiChatRole {
   user
   assistant
@@ -147,6 +153,7 @@ model Location {
   barberSchedules BarberSchedule[]
   serviceCategories ServiceCategory[]
   offers    Offer[]
+  loyaltyPrograms LoyaltyProgram[]
   aiChatSessions AiChatSession[]
   aiChatMessages AiChatMessage[]
   aiBusinessFacts AiBusinessFact[]
@@ -281,6 +288,7 @@ model Service {
   category    ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   appointments Appointment[]
   offers      Offer[]       @relation("ServiceOffers")
+  loyaltyPrograms LoyaltyProgram[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -326,6 +334,9 @@ model Appointment {
   serviceId     String
   service       Service            @relation(fields: [serviceId], references: [id])
   serviceNameSnapshot String?
+  loyaltyProgramId String?
+  loyaltyProgram  LoyaltyProgram?  @relation(fields: [loyaltyProgramId], references: [id])
+  loyaltyRewardApplied Boolean     @default(false)
   products      AppointmentProduct[]
   startDateTime DateTime
   price         Decimal            @db.Decimal(10, 2)
@@ -512,6 +523,7 @@ model ServiceCategory {
   position    Int       @default(0)
   services    Service[]
   offers      Offer[]   @relation("OfferCategories")
+  loyaltyPrograms LoyaltyProgram[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -554,6 +566,29 @@ model Offer {
   updatedAt     DateTime         @updatedAt
 
   @@index([localId])
+}
+
+model LoyaltyProgram {
+  id             String            @id @default(cuid())
+  localId        String
+  local          Location          @relation(fields: [localId], references: [id])
+  name           String
+  description    String?
+  scope          LoyaltyScope
+  requiredVisits Int
+  priority       Int               @default(0)
+  isActive       Boolean           @default(true)
+  serviceId      String?
+  service        Service?          @relation(fields: [serviceId], references: [id])
+  categoryId     String?
+  category       ServiceCategory?  @relation(fields: [categoryId], references: [id])
+  appointments   Appointment[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([localId])
+  @@index([serviceId])
+  @@index([categoryId])
 }
 
 model AiChatSession {

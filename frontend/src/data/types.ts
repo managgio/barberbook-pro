@@ -161,6 +161,8 @@ export interface Appointment {
   barberNameSnapshot?: string | null;
   serviceId: string;
   serviceNameSnapshot?: string | null;
+  loyaltyProgramId?: string | null;
+  loyaltyRewardApplied?: boolean;
   startDateTime: string; // ISO string
   price: number;
   paymentMethod?: PaymentMethod | null;
@@ -352,6 +354,69 @@ export interface Offer {
   products?: Product[];
 }
 
+export type LoyaltyScope = 'global' | 'service' | 'category';
+
+export interface LoyaltyProgram {
+  id: string;
+  name: string;
+  description?: string | null;
+  scope: LoyaltyScope;
+  requiredVisits: number;
+  priority: number;
+  isActive: boolean;
+  serviceId?: string | null;
+  serviceName?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LoyaltyProgramProgress {
+  totalVisits: number;
+  totalVisitsAccumulated: number;
+  cycleVisits: number;
+  nextFreeIn: number;
+  isRewardNext: boolean;
+}
+
+export interface LoyaltyRewardHistoryItem {
+  appointmentId: string;
+  serviceId: string;
+  serviceName?: string | null;
+  startDateTime: string;
+  status: AppointmentStatus;
+  price: number;
+}
+
+export interface LoyaltySummary {
+  enabled: boolean;
+  programs: Array<{
+    program: LoyaltyProgram;
+    progress: LoyaltyProgramProgress;
+    rewards: LoyaltyRewardHistoryItem[];
+  }>;
+}
+
+export interface LoyaltyPreview {
+  enabled: boolean;
+  program: LoyaltyProgram | null;
+  progress: LoyaltyProgramProgress | null;
+  isFreeNext: boolean;
+  nextIndex: number | null;
+}
+
+export interface CreateLoyaltyProgramPayload {
+  name: string;
+  description?: string | null;
+  scope: LoyaltyScope;
+  requiredVisits: number;
+  priority?: number;
+  isActive?: boolean;
+  serviceId?: string | null;
+  categoryId?: string | null;
+}
+
 export type AdminSectionKey =
   | 'dashboard'
   | 'calendar'
@@ -362,6 +427,7 @@ export type AdminSectionKey =
   | 'clients'
   | 'services'
   | 'barbers'
+  | 'loyalty'
   | 'alerts'
   | 'holidays'
   | 'roles'

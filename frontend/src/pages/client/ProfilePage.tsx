@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -6,10 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { User, Mail, Phone, Bell, Loader2 } from 'lucide-react';
+import { User, Mail, Phone, Bell, Loader2, Award } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { deleteUser } from '@/data/api';
+import { deleteUser, getLoyaltySummary } from '@/data/api';
+import { LoyaltySummary } from '@/data/types';
+import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
+import { format, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
@@ -18,6 +22,7 @@ const ProfilePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [loyaltySummary, setLoyaltySummary] = useState<LoyaltySummary | null>(null);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -36,6 +41,21 @@ const ProfilePage: React.FC = () => {
   const allowEmail = notificationConfig?.email !== false;
   const allowWhatsapp = notificationConfig?.whatsapp !== false;
   const allowSms = notificationConfig?.sms !== false;
+
+  useEffect(() => {
+    if (!user) return;
+    let isMounted = true;
+    getLoyaltySummary(user.id)
+      .then((data) => {
+        if (isMounted) setLoyaltySummary(data);
+      })
+      .catch(() => {
+        if (isMounted) setLoyaltySummary(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,6 +184,73 @@ const ProfilePage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {loyaltySummary?.enabled && (
+          <Card id="loyalty" variant="elevated">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-primary" />
+                Fidelización
+              </CardTitle>
+              <CardDescription>
+                Consulta tu progreso y las recompensas disponibles.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {loyaltySummary.programs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No hay tarjetas activas en este momento.
+                </p>
+              ) : (
+                <div className="grid gap-4">
+                  {loyaltySummary.programs.map(({ program, progress, rewards }) => (
+                    <div key={program.id} className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                      <LoyaltyProgressPanel program={program} progress={progress} variant="full" />
+                      <div className="mt-4 border-t border-border/60 pt-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Historial de recompensas
+                          </p>
+                          {rewards.length > 0 && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {rewards.length} recompensa{rewards.length === 1 ? '' : 's'}
+                            </span>
+                          )}
+                        </div>
+                        {rewards.length === 0 ? (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Aún no has canjeado recompensas en esta tarjeta.
+                          </p>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            {rewards.map((reward) => (
+                              <div
+                                key={reward.appointmentId}
+                                className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-foreground">
+                                    {reward.serviceName ?? 'Servicio'}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {format(parseISO(reward.startDateTime), 'd MMM yyyy', { locale: es })}
+                                  </p>
+                                </div>
+                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                                  Gratis
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Notification Preferences */}
         {(allowEmail || allowWhatsapp || allowSms) && (

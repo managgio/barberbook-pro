@@ -19,6 +19,7 @@ import {
   Wallet,
   Tag,
   Boxes,
+  Award,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,7 @@ const navItems: NavItem[] = [
   { href: '/admin/stock', label: 'Control de stock', icon: Boxes, section: 'stock' },
   { href: '/admin/services', label: 'Servicios', icon: Scissors, section: 'services' },
   { href: '/admin/barbers', label: 'Barberos', icon: UserCircle, section: 'barbers' },
+  { href: '/admin/loyalty', label: 'Fidelización', icon: Award, section: 'loyalty' },
   { href: '/admin/alerts', label: 'Alertas', icon: Bell, section: 'alerts' },
   { href: '/admin/offers', label: 'Ofertas', icon: Tag, section: 'offers' },
   { href: '/admin/holidays', label: 'Festivos', icon: CalendarDays, section: 'holidays' },
