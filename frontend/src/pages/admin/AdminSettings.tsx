@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
 import { BreakRange, DayKey, ShopSchedule, SiteSettings } from '@/data/types';
-import { getServices, getShopSchedule, getSiteSettings, updateShopSchedule, updateSiteSettings } from '@/data/api';
+import { getServices, getShopSchedule, getSiteSettings, updateShopSchedule, updateSiteSettings, getAdminStripeConfig, updateAdminStripeConfig, createAdminStripeConnect } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
@@ -29,6 +29,7 @@ import {
   Youtube,
   Linkedin,
   Boxes,
+  CreditCard,
 } from 'lucide-react';
 
 const DAY_LABELS: { key: DayKey; label: string }[] = [
@@ -46,6 +47,19 @@ type ShiftKey = (typeof SHIFT_KEYS)[number];
 
 const cloneSettings = (data: SiteSettings): SiteSettings => JSON.parse(JSON.stringify(data));
 const DEFAULT_BREAK_RANGE: BreakRange = { start: '13:30', end: '14:00' };
+
+type AdminStripeConfig = {
+  mode: 'brand' | 'location';
+  brandEnabled: boolean;
+  platformEnabled: boolean;
+  localEnabled: boolean;
+  accountIdExists: boolean;
+  status?: {
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    detailsSubmitted: boolean;
+  } | null;
+};
 
 const AdminSettings: React.FC = () => {
   const XBrandIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -70,6 +84,10 @@ const AdminSettings: React.FC = () => {
   const [shopSchedule, setShopSchedule] = useState<ShopSchedule | null>(null);
   const [isScheduleLoading, setIsScheduleLoading] = useState(false);
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
+  const [stripeConfig, setStripeConfig] = useState<AdminStripeConfig | null>(null);
+  const [isStripeLoading, setIsStripeLoading] = useState(false);
+  const [isStripeSaving, setIsStripeSaving] = useState(false);
+  const [isStripeConnecting, setIsStripeConnecting] = useState(false);
   const [{ prefix: phonePrefix, number: phoneNumber }, setPhoneParts] = useState(() =>
     normalizePhoneParts(DEFAULT_SITE_SETTINGS.contact.phone)
   );
@@ -107,9 +125,26 @@ const AdminSettings: React.FC = () => {
     }
   };
 
+  const loadStripeConfig = async () => {
+    setIsStripeLoading(true);
+    try {
+      const data = await getAdminStripeConfig();
+      setStripeConfig(data);
+    } catch (error) {
+      toast({
+        title: 'No se pudo cargar Stripe',
+        description: 'Revisa la conexión e intenta de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsStripeLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSettings();
     loadShopSchedule();
+    loadStripeConfig();
   }, []);
 
   const buildSettingsPayload = (nextSettings: SiteSettings) => {
@@ -186,6 +221,47 @@ const AdminSettings: React.FC = () => {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleStripeToggle = async (enabled: boolean) => {
+    if (!stripeConfig || isStripeSaving) return;
+    setIsStripeSaving(true);
+    try {
+      await updateAdminStripeConfig(enabled);
+      setStripeConfig((prev) => (prev ? { ...prev, localEnabled: enabled } : prev));
+      toast({
+        title: 'Preferencias de pago actualizadas',
+        description: enabled ? 'Stripe quedó habilitado para este local.' : 'Stripe quedó deshabilitado para este local.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo actualizar Stripe',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsStripeSaving(false);
+    }
+  };
+
+  const handleStripeConnect = async () => {
+    if (isStripeConnecting) return;
+    setIsStripeConnecting(true);
+    try {
+      const data = await createAdminStripeConnect();
+      if (data?.url) {
+        window.open(data.url, '_blank', 'noopener');
+      }
+      await loadStripeConfig();
+    } catch (error) {
+      toast({
+        title: 'No se pudo iniciar Stripe',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsStripeConnecting(false);
     }
   };
 
@@ -372,6 +448,20 @@ const AdminSettings: React.FC = () => {
     { key: 'yearlyBookings', icon: Calendar, label: 'Reservas/año', value: settings.stats.yearlyBookings.toLocaleString('es-ES') },
     { key: 'repeatClientsPercentage', icon: Repeat, label: 'Clientes que repiten', value: `${settings.stats.repeatClientsPercentage}%` },
   ];
+  const stripeReady = Boolean(stripeConfig?.status?.chargesEnabled && stripeConfig?.status?.detailsSubmitted);
+  const stripeStatusLabel = !stripeConfig?.brandEnabled
+    ? 'Desactivado por la marca'
+    : !stripeConfig?.platformEnabled
+      ? 'Desactivado por la plataforma'
+      : stripeConfig?.accountIdExists
+        ? stripeReady
+          ? 'Conectado'
+          : 'Pendiente de completar'
+        : 'Sin conectar';
+  const stripeModeLabel = stripeConfig?.mode === 'brand'
+    ? 'Cuenta centralizada de la marca'
+    : 'Cuenta propia por local';
+  const stripeVisible = Boolean(stripeConfig?.brandEnabled && stripeConfig?.platformEnabled);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -709,6 +799,81 @@ const AdminSettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Payments */}
+      {stripeConfig && stripeVisible && (
+        <Card variant="elevated">
+          <CardHeader className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-primary" />
+              <CardTitle>Pagos con tarjeta (Stripe)</CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Activa los pagos online y permite al cliente pagar antes de la cita.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Habilitar Stripe en este local</p>
+                <p className="text-xs text-muted-foreground">
+                  {stripeConfig.brandEnabled
+                    ? 'Los clientes podrán elegir pagar online o en el local.'
+                    : 'La marca no tiene Stripe activo.'}
+                </p>
+              </div>
+              <Switch
+                checked={stripeConfig.localEnabled}
+                onCheckedChange={handleStripeToggle}
+                disabled={!stripeConfig.brandEnabled || isStripeSaving || isStripeLoading}
+              />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-border/70 bg-background/80 px-4 py-3">
+                <p className="text-xs text-muted-foreground">Estado</p>
+                <p className="text-sm font-semibold text-foreground">{stripeStatusLabel}</p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-background/80 px-4 py-3">
+                <p className="text-xs text-muted-foreground">Modo</p>
+                <p className="text-sm font-semibold text-foreground">{stripeModeLabel}</p>
+              </div>
+            </div>
+
+            {stripeConfig.brandEnabled && stripeConfig.localEnabled && stripeConfig.mode === 'location' && !stripeReady && (
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-2xl border border-dashed border-border/70 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Conecta tu cuenta Stripe</p>
+                  <p className="text-xs text-muted-foreground">
+                    Necesitamos completar el onboarding para activar los cobros.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleStripeConnect}
+                  disabled={isStripeConnecting}
+                >
+                  {isStripeConnecting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Conectar Stripe
+                </Button>
+              </div>
+            )}
+
+            {stripeConfig.brandEnabled && stripeConfig.mode === 'brand' && !stripeReady && (
+              <div className="rounded-2xl border border-dashed border-border/70 px-4 py-3 text-sm text-muted-foreground">
+                La cuenta de Stripe la gestiona la marca. Cuando la conexión esté lista, podrás habilitar pagos aquí.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isStripeLoading && stripeVisible && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Cargando estado de Stripe...
+        </div>
+      )}
 
       {/* Products */}
       {productsModuleEnabled && (

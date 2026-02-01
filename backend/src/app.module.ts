@@ -29,6 +29,7 @@ import { CashRegisterModule } from './modules/cash-register/cash-register.module
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
     LoyaltyModule,
     ReferralsModule,
     ReviewsModule,
+    PaymentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
 })

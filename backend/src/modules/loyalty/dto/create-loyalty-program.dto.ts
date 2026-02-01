@@ -20,6 +20,11 @@ export class CreateLoyaltyProgramDto {
 
   @IsOptional()
   @IsInt()
+  @Min(1)
+  maxCyclesPerClient?: number | null;
+
+  @IsOptional()
+  @IsInt()
   priority?: number;
 
   @IsOptional()

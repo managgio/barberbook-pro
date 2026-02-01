@@ -158,7 +158,8 @@ export interface Product {
 }
 
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
-export type PaymentMethod = 'cash' | 'card' | 'bizum';
+export type PaymentMethod = 'cash' | 'card' | 'bizum' | 'stripe';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled' | 'exempt' | 'in_person';
 export type CashMovementType = 'in' | 'out';
 
 export interface AppointmentProductItem {
@@ -187,11 +188,23 @@ export interface Appointment {
   startDateTime: string; // ISO string
   price: number;
   paymentMethod?: PaymentMethod | null;
+  paymentStatus?: PaymentStatus | null;
+  paymentAmount?: number | null;
+  paymentCurrency?: string | null;
+  paymentPaidAt?: string | null;
+  paymentExpiresAt?: string | null;
   status: AppointmentStatus;
   notes?: string;
   guestName?: string;
   guestContact?: string;
   products?: AppointmentProductItem[];
+}
+
+export interface StripeAvailability {
+  enabled: boolean;
+  mode?: 'brand' | 'location';
+  reason?: string;
+  publishableKey?: string | null;
 }
 
 export interface CashMovement {
@@ -585,6 +598,7 @@ export interface LoyaltyProgram {
   description?: string | null;
   scope: LoyaltyScope;
   requiredVisits: number;
+  maxCyclesPerClient?: number | null;
   priority: number;
   isActive: boolean;
   serviceId?: string | null;
@@ -634,6 +648,7 @@ export interface CreateLoyaltyProgramPayload {
   description?: string | null;
   scope: LoyaltyScope;
   requiredVisits: number;
+  maxCyclesPerClient?: number | null;
   priority?: number;
   isActive?: boolean;
   serviceId?: string | null;

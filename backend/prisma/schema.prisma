@@ -28,6 +28,16 @@ enum PaymentMethod {
   cash
   card
   bizum
+  stripe
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  cancelled
+  exempt
+  in_person
 }
 
 enum CashMovementType {
@@ -415,6 +425,13 @@ model Appointment {
   startDateTime DateTime
   price         Decimal            @db.Decimal(10, 2)
   paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus      @default(in_person)
+  paymentAmount Decimal?           @db.Decimal(10, 2)
+  paymentCurrency String?          @db.VarChar(10)
+  paymentPaidAt DateTime?
+  paymentExpiresAt DateTime?
+  stripePaymentIntentId String?    @unique
+  stripeCheckoutSessionId String?  @unique
   status        AppointmentStatus  @default(scheduled)
   notes         String?
   guestName     String?
@@ -869,6 +886,7 @@ model LoyaltyProgram {
   description    String?
   scope          LoyaltyScope
   requiredVisits Int
+  maxCyclesPerClient Int?
   priority       Int               @default(0)
   isActive       Boolean           @default(true)
   serviceId      String?

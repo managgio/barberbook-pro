@@ -43,6 +43,7 @@ const methodLabels: Record<PaymentMethod | 'unknown', string> = {
   cash: 'Efectivo',
   card: 'Tarjeta',
   bizum: 'Bizum',
+  stripe: 'Stripe',
   unknown: 'Sin método',
 };
 
@@ -50,6 +51,7 @@ const METHOD_COLORS: Record<PaymentMethod | 'unknown', string> = {
   cash: '#22c55e',
   card: '#0ea5e9',
   bizum: '#f97316',
+  stripe: '#635bff',
   unknown: '#94a3b8',
 };
 
@@ -57,6 +59,7 @@ const methodIcons: Record<PaymentMethod | 'unknown', React.ElementType> = {
   cash: Banknote,
   card: CreditCard,
   bizum: Wallet,
+  stripe: CreditCard,
   unknown: BadgeDollarSign,
 };
 
@@ -202,6 +205,7 @@ const AdminCashRegister: React.FC = () => {
       cash: 0,
       card: 0,
       bizum: 0,
+      stripe: 0,
       unknown: 0,
     };
     paymentFilteredAppointments.forEach((appointment) => {
@@ -545,6 +549,7 @@ const AdminCashRegister: React.FC = () => {
                   <SelectItem value="cash">Efectivo</SelectItem>
                   <SelectItem value="card">Tarjeta</SelectItem>
                   <SelectItem value="bizum">Bizum</SelectItem>
+                  <SelectItem value="stripe">Stripe</SelectItem>
                   <SelectItem value="unknown">Sin método</SelectItem>
                 </SelectContent>
               </Select>
@@ -676,6 +681,7 @@ const AdminCashRegister: React.FC = () => {
                   <SelectItem value="cash">Efectivo</SelectItem>
                   <SelectItem value="card">Tarjeta</SelectItem>
                   <SelectItem value="bizum">Bizum</SelectItem>
+                  <SelectItem value="stripe">Stripe</SelectItem>
                   <SelectItem value="none">Sin método</SelectItem>
                 </SelectContent>
               </Select>

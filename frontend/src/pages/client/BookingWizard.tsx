@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus, getLoyaltyPreview, getRewardsWallet } from '@/data/api';
-import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon } from '@/data/types';
+import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus, getLoyaltyPreview, getRewardsWallet, getStripeAvailability, createStripeCheckout } from '@/data/api';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon, StripeAvailability } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -21,6 +21,7 @@ import {
   Clock,
   Loader2,
   CheckCircle,
+  CreditCard,
 } from 'lucide-react';
 import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter, isWithinInterval, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -65,6 +66,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [walletSummary, setWalletSummary] = useState<RewardWalletSummary | null>(null);
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null);
+  const [stripeAvailability, setStripeAvailability] = useState<StripeAvailability | null>(null);
+  const [paymentOption, setPaymentOption] = useState<'local' | 'stripe'>('local');
   const [showSuccess, setShowSuccess] = useState(false);
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [privacyConsentRequired, setPrivacyConsentRequired] = useState(true);
@@ -120,13 +123,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
+        const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData, stripeData] = await Promise.all([
           getServices(),
           getBarbers(),
           getServiceCategories(true),
           getSiteSettings(),
           getProducts('booking'),
           getProductCategories(true),
+          getStripeAvailability().catch(() => null),
         ]);
         setServices(servicesData);
         setBarbers(barbersData);
@@ -136,6 +140,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         setClientPurchaseEnabled(settingsData.products.clientPurchaseEnabled);
         setProducts(productsData);
         setProductCategories(productCategoriesData);
+        if (stripeData) {
+          setStripeAvailability(stripeData);
+        } else {
+          setStripeAvailability(null);
+        }
       } catch (error) {
         toast({
           title: 'No pudimos cargar los servicios',
@@ -160,6 +169,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       return [...prev, { productId: preselected, quantity: 1 }];
     });
   }, [allowProductSelection, products, searchParams]);
+
+  useEffect(() => {
+    if (!stripeAvailability?.enabled) {
+      setPaymentOption('local');
+    }
+  }, [stripeAvailability?.enabled]);
 
   useEffect(() => {
     if (isGuest || !user?.id || !booking.serviceId) {
@@ -719,7 +734,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       const userId = isGuest ? null : (user as User).id;
       const productsPayload = allowProductSelection ? selectedProducts : undefined;
       const storedReferral = getStoredReferralAttribution();
-      await createAppointment({
+      const payload = {
         userId,
         serviceId: booking.serviceId,
         barberId: booking.barberId,
@@ -733,7 +748,36 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         appliedCouponId: selectedCouponId ?? undefined,
         useWallet: useWalletBalance || undefined,
         ...(productsPayload ? { products: productsPayload } : {}),
-      });
+      };
+
+      if (stripeAvailability?.enabled && paymentOption === 'stripe' && totalFinal > 0) {
+        const checkout = await createStripeCheckout(payload);
+        clearStoredReferralAttribution();
+        if (checkout?.mode === 'exempt') {
+          setShowSuccess(true);
+          setTimeout(() => {
+            toast({
+              title: '¡Cita reservada!',
+              description: isGuest
+                ? 'Hemos registrado tu cita. Te contactaremos para confirmar cualquier detalle.'
+                : 'Tu cita ha sido programada correctamente.',
+            });
+            if (isGuest) {
+              navigate('/');
+            } else {
+              navigate('/app/appointments');
+            }
+          }, 1500);
+          return;
+        }
+        if (checkout?.checkoutUrl) {
+          window.location.href = checkout.checkoutUrl;
+          return;
+        }
+        throw new Error('No se pudo iniciar el pago.');
+      }
+
+      await createAppointment(payload);
 
       setShowSuccess(true);
       clearStoredReferralAttribution();
@@ -1395,6 +1439,74 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </>
                 )}
 
+                {stripeAvailability?.enabled && totalFinal > 0 && (
+                  <>
+                    <hr className="border-border" />
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Forma de pago</p>
+                        <p className="text-xs text-muted-foreground">
+                          Elige cómo quieres pagar tu cita.
+                        </p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setPaymentOption('stripe')}
+                          className={cn(
+                            'rounded-2xl border px-4 py-3 text-left transition-all',
+                            paymentOption === 'stripe'
+                              ? 'border-primary bg-primary/10 shadow-glow'
+                              : 'border-border/70 bg-background hover:border-primary/40'
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                              <CreditCard className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">Pagar ahora con tarjeta</p>
+                              <p className="text-xs text-muted-foreground">Reserva confirmada al instante.</p>
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentOption('local')}
+                          className={cn(
+                            'rounded-2xl border px-4 py-3 text-left transition-all',
+                            paymentOption === 'local'
+                              ? 'border-primary bg-primary/10 shadow-glow'
+                              : 'border-border/70 bg-background hover:border-primary/40'
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                              <CheckCircle className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">Pagar en el local</p>
+                              <p className="text-xs text-muted-foreground">Pagarás el día de la cita.</p>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Si pagas ahora, te enviaremos la confirmación inmediatamente.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {totalFinal <= 0 && (
+                  <>
+                    <hr className="border-border" />
+                    <p className="text-xs text-muted-foreground">
+                      Esta cita es gratuita, no necesitas realizar ningún pago.
+                    </p>
+                  </>
+                )}
+
                 <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Precio servicio</span>
@@ -1581,7 +1693,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               }
             >
               {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Confirmar reserva
+              {stripeAvailability?.enabled && paymentOption === 'stripe' && totalFinal > 0
+                ? 'Pagar ahora'
+                : 'Confirmar reserva'}
             </Button>
           )}
         </div>

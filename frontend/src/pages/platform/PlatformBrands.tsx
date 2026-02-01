@@ -18,6 +18,8 @@ import {
   updatePlatformBrandLegalSettings,
   updatePlatformLocation,
   updatePlatformLocationConfig,
+  connectPlatformStripeBrand,
+  connectPlatformStripeLocation,
 } from '@/data/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -33,11 +35,38 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Building2, ChevronsLeft, ChevronsRight, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
 import MarkdownContent from '@/components/common/MarkdownContent';
+
+const PLATFORM_BRAND_STORAGE_KEY = 'platform:brands:selected';
+const PLATFORM_TAB_STORAGE_KEY = 'platform:brands:tab';
+const PLATFORM_BRAND_TABS = ['datos', 'locales', 'admins', 'sidebar', 'landing', 'config', 'legal'] as const;
+type PlatformBrandTab = (typeof PLATFORM_BRAND_TABS)[number];
+
+const readStorageValue = (key: string) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStorageValue = (key: string, value: string | null) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!value) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore storage errors
+  }
+};
 
 const updateNestedValue = (source: Record<string, any>, path: string[], value: any) => {
   const result = { ...source };
@@ -415,7 +444,7 @@ const PlatformBrands: React.FC = () => {
   const { toast } = useToast();
   const imagekitPrefix = import.meta.env.VITE_IMAGEKIT_FOLDER_PREFIX || 'IMAGEKIT_FOLDER';
   const [brands, setBrands] = useState<any[]>([]);
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(() => readStorageValue(PLATFORM_BRAND_STORAGE_KEY));
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [brandQuery, setBrandQuery] = useState('');
   const [brandForm, setBrandForm] = useState({ name: '', subdomain: '', customDomain: '', isActive: true });
@@ -437,6 +466,7 @@ const PlatformBrands: React.FC = () => {
   const [applyThemeToAll, setApplyThemeToAll] = useState(false);
   const [uploadingAsset, setUploadingAsset] = useState<BrandAssetKey | null>(null);
   const [uploadingPresentation, setUploadingPresentation] = useState<string | null>(null);
+  const [stripeAction, setStripeAction] = useState<string | null>(null);
   const [persistedBrandFileIds, setPersistedBrandFileIds] = useState<Record<BrandFileIdField, string | null>>({
     logoFileId: null,
     logoLightFileId: null,
@@ -461,7 +491,13 @@ const PlatformBrands: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isAdminSaving, setIsAdminSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'datos' | 'locales' | 'admins' | 'sidebar' | 'landing' | 'config' | 'legal'>('datos');
+  const [activeTab, setActiveTab] = useState<PlatformBrandTab>(() => {
+    const stored = readStorageValue(PLATFORM_TAB_STORAGE_KEY);
+    if (stored && (PLATFORM_BRAND_TABS as readonly string[]).includes(stored)) {
+      return stored as PlatformBrandTab;
+    }
+    return 'datos';
+  });
   const [createBrandOpen, setCreateBrandOpen] = useState(false);
   const [createLocationOpen, setCreateLocationOpen] = useState(false);
   const [editLocationOpen, setEditLocationOpen] = useState(false);
@@ -493,6 +529,12 @@ const PlatformBrands: React.FC = () => {
     });
   }, [brands, brandQuery]);
   const brandListLayoutClass = isBrandListCollapsed ? 'lg:grid-cols-[96px_1fr]' : 'lg:grid-cols-[320px_1fr]';
+  const brandListCardHeightClass = isBrandListCollapsed
+    ? 'max-h-[170px] sm:max-h-[190px] lg:max-h-none'
+    : 'max-h-[420px] sm:max-h-[480px] lg:max-h-none';
+  const brandListContentClass = isBrandListCollapsed
+    ? 'hidden lg:block max-h-[120px] opacity-100 overflow-hidden lg:max-h-none lg:overflow-y-auto'
+    : 'max-h-[340px] opacity-100 overflow-y-auto sm:max-h-[380px] lg:max-h-none';
   const getBrandInitials = (name: string) =>
     name
       .split(' ')
@@ -519,7 +561,12 @@ const PlatformBrands: React.FC = () => {
     try {
       const data = await getPlatformBrands(user.id);
       setBrands(data);
-      if (!selectedBrandId && data.length) {
+      if (!data.length) {
+        setSelectedBrandId(null);
+        return;
+      }
+      const hasSelected = selectedBrandId && data.some((brand) => brand.id === selectedBrandId);
+      if (!hasSelected) {
         setSelectedBrandId(data[0].id);
       }
     } catch (error) {
@@ -530,10 +577,12 @@ const PlatformBrands: React.FC = () => {
   };
 
   useEffect(() => {
-    if (selectedBrandId) {
-      setActiveTab('datos');
-    }
+    writeStorageValue(PLATFORM_BRAND_STORAGE_KEY, selectedBrandId);
   }, [selectedBrandId]);
+
+  useEffect(() => {
+    writeStorageValue(PLATFORM_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   const loadBrandDetails = async (brandId: string) => {
     if (!user?.id) return;
@@ -708,6 +757,10 @@ const PlatformBrands: React.FC = () => {
     whatsapp: brandConfig?.notificationPrefs?.whatsapp !== false,
     sms: brandConfig?.notificationPrefs?.sms !== false,
   };
+  const brandStripe = readStripeConfig(brandConfig);
+  const locationStripe = readStripeConfig(locationConfig);
+  const brandStripeReady = brandStripe.chargesEnabled && brandStripe.detailsSubmitted;
+  const locationStripeReady = locationStripe.chargesEnabled && locationStripe.detailsSubmitted;
   const isLocationBrandingOverride = Boolean(locationConfig?.branding);
   const resolveThemeMode = (value?: string) => (value === 'light' || value === 'dark' ? value : 'dark');
   const resolveHeroFlag = (value?: boolean) => value !== false;
@@ -1455,6 +1508,49 @@ const PlatformBrands: React.FC = () => {
     });
   };
 
+  function readStripeConfig(config: Record<string, any>) {
+    const stripe = (config?.payments?.stripe || {}) as Record<string, any>;
+    return {
+      enabled: stripe.enabled === true,
+      platformEnabled: stripe.platformEnabled !== false,
+      mode: stripe.mode === 'brand' ? 'brand' : 'location',
+      accountId: typeof stripe.accountId === 'string' ? stripe.accountId : '',
+      chargesEnabled: stripe.chargesEnabled === true,
+      detailsSubmitted: stripe.detailsSubmitted === true,
+    };
+  }
+
+  function updateStripeConfig(
+    setter: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    updates: Record<string, any>,
+  ) {
+    setter((prev) => {
+      const current = (prev?.payments?.stripe || {}) as Record<string, any>;
+      return updateNestedValue(prev, ['payments', 'stripe'], { ...current, ...updates });
+    });
+  }
+
+  const handleStripeConnect = async (scope: 'brand' | 'location', id: string) => {
+    if (!user?.id) return;
+    const key = `${scope}:${id}`;
+    if (stripeAction === key) return;
+    setStripeAction(key);
+    try {
+      const response =
+        scope === 'brand'
+          ? await connectPlatformStripeBrand(user.id, id)
+          : await connectPlatformStripeLocation(user.id, id);
+      if (response?.url) {
+        window.open(response.url, '_blank', 'noopener');
+      }
+      toast({ title: 'Stripe', description: 'Completa el onboarding en la nueva pestaña.' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo iniciar la conexión con Stripe.', variant: 'destructive' });
+    } finally {
+      setStripeAction(null);
+    }
+  };
+
   const handleBrandAssetUpload = async (file: File | null, assetKey: BrandAssetKey) => {
     if (!file || !user?.id || !selectedBrand) return;
     const asset = BRAND_ASSET_META[assetKey];
@@ -1780,22 +1876,62 @@ const PlatformBrands: React.FC = () => {
   }
 
   return (
-    <div className={`grid gap-6 ${brandListLayoutClass} items-start lg:items-stretch animate-fade-in h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-3rem)] md:h-[calc(100dvh-4rem)] overflow-hidden`}>
-      <Card className="border border-border/60 bg-card/70 flex flex-col overflow-visible max-h-[420px] sm:max-h-[480px] lg:max-h-none lg:h-full">
-        <CardHeader
-          className={`relative flex ${isBrandListCollapsed ? 'flex-col items-center gap-2 px-3' : 'flex-row items-center justify-between'}`}
-        >
-          <div className={`flex items-center gap-2 ${isBrandListCollapsed ? 'flex-col' : ''}`}>
-            <CardTitle className={`font-semibold ${isBrandListCollapsed ? 'text-xs uppercase tracking-[0.2em] text-muted-foreground' : 'text-base'}`}>
-              Marcas
-            </CardTitle>
-          </div>
-          <div className={`flex items-center gap-2 ${isBrandListCollapsed ? 'flex-col' : ''}`}>
-            <Button size={isBrandListCollapsed ? 'icon' : 'sm'} onClick={() => setCreateBrandOpen(true)}>
-              <Plus className={`h-4 w-4 ${isBrandListCollapsed ? '' : 'mr-1'}`} />
-              {!isBrandListCollapsed && 'Nueva'}
-            </Button>
-          </div>
+    <div className={`flex flex-col gap-6 lg:grid lg:gap-6 ${brandListLayoutClass} items-start lg:items-stretch animate-fade-in h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-3rem)] md:h-[calc(100dvh-4rem)] overflow-hidden`}>
+      <Card
+        className={`border border-border/60 bg-card/70 flex flex-col overflow-visible ${brandListCardHeightClass} lg:h-full transition-[max-height] duration-300 ease-out shrink-0 relative w-full`}
+      >
+        <CardHeader className="relative px-4 py-4">
+          {isBrandListCollapsed ? (
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-start lg:items-center gap-1 shrink-0">
+                <CardTitle className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Marcas
+                </CardTitle>
+                <Button size="icon" onClick={() => setCreateBrandOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-x-auto lg:hidden">
+                <div className="flex items-center gap-2 pr-2">
+                  {filteredBrands.map((brand) => (
+                    <button
+                      key={brand.id}
+                      onClick={() => setSelectedBrandId(brand.id)}
+                      className={`flex items-center justify-center rounded-xl border p-2 transition shrink-0 ${
+                        selectedBrandId === brand.id
+                          ? 'border-primary/50 bg-primary/10'
+                          : 'border-border/60 hover:border-primary/40 hover:bg-card/80'
+                      }`}
+                      aria-label={`Ir a ${brand.name}`}
+                    >
+                      <div className="relative">
+                        <div className="h-10 w-10 rounded-xl bg-muted/50 border border-border/60 flex items-center justify-center text-sm font-semibold text-foreground">
+                          {getBrandInitials(brand.name || 'M')}
+                        </div>
+                        <span
+                          className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border border-card ${
+                            brand.isActive ? 'bg-emerald-400' : 'bg-muted-foreground'
+                          }`}
+                        />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base font-semibold">Marcas</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => setCreateBrandOpen(true)}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Nueva
+                </Button>
+              </div>
+            </div>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -1806,7 +1942,9 @@ const PlatformBrands: React.FC = () => {
             {isBrandListCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           </Button>
         </CardHeader>
-        <CardContent className={`space-y-3 overflow-y-auto flex-1 ${isBrandListCollapsed ? 'px-2' : ''}`}>
+        <CardContent
+          className={`space-y-3 flex-1 transition-[max-height,opacity] duration-300 ease-out ${brandListContentClass} ${isBrandListCollapsed ? 'px-2' : ''}`}
+        >
           {!isBrandListCollapsed && brands.length > 10 && (
             <div className="space-y-2">
               <Input
@@ -1818,11 +1956,11 @@ const PlatformBrands: React.FC = () => {
           )}
           {filteredBrands.length === 0 ? (
             <p className="text-xs text-muted-foreground">Sin resultados.</p>
-          ) : (
-            filteredBrands.map((brand) => {
-              const locationCount = brand.locations?.length || 0;
-              const locationLabel = locationCount === 1 ? 'local' : 'locales';
-              if (isBrandListCollapsed) {
+          ) : isBrandListCollapsed ? (
+            <div className="space-y-3">
+              {filteredBrands.map((brand) => {
+                const locationCount = brand.locations?.length || 0;
+                const locationLabel = locationCount === 1 ? 'local' : 'locales';
                 return (
                   <TooltipProvider key={brand.id}>
                     <Tooltip>
@@ -1856,7 +1994,12 @@ const PlatformBrands: React.FC = () => {
                     </Tooltip>
                   </TooltipProvider>
                 );
-              }
+              })}
+            </div>
+          ) : (
+            filteredBrands.map((brand) => {
+              const locationCount = brand.locations?.length || 0;
+              const locationLabel = locationCount === 1 ? 'local' : 'locales';
               return (
                 <button
                   key={brand.id}
@@ -1887,10 +2030,18 @@ const PlatformBrands: React.FC = () => {
             })
           )}
         </CardContent>
+        <button
+          type="button"
+          onClick={() => setIsBrandListCollapsed((prev) => !prev)}
+          aria-label={isBrandListCollapsed ? 'Mostrar marcas' : 'Ocultar marcas'}
+          className="lg:hidden absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+        >
+          {isBrandListCollapsed ? <ChevronsDown className="h-5 w-5" /> : <ChevronsUp className="h-5 w-5" />}
+        </button>
       </Card>
 
       {selectedBrand ? (
-        <Card className="border border-border/60 bg-card/70 h-full flex flex-col overflow-hidden">
+        <Card className="border border-border/60 bg-card/70 h-full flex flex-col overflow-hidden flex-1 min-h-0 w-full">
           <CardHeader className="flex flex-col gap-1 bg-card">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -1905,7 +2056,15 @@ const PlatformBrands: React.FC = () => {
             <p className="text-sm text-muted-foreground">Gestiona datos generales, locales y credenciales.</p>
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-6">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => {
+                if ((PLATFORM_BRAND_TABS as readonly string[]).includes(value)) {
+                  setActiveTab(value as PlatformBrandTab);
+                }
+              }}
+              className="space-y-6"
+            >
               <div className="sticky top-0 z-10 -mx-6 border-b border-border/60 bg-card px-6 py-3 shadow-[0_10px_24px_-20px_hsl(var(--background)/0.9)]">
                 <TabsList className="scrollbar-none flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto sm:grid sm:grid-cols-7 sm:justify-center sm:overflow-visible">
                   <TabsTrigger value="datos">Datos</TabsTrigger>
@@ -2936,6 +3095,57 @@ const PlatformBrands: React.FC = () => {
                       </div>
 
                       <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Stripe (pagos)</p>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Activar Stripe para la marca</div>
+                              <p className="text-xs text-muted-foreground">
+                                Habilita pagos online para los locales de esta marca.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={brandStripe.enabled}
+                              onCheckedChange={(checked) => updateStripeConfig(setBrandConfig, { enabled: checked })}
+                            />
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label>Modo de cobro</Label>
+                              <Select
+                                value={brandStripe.mode}
+                                onValueChange={(value) => updateStripeConfig(setBrandConfig, { mode: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="brand">Centralizado en la marca</SelectItem>
+                                  <SelectItem value="location">Cuenta por local</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Estado conexión</Label>
+                              <div className="rounded-xl border border-border/60 px-3 py-2 text-sm">
+                                {brandStripeReady ? 'Conectado' : brandStripe.accountId ? 'Pendiente de completar' : 'Sin conectar'}
+                              </div>
+                            </div>
+                          </div>
+                          {brandStripe.enabled && brandStripe.mode === 'brand' && !brandStripeReady && selectedBrand && (
+                            <Button
+                              variant="outline"
+                              onClick={() => handleStripeConnect('brand', selectedBrand.id)}
+                              disabled={stripeAction === `brand:${selectedBrand.id}`}
+                            >
+                              {stripeAction === `brand:${selectedBrand.id}` && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                              Conectar Stripe
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">ImageKit</p>
                         <div className="space-y-2">
                           <Label>Subcarpeta (opcional)</Label>
@@ -3105,6 +3315,64 @@ const PlatformBrands: React.FC = () => {
                               />
                             </div>
                           </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <p className="text-xs uppercase tracking-widest text-muted-foreground">Stripe (local)</p>
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Habilitar pagos online</div>
+                              <p className="text-xs text-muted-foreground">
+                                El cliente podrá elegir pagar ahora o en el local.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={locationStripe.platformEnabled}
+                              disabled={!brandStripe.enabled}
+                              onCheckedChange={(checked) =>
+                                updateStripeConfig(setLocationConfig, { platformEnabled: checked })
+                              }
+                            />
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label>Modo</Label>
+                              <div className="rounded-xl border border-border/60 px-3 py-2 text-sm">
+                                {brandStripe.mode === 'brand' ? 'Centralizado por marca' : 'Cuenta por local'}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Estado conexión</Label>
+                              <div className="rounded-xl border border-border/60 px-3 py-2 text-sm">
+                                {brandStripe.mode === 'brand'
+                                  ? brandStripeReady
+                                    ? 'Conectado'
+                                    : brandStripe.accountId
+                                      ? 'Pendiente de completar'
+                                      : 'Sin conectar'
+                                  : locationStripeReady
+                                    ? 'Conectado'
+                                    : locationStripe.accountId
+                                      ? 'Pendiente de completar'
+                                      : 'Sin conectar'}
+                              </div>
+                            </div>
+                          </div>
+                          {brandStripe.mode === 'location' && brandStripe.enabled && locationStripe.platformEnabled && !locationStripeReady && selectedLocationId && (
+                            <Button
+                              variant="outline"
+                              onClick={() => handleStripeConnect('location', selectedLocationId)}
+                              disabled={stripeAction === `location:${selectedLocationId}`}
+                            >
+                              {stripeAction === `location:${selectedLocationId}` && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                              Conectar Stripe
+                            </Button>
+                          )}
+                          {brandStripe.mode === 'brand' && !brandStripeReady && (
+                            <p className="text-xs text-muted-foreground">
+                              La marca debe completar la conexión centralizada antes de activar pagos en los locales.
+                            </p>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label>Color local (opcional)</Label>

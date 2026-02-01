@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentStatus, OfferTarget, Prisma } from '@prisma/client';
+import { AppointmentStatus, OfferTarget, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -31,6 +31,7 @@ import {
 const DEFAULT_SERVICE_DURATION = 30;
 const SLOT_INTERVAL_MINUTES = 15;
 const CONFIRMATION_GRACE_MS = 60 * 1000;
+const DEFAULT_CURRENCY = (process.env.STRIPE_CURRENCY || 'eur').toLowerCase();
 const ANONYMIZED_NAME = 'Invitado anonimizado';
 
 const buildAnonymizedContact = (id: string) => `anonimo+${id.slice(0, 8)}@example.invalid`;
@@ -216,7 +217,22 @@ export class AppointmentsService {
 
   async create(
     data: CreateAppointmentDto,
-    context?: { requireConsent?: boolean; ip?: string | null; userAgent?: string | null; actorUserId?: string | null },
+    context?: {
+      requireConsent?: boolean;
+      ip?: string | null;
+      userAgent?: string | null;
+      actorUserId?: string | null;
+      skipNotifications?: boolean;
+      payment?: {
+        status?: PaymentStatus;
+        method?: PaymentMethod | null;
+        amount?: number;
+        currency?: string;
+        expiresAt?: Date | null;
+        stripePaymentIntentId?: string | null;
+        stripeCheckoutSessionId?: string | null;
+      };
+    },
   ) {
     const requireConsent = context?.requireConsent !== false;
     let consentRequired = requireConsent;
@@ -304,6 +320,12 @@ export class AppointmentsService {
     const totalPrice = Math.max(0, totalBeforeWallet - walletAppliedAmount);
     const nextStatus = data.status || 'scheduled';
     const shouldHoldStock = this.shouldHoldStock(nextStatus);
+    const paymentContext = context?.payment;
+    const paymentStatus =
+      paymentContext?.status ?? (totalPrice <= 0 ? PaymentStatus.exempt : PaymentStatus.in_person);
+    const paymentAmount =
+      typeof paymentContext?.amount === 'number' ? paymentContext.amount : totalPrice;
+    const paymentCurrency = paymentContext?.currency || DEFAULT_CURRENCY;
 
     const appointment = await this.prisma.$transaction(async (tx) => {
       if (shouldHoldStock && productSelection.items.length > 0) {
@@ -335,6 +357,13 @@ export class AppointmentsService {
           walletAppliedAmount: new Prisma.Decimal(shouldHoldStock ? walletAppliedAmount : 0),
           startDateTime,
           price: new Prisma.Decimal(totalPrice),
+          paymentMethod: paymentContext?.method ?? null,
+          paymentStatus,
+          paymentAmount: new Prisma.Decimal(paymentAmount),
+          paymentCurrency,
+          paymentExpiresAt: paymentContext?.expiresAt ?? null,
+          stripePaymentIntentId: paymentContext?.stripePaymentIntentId ?? null,
+          stripeCheckoutSessionId: paymentContext?.stripeCheckoutSessionId ?? null,
           status: nextStatus,
           notes: data.notes,
           guestName: data.guestName,
@@ -409,8 +438,20 @@ export class AppointmentsService {
       });
     }
 
-    await this.notifyAppointment(appointment, 'creada');
+    if (!context?.skipNotifications && paymentStatus !== PaymentStatus.pending) {
+      await this.notifyAppointment(appointment, 'creada');
+    }
     return mapAppointment(appointment);
+  }
+
+  async sendPaymentConfirmation(appointmentId: string) {
+    const localId = getCurrentLocalId();
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, localId },
+      include: { user: true, barber: true, service: true },
+    });
+    if (!appointment) return;
+    await this.notifyAppointment(appointment, 'creada');
   }
 
   async anonymizeAppointment(id: string, actorUserId?: string | null, reason = 'manual') {

@@ -569,6 +569,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                       <SelectItem value="cash">Efectivo</SelectItem>
                       <SelectItem value="card">Tarjeta</SelectItem>
                       <SelectItem value="bizum">Bizum</SelectItem>
+                      <SelectItem value="stripe">Stripe</SelectItem>
                       <SelectItem value="none">Sin método</SelectItem>
                     </SelectContent>
                   </Select>

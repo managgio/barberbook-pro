@@ -7,8 +7,8 @@ import { CreateLoyaltyProgramDto } from './dto/create-loyalty-program.dto';
 import { UpdateLoyaltyProgramDto } from './dto/update-loyalty-program.dto';
 
 type LoyaltyProgramWithMeta = LoyaltyProgram & {
-  service?: { id: string; name: string } | null;
-  category?: { id: string; name: string } | null;
+  service: { id: string; name: string } | null;
+  category: { id: string; name: string } | null;
 };
 
 type LoyaltyProgress = {
@@ -56,6 +56,7 @@ export class LoyaltyService {
       description: program.description || null,
       scope: program.scope,
       requiredVisits: program.requiredVisits,
+      maxCyclesPerClient: program.maxCyclesPerClient ?? null,
       priority: program.priority,
       isActive: program.isActive,
       serviceId: program.serviceId ?? null,
@@ -143,6 +144,7 @@ export class LoyaltyService {
         description: data.description ?? null,
         scope: data.scope,
         requiredVisits: data.requiredVisits,
+        maxCyclesPerClient: data.maxCyclesPerClient ?? null,
         priority: data.priority ?? 0,
         isActive: data.isActive ?? true,
         serviceId: data.scope === LoyaltyScope.service ? data.serviceId ?? null : null,
@@ -177,6 +179,8 @@ export class LoyaltyService {
         description: data.description ?? existing.description,
         scope: data.scope ?? existing.scope,
         requiredVisits: data.requiredVisits ?? existing.requiredVisits,
+        maxCyclesPerClient:
+          data.maxCyclesPerClient === undefined ? existing.maxCyclesPerClient : data.maxCyclesPerClient,
         priority: data.priority ?? existing.priority,
         isActive: data.isActive ?? existing.isActive,
         serviceId: nextServiceId,
@@ -196,7 +200,10 @@ export class LoyaltyService {
     return { success: true };
   }
 
-  private async resolveProgramForService(serviceId: string): Promise<LoyaltyProgramWithMeta | null> {
+  private async resolveProgramForService(
+    serviceId: string,
+    userId?: string | null,
+  ): Promise<LoyaltyProgramWithMeta | null> {
     if (!(await this.isEnabled())) return null;
     const localId = getCurrentLocalId();
     const service = await this.prisma.service.findFirst({
@@ -220,13 +227,29 @@ export class LoyaltyService {
     });
     if (programs.length === 0) return null;
 
+    let eligiblePrograms = programs;
+    if (userId) {
+      const filtered: LoyaltyProgramWithMeta[] = [];
+      for (const program of programs) {
+        if (program.maxCyclesPerClient && program.maxCyclesPerClient > 0) {
+          const rewardsCount = await this.countCompletedRewards(userId, program.id);
+          if (rewardsCount >= program.maxCyclesPerClient) {
+            continue;
+          }
+        }
+        filtered.push(program);
+      }
+      eligiblePrograms = filtered;
+    }
+    if (eligiblePrograms.length === 0) return null;
+
     const score = (program: LoyaltyProgram) => {
       if (program.scope === LoyaltyScope.service) return 3;
       if (program.scope === LoyaltyScope.category) return 2;
       return 1;
     };
 
-    return programs.sort((a, b) => {
+    return eligiblePrograms.sort((a, b) => {
       const scopeDiff = score(b) - score(a);
       if (scopeDiff !== 0) return scopeDiff;
       const priorityDiff = (b.priority ?? 0) - (a.priority ?? 0);
@@ -242,6 +265,19 @@ export class LoyaltyService {
         localId,
         userId,
         loyaltyProgramId: programId,
+        status: 'completed',
+      },
+    });
+  }
+
+  private async countCompletedRewards(userId: string, programId: string) {
+    const localId = getCurrentLocalId();
+    return this.prisma.appointment.count({
+      where: {
+        localId,
+        userId,
+        loyaltyProgramId: programId,
+        loyaltyRewardApplied: true,
         status: 'completed',
       },
     });
@@ -321,6 +357,12 @@ export class LoyaltyService {
     });
     const progressList = await Promise.all(
       programs.map(async (program) => {
+        if (program.maxCyclesPerClient && program.maxCyclesPerClient > 0) {
+          const rewardsCount = await this.countCompletedRewards(userId, program.id);
+          if (rewardsCount >= program.maxCyclesPerClient) {
+            return null;
+          }
+        }
         const totalVisitsAccumulated = await this.countCompletedVisits(userId, program.id);
         const rewards = await this.getRewardHistory(userId, program.id);
         return {
@@ -330,7 +372,8 @@ export class LoyaltyService {
         };
       }),
     );
-    return { enabled: true, programs: progressList };
+    const filtered = progressList.filter((item): item is NonNullable<typeof item> => item !== null);
+    return { enabled: true, programs: filtered };
   }
 
   async getPreview(userId: string, serviceId: string) {
@@ -340,7 +383,7 @@ export class LoyaltyService {
     if (!userId || !serviceId) {
       throw new BadRequestException('userId and serviceId are required');
     }
-    const program = await this.resolveProgramForService(serviceId);
+    const program = await this.resolveProgramForService(serviceId, userId);
     if (!program) {
       return { enabled: true, program: null, progress: null, isFreeNext: false, nextIndex: null };
     }
@@ -366,7 +409,7 @@ export class LoyaltyService {
       select: { role: true },
     });
     if (!user || user.role !== 'client') return null;
-    const program = await this.resolveProgramForService(serviceId);
+    const program = await this.resolveProgramForService(serviceId, userId);
     if (!program) return null;
     const completedCount = await this.countCompletedVisits(userId, program.id);
     const activeCount = await this.countActiveVisits(userId, program.id);

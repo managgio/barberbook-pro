@@ -73,6 +73,22 @@ export type TenantNotificationPrefs = {
   sms?: boolean;
 };
 
+export type StripePaymentsMode = 'brand' | 'location';
+
+export type TenantStripePaymentsConfig = {
+  enabled?: boolean;
+  platformEnabled?: boolean;
+  mode?: StripePaymentsMode;
+  accountId?: string;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+  detailsSubmitted?: boolean;
+};
+
+export type TenantPaymentsConfig = {
+  stripe?: TenantStripePaymentsConfig;
+};
+
 export type TenantBrandingConfig = {
   name?: string;
   shortName?: string;
@@ -113,6 +129,7 @@ export type BrandConfigData = {
   email?: TenantEmailConfig;
   firebaseAdmin?: TenantFirebaseAdminConfig;
   ai?: TenantAiConfig;
+  payments?: TenantPaymentsConfig;
   adminSidebar?: TenantAdminSidebarConfig;
   landing?: TenantLandingConfig;
   notificationPrefs?: TenantNotificationPrefs;
@@ -122,6 +139,7 @@ export type BrandConfigData = {
 
 export type LocationConfigData = {
   imagekit?: Pick<TenantImageKitConfig, 'folder'>;
+  payments?: TenantPaymentsConfig;
   adminSidebar?: TenantAdminSidebarConfig;
   landing?: TenantLandingConfig;
   branding?: Partial<TenantBrandingConfig>;

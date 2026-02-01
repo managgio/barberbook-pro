@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { raw } from 'express';
 import { AppModule } from './app.module';
 
 // Silencia errores de extensiones que intentan conectarse al proceso (p.ej. console-ninja)
@@ -20,8 +21,9 @@ process.on('unhandledRejection', (err: any) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule, { cors: true, rawBody: true });
 
+  app.use('/api/payments/stripe/webhook', raw({ type: '*/*' }));
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({

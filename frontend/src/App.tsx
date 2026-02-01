@@ -27,6 +27,7 @@ import ReferralsPage from "./pages/client/ReferralsPage";
 
 // Referral Landing
 import ReferralLandingPage from "./pages/ReferralLandingPage";
+import StripePaymentResultPage from "./pages/StripePaymentResultPage";
 
 // Admin Pages
 import AdminLayout from "./components/layout/AdminLayout";
@@ -118,6 +119,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/book" element={<GuestBookingPage />} />
       <Route path="/ref/:code" element={<ReferralLandingPage />} />
+      <Route path="/payment/stripe/:status" element={<StripePaymentResultPage />} />
       <Route path="/account/referrals" element={<Navigate to="/app/referrals" replace />} />
       <Route path="/hours-location" element={<HoursLocationPage />} />
       <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />

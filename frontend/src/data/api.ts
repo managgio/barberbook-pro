@@ -37,6 +37,7 @@ import {
   ReviewMetrics,
   ReviewPendingResponse,
   ReviewFeedbackItem,
+  StripeAvailability,
 } from './types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
 import { getAdminUserId } from '@/lib/authStorage';
@@ -534,6 +535,18 @@ export const updatePlatformLocationConfig = async (
     headers: withPlatformHeaders(adminUserId),
   });
 
+export const connectPlatformStripeBrand = async (adminUserId: string, brandId: string): Promise<any> =>
+  apiRequest(`/platform/payments/stripe/brand/${brandId}/connect`, {
+    method: 'POST',
+    headers: withPlatformHeaders(adminUserId),
+  });
+
+export const connectPlatformStripeLocation = async (adminUserId: string, localId: string): Promise<any> =>
+  apiRequest(`/platform/payments/stripe/location/${localId}/connect`, {
+    method: 'POST',
+    headers: withPlatformHeaders(adminUserId),
+  });
+
 export const getPlatformBrandLegalSettings = async (adminUserId: string, brandId: string): Promise<LegalSettings> =>
   apiRequest(`/platform/brands/${brandId}/legal/settings`, {
     headers: withPlatformHeaders(adminUserId),
@@ -683,3 +696,19 @@ export const clickReview = async (id: string, actor: { userId?: string; guestEma
 
 export const snoozeReview = async (id: string, actor: { userId?: string; guestEmail?: string; guestPhone?: string }) =>
   apiRequest(`/reviews/${id}/snooze`, { method: 'POST', body: actor });
+
+// Stripe Payments (public)
+export const getStripeAvailability = async (): Promise<StripeAvailability> =>
+  apiRequest('/payments/stripe/availability');
+export const createStripeCheckout = async (data: CreateAppointmentPayload): Promise<any> =>
+  apiRequest('/payments/stripe/checkout', { method: 'POST', body: data });
+export const getStripeSession = async (sessionId: string): Promise<any> =>
+  apiRequest(`/payments/stripe/session/${sessionId}`);
+
+// Stripe Payments (admin local)
+export const getAdminStripeConfig = async (): Promise<any> =>
+  apiRequest('/admin/payments/stripe/config');
+export const updateAdminStripeConfig = async (enabled: boolean): Promise<any> =>
+  apiRequest('/admin/payments/stripe/config', { method: 'PUT', body: { enabled } });
+export const createAdminStripeConnect = async (): Promise<any> =>
+  apiRequest('/admin/payments/stripe/connect', { method: 'POST' });

@@ -78,6 +78,7 @@ Modulos principales:
 - **ImageKit**: firma y borrado de archivos.
 - **Notifications**: emails + SMS + WhatsApp de recordatorio.
 - **Cash Register**: movimientos de caja y agregados diarios por local/barbero.
+- **Payments (Stripe)**: Stripe Connect, checkout y webhooks por local/marca.
 - **AI Assistant**: chat/admin con tools y transcripcion.
 - **Platform Admin**: gestion de marcas, locales y configuracion global.
 
@@ -131,10 +132,11 @@ Coupon | Cupon personal | Descuento %/fijo/servicio gratis por usuario
 ProductCategory | Categoria producto | Orden y descripcion de productos
 Product | Producto | Precio, stock, imagen, visibilidad y categoria
 AppointmentProduct | Linea producto | Productos agregados a la cita (qty + precio unitario)
-Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, referidos, cupon, wallet
+Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, referidos, cupon, wallet, pagos Stripe (status/ids)
 ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
 CashMovement | Movimiento de caja | Entradas/salidas manuales y metodo de pago
 PaymentMethod | Enum | Tarjeta, efectivo, bizum u otros metodos
+PaymentStatus | Enum | pending/paid/failed/cancelled/exempt/in_person
 Alert | Avisos | Mensajes con tipo y rango de fechas
 GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
@@ -185,6 +187,8 @@ Flujos:
    - Se aplica la mejor oferta activa por target (service/product).
    - Se aplican cupones personales y wallet (si el cliente lo usa).
    - Wallet usa HOLD al confirmar y DEBIT al completar; si se cancela se libera.
+   - Stripe: el cliente puede pagar online o en el local (si está habilitado).
+   - Si el total es 0, se crea la cita sin cobrar online.
    - Se guarda `price` final en Appointment (editable en admin).
    - Caja registradora y KPIs usan el precio final (incluye productos).
 
@@ -241,6 +245,7 @@ Flujos:
 - **Firebase**: Auth en frontend + Admin SDK en backend (borrado usuario).
 - **OpenAI**: chat + transcripcion para asistente admin.
 - **SMTP (Nodemailer)**: emails transaccionales.
+- **Stripe**: pagos online con Stripe Connect + webhooks (visible solo si marca y local lo habilitan).
 - **Google Maps**: URLs guardadas en SiteSettings para ubicacion.
 
 ## Configuracion por entorno (resumen)
@@ -253,6 +258,7 @@ Backend (`backend/.env`):
 - AI: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`, `AI_TRANSCRIPTION_MODEL`.
 - Firebase Admin: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`.
 - Legal: `IP_HASH_SALT` (hash IP para consentimientos).
+- Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
 
 Frontend (`frontend/.env*`):
 - `VITE_API_BASE_URL` (API).

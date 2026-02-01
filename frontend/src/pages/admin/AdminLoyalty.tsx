@@ -43,6 +43,7 @@ const AdminLoyalty: React.FC = () => {
     description: '',
     scope: 'global' as LoyaltyScope,
     requiredVisits: '10',
+    maxCyclesPerClient: '',
     priority: '0',
     isActive: true,
     serviceId: 'none',
@@ -82,6 +83,7 @@ const AdminLoyalty: React.FC = () => {
       description: program?.description || '',
       scope: program?.scope || 'global',
       requiredVisits: program ? String(program.requiredVisits) : '10',
+      maxCyclesPerClient: program?.maxCyclesPerClient ? String(program.maxCyclesPerClient) : '',
       priority: program ? String(program.priority) : '0',
       isActive: program?.isActive ?? true,
       serviceId: program?.serviceId || 'none',
@@ -124,12 +126,25 @@ const AdminLoyalty: React.FC = () => {
         setIsSubmitting(false);
         return;
       }
+      const maxCyclesValue = form.maxCyclesPerClient.trim() === ''
+        ? null
+        : Number(form.maxCyclesPerClient);
+      if (maxCyclesValue !== null && (!Number.isFinite(maxCyclesValue) || maxCyclesValue < 1)) {
+        toast({
+          title: 'Límite inválido',
+          description: 'El límite por cliente debe ser un número mayor o igual a 1.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
 
       const payload = {
         name: form.name.trim(),
         description: form.description.trim() || null,
         scope: form.scope,
         requiredVisits,
+        maxCyclesPerClient: maxCyclesValue,
         priority: priorityValue,
         isActive: form.isActive,
         serviceId: form.scope === 'service' ? (form.serviceId === 'none' ? null : form.serviceId) : null,
@@ -237,6 +252,12 @@ const AdminLoyalty: React.FC = () => {
                     <span className="text-muted-foreground">Cupos necesarios</span>
                     <span className="font-semibold">{program.requiredVisits}</span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Límite por cliente</span>
+                    <span className="font-medium">
+                      {program.maxCyclesPerClient ? `x${program.maxCyclesPerClient}` : 'Sin límite'}
+                    </span>
+                  </div>
                   {program.scope === 'service' && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Servicio</span>
@@ -329,6 +350,19 @@ const AdminLoyalty: React.FC = () => {
                   onChange={(event) => setForm((prev) => ({ ...prev, requiredVisits: event.target.value }))}
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Límite por cliente (opcional)</Label>
+              <Input
+                type="number"
+                min="1"
+                placeholder="Sin límite"
+                value={form.maxCyclesPerClient}
+                onChange={(event) => setForm((prev) => ({ ...prev, maxCyclesPerClient: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Si lo dejas vacío, la tarjeta se puede completar sin límite.
+              </p>
             </div>
             {form.scope === 'service' && (
               <div className="space-y-2">
