@@ -70,6 +70,7 @@ Modulos principales:
 - **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
 - **Loyalty**: tarjetas de fidelizacion (global/servicio/categoria), recompensas y progreso por cliente.
 - **Referrals**: programa de referidos (config local, codigos, atribuciones, wallet/cupones, analitica).
+- **Reviews**: reseñas inteligentes in-app (config local, requests, feedback privado y métricas).
 - **Schedules**: horario del local y horarios por barbero (JSON), con descansos y buffer entre citas.
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
@@ -124,6 +125,8 @@ ReferralCode | Codigo referido | Codigo unico por usuario+local
 ReferralAttribution | Atribucion | Referido, estado lifecycle, expiracion, primera cita
 RewardWallet | Wallet | Saldo por usuario+local
 RewardTransaction | Ledger | Movimientos HOLD/DEBIT/CREDIT/COUPON
+ReviewProgramConfig | Reseñas in-app | Configuración local (cooldown, link Google, copy, límites)
+ReviewRequest | Solicitud reseña | Lifecycle (pending/shown/rated/etc), rating y feedback privado
 Coupon | Cupon personal | Descuento %/fijo/servicio gratis por usuario
 ProductCategory | Categoria producto | Orden y descripcion de productos
 Product | Producto | Precio, stock, imagen, visibilidad y categoria

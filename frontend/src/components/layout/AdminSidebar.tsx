@@ -21,6 +21,7 @@ import {
   Tag,
   Boxes,
   Award,
+  Star,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,7 @@ const navItems: NavItem[] = [
   { href: '/admin/barbers', label: 'Barberos', icon: UserCircle, section: 'barbers' },
   { href: '/admin/loyalty', label: 'Fidelización', icon: Award, section: 'loyalty' },
   { href: '/admin/referrals', label: 'Referidos', icon: UserPlus, section: 'referrals' },
+  { href: '/admin/reviews', label: 'Reseñas', icon: Star, section: 'reviews' },
   { href: '/admin/alerts', label: 'Alertas', icon: Bell, section: 'alerts' },
   { href: '/admin/offers', label: 'Ofertas', icon: Tag, section: 'offers' },
   { href: '/admin/holidays', label: 'Festivos', icon: CalendarDays, section: 'holidays' },

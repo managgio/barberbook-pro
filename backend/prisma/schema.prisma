@@ -102,6 +102,22 @@ enum RewardTxStatus {
   CANCELLED
 }
 
+enum ReviewRequestStatus {
+  PENDING
+  ELIGIBLE
+  SHOWN
+  RATED
+  CLICKED
+  COMPLETED
+  DISMISSED
+  EXPIRED
+}
+
+enum ReviewFeedbackStatus {
+  OPEN
+  RESOLVED
+}
+
 enum AiChatRole {
   user
   assistant
@@ -137,6 +153,7 @@ model User {
   rewardWallets       RewardWallet[]
   rewardTransactions  RewardTransaction[]
   coupons             Coupon[]
+  reviewRequests      ReviewRequest[]
   barber              Barber?
   brandMemberships    BrandUser[]
   localStaffRoles     LocationStaff[]
@@ -196,6 +213,8 @@ model Location {
   referralProgramConfig ReferralProgramConfig?
   referralCodes ReferralCode[]
   referralAttributions ReferralAttribution[]
+  reviewProgramConfig ReviewProgramConfig?
+  reviewRequests ReviewRequest[]
   rewardWallets RewardWallet[]
   rewardTransactions RewardTransaction[]
   coupons Coupon[]
@@ -405,6 +424,7 @@ model Appointment {
   consents      ConsentRecord[]
   rewardTransactions RewardTransaction[]
   referralFirstAppointments ReferralAttribution[] @relation("ReferralFirstAppointment")
+  reviewRequest ReviewRequest? @relation("AppointmentReviewRequest")
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
@@ -528,6 +548,49 @@ model ReferralAttribution {
   @@index([referredUserId])
   @@index([referredPhone])
   @@index([referredEmail])
+}
+
+model ReviewProgramConfig {
+  id              String   @id @default(cuid())
+  localId         String   @unique
+  local           Location @relation(fields: [localId], references: [id])
+  enabled         Boolean  @default(false)
+  googleReviewUrl String? @db.Text
+  cooldownDays    Int      @default(60)
+  minVisitsToAsk  Int      @default(2)
+  showDelayMinutes Int     @default(60)
+  maxSnoozes      Int      @default(1)
+  snoozeHours     Int      @default(48)
+  copyJson        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ReviewRequest {
+  id              String   @id @default(cuid())
+  localId         String
+  local           Location @relation(fields: [localId], references: [id])
+  appointmentId   String   @unique
+  appointment     Appointment @relation("AppointmentReviewRequest", fields: [appointmentId], references: [id])
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+  guestPhone      String?
+  guestEmail      String?
+  status          ReviewRequestStatus @default(PENDING)
+  rating          Int?
+  privateFeedback String?
+  feedbackStatus  ReviewFeedbackStatus @default(OPEN)
+  snoozeCount     Int      @default(0)
+  eligibleAt      DateTime
+  shownAt         DateTime?
+  ratedAt         DateTime?
+  clickedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([localId, status, createdAt])
+  @@index([localId, userId, createdAt])
 }
 
 model RewardWallet {

@@ -11,6 +11,7 @@ import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { SettingsModule } from '../settings/settings.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { ReviewsModule } from '../reviews/reviews.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     SettingsModule,
     LoyaltyModule,
     ReferralsModule,
+    ReviewsModule,
   ],
   controllers: [AppointmentsController],
   providers: [AppointmentsService, AppointmentsStatusSyncService, AppointmentsRetentionService],

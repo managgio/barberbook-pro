@@ -45,6 +45,7 @@ import AdminRoles from "./pages/admin/AdminRoles";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminLoyalty from "./pages/admin/AdminLoyalty";
 import AdminReferrals from "./pages/admin/AdminReferrals";
+import AdminReviews from "./pages/admin/AdminReviews";
 
 // Platform Admin Pages
 import PlatformLayout from "./components/layout/PlatformLayout";
@@ -145,6 +146,7 @@ const AppRoutes: React.FC = () => {
         <Route path="barbers" element={<AdminBarbers />} />
         <Route path="loyalty" element={<AdminLoyalty />} />
         <Route path="referrals" element={<AdminReferrals />} />
+        <Route path="reviews" element={<AdminReviews />} />
         <Route path="alerts" element={<AdminAlerts />} />
         <Route path="holidays" element={<AdminHolidays />} />
         <Route path="settings" element={<AdminSettings />} />

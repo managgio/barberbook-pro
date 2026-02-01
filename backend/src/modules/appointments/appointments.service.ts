@@ -18,6 +18,7 @@ import { computeProductPricing } from '../products/products.pricing';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { ReferralAttributionService } from '../referrals/referral-attribution.service';
 import { RewardsService } from '../referrals/rewards.service';
+import { ReviewRequestService } from '../reviews/review-request.service';
 import {
   APP_TIMEZONE,
   endOfDayInTimeZone,
@@ -47,6 +48,7 @@ export class AppointmentsService {
     private readonly loyaltyService: LoyaltyService,
     private readonly referralAttributionService: ReferralAttributionService,
     private readonly rewardsService: RewardsService,
+    private readonly reviewRequestService: ReviewRequestService,
   ) {}
 
   private async getServiceDuration(serviceId?: string) {
@@ -393,6 +395,7 @@ export class AppointmentsService {
       await this.rewardsService.confirmWalletHold(appointment.id);
       await this.rewardsService.confirmCouponUsage(appointment.id);
       await this.referralAttributionService.handleAppointmentCompleted(appointment.id);
+      await this.reviewRequestService.handleAppointmentCompleted(appointment.id);
     }
 
     if (consentRequired) {
@@ -709,6 +712,7 @@ export class AppointmentsService {
         await this.rewardsService.confirmWalletHold(updated.id);
         await this.rewardsService.confirmCouponUsage(updated.id);
         await this.referralAttributionService.handleAppointmentCompleted(updated.id);
+        await this.reviewRequestService.handleAppointmentCompleted(updated.id);
       }
       if (nextStatus === 'cancelled' || nextStatus === 'no_show') {
         await this.rewardsService.releaseWalletHold(updated.id);
@@ -903,6 +907,7 @@ export class AppointmentsService {
       await this.rewardsService.confirmWalletHold(id);
       await this.rewardsService.confirmCouponUsage(id);
       await this.referralAttributionService.handleAppointmentCompleted(id);
+      await this.reviewRequestService.handleAppointmentCompleted(id);
     }
     return updatedCount;
   }

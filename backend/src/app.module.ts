@@ -28,6 +28,7 @@ import { ClientNotesModule } from './modules/client-notes/client-notes.module';
 import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
     CashRegisterModule,
     LoyaltyModule,
     ReferralsModule,
+    ReviewsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
 })

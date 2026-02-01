@@ -6,6 +6,7 @@ import LegalFooter from './LegalFooter';
 import { Calendar, User, LayoutDashboard, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getReferralSummary } from '@/data/api';
+import ReviewPromptModal from '@/components/reviews/ReviewPromptModal';
 
 const clientNavItems = [
   { href: '/app', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -80,6 +81,7 @@ const ClientLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+      <ReviewPromptModal />
       <LegalFooter />
     </div>
   );

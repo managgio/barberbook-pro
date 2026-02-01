@@ -361,6 +361,16 @@ export type RewardType = 'WALLET' | 'PERCENT_DISCOUNT' | 'FIXED_DISCOUNT' | 'FRE
 export type RewardTxType = 'CREDIT' | 'DEBIT' | 'HOLD' | 'RELEASE' | 'COUPON_ISSUED' | 'COUPON_USED' | 'ADJUSTMENT';
 export type RewardTxStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED';
 export type ReferralAttributionStatus = 'ATTRIBUTED' | 'BOOKED' | 'COMPLETED' | 'REWARDED' | 'VOIDED' | 'EXPIRED';
+export type ReviewRequestStatus =
+  | 'PENDING'
+  | 'ELIGIBLE'
+  | 'SHOWN'
+  | 'RATED'
+  | 'CLICKED'
+  | 'COMPLETED'
+  | 'DISMISSED'
+  | 'EXPIRED';
+export type ReviewFeedbackStatus = 'OPEN' | 'RESOLVED';
 
 export interface ReferralRewardSummaryItem {
   type: RewardType;
@@ -457,6 +467,65 @@ export interface ReferralSummaryResponse {
   confirmed: ReferralAttributionItem[];
   expired: ReferralAttributionItem[];
   invalidated: ReferralAttributionItem[];
+}
+
+export interface ReviewCopy {
+  title: string;
+  subtitle: string;
+  positiveText: string;
+  positiveCta: string;
+  negativeText: string;
+  negativeCta: string;
+  snoozeCta: string;
+}
+
+export interface ReviewProgramConfig {
+  id: string | null;
+  localId: string;
+  enabled: boolean;
+  googleReviewUrl?: string | null;
+  cooldownDays: number;
+  minVisitsToAsk: number;
+  showDelayMinutes: number;
+  maxSnoozes: number;
+  snoozeHours: number;
+  copyJson: ReviewCopy;
+}
+
+export interface ReviewPendingResponse {
+  id: string;
+  status: ReviewRequestStatus;
+  rating?: number | null;
+  eligibleAt: string;
+  snoozeCount: number;
+  copy: ReviewCopy;
+  googleReviewUrl: string;
+}
+
+export interface ReviewMetrics {
+  createdCount: number;
+  shownCount: number;
+  ratedCount: number;
+  googleClicksCount: number;
+  feedbackCount: number;
+  conversionRate: number;
+}
+
+export interface ReviewFeedbackItem {
+  id: string;
+  rating?: number | null;
+  privateFeedback?: string | null;
+  feedbackStatus: ReviewFeedbackStatus;
+  status: ReviewRequestStatus;
+  createdAt: string;
+  appointmentId: string;
+  appointmentDate?: string | null;
+  serviceName?: string | null;
+  barberName?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  guestContact?: string | null;
 }
 
 export interface RewardWalletSummary {
@@ -565,6 +634,7 @@ export type AdminSectionKey =
   | 'barbers'
   | 'loyalty'
   | 'referrals'
+  | 'reviews'
   | 'alerts'
   | 'holidays'
   | 'roles'

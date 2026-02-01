@@ -57,6 +57,11 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
     description: 'Programa de referidos, recompensas y atribuciones.',
   },
   {
+    key: 'reviews',
+    label: 'Reseñas',
+    description: 'Solicitudes in-app para reseñas y feedback privado.',
+  },
+  {
     key: 'alerts',
     label: 'Alertas',
     description: 'Mensajes destacados o avisos para clientes.',
