@@ -9,7 +9,7 @@ import { Barber } from '@/data/types';
 import { useAuth } from '@/context/AuthContext';
 import { Calendar, Loader2 } from 'lucide-react';
 import { CardSkeleton } from '@/components/common/Skeleton';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 
 const BarbersPage: React.FC = () => {
   const [barbers, setBarbers] = useState<Barber[]>([]);

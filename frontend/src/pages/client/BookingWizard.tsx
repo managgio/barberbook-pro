@@ -30,7 +30,7 @@ import { CardSkeleton } from '@/components/common/Skeleton';
 import AlertBanner from '@/components/common/AlertBanner';
 import ProductSelector from '@/components/common/ProductSelector';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 import { getStoredReferralAttribution, clearStoredReferralAttribution } from '@/lib/referrals';
 
 const STEPS = ['Servicio', 'Barbero y horario', 'Confirmación'];

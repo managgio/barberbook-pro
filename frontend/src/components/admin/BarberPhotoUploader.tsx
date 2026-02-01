@@ -3,7 +3,7 @@ import { Upload, Sparkles, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 
 export type PhotoChangePayload = {
   previewUrl: string;

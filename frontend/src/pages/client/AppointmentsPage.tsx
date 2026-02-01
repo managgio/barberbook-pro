@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { getAppointmentStatusBadgeClass, getAppointmentStatusLabel, isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 

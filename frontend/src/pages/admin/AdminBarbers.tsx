@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/components/admin/BarberPhotoUploader';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 
 const DAY_LABELS: { key: DayKey; label: string; short: string }[] = [

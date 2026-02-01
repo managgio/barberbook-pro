@@ -35,7 +35,7 @@ import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { useToast } from '@/hooks/use-toast';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
 const START_HOUR = 9;

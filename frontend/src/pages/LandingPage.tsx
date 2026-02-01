@@ -20,7 +20,7 @@ import {
   Youtube,
   Music2,
 } from 'lucide-react';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 import { Barber, Product, ProductCategory, Service } from '@/data/types';
 import { getBarbers, getProductCategories, getProducts, getServices } from '@/data/api';
 import { useSiteSettings } from '@/hooks/useSiteSettings';

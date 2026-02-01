@@ -10,7 +10,7 @@ import { Calendar, User, ArrowRight, Scissors, Crown, X } from 'lucide-react';
 import { format, isPast, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
-import defaultAvatar from '@/assets/img/default-avatar.svg';
+import defaultAvatar from '@/assets/img/default-image.webp';
 import { isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 
