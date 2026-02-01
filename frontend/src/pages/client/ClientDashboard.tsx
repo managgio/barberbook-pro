@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { getAppointmentsByUser, getBarbers, getLoyaltySummary, getServices } from '@/data/api';
-import { Appointment, Barber, LoyaltySummary, Service } from '@/data/types';
+import { getAppointmentsByUser, getBarbers, getLoyaltySummary, getReferralSummary, getServices } from '@/data/api';
+import { Appointment, Barber, LoyaltySummary, ReferralSummaryResponse, Service } from '@/data/types';
 import AlertBanner from '@/components/common/AlertBanner';
-import { Calendar, User, ArrowRight, Scissors, Crown } from 'lucide-react';
+import { Calendar, User, ArrowRight, Scissors, Crown, X } from 'lucide-react';
 import { format, isPast, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
@@ -21,15 +21,23 @@ const ClientDashboard: React.FC = () => {
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loyaltySummary, setLoyaltySummary] = useState<LoyaltySummary | null>(null);
+  const [referralSummary, setReferralSummary] = useState<ReferralSummaryResponse | null>(null);
+  const [referralBannerDismissed, setReferralBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setReferralBannerDismissed(localStorage.getItem('managgio.referrals.banner.dismissed') === 'true');
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
       
-      const [appts, barbersData, servicesData] = await Promise.all([
+      const [appts, barbersData, servicesData, referralData] = await Promise.all([
         getAppointmentsByUser(user.id),
         getBarbers(),
         getServices(),
+        getReferralSummary(user.id).catch(() => null),
       ]);
       const loyaltyData = await getLoyaltySummary(user.id).catch(() => null);
       
@@ -37,6 +45,7 @@ const ClientDashboard: React.FC = () => {
       setBarbers(barbersData);
       setServices(servicesData);
       setLoyaltySummary(loyaltyData);
+      setReferralSummary(referralData);
       setIsLoading(false);
     };
     
@@ -77,6 +86,18 @@ const ClientDashboard: React.FC = () => {
     ? getBarber(favoriteBarberId)?.name ?? getBarberSnapshot(favoriteBarberId) ?? 'Sin datos'
     : 'Sin datos';
 
+  const showReferralBanner =
+    completedAppointments.length > 0 &&
+    referralSummary?.programEnabled !== false &&
+    !referralBannerDismissed;
+
+  const dismissReferralBanner = () => {
+    setReferralBannerDismissed(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('managgio.referrals.banner.dismissed', 'true');
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Welcome Header */}
@@ -99,6 +120,28 @@ const ClientDashboard: React.FC = () => {
 
       {/* Alerts */}
       <AlertBanner />
+
+      {showReferralBanner && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-foreground">¿Conoces a alguien? Invítalo y gana.</p>
+            <p className="text-xs text-muted-foreground">Comparte tu enlace y desbloquea recompensas.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="glow" size="sm" asChild>
+              <Link to="/app/referrals">Invita y gana</Link>
+            </Button>
+            <button
+              type="button"
+              onClick={dismissReferralBanner}
+              className="p-2 rounded-full hover:bg-primary/10 text-muted-foreground"
+              aria-label="Cerrar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

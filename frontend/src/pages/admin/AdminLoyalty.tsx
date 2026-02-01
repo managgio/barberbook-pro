@@ -179,7 +179,7 @@ const AdminLoyalty: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div  className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Fidelización</h1>
           <p className="text-muted-foreground mt-1">
             Configura tarjetas de fidelización para incentivar las visitas recurrentes.
@@ -201,8 +201,7 @@ const AdminLoyalty: React.FC = () => {
           icon={Award}
           title="Sin tarjetas de fidelización"
           description="Crea tu primera tarjeta para premiar a los clientes más fieles."
-          actionLabel="Crear tarjeta"
-          onAction={() => openDialog()}
+          action={{ label: 'Crear tarjeta', onClick: () => openDialog() }}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">

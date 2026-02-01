@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus, getLoyaltyPreview } from '@/data/api';
-import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview } from '@/data/types';
+import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus, getLoyaltyPreview, getRewardsWallet } from '@/data/api';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -30,6 +31,7 @@ import AlertBanner from '@/components/common/AlertBanner';
 import ProductSelector from '@/components/common/ProductSelector';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import defaultAvatar from '@/assets/img/default-avatar.svg';
+import { getStoredReferralAttribution, clearStoredReferralAttribution } from '@/lib/referrals';
 
 const STEPS = ['Servicio', 'Barbero y horario', 'Confirmación'];
 
@@ -60,6 +62,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loyaltyPreview, setLoyaltyPreview] = useState<LoyaltyPreview | null>(null);
   const [isLoyaltyLoading, setIsLoyaltyLoading] = useState(false);
+  const [walletSummary, setWalletSummary] = useState<RewardWalletSummary | null>(null);
+  const [useWalletBalance, setUseWalletBalance] = useState(false);
+  const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [privacyConsentRequired, setPrivacyConsentRequired] = useState(true);
@@ -178,6 +183,31 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       isMounted = false;
     };
   }, [booking.serviceId, isGuest, user?.id]);
+
+  useEffect(() => {
+    if (isGuest) {
+      setUseWalletBalance(false);
+      setSelectedCouponId(null);
+    }
+  }, [isGuest]);
+
+  useEffect(() => {
+    if (isGuest || !user?.id) {
+      setWalletSummary(null);
+      return;
+    }
+    let isMounted = true;
+    getRewardsWallet(user.id)
+      .then((data) => {
+        if (isMounted) setWalletSummary(data);
+      })
+      .catch(() => {
+        if (isMounted) setWalletSummary(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [isGuest, user?.id]);
 
   useEffect(() => {
     if (isGuest || !user?.id) {
@@ -398,6 +428,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       barberId: null,
       dateTime: null,
     });
+    setSelectedCouponId(null);
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
     setAvailableSlots([]);
@@ -530,14 +561,79 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
   const loyaltyEligible = Boolean(loyaltyPreview?.enabled && loyaltyPreview.program);
   const loyaltyFree = loyaltyEligible && Boolean(loyaltyPreview?.isFreeNext);
-  const loyaltyAdjustedPrice = useMemo(() => {
-    if (!selectedPricing) return 0;
-    return loyaltyFree ? 0 : selectedPricing.finalPrice;
-  }, [loyaltyFree, selectedPricing]);
+  const walletAvailable = walletSummary?.wallet.availableBalance ?? 0;
 
-  const totalWithProducts = useMemo(
-    () => loyaltyAdjustedPrice + selectedProductsTotal,
-    [loyaltyAdjustedPrice, selectedProductsTotal],
+  const eligibleCoupons = useMemo(() => {
+    if (!walletSummary?.coupons || !booking.serviceId) return [] as Coupon[];
+    return walletSummary.coupons.filter((coupon) => {
+      if (!coupon.isActive) return false;
+      if (coupon.serviceId && coupon.serviceId !== booking.serviceId) return false;
+      if (coupon.discountType === 'FREE_SERVICE' && coupon.serviceId && coupon.serviceId !== booking.serviceId) {
+        return false;
+      }
+      return true;
+    });
+  }, [walletSummary?.coupons, booking.serviceId]);
+
+  const selectedCoupon = useMemo(
+    () => eligibleCoupons.find((coupon) => coupon.id === selectedCouponId) ?? null,
+    [eligibleCoupons, selectedCouponId],
+  );
+
+  useEffect(() => {
+    if (loyaltyFree && selectedCouponId) {
+      setSelectedCouponId(null);
+    }
+  }, [loyaltyFree, selectedCouponId]);
+
+  useEffect(() => {
+    if (selectedCouponId && !selectedCoupon) {
+      setSelectedCouponId(null);
+    }
+  }, [selectedCouponId, selectedCoupon]);
+
+  useEffect(() => {
+    if (walletAvailable <= 0 && useWalletBalance) {
+      setUseWalletBalance(false);
+    }
+  }, [walletAvailable, useWalletBalance]);
+
+  const couponDiscount = useMemo(() => {
+    if (!selectedCoupon || !selectedPricing) return 0;
+    if (loyaltyFree) return 0;
+    const basePrice = selectedPricing.finalPrice;
+    if (basePrice <= 0) return 0;
+    if (selectedCoupon.discountType === 'FREE_SERVICE') return basePrice;
+    if (selectedCoupon.discountType === 'PERCENT_DISCOUNT') {
+      const value = Math.max(0, Number(selectedCoupon.discountValue ?? 0));
+      return Math.min(basePrice, basePrice * (value / 100));
+    }
+    if (selectedCoupon.discountType === 'FIXED_DISCOUNT') {
+      const value = Math.max(0, Number(selectedCoupon.discountValue ?? 0));
+      return Math.min(basePrice, value);
+    }
+    return 0;
+  }, [selectedCoupon, selectedPricing, loyaltyFree]);
+
+  const serviceSubtotal = useMemo(() => {
+    if (!selectedPricing) return 0;
+    const base = loyaltyFree ? 0 : selectedPricing.finalPrice;
+    return Math.max(0, base - couponDiscount);
+  }, [selectedPricing, loyaltyFree, couponDiscount]);
+
+  const totalBeforeWallet = useMemo(
+    () => serviceSubtotal + selectedProductsTotal,
+    [serviceSubtotal, selectedProductsTotal],
+  );
+
+  const walletAppliedAmount = useMemo(() => {
+    if (!useWalletBalance) return 0;
+    return Math.min(walletAvailable, totalBeforeWallet);
+  }, [useWalletBalance, walletAvailable, totalBeforeWallet]);
+
+  const totalFinal = useMemo(
+    () => Math.max(0, totalBeforeWallet - walletAppliedAmount),
+    [totalBeforeWallet, walletAppliedAmount],
   );
 
   const activeOffers = useMemo(() => {
@@ -622,6 +718,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       const guestContact = [guestInfo.email.trim(), guestInfo.phone.trim()].filter(Boolean).join(' · ');
       const userId = isGuest ? null : (user as User).id;
       const productsPayload = allowProductSelection ? selectedProducts : undefined;
+      const storedReferral = getStoredReferralAttribution();
       await createAppointment({
         userId,
         serviceId: booking.serviceId,
@@ -632,10 +729,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
         privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
+        referralAttributionId: storedReferral?.id,
+        appliedCouponId: selectedCouponId ?? undefined,
+        useWallet: useWalletBalance || undefined,
         ...(productsPayload ? { products: productsPayload } : {}),
       });
 
       setShowSuccess(true);
+      clearStoredReferralAttribution();
 
       setTimeout(() => {
         toast({
@@ -1128,7 +1229,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     )}
                     {selectedProductsTotal > 0 && (
                       <div className="text-xs text-muted-foreground mt-1">
-                        Total con productos: {totalWithProducts.toFixed(2)}€
+                        Total con productos: {totalBeforeWallet.toFixed(2)}€
+                      </div>
+                    )}
+                    {couponDiscount > 0 && (
+                      <div className="text-[11px] text-green-600 mt-1">
+                        Cupón aplicado: -{couponDiscount.toFixed(2)}€
                       </div>
                     )}
                   </div>
@@ -1202,6 +1308,67 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </>
                 )}
 
+                {!isGuest && (walletAvailable > 0 || eligibleCoupons.length > 0) && (
+                  <>
+                    <hr className="border-border" />
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Recompensas disponibles</p>
+                        <p className="text-xs text-muted-foreground">
+                          Aplica tu saldo o un cupón para reducir el total.
+                        </p>
+                      </div>
+                      {walletAvailable > 0 && (
+                        <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Usar saldo disponible</p>
+                            <p className="text-xs text-muted-foreground">
+                              Se aplicará automáticamente hasta cubrir el total.
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-sm font-semibold text-primary">
+                              {walletAvailable.toFixed(2)}€
+                            </span>
+                            <Switch checked={useWalletBalance} onCheckedChange={setUseWalletBalance} />
+                          </div>
+                        </div>
+                      )}
+                      {eligibleCoupons.length > 0 && (
+                        <div className="space-y-2">
+                          <Label className="text-sm">Aplicar cupón</Label>
+                          <Select
+                            value={selectedCouponId ?? 'none'}
+                            onValueChange={(value) => setSelectedCouponId(value === 'none' ? null : value)}
+                            disabled={loyaltyFree}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Selecciona un cupón" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No usar cupón</SelectItem>
+                              {eligibleCoupons.map((coupon) => (
+                                <SelectItem key={coupon.id} value={coupon.id}>
+                                  {coupon.discountType === 'FREE_SERVICE'
+                                    ? 'Servicio gratis'
+                                    : coupon.discountType === 'PERCENT_DISCOUNT'
+                                    ? `${coupon.discountValue ?? 0}% descuento`
+                                    : `${coupon.discountValue ?? 0}€ descuento`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {loyaltyFree && (
+                            <p className="text-[11px] text-muted-foreground">
+                              La cita ya es gratuita por fidelización.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 {loyaltyEligible && loyaltyPreview?.program && loyaltyPreview.progress && (
                   <>
                     <hr className="border-border" />
@@ -1227,6 +1394,35 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     </div>
                   </>
                 )}
+
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Precio servicio</span>
+                    <span className="font-medium text-foreground">{(loyaltyFree ? 0 : selectedPricing?.finalPrice ?? 0).toFixed(2)}€</span>
+                  </div>
+                  {couponDiscount > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Cupón aplicado</span>
+                      <span className="font-medium text-green-600">-{couponDiscount.toFixed(2)}€</span>
+                    </div>
+                  )}
+                  {selectedProductsTotal > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Productos</span>
+                      <span className="font-medium text-foreground">{selectedProductsTotal.toFixed(2)}€</span>
+                    </div>
+                  )}
+                  {walletAppliedAmount > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Saldo aplicado:</span>
+                      <span className="font-medium text-primary">-{walletAppliedAmount.toFixed(2)}€</span>
+                    </div>
+                  )}
+                  <div className="border-t border-border/60 pt-2 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-foreground">Total:</span>
+                    <span className="text-lg font-bold text-primary">{totalFinal.toFixed(2)}€</span>
+                  </div>
+                </div>
 
                 <hr className="border-border" />
 

@@ -69,6 +69,7 @@ Modulos principales:
 - **Product Categories**: categorias de productos (configurable).
 - **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
 - **Loyalty**: tarjetas de fidelizacion (global/servicio/categoria), recompensas y progreso por cliente.
+- **Referrals**: programa de referidos (config local, codigos, atribuciones, wallet/cupones, analitica).
 - **Schedules**: horario del local y horarios por barbero (JSON), con descansos y buffer entre citas.
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
@@ -97,8 +98,8 @@ Contextos principales:
 
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
-- Cliente: Dashboard, Booking Wizard, Appointments, Profile.
-- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register, Loyalty.
+- Cliente: Dashboard, Booking Wizard, Appointments, Profile, Referrals.
+- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register, Loyalty, Referrals.
 - Plataforma: Dashboard, Brands (gestion multi-tenant, landing reordenable por drag & drop y overrides por local).
 
 ## Modelo de datos (Prisma / MySQL)
@@ -117,10 +118,17 @@ Service | Servicio | Precio, duracion, categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
 Offer | Ofertas | Descuento por scope (all/categories/services/products) y target (service/product)
 LoyaltyProgram | Fidelizacion | Scope (global/servicio/categoria), visitas requeridas, prioridad, activo
+ReferralProgramConfig | Referidos local | Configuracion (recompensas, anti-fraude, expiracion, limites)
+ReferralConfigTemplate | Referidos plantilla | Config base por marca (aplicable a locales)
+ReferralCode | Codigo referido | Codigo unico por usuario+local
+ReferralAttribution | Atribucion | Referido, estado lifecycle, expiracion, primera cita
+RewardWallet | Wallet | Saldo por usuario+local
+RewardTransaction | Ledger | Movimientos HOLD/DEBIT/CREDIT/COUPON
+Coupon | Cupon personal | Descuento %/fijo/servicio gratis por usuario
 ProductCategory | Categoria producto | Orden y descripcion de productos
 Product | Producto | Precio, stock, imagen, visibilidad y categoria
 AppointmentProduct | Linea producto | Productos agregados a la cita (qty + precio unitario)
-Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion
+Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, referidos, cupon, wallet
 ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
 CashMovement | Movimiento de caja | Entradas/salidas manuales y metodo de pago
 PaymentMethod | Enum | Tarjeta, efectivo, bizum u otros metodos
@@ -172,6 +180,8 @@ Flujos:
 4) **Pricing y ofertas**
    - Price base del servicio y productos añadidos.
    - Se aplica la mejor oferta activa por target (service/product).
+   - Se aplican cupones personales y wallet (si el cliente lo usa).
+   - Wallet usa HOLD al confirmar y DEBIT al completar; si se cancela se libera.
    - Se guarda `price` final en Appointment (editable en admin).
    - Caja registradora y KPIs usan el precio final (incluye productos).
 
@@ -213,6 +223,14 @@ Flujos:
    - Solo clientes registrados participan; invitados no acumulan.
    - Se guarda `loyaltyProgramId` y `loyaltyRewardApplied` en la cita.
    - El historial de recompensas se construye desde citas completadas con recompensa aplicada.
+
+12) **Referidos**
+   - Codigos por usuario+local (`/ref/:code`) y atribucion con expiracion.
+   - Estados: ATTRIBUTED → BOOKED → COMPLETED → REWARDED (o EXPIRED/VOIDED).
+   - Solo cuenta la primera cita completada del referido (no cancelada/no-show).
+   - Anti-fraude: bloqueo auto-referido, duplicados por contacto, limite mensual por embajador.
+   - Recompensas: wallet y/o cupon personal (%/fijo/servicio gratis).
+   - Wallet usa HOLD/RELEASE/DEBIT para preparar pago real.
 
 ## Integraciones externas
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local; al reemplazar activos se elimina el archivo anterior.

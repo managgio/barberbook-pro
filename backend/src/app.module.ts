@@ -27,6 +27,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { ClientNotesModule } from './modules/client-notes/client-notes.module';
 import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { ReferralsModule } from './modules/referrals/referrals.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { LoyaltyModule } from './modules/loyalty/loyalty.module';
     ClientNotesModule,
     CashRegisterModule,
     LoyaltyModule,
+    ReferralsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
 })

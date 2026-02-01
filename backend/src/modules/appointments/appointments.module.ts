@@ -10,6 +10,7 @@ import { LegalModule } from '../legal/legal.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { SettingsModule } from '../settings/settings.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
     AuditLogsModule,
     SettingsModule,
     LoyaltyModule,
+    ReferralsModule,
   ],
   controllers: [AppointmentsController],
   providers: [AppointmentsService, AppointmentsStatusSyncService, AppointmentsRetentionService],

@@ -31,7 +31,8 @@ const Navbar: React.FC = () => {
     isLanding || isClientApp ? 'hidden sm:inline' : 'inline'
   );
   const userBadgeClass = cn(
-    'flex items-center justify-center gap-0 px-2 py-1 rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10 sm:gap-2 sm:pl-[.3rem] sm:pr-3',
+    'flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10',
+    'h-9 w-9 p-0 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1',
     isLanding && hasMultipleLocations ? 'hidden sm:flex' : 'flex'
   );
 

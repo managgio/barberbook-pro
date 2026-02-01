@@ -23,6 +23,10 @@ import ClientDashboard from "./pages/client/ClientDashboard";
 import BookingWizard from "./pages/client/BookingWizard";
 import AppointmentsPage from "./pages/client/AppointmentsPage";
 import ProfilePage from "./pages/client/ProfilePage";
+import ReferralsPage from "./pages/client/ReferralsPage";
+
+// Referral Landing
+import ReferralLandingPage from "./pages/ReferralLandingPage";
 
 // Admin Pages
 import AdminLayout from "./components/layout/AdminLayout";
@@ -40,6 +44,7 @@ import AdminHolidays from "./pages/admin/AdminHolidays";
 import AdminRoles from "./pages/admin/AdminRoles";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminLoyalty from "./pages/admin/AdminLoyalty";
+import AdminReferrals from "./pages/admin/AdminReferrals";
 
 // Platform Admin Pages
 import PlatformLayout from "./components/layout/PlatformLayout";
@@ -111,6 +116,8 @@ const AppRoutes: React.FC = () => {
       <Route path="/" element={<LandingPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/book" element={<GuestBookingPage />} />
+      <Route path="/ref/:code" element={<ReferralLandingPage />} />
+      <Route path="/account/referrals" element={<Navigate to="/app/referrals" replace />} />
       <Route path="/hours-location" element={<HoursLocationPage />} />
       <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/legal/cookies" element={<CookiePolicyPage />} />
@@ -121,6 +128,7 @@ const AppRoutes: React.FC = () => {
         <Route index element={<ClientDashboard />} />
         <Route path="book" element={<BookingWizard />} />
         <Route path="appointments" element={<AppointmentsPage />} />
+        <Route path="referrals" element={<ReferralsPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
 
@@ -136,6 +144,7 @@ const AppRoutes: React.FC = () => {
         <Route path="services" element={<AdminServices />} />
         <Route path="barbers" element={<AdminBarbers />} />
         <Route path="loyalty" element={<AdminLoyalty />} />
+        <Route path="referrals" element={<AdminReferrals />} />
         <Route path="alerts" element={<AdminAlerts />} />
         <Route path="holidays" element={<AdminHolidays />} />
         <Route path="settings" element={<AdminSettings />} />

@@ -16,6 +16,8 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { SettingsService } from '../settings/settings.service';
 import { computeProductPricing } from '../products/products.pricing';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { ReferralAttributionService } from '../referrals/referral-attribution.service';
+import { RewardsService } from '../referrals/rewards.service';
 import {
   APP_TIMEZONE,
   endOfDayInTimeZone,
@@ -43,6 +45,8 @@ export class AppointmentsService {
     private readonly auditLogs: AuditLogsService,
     private readonly settingsService: SettingsService,
     private readonly loyaltyService: LoyaltyService,
+    private readonly referralAttributionService: ReferralAttributionService,
+    private readonly rewardsService: RewardsService,
   ) {}
 
   private async getServiceDuration(serviceId?: string) {
@@ -255,12 +259,47 @@ export class AppointmentsService {
     if (loyaltyRewardApplied) {
       servicePrice = 0;
     }
+    const referralAttribution = await this.referralAttributionService.resolveAttributionForBooking({
+      referralAttributionId: data.referralAttributionId ?? null,
+      userId: data.userId ?? null,
+      guestContact: data.guestContact ?? null,
+    });
     const productSelection = await this.resolveProductSelection(requestedProducts, {
       allowInactive: isAdminActor,
       allowPrivate: isAdminActor,
       referenceDate: startDateTime,
     });
-    const totalPrice = servicePrice + productSelection.total;
+    let appliedCouponId: string | null = null;
+    let couponDiscount = 0;
+    if (data.appliedCouponId) {
+      if (!data.userId) {
+        throw new BadRequestException('Debes iniciar sesión para usar un cupón.');
+      }
+      if (loyaltyRewardApplied) {
+        throw new BadRequestException('No puedes aplicar un cupón en una cita gratis.');
+      }
+      const coupon = await this.rewardsService.validateCoupon({
+        userId: data.userId,
+        couponId: data.appliedCouponId,
+        serviceId: data.serviceId,
+        referenceDate: startDateTime,
+      });
+      couponDiscount = this.rewardsService.calculateCouponDiscount({
+        couponType: coupon.discountType,
+        couponValue: coupon.discountValue ? Number(coupon.discountValue) : null,
+        baseServicePrice: servicePrice,
+      });
+      appliedCouponId = coupon.id;
+      servicePrice = Math.max(0, servicePrice - couponDiscount);
+    }
+
+    const totalBeforeWallet = servicePrice + productSelection.total;
+    let walletAppliedAmount = 0;
+    if (data.useWallet && data.userId) {
+      const available = await this.rewardsService.getAvailableBalance(data.userId);
+      walletAppliedAmount = Math.min(available, totalBeforeWallet);
+    }
+    const totalPrice = Math.max(0, totalBeforeWallet - walletAppliedAmount);
     const nextStatus = data.status || 'scheduled';
     const shouldHoldStock = this.shouldHoldStock(nextStatus);
 
@@ -279,7 +318,7 @@ export class AppointmentsService {
         }
       }
 
-      return tx.appointment.create({
+      const created = await tx.appointment.create({
         data: {
           localId,
           userId: data.userId,
@@ -289,6 +328,9 @@ export class AppointmentsService {
           serviceNameSnapshot: serviceName,
           loyaltyProgramId,
           loyaltyRewardApplied,
+          referralAttributionId: shouldHoldStock ? referralAttribution?.id ?? null : null,
+          appliedCouponId: shouldHoldStock ? appliedCouponId : null,
+          walletAppliedAmount: new Prisma.Decimal(shouldHoldStock ? walletAppliedAmount : 0),
           startDateTime,
           price: new Prisma.Decimal(totalPrice),
           status: nextStatus,
@@ -308,7 +350,50 @@ export class AppointmentsService {
         },
         include: { user: true, barber: true, service: true, products: { include: { product: true } } },
       });
+
+      if (shouldHoldStock && referralAttribution) {
+        await this.referralAttributionService.attachAttributionToAppointment({
+          attributionId: referralAttribution.id,
+          appointmentId: created.id,
+          userId: data.userId ?? null,
+          guestContact: data.guestContact ?? null,
+          tx,
+        });
+      }
+
+      if (shouldHoldStock && walletAppliedAmount > 0 && data.userId) {
+        await this.rewardsService.reserveWalletHold(
+          {
+            userId: data.userId,
+            appointmentId: created.id,
+            amount: walletAppliedAmount,
+            description: 'Reserva de saldo por cita programada.',
+          },
+          tx,
+        );
+      }
+
+      if (shouldHoldStock && appliedCouponId && data.userId) {
+        await this.rewardsService.reserveCouponUsage(
+          {
+            userId: data.userId,
+            couponId: appliedCouponId,
+            appointmentId: created.id,
+            amount: couponDiscount,
+            description: 'Cupón aplicado a cita programada.',
+          },
+          tx,
+        );
+      }
+
+      return created;
     });
+
+    if (nextStatus === 'completed') {
+      await this.rewardsService.confirmWalletHold(appointment.id);
+      await this.rewardsService.confirmCouponUsage(appointment.id);
+      await this.referralAttributionService.handleAppointmentCompleted(appointment.id);
+    }
 
     if (consentRequired) {
       await this.legalService.recordPrivacyConsent({
@@ -471,6 +556,14 @@ export class AppointmentsService {
     if (data.paymentMethod !== undefined && !isAdminActor) {
       throw new ForbiddenException('Solo un admin puede actualizar el método de pago.');
     }
+    if (
+      !isAdminActor &&
+      (data.referralAttributionId !== undefined ||
+        data.appliedCouponId !== undefined ||
+        data.walletAppliedAmount !== undefined)
+    ) {
+      throw new ForbiddenException('Solo un admin puede modificar recompensas.');
+    }
 
     const shouldRecalculatePrice =
       data.serviceId !== undefined || data.startDateTime !== undefined || data.userId !== undefined;
@@ -488,7 +581,10 @@ export class AppointmentsService {
       const baseServicePrice = shouldRecalculatePrice
         ? resolvedServicePrice ?? 0
         : Math.max(0, Number(current.price) - currentProductsTotal);
-      price = new Prisma.Decimal(baseServicePrice + nextProductSelection.total);
+      const walletAmount =
+        data.walletAppliedAmount === undefined ? Number(current.walletAppliedAmount ?? 0) : data.walletAppliedAmount;
+      const recalculatedTotal = Math.max(0, baseServicePrice + nextProductSelection.total - Math.max(0, walletAmount));
+      price = new Prisma.Decimal(recalculatedTotal);
     }
 
     const snapshotUpdates: { barberNameSnapshot?: string; serviceNameSnapshot?: string } = {};
@@ -578,6 +674,13 @@ export class AppointmentsService {
           ...snapshotUpdates,
           loyaltyProgramId,
           loyaltyRewardApplied,
+          referralAttributionId:
+            data.referralAttributionId === undefined ? undefined : data.referralAttributionId,
+          appliedCouponId: data.appliedCouponId === undefined ? undefined : data.appliedCouponId,
+          walletAppliedAmount:
+            data.walletAppliedAmount === undefined
+              ? undefined
+              : new Prisma.Decimal(data.walletAppliedAmount),
           startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
           price,
           paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,
@@ -601,6 +704,19 @@ export class AppointmentsService {
       });
     });
 
+    if (statusChanged) {
+      if (nextStatus === 'completed') {
+        await this.rewardsService.confirmWalletHold(updated.id);
+        await this.rewardsService.confirmCouponUsage(updated.id);
+        await this.referralAttributionService.handleAppointmentCompleted(updated.id);
+      }
+      if (nextStatus === 'cancelled' || nextStatus === 'no_show') {
+        await this.rewardsService.releaseWalletHold(updated.id);
+        await this.rewardsService.cancelCouponUsage(updated.id);
+        await this.referralAttributionService.handleAppointmentCancelled(updated.id);
+      }
+    }
+
     const shouldNotify = serviceChanged || barberChanged || startChanged;
     if (shouldNotify) {
       await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
@@ -615,6 +731,9 @@ export class AppointmentsService {
       include: { products: { include: { product: true } } },
     });
     if (!existing) throw new NotFoundException('Appointment not found');
+    await this.rewardsService.releaseWalletHold(existing.id);
+    await this.rewardsService.cancelCouponUsage(existing.id);
+    await this.referralAttributionService.handleAppointmentCancelled(existing.id);
     await this.prisma.$transaction(async (tx) => {
       if (this.shouldHoldStock(existing.status) && existing.products.length > 0) {
         for (const item of existing.products) {
@@ -750,6 +869,7 @@ export class AppointmentsService {
     const now = new Date();
     const updates: Promise<unknown>[] = [];
     let updatedCount = 0;
+    const completedIds: string[] = [];
 
     appointments.forEach((appointment) => {
       if (appointment.status === 'cancelled' || appointment.status === 'completed' || appointment.status === 'no_show') {
@@ -764,6 +884,9 @@ export class AppointmentsService {
       if (appointment.status !== nextStatus) {
         appointment.status = nextStatus;
         updatedCount += 1;
+        if (nextStatus === 'completed') {
+          completedIds.push(appointment.id);
+        }
         updates.push(
           this.prisma.appointment.update({
             where: { id: appointment.id },
@@ -775,6 +898,11 @@ export class AppointmentsService {
 
     if (updates.length > 0) {
       await Promise.all(updates);
+    }
+    for (const id of completedIds) {
+      await this.rewardsService.confirmWalletHold(id);
+      await this.rewardsService.confirmCouponUsage(id);
+      await this.referralAttributionService.handleAppointmentCompleted(id);
     }
     return updatedCount;
   }

@@ -39,6 +39,18 @@ export class CreateAppointmentDto {
   privacyConsentGiven?: boolean;
 
   @IsOptional()
+  @IsString()
+  referralAttributionId?: string;
+
+  @IsOptional()
+  @IsString()
+  appliedCouponId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  useWallet?: boolean;
+
+  @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => AppointmentProductDto)
   products?: AppointmentProductDto[];

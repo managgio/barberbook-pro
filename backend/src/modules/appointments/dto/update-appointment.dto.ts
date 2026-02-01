@@ -47,6 +47,19 @@ export class UpdateAppointmentDto {
   paymentMethod?: PaymentMethod | null;
 
   @IsOptional()
+  @IsString()
+  referralAttributionId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  appliedCouponId?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  walletAppliedAmount?: number;
+
+  @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => AppointmentProductDto)
   products?: AppointmentProductDto[];

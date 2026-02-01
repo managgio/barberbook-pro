@@ -230,6 +230,92 @@ export class NotificationsService {
     }
   }
 
+  async sendReferralRewardEmail(params: { contact: ContactInfo; title: string; message: string; ctaLabel?: string; ctaUrl?: string }) {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    if (config.notificationPrefs?.email === false) return;
+    const transporter = await this.getTransporter();
+    if (!transporter || !params.contact.email) return;
+    const settings = await this.getSettings();
+    const brandName =
+      settings.branding.shortName ||
+      settings.branding.name ||
+      config.branding?.shortName ||
+      config.branding?.name ||
+      'Managgio';
+    const contactEmail = settings.contact.email || config.email?.user || 'info@leblond.com';
+    const brandColor = '#f472b6';
+    const brandDark = '#0f0f12';
+    const logoPath = this.resolveLogoPath();
+    const logoCid = logoPath ? 'brand-logo' : undefined;
+    const ctaLabel = params.ctaLabel || 'Ver mi recompensa';
+    const ctaUrl = params.ctaUrl;
+
+    const html = `
+      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:#f8fafc;">
+        <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
+          <tr style="background:linear-gradient(135deg, rgba(244,114,182,0.18), rgba(139,92,246,0.1)); border-bottom:1px solid rgba(255,255,255,0.08);">
+            <td style="padding:22px 26px; display:flex; align-items:center; gap:22px;">
+              ${logoCid ? `<img src="cid:${logoCid}" alt="${brandName}" width="48" height="48" style="border-radius:12px; display:block; background:#000; padding:6px;" />` : ''}
+              <div style="margin-left:8px;">
+                <div style="font-weight:700; font-size:18px; color:#fff;">${brandName}</div>
+                <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">Programa de referidos</div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px;">
+              <p style="margin:0 0 12px; font-size:16px;">Hola ${params.contact.name || 'cliente'},</p>
+              <p style="margin:0 0 16px; color:rgba(248,250,252,0.8); line-height:1.6;">
+                ${params.message}
+              </p>
+              ${
+                ctaUrl
+                  ? `<div style="margin-top:20px;">
+                      <a href="${ctaUrl}" style="display:inline-block; padding:12px 18px; border-radius:999px; background:${brandColor}; color:#0b0b0e; text-decoration:none; font-weight:600;">
+                        ${ctaLabel}
+                      </a>
+                    </div>`
+                  : ''
+              }
+              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:rgba(244,114,182,0.12); color:#fff; border:1px solid rgba(244,114,182,0.4);">
+                <div style="font-weight:600; margin-bottom:4px;">Contacto</div>
+                <div style="font-size:14px; color:rgba(248,250,252,0.8);">
+                  <a href="mailto:${contactEmail}" style="color:#fff; text-decoration:none;">${contactEmail}</a>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 24px; background:#0d0d10; color:rgba(248,250,252,0.6); font-size:12px; text-align:center;">
+              © ${new Date().getFullYear()} ${brandName}. Gracias por confiar en nosotros.
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: `"${config.email?.fromName || brandName}" <${contactEmail}>`,
+        to: params.contact.email,
+        subject: params.title,
+        text: `${params.message}`,
+        html,
+        attachments: logoCid && logoPath
+          ? [
+              {
+                filename: path.basename(logoPath),
+                path: logoPath,
+                cid: logoCid,
+              },
+            ]
+          : [],
+      });
+    } catch (error) {
+      this.logger.error(`Error sending referral email to ${params.contact.email}: ${error}`);
+    }
+  }
+
   async sendReminderSms(contact: ContactInfo, appointment: AppointmentInfo) {
     const twilioConfig = await this.getTwilio();
     if (!twilioConfig || !contact.phone) return;

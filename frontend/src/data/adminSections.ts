@@ -52,6 +52,11 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
     description: 'Tarjetas de fidelización y recompensas para clientes.',
   },
   {
+    key: 'referrals',
+    label: 'Referidos',
+    description: 'Programa de referidos, recompensas y atribuciones.',
+  },
+  {
     key: 'alerts',
     label: 'Alertas',
     description: 'Mensajes destacados o avisos para clientes.',

@@ -1,20 +1,47 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import Navbar from './Navbar';
 import LegalFooter from './LegalFooter';
-import { Calendar, User, LayoutDashboard, ChevronRight } from 'lucide-react';
+import { Calendar, User, LayoutDashboard, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getReferralSummary } from '@/data/api';
 
 const clientNavItems = [
   { href: '/app', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/app/appointments', label: 'Mis Citas', icon: Calendar },
+  { href: '/app/referrals', label: 'Invita y gana', icon: Users },
   { href: '/app/profile', label: 'Mi Perfil', icon: User },
 ];
 
 const ClientLayout: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
+  const [referralsEnabled, setReferralsEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    getReferralSummary(user.id)
+      .then((data) => {
+        if (!active) return;
+        setReferralsEnabled(data.programEnabled !== false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setReferralsEnabled(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  const visibleNavItems = useMemo(() => {
+    if (referralsEnabled === false) {
+      return clientNavItems.filter((item) => item.href !== '/app/referrals');
+    }
+    return clientNavItems;
+  }, [referralsEnabled]);
 
   const isActive = (path: string, exact?: boolean) => {
     if (exact) return location.pathname === path;
@@ -29,7 +56,7 @@ const ClientLayout: React.FC = () => {
         <div className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-16 z-30">
           <div className="container mx-auto px-4">
             <div className="flex items-center gap-2 py-3 overflow-x-auto">
-              {clientNavItems.map((item) => (
+              {visibleNavItems.map((item) => (
                 <Link
                   key={item.href}
                   to={item.href}

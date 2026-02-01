@@ -163,6 +163,9 @@ export interface Appointment {
   serviceNameSnapshot?: string | null;
   loyaltyProgramId?: string | null;
   loyaltyRewardApplied?: boolean;
+  referralAttributionId?: string | null;
+  appliedCouponId?: string | null;
+  walletAppliedAmount?: number;
   startDateTime: string; // ISO string
   price: number;
   paymentMethod?: PaymentMethod | null;
@@ -354,6 +357,139 @@ export interface Offer {
   products?: Product[];
 }
 
+export type RewardType = 'WALLET' | 'PERCENT_DISCOUNT' | 'FIXED_DISCOUNT' | 'FREE_SERVICE';
+export type RewardTxType = 'CREDIT' | 'DEBIT' | 'HOLD' | 'RELEASE' | 'COUPON_ISSUED' | 'COUPON_USED' | 'ADJUSTMENT';
+export type RewardTxStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED';
+export type ReferralAttributionStatus = 'ATTRIBUTED' | 'BOOKED' | 'COMPLETED' | 'REWARDED' | 'VOIDED' | 'EXPIRED';
+
+export interface ReferralRewardSummaryItem {
+  type: RewardType;
+  value?: number | null;
+  serviceId?: string | null;
+  text: string;
+}
+
+export interface ReferralRewardSummary {
+  referrer: ReferralRewardSummaryItem;
+  referred: ReferralRewardSummaryItem;
+}
+
+export interface ReferralProgramConfig {
+  id: string | null;
+  localId: string;
+  enabled: boolean;
+  attributionExpiryDays: number;
+  newCustomerOnly: boolean;
+  monthlyMaxRewardsPerReferrer?: number | null;
+  allowedServiceIds?: string[] | null;
+  rewardReferrerType: RewardType;
+  rewardReferrerValue?: number | null;
+  rewardReferrerServiceId?: string | null;
+  rewardReferrerServiceName?: string | null;
+  rewardReferredType: RewardType;
+  rewardReferredValue?: number | null;
+  rewardReferredServiceId?: string | null;
+  rewardReferredServiceName?: string | null;
+  antiFraud: {
+    blockSelfByUser: boolean;
+    blockSelfByContact: boolean;
+    blockDuplicateContact: boolean;
+  };
+  appliedTemplateId?: string | null;
+}
+
+export interface ReferralConfigTemplate {
+  id: string;
+  brandId: string;
+  name: string;
+  enabled: boolean;
+  attributionExpiryDays: number;
+  newCustomerOnly: boolean;
+  monthlyMaxRewardsPerReferrer?: number | null;
+  allowedServiceIds?: string[] | null;
+  rewardReferrerType: RewardType;
+  rewardReferrerValue?: number | null;
+  rewardReferrerServiceId?: string | null;
+  rewardReferredType: RewardType;
+  rewardReferredValue?: number | null;
+  rewardReferredServiceId?: string | null;
+  antiFraud?: {
+    blockSelfByUser: boolean;
+    blockSelfByContact: boolean;
+    blockDuplicateContact: boolean;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ReferralAttributionItem {
+  id: string;
+  status: ReferralAttributionStatus;
+  attributedAt: string;
+  expiresAt: string;
+  referrer?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    phone?: string | null;
+  } | null;
+  referred?: {
+    id?: string | null;
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+  firstAppointment?: {
+    id: string;
+    startDateTime: string;
+    status: AppointmentStatus;
+    price: number;
+  } | null;
+}
+
+export interface ReferralSummaryResponse {
+  code: string;
+  programEnabled?: boolean;
+  shareUrl?: string | null;
+  qrUrlPayload?: string | null;
+  rewardSummary: ReferralRewardSummary;
+  pending: ReferralAttributionItem[];
+  confirmed: ReferralAttributionItem[];
+  expired: ReferralAttributionItem[];
+  invalidated: ReferralAttributionItem[];
+}
+
+export interface RewardWalletSummary {
+  wallet: {
+    balance: number;
+    availableBalance: number;
+    pendingHolds: number;
+  };
+  transactions: Array<{
+    id: string;
+    type: RewardTxType;
+    status: RewardTxStatus;
+    amount: number | null;
+    description: string;
+    createdAt: string;
+  }>;
+  coupons: Coupon[];
+}
+
+export interface Coupon {
+  id: string;
+  code?: string | null;
+  discountType: RewardType;
+  discountValue?: number | null;
+  serviceId?: string | null;
+  isActive: boolean;
+  maxUses: number;
+  usedCount: number;
+  validFrom?: string | null;
+  validTo?: string | null;
+  createdAt?: string;
+}
+
 export type LoyaltyScope = 'global' | 'service' | 'category';
 
 export interface LoyaltyProgram {
@@ -428,6 +564,7 @@ export type AdminSectionKey =
   | 'services'
   | 'barbers'
   | 'loyalty'
+  | 'referrals'
   | 'alerts'
   | 'holidays'
   | 'roles'
@@ -459,6 +596,9 @@ export interface CreateAppointmentPayload {
   guestName?: string;
   guestContact?: string;
   privacyConsentGiven?: boolean;
+  referralAttributionId?: string;
+  appliedCouponId?: string;
+  useWallet?: boolean;
   products?: Array<{ productId: string; quantity: number }>;
 }
 

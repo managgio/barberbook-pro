@@ -70,6 +70,38 @@ enum LoyaltyScope {
   category
 }
 
+enum ReferralAttributionStatus {
+  ATTRIBUTED
+  BOOKED
+  COMPLETED
+  REWARDED
+  VOIDED
+  EXPIRED
+}
+
+enum RewardType {
+  WALLET
+  PERCENT_DISCOUNT
+  FIXED_DISCOUNT
+  FREE_SERVICE
+}
+
+enum RewardTxType {
+  CREDIT
+  DEBIT
+  HOLD
+  RELEASE
+  COUPON_ISSUED
+  COUPON_USED
+  ADJUSTMENT
+}
+
+enum RewardTxStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
 enum AiChatRole {
   user
   assistant
@@ -99,6 +131,12 @@ model User {
   adminRoleId         String?
   adminRole           AdminRole?  @relation(fields: [adminRoleId], references: [id])
   appointments        Appointment[]
+  referralCodes       ReferralCode[]
+  referrerAttributions ReferralAttribution[] @relation("ReferralReferrer")
+  referredAttributions ReferralAttribution[] @relation("ReferralReferred")
+  rewardWallets       RewardWallet[]
+  rewardTransactions  RewardTransaction[]
+  coupons             Coupon[]
   barber              Barber?
   brandMemberships    BrandUser[]
   localStaffRoles     LocationStaff[]
@@ -118,6 +156,7 @@ model Brand {
   defaultLocation Location? @relation("BrandDefaultLocation", fields: [defaultLocationId], references: [id])
   isActive  Boolean    @default(true)
   locations Location[]
+  referralTemplates ReferralConfigTemplate[]
   users     BrandUser[]
   config    BrandConfig?
   legalSettings BrandLegalSettings?
@@ -154,6 +193,12 @@ model Location {
   serviceCategories ServiceCategory[]
   offers    Offer[]
   loyaltyPrograms LoyaltyProgram[]
+  referralProgramConfig ReferralProgramConfig?
+  referralCodes ReferralCode[]
+  referralAttributions ReferralAttribution[]
+  rewardWallets RewardWallet[]
+  rewardTransactions RewardTransaction[]
+  coupons Coupon[]
   aiChatSessions AiChatSession[]
   aiChatMessages AiChatMessage[]
   aiBusinessFacts AiBusinessFact[]
@@ -289,6 +334,11 @@ model Service {
   appointments Appointment[]
   offers      Offer[]       @relation("ServiceOffers")
   loyaltyPrograms LoyaltyProgram[]
+  referralReferrerConfigs ReferralProgramConfig[] @relation("ReferralReferrerService")
+  referralReferredConfigs ReferralProgramConfig[] @relation("ReferralReferredService")
+  referralReferrerTemplates ReferralConfigTemplate[] @relation("ReferralTemplateReferrerService")
+  referralReferredTemplates ReferralConfigTemplate[] @relation("ReferralTemplateReferredService")
+  coupons Coupon[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -337,6 +387,11 @@ model Appointment {
   loyaltyProgramId String?
   loyaltyProgram  LoyaltyProgram?  @relation(fields: [loyaltyProgramId], references: [id])
   loyaltyRewardApplied Boolean     @default(false)
+  referralAttributionId String?
+  referralAttribution ReferralAttribution? @relation("ReferralAttributionAppointments", fields: [referralAttributionId], references: [id])
+  appliedCouponId String?
+  appliedCoupon Coupon? @relation(fields: [appliedCouponId], references: [id])
+  walletAppliedAmount Decimal @default(0) @db.Decimal(10, 2)
   products      AppointmentProduct[]
   startDateTime DateTime
   price         Decimal            @db.Decimal(10, 2)
@@ -348,10 +403,13 @@ model Appointment {
   reminderSent  Boolean            @default(false)
   anonymizedAt  DateTime?
   consents      ConsentRecord[]
+  rewardTransactions RewardTransaction[]
+  referralFirstAppointments ReferralAttribution[] @relation("ReferralFirstAppointment")
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
   @@index([localId])
+  @@index([referralAttributionId])
 }
 
 model AppointmentProduct {
@@ -367,6 +425,178 @@ model AppointmentProduct {
 
   @@unique([appointmentId, productId])
   @@index([productId])
+}
+
+model ReferralProgramConfig {
+  id                     String      @id @default(cuid())
+  localId                String      @unique
+  local                  Location    @relation(fields: [localId], references: [id])
+  enabled                Boolean     @default(false)
+  attributionExpiryDays  Int         @default(30)
+  newCustomerOnly        Boolean     @default(true)
+  monthlyMaxRewardsPerReferrer Int?
+  allowedServiceIds      Json?
+  rewardReferrerType     RewardType
+  rewardReferrerValue    Decimal?    @db.Decimal(10, 2)
+  rewardReferrerServiceId String?
+  rewardReferrerService  Service?    @relation("ReferralReferrerService", fields: [rewardReferrerServiceId], references: [id])
+  rewardReferredType     RewardType
+  rewardReferredValue    Decimal?    @db.Decimal(10, 2)
+  rewardReferredServiceId String?
+  rewardReferredService  Service?    @relation("ReferralReferredService", fields: [rewardReferredServiceId], references: [id])
+  antiFraud              Json?
+  appliedTemplateId      String?
+  appliedTemplate        ReferralConfigTemplate? @relation(fields: [appliedTemplateId], references: [id])
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  @@index([rewardReferrerServiceId])
+  @@index([rewardReferredServiceId])
+}
+
+model ReferralConfigTemplate {
+  id                     String      @id @default(cuid())
+  brandId                String
+  brand                  Brand       @relation(fields: [brandId], references: [id])
+  name                   String
+  enabled                Boolean     @default(true)
+  attributionExpiryDays  Int         @default(30)
+  newCustomerOnly        Boolean     @default(true)
+  monthlyMaxRewardsPerReferrer Int?
+  allowedServiceIds      Json?
+  rewardReferrerType     RewardType
+  rewardReferrerValue    Decimal?    @db.Decimal(10, 2)
+  rewardReferrerServiceId String?
+  rewardReferrerService  Service?    @relation("ReferralTemplateReferrerService", fields: [rewardReferrerServiceId], references: [id])
+  rewardReferredType     RewardType
+  rewardReferredValue    Decimal?    @db.Decimal(10, 2)
+  rewardReferredServiceId String?
+  rewardReferredService  Service?    @relation("ReferralTemplateReferredService", fields: [rewardReferredServiceId], references: [id])
+  antiFraud              Json?
+  appliedInPrograms      ReferralProgramConfig[]
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  @@index([brandId])
+  @@index([rewardReferrerServiceId])
+  @@index([rewardReferredServiceId])
+}
+
+model ReferralCode {
+  id        String      @id @default(cuid())
+  localId   String
+  local     Location    @relation(fields: [localId], references: [id])
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  code      String
+  isActive  Boolean     @default(true)
+  attributions ReferralAttribution[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([code, localId])
+  @@unique([userId, localId])
+  @@index([localId])
+}
+
+model ReferralAttribution {
+  id                String      @id @default(cuid())
+  localId           String
+  local             Location    @relation(fields: [localId], references: [id])
+  referralCodeId    String
+  referralCode      ReferralCode @relation(fields: [referralCodeId], references: [id])
+  referrerUserId    String
+  referrer          User        @relation("ReferralReferrer", fields: [referrerUserId], references: [id])
+  referredUserId    String?
+  referredUser      User?       @relation("ReferralReferred", fields: [referredUserId], references: [id])
+  referredPhone     String?
+  referredEmail     String?
+  status            ReferralAttributionStatus @default(ATTRIBUTED)
+  firstAppointmentId String?
+  firstAppointment  Appointment? @relation("ReferralFirstAppointment", fields: [firstAppointmentId], references: [id])
+  attributedAt      DateTime    @default(now())
+  expiresAt         DateTime
+  metadata          Json?
+  appointments      Appointment[] @relation("ReferralAttributionAppointments")
+  rewardTransactions RewardTransaction[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([localId, status])
+  @@index([localId, createdAt])
+  @@index([referrerUserId])
+  @@index([referredUserId])
+  @@index([referredPhone])
+  @@index([referredEmail])
+}
+
+model RewardWallet {
+  id        String   @id @default(cuid())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  balance   Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  transactions RewardTransaction[]
+
+  @@unique([userId, localId])
+  @@index([localId])
+}
+
+model RewardTransaction {
+  id        String   @id @default(cuid())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  referralAttributionId String?
+  referralAttribution ReferralAttribution? @relation(fields: [referralAttributionId], references: [id])
+  appointmentId String?
+  appointment  Appointment? @relation(fields: [appointmentId], references: [id])
+  couponId     String?
+  coupon       Coupon?   @relation(fields: [couponId], references: [id])
+  walletId     String?
+  wallet       RewardWallet? @relation(fields: [walletId], references: [id])
+  type       RewardTxType
+  status     RewardTxStatus @default(PENDING)
+  amount     Decimal?  @db.Decimal(10, 2)
+  description String
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, localId, createdAt])
+  @@index([referralAttributionId])
+  @@index([appointmentId])
+  @@index([couponId])
+}
+
+model Coupon {
+  id        String   @id @default(cuid())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id])
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  code      String?
+  discountType RewardType
+  discountValue Decimal? @db.Decimal(10, 2)
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id])
+  isActive  Boolean  @default(true)
+  maxUses   Int      @default(1)
+  usedCount Int      @default(0)
+  validFrom DateTime?
+  validTo   DateTime?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  appointments Appointment[]
+  transactions RewardTransaction[]
+
+  @@index([localId])
+  @@index([userId])
+  @@index([serviceId])
+  @@unique([code, localId])
 }
 
 model CashMovement {
