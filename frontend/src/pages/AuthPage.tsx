@@ -16,6 +16,9 @@ import { resolveBrandLogo } from '@/lib/branding';
 const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') === 'signup' ? 'signup' : 'login';
+  const rawRedirect = searchParams.get('redirect');
+  const redirectTarget =
+    rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : null;
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -57,10 +60,14 @@ const AuthPage: React.FC = () => {
         navigate('/platform');
         return;
       }
+      if (redirectTarget && !isPlatform) {
+        navigate(redirectTarget);
+        return;
+      }
       const hasAdminAccess = Boolean(user.isSuperAdmin || user.isLocalAdmin || user.role === 'admin' || user.isPlatformAdmin);
       navigate(hasAdminAccess ? '/admin' : '/app');
     }
-  }, [isAuthenticated, user, navigate, isPlatform]);
+  }, [isAuthenticated, user, navigate, isPlatform, redirectTarget]);
 
   React.useEffect(() => {
     if (isPlatform && activeTab !== 'login') {

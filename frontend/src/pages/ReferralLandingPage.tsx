@@ -64,15 +64,6 @@ const ReferralLandingPage: React.FC = () => {
       });
   }, [code, stored?.code, toast, user?.id, payload?.programEnabled]);
 
-  useEffect(() => {
-    if (!payload || !payload.programEnabled) return;
-    const target = user ? '/app/book' : '/book';
-    const timer = window.setTimeout(() => {
-      navigate(target);
-    }, 1400);
-    return () => window.clearTimeout(timer);
-  }, [navigate, payload, user]);
-
   if (isLoading) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center text-muted-foreground">
@@ -114,19 +105,40 @@ const ReferralLandingPage: React.FC = () => {
               <span className="font-semibold text-foreground">{payload.rewardSummary.referrer.text}</span>
             </div>
           </div>
-          <Button
-            size="lg"
-            variant="glow"
-            className="w-full"
-            onClick={() => navigate(user ? '/app/book' : '/book')}
-          >
-            Reservar ahora
-            <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <UserPlus className="w-4 h-4" />
-            Redirigiendo al flujo de reserva...
-          </div>
+          {user ? (
+            <Button
+              size="lg"
+              variant="glow"
+              className="w-full"
+              onClick={() => navigate('/app/book')}
+            >
+              Reservar ahora
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                Para guardar tu recompensa necesitas crear una cuenta e iniciar sesión antes de reservar.
+              </div>
+              <Button
+                size="lg"
+                variant="glow"
+                className="w-full"
+                onClick={() => navigate('/auth?tab=signup&redirect=/app/book')}
+              >
+                Crear cuenta y reservar
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate('/auth?redirect=/app/book')}
+              >
+                Ya tengo cuenta
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
