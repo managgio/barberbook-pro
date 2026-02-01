@@ -69,6 +69,14 @@ export interface TenantBootstrap {
       heroBadgeEnabled?: boolean;
       heroImageUrl?: string;
       heroImageFileId?: string;
+      heroImage2Url?: string;
+      heroImage2FileId?: string;
+      heroImage3Url?: string;
+      heroImage3FileId?: string;
+      heroImage4Url?: string;
+      heroImage4FileId?: string;
+      heroImage5Url?: string;
+      heroImage5FileId?: string;
       heroImageEnabled?: boolean;
       heroTextColor?: 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
       heroLocationCardEnabled?: boolean;
@@ -92,6 +100,16 @@ export interface TenantBootstrap {
     landing?: {
       order?: string[];
       hiddenSections?: string[];
+      presentation?: {
+        sections?: Array<{
+          enabled?: boolean;
+          imageUrl?: string;
+          imageFileId?: string;
+          title?: string;
+          body?: string;
+          imagePosition?: 'left' | 'right';
+        }>;
+      };
     } | null;
   };
 }

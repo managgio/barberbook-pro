@@ -32,7 +32,7 @@ const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
 const signImageFallback = '/placeholder.svg';
 const productImageFallback = '/placeholder.svg';
-const LANDING_SECTION_ORDER = ['services', 'products', 'barbers', 'cta'] as const;
+const LANDING_SECTION_ORDER = ['presentation', 'services', 'products', 'barbers', 'cta'] as const;
 type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
 const isLandingSectionKey = (value: string): value is LandingSectionKey =>
   (LANDING_SECTION_ORDER as readonly string[]).includes(value);
@@ -53,7 +53,25 @@ const LandingPage: React.FC = () => {
   const leBlondLogo = '/leBlondLogo.png';
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const heroBackgroundUrl = tenant?.config?.branding?.heroBackgroundUrl || heroBackgroundFallback;
-  const heroImageUrl = tenant?.config?.branding?.heroImageUrl || heroImageFallback;
+  const heroImageUrls = useMemo(() => {
+    const urls = [
+      tenant?.config?.branding?.heroImageUrl,
+      tenant?.config?.branding?.heroImage2Url,
+      tenant?.config?.branding?.heroImage3Url,
+      tenant?.config?.branding?.heroImage4Url,
+      tenant?.config?.branding?.heroImage5Url,
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    return urls.length > 0 ? urls : [heroImageFallback];
+  }, [
+    tenant?.config?.branding?.heroImageUrl,
+    tenant?.config?.branding?.heroImage2Url,
+    tenant?.config?.branding?.heroImage3Url,
+    tenant?.config?.branding?.heroImage4Url,
+    tenant?.config?.branding?.heroImage5Url,
+  ]);
+  const [heroImageIndex, setHeroImageIndex] = useState(0);
+  const [heroImageFading, setHeroImageFading] = useState(false);
+  const heroImageUrl = heroImageUrls[Math.min(heroImageIndex, heroImageUrls.length - 1)] || heroImageFallback;
   const signImageUrl = tenant?.config?.branding?.signImageUrl || signImageFallback;
   const heroImageEnabled = tenant?.config?.branding?.heroImageEnabled !== false;
   const heroBackgroundDimmed = tenant?.config?.branding?.heroBackgroundDimmed !== false;
@@ -72,6 +90,29 @@ const LandingPage: React.FC = () => {
     const clamped = Math.min(100, Math.max(0, value));
     return clamped / 100;
   })();
+  useEffect(() => {
+    setHeroImageIndex(0);
+    setHeroImageFading(false);
+  }, [heroImageUrls.length]);
+  useEffect(() => {
+    if (!heroImageEnabled || heroImageUrls.length <= 1) return;
+    const fadeDuration = 400;
+    const intervalMs = 6000;
+    let timeoutId: number | null = null;
+    const intervalId = window.setInterval(() => {
+      setHeroImageFading(true);
+      timeoutId = window.setTimeout(() => {
+        setHeroImageIndex((prev) => (prev + 1) % heroImageUrls.length);
+        setHeroImageFading(false);
+      }, fadeDuration);
+    }, intervalMs);
+    return () => {
+      window.clearInterval(intervalId);
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [heroImageEnabled, heroImageUrls.length]);
   const currentYear = new Date().getFullYear();
   const experienceYears = Math.max(0, currentYear - settings.stats.experienceStartYear);
   const formatYearlyBookings = (value: number) => {
@@ -177,6 +218,75 @@ const LandingPage: React.FC = () => {
         : statsHighlights.length === 2
           ? 'grid-cols-2 md:grid-cols-2'
           : 'grid-cols-1 md:grid-cols-1';
+
+  const presentationSections = useMemo(() => {
+    const sections = Array.isArray(landingConfig?.presentation?.sections)
+      ? landingConfig?.presentation?.sections
+      : [];
+    const defaults = [
+      { enabled: true, imagePosition: 'left' as const },
+      { enabled: false, imagePosition: 'right' as const },
+    ];
+    return defaults.map((fallback, index) => {
+      const current = (sections[index] || {}) as any;
+      const imagePosition = current.imagePosition === 'right' ? 'right' : current.imagePosition === 'left' ? 'left' : fallback.imagePosition;
+      return {
+        enabled: typeof current.enabled === 'boolean' ? current.enabled : fallback.enabled,
+        imageUrl: typeof current.imageUrl === 'string' ? current.imageUrl : '',
+        title: typeof current.title === 'string' ? current.title : '',
+        body: typeof current.body === 'string' ? current.body : '',
+        imagePosition,
+      };
+    });
+  }, [landingConfig?.presentation?.sections]);
+
+  const presentationSection = useMemo(() => {
+    const visible = presentationSections.filter(
+      (section) => section.enabled && (section.title || section.body || section.imageUrl),
+    );
+    if (visible.length === 0) return null;
+    return (
+      <section className="py-20 bg-background">
+        <div className="container px-4 space-y-14">
+          {visible.map((section, index) => {
+            const isImageLeft = section.imagePosition !== 'right';
+            return (
+              <div
+                key={`presentation-${index}`}
+                className={`flex flex-col gap-10 lg:gap-16 ${
+                  isImageLeft ? 'lg:flex-row' : 'lg:flex-row-reverse'
+                } items-center`}
+              >
+                <div className="w-full lg:w-1/2">
+                  <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-muted/20 shadow-lg">
+                    <div className="aspect-[4/3] w-full">
+                      <img
+                        src={section.imageUrl || heroImageFallback}
+                        alt={section.title || settings.branding.name}
+                        className="block h-full w-full object-cover"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="w-full lg:w-1/2 space-y-4">
+                  {section.title && (
+                    <h3 className="text-3xl md:text-4xl font-semibold text-foreground">
+                      {section.title}
+                    </h3>
+                  )}
+                  {section.body && (
+                    <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
+                      {section.body}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }, [presentationSections, heroImageFallback, settings.branding.name]);
 
   const renderProductCard = (product: Product, index: number) => {
     const price = product.finalPrice ?? product.price;
@@ -552,11 +662,15 @@ const LandingPage: React.FC = () => {
               <div className="flex-1 w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
                 <div className="relative w-full max-w-xl mx-auto">
                   <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-[36px]" />
-                  <img
-                    src={heroImageUrl}
-                    alt={`Experiencia premium en ${settings.branding.name}`}
-                    className="relative w-full rounded-[36px] border border-border/60 shadow-2xl object-cover"
-                  />
+                  <div className="relative w-full overflow-hidden rounded-[36px] border border-border/60 shadow-2xl">
+                    <div className="aspect-[4/3] w-full">
+                      <img
+                        src={heroImageUrl}
+                        alt={`Experiencia premium en ${settings.branding.name}`}
+                        className={`block h-full w-full object-cover transition-opacity duration-700 ${heroImageFading ? 'opacity-0' : 'opacity-100'}`}
+                      />
+                    </div>
+                  </div>
                   {heroLocationCardEnabled && (
                     <div className="absolute left-6 right-auto bottom-6 bg-background/80 backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl border border-border/60">
                       <MapPin className="w-5 h-5 text-primary" />
@@ -602,6 +716,9 @@ const LandingPage: React.FC = () => {
         if (sectionKey === 'products' && !showProducts) return null;
         if (sectionKey === 'services') {
           return <React.Fragment key={sectionKey}>{servicesSection}</React.Fragment>;
+        }
+        if (sectionKey === 'presentation') {
+          return presentationSection ? <React.Fragment key={sectionKey}>{presentationSection}</React.Fragment> : null;
         }
         if (sectionKey === 'products') {
           return productsSection ? <React.Fragment key={sectionKey}>{productsSection}</React.Fragment> : null;

@@ -43,6 +43,7 @@ import {
   subDays,
   isSameDay,
   eachDayOfInterval,
+  getISODay,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
@@ -165,14 +166,17 @@ const AdminDashboard: React.FC = () => {
       isWithinInterval(parseISO(appointment.startDateTime), { start: weekStart, end: weekEnd }),
   ).length;
 
+  const occupancyRangeDays = 30;
+  const occupancyStart = subDays(new Date(), occupancyRangeDays - 1);
+  const occupancyEnd = new Date();
   const occupancyHours = Array.from({ length: 12 }).map((_, index) => 9 + index);
   const occupancyMatrix = occupancyHours.map(() => weekDays.map(() => 0));
   filteredAppointments.forEach((appointment) => {
     if (!isAppointmentActive(appointment.status)) return;
     const startDate = parseISO(appointment.startDateTime);
-    if (!isWithinInterval(startDate, { start: weekStart, end: weekEnd })) return;
-    const dayIndex = weekDays.findIndex((day) => isSameDay(day, startDate));
-    if (dayIndex === -1) return;
+    if (!isWithinInterval(startDate, { start: occupancyStart, end: occupancyEnd })) return;
+    const dayIndex = getISODay(startDate) - 1;
+    if (dayIndex < 0 || dayIndex >= weekDays.length) return;
     const hourIndex = occupancyHours.indexOf(startDate.getHours());
     if (hourIndex === -1) return;
     occupancyMatrix[hourIndex][dayIndex] += 1;
@@ -974,8 +978,8 @@ const AdminDashboard: React.FC = () => {
         <Card variant="elevated">
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-4">
-              <CardTitle>Ocupación semanal</CardTitle>
-              <InfoDialog title="Ocupación semanal">
+              <CardTitle>Ocupación por horas (30 días)</CardTitle>
+              <InfoDialog title="Ocupación por horas (30 días)">
                 <p>
                   Las columnas son los días y las filas son las horas. Cuanto más intenso el color,
                   más citas hay en esa franja.
@@ -984,13 +988,12 @@ const AdminDashboard: React.FC = () => {
                   Te ayuda a ver de un vistazo las horas punta y los huecos reales.
                 </p>
                 <p>
-                  Úsalo para ajustar horarios del equipo, abrir huecos en horas flojas o lanzar
-                  ofertas en tramos con baja ocupación.
+                  Los datos se calculan con los últimos 30 días, para tener una visión más real.
                 </p>
               </InfoDialog>
             </div>
             <p className="text-sm text-muted-foreground">
-              Mapa de intensidad por franja horaria en la semana actual.
+              Mapa de intensidad por franja horaria en los últimos 30 días.
             </p>
           </CardHeader>
           <CardContent className="h-[320px] min-w-0 overflow-hidden">

@@ -46,11 +46,25 @@ export type TenantAdminSidebarConfig = {
   hiddenSections?: string[];
 };
 
-export type TenantLandingSectionKey = 'services' | 'products' | 'barbers' | 'cta';
+export type TenantLandingSectionKey = 'presentation' | 'services' | 'products' | 'barbers' | 'cta';
+
+export type TenantLandingPresentationSection = {
+  enabled?: boolean;
+  imageUrl?: string;
+  imageFileId?: string;
+  title?: string;
+  body?: string;
+  imagePosition?: 'left' | 'right';
+};
+
+export type TenantLandingPresentationConfig = {
+  sections?: TenantLandingPresentationSection[];
+};
 
 export type TenantLandingConfig = {
   order?: TenantLandingSectionKey[];
   hiddenSections?: TenantLandingSectionKey[];
+  presentation?: TenantLandingPresentationConfig;
 };
 
 export type TenantNotificationPrefs = {
@@ -75,6 +89,14 @@ export type TenantBrandingConfig = {
   heroBadgeEnabled?: boolean;
   heroImageUrl?: string;
   heroImageFileId?: string;
+  heroImage2Url?: string;
+  heroImage2FileId?: string;
+  heroImage3Url?: string;
+  heroImage3FileId?: string;
+  heroImage4Url?: string;
+  heroImage4FileId?: string;
+  heroImage5Url?: string;
+  heroImage5FileId?: string;
   heroImageEnabled?: boolean;
   heroTextColor?: 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
   heroLocationCardEnabled?: boolean;

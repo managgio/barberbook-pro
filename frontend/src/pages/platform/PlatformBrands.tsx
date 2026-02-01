@@ -131,13 +131,35 @@ const BRAND_FILE_ID_FIELDS = [
   'logoDarkFileId',
   'heroBackgroundFileId',
   'heroImageFileId',
+  'heroImage2FileId',
+  'heroImage3FileId',
+  'heroImage4FileId',
+  'heroImage5FileId',
   'signImageFileId',
 ] as const;
 type BrandFileIdField = typeof BRAND_FILE_ID_FIELDS[number];
-const LOCATION_LANDING_FILE_ID_FIELDS = ['heroBackgroundFileId', 'heroImageFileId', 'signImageFileId'] as const;
+const LOCATION_LANDING_FILE_ID_FIELDS = [
+  'heroBackgroundFileId',
+  'heroImageFileId',
+  'heroImage2FileId',
+  'heroImage3FileId',
+  'heroImage4FileId',
+  'heroImage5FileId',
+  'signImageFileId',
+] as const;
 type LocationLandingFileIdField = typeof LOCATION_LANDING_FILE_ID_FIELDS[number];
 
-type BrandAssetKey = 'logo' | 'logoLight' | 'logoDark' | 'heroBackground' | 'heroImage' | 'signImage';
+type BrandAssetKey =
+  | 'logo'
+  | 'logoLight'
+  | 'logoDark'
+  | 'heroBackground'
+  | 'heroImage'
+  | 'heroImage2'
+  | 'heroImage3'
+  | 'heroImage4'
+  | 'heroImage5'
+  | 'signImage';
 
 const BRAND_ASSET_META: Record<BrandAssetKey, {
   label: string;
@@ -190,6 +212,42 @@ const BRAND_ASSET_META: Record<BrandAssetKey, {
     previewClass: 'h-20 w-16',
     imageClass: 'object-cover',
   },
+  heroImage2: {
+    label: 'Imagen principal 2',
+    description: 'Opcional. Rota con la portada si hay varias.',
+    urlField: 'heroImage2Url',
+    fileIdField: 'heroImage2FileId',
+    folder: 'landing',
+    previewClass: 'h-20 w-16',
+    imageClass: 'object-cover',
+  },
+  heroImage3: {
+    label: 'Imagen principal 3',
+    description: 'Opcional. Rota con la portada si hay varias.',
+    urlField: 'heroImage3Url',
+    fileIdField: 'heroImage3FileId',
+    folder: 'landing',
+    previewClass: 'h-20 w-16',
+    imageClass: 'object-cover',
+  },
+  heroImage4: {
+    label: 'Imagen principal 4',
+    description: 'Opcional. Rota con la portada si hay varias.',
+    urlField: 'heroImage4Url',
+    fileIdField: 'heroImage4FileId',
+    folder: 'landing',
+    previewClass: 'h-20 w-16',
+    imageClass: 'object-cover',
+  },
+  heroImage5: {
+    label: 'Imagen principal 5',
+    description: 'Opcional. Rota con la portada si hay varias.',
+    urlField: 'heroImage5Url',
+    fileIdField: 'heroImage5FileId',
+    folder: 'landing',
+    previewClass: 'h-20 w-16',
+    imageClass: 'object-cover',
+  },
   signImage: {
     label: 'Letrero (CTA)',
     description: 'Reemplaza letrero.png en la sección CTA.',
@@ -204,6 +262,7 @@ const BRAND_ASSET_META: Record<BrandAssetKey, {
 type HeroTextColorOption = 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
 type HeroImagePositionOption = 'left' | 'right';
 type HeroNoImageAlignOption = 'center' | 'right' | 'left';
+type PresentationImagePosition = 'left' | 'right';
 
 const HERO_TEXT_COLOR_OPTIONS: Array<{ value: HeroTextColorOption; label: string }> = [
   { value: 'auto', label: 'Automático' },
@@ -224,13 +283,59 @@ const HERO_NO_IMAGE_ALIGN_OPTIONS: Array<{ value: HeroNoImageAlignOption; label:
   { value: 'right', label: 'Alineado a la derecha' },
 ];
 
+const PRESENTATION_POSITION_OPTIONS: Array<{ value: PresentationImagePosition; label: string }> = [
+  { value: 'left', label: 'Imagen a la izquierda' },
+  { value: 'right', label: 'Imagen a la derecha' },
+];
+
+const DEFAULT_PRESENTATION_SECTIONS = [
+  {
+    enabled: true,
+    title: '',
+    body: '',
+    imageUrl: '',
+    imageFileId: '',
+    imagePosition: 'left' as PresentationImagePosition,
+  },
+  {
+    enabled: false,
+    title: '',
+    body: '',
+    imageUrl: '',
+    imageFileId: '',
+    imagePosition: 'right' as PresentationImagePosition,
+  },
+];
+
+const normalizePresentationSections = (sections?: Array<Record<string, any>>) => {
+  return DEFAULT_PRESENTATION_SECTIONS.map((fallback, index) => {
+    const current = sections?.[index] || {};
+    const imagePosition = current.imagePosition === 'right' ? 'right' : current.imagePosition === 'left' ? 'left' : fallback.imagePosition;
+    return {
+      ...fallback,
+      ...current,
+      imagePosition,
+      enabled: typeof current.enabled === 'boolean' ? current.enabled : fallback.enabled,
+      title: typeof current.title === 'string' ? current.title : fallback.title,
+      body: typeof current.body === 'string' ? current.body : fallback.body,
+      imageUrl: typeof current.imageUrl === 'string' ? current.imageUrl : fallback.imageUrl,
+      imageFileId: typeof current.imageFileId === 'string' ? current.imageFileId : fallback.imageFileId,
+    };
+  });
+};
+
 const ADMIN_SECTION_SET = new Set(ADMIN_SECTIONS.map((section) => section.key));
 
-type LandingSectionKey = 'services' | 'products' | 'barbers' | 'cta';
+type LandingSectionKey = 'presentation' | 'services' | 'products' | 'barbers' | 'cta';
 
-const LANDING_SECTION_ORDER: LandingSectionKey[] = ['services', 'products', 'barbers', 'cta'];
+const LANDING_SECTION_ORDER: LandingSectionKey[] = ['presentation', 'services', 'products', 'barbers', 'cta'];
 
 const LANDING_SECTION_META: Record<LandingSectionKey, { label: string; description: string; icon: React.ElementType }> = {
+  presentation: {
+    label: 'Presentación',
+    description: 'Bloques visuales para contar la historia del negocio.',
+    icon: LayoutTemplate,
+  },
   services: {
     label: 'Servicios',
     description: 'Catálogo principal con precios y ofertas.',
@@ -331,17 +436,26 @@ const PlatformBrands: React.FC = () => {
   });
   const [applyThemeToAll, setApplyThemeToAll] = useState(false);
   const [uploadingAsset, setUploadingAsset] = useState<BrandAssetKey | null>(null);
+  const [uploadingPresentation, setUploadingPresentation] = useState<string | null>(null);
   const [persistedBrandFileIds, setPersistedBrandFileIds] = useState<Record<BrandFileIdField, string | null>>({
     logoFileId: null,
     logoLightFileId: null,
     logoDarkFileId: null,
     heroBackgroundFileId: null,
     heroImageFileId: null,
+    heroImage2FileId: null,
+    heroImage3FileId: null,
+    heroImage4FileId: null,
+    heroImage5FileId: null,
     signImageFileId: null,
   });
   const [persistedLocationFileIds, setPersistedLocationFileIds] = useState<Record<LocationLandingFileIdField, string | null>>({
     heroBackgroundFileId: null,
     heroImageFileId: null,
+    heroImage2FileId: null,
+    heroImage3FileId: null,
+    heroImage4FileId: null,
+    heroImage5FileId: null,
     signImageFileId: null,
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -450,6 +564,10 @@ const PlatformBrands: React.FC = () => {
         logoDarkFileId: config?.branding?.logoDarkFileId || null,
         heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
         heroImageFileId: config?.branding?.heroImageFileId || null,
+        heroImage2FileId: config?.branding?.heroImage2FileId || null,
+        heroImage3FileId: config?.branding?.heroImage3FileId || null,
+        heroImage4FileId: config?.branding?.heroImage4FileId || null,
+        heroImage5FileId: config?.branding?.heroImage5FileId || null,
         signImageFileId: config?.branding?.signImageFileId || null,
       });
       setAdminOverview(admins || null);
@@ -473,6 +591,10 @@ const PlatformBrands: React.FC = () => {
         setPersistedLocationFileIds({
           heroBackgroundFileId: locationCfg?.branding?.heroBackgroundFileId || null,
           heroImageFileId: locationCfg?.branding?.heroImageFileId || null,
+          heroImage2FileId: locationCfg?.branding?.heroImage2FileId || null,
+          heroImage3FileId: locationCfg?.branding?.heroImage3FileId || null,
+          heroImage4FileId: locationCfg?.branding?.heroImage4FileId || null,
+          heroImage5FileId: locationCfg?.branding?.heroImage5FileId || null,
           signImageFileId: locationCfg?.branding?.signImageFileId || null,
         });
       } else {
@@ -480,6 +602,10 @@ const PlatformBrands: React.FC = () => {
         setPersistedLocationFileIds({
           heroBackgroundFileId: null,
           heroImageFileId: null,
+          heroImage2FileId: null,
+          heroImage3FileId: null,
+          heroImage4FileId: null,
+          heroImage5FileId: null,
           signImageFileId: null,
         });
       }
@@ -542,6 +668,10 @@ const PlatformBrands: React.FC = () => {
       setPersistedLocationFileIds({
         heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
         heroImageFileId: config?.branding?.heroImageFileId || null,
+        heroImage2FileId: config?.branding?.heroImage2FileId || null,
+        heroImage3FileId: config?.branding?.heroImage3FileId || null,
+        heroImage4FileId: config?.branding?.heroImage4FileId || null,
+        heroImage5FileId: config?.branding?.heroImage5FileId || null,
         signImageFileId: config?.branding?.signImageFileId || null,
       });
     };
@@ -699,7 +829,13 @@ const PlatformBrands: React.FC = () => {
     setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
     items: Array<{ key: LandingSectionKey; enabled: boolean }>,
   ) => {
-    setConfig((prev) => updateNestedValue(prev, ['landing'], buildLandingConfigValue(items)));
+    setConfig((prev) => {
+      const currentLanding =
+        prev?.landing && typeof prev.landing === 'object' && !Array.isArray(prev.landing)
+          ? prev.landing
+          : {};
+      return updateNestedValue(prev, ['landing'], { ...currentLanding, ...buildLandingConfigValue(items) });
+    });
   };
 
   const handleLandingDragStart = (
@@ -763,9 +899,227 @@ const PlatformBrands: React.FC = () => {
     setDraggingLandingScope(null);
   };
 
+  const getPresentationSections = (config: Record<string, any>) =>
+    normalizePresentationSections(config?.landing?.presentation?.sections);
+
+  const updatePresentationSections = (
+    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    sections: Array<Record<string, any>>,
+  ) => {
+    setConfig((prev) => updateNestedValue(prev, ['landing', 'presentation', 'sections'], sections));
+  };
+
+  const handlePresentationImageUpload = async (
+    scope: 'brand' | 'location',
+    index: number,
+    file: File | null,
+  ) => {
+    if (!file || !user?.id || !selectedBrand) return;
+    if (scope === 'location' && !selectedLocationId) return;
+    const uploadingKey = `${scope}-${index}`;
+    setUploadingPresentation(uploadingKey);
+    try {
+      const fileName = `${scope}-presentation-${index + 1}-${selectedBrand.subdomain || selectedBrand.id}-${Date.now()}`;
+      const folder = scope === 'location' ? (locationConfig?.imagekit?.folder || 'landing') : 'landing';
+      const { url, fileId } = await uploadToImageKit(file, fileName, folder, {
+        subdomainOverride: selectedBrand.subdomain,
+      });
+      const config = scope === 'location' ? locationConfig : brandConfig;
+      const sections = getPresentationSections(config);
+      const previousFileId = sections[index]?.imageFileId as string | undefined;
+      sections[index] = {
+        ...sections[index],
+        imageUrl: url,
+        imageFileId: fileId,
+      };
+      if (scope === 'location') {
+        updatePresentationSections(setLocationConfig, sections);
+      } else {
+        updatePresentationSections(setBrandConfig, sections);
+      }
+      if (previousFileId && previousFileId !== fileId) {
+        try {
+          await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
+        } catch (cleanupError) {
+          console.error(cleanupError);
+          toast({
+            title: 'Aviso',
+            description: 'No se pudo borrar la imagen anterior en storage.',
+            variant: 'destructive',
+          });
+        }
+      }
+      toast({ title: 'Imagen subida', description: 'Guarda los cambios para aplicarla.' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo subir la imagen.', variant: 'destructive' });
+    } finally {
+      setUploadingPresentation(null);
+    }
+  };
+
+  const handlePresentationImageRemove = async (scope: 'brand' | 'location', index: number) => {
+    if (!selectedBrand) return;
+    const config = scope === 'location' ? locationConfig : brandConfig;
+    const sections = getPresentationSections(config);
+    const previousFileId = sections[index]?.imageFileId as string | undefined;
+    sections[index] = {
+      ...sections[index],
+      imageUrl: '',
+      imageFileId: '',
+    };
+    if (scope === 'location') {
+      updatePresentationSections(setLocationConfig, sections);
+    } else {
+      updatePresentationSections(setBrandConfig, sections);
+    }
+    if (previousFileId) {
+      try {
+        await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
+      } catch (cleanupError) {
+        console.error(cleanupError);
+        toast({
+          title: 'Aviso',
+          description: 'No se pudo borrar la imagen anterior en storage.',
+          variant: 'destructive',
+        });
+      }
+    }
+    toast({ title: 'Imagen eliminada', description: 'Guarda los cambios para aplicar.' });
+  };
+
+  const renderPresentationEditor = (scope: 'brand' | 'location', disabled: boolean) => {
+    const isLocationScope = scope === 'location';
+    const config = isLocationScope ? locationConfig : brandConfig;
+    const displayConfig = isLocationScope && disabled ? brandConfig : config;
+    const sections = getPresentationSections(displayConfig);
+    const updateSection = (index: number, updates: Record<string, any>) => {
+      const next = sections.map((section, idx) => (idx === index ? { ...section, ...updates } : section));
+      if (isLocationScope) {
+        updatePresentationSections(setLocationConfig, next);
+      } else {
+        updatePresentationSections(setBrandConfig, next);
+      }
+    };
+    return (
+      <div className="space-y-4">
+        {sections.map((section, index) => {
+          const isSecond = index === 1;
+          const isEnabled = isSecond ? section.enabled : true;
+          const fieldsDisabled = disabled || (isSecond && !section.enabled);
+          const uploadingKey = `${scope}-${index}`;
+          return (
+            <div key={`${scope}-presentation-${index}`} className="rounded-2xl border border-border/60 bg-muted/10 p-4 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {isSecond ? 'Sección 2 (opcional)' : 'Sección 1'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {isSecond
+                      ? 'Añade un segundo bloque para ampliar la presentación.'
+                      : 'Bloque principal para presentar el negocio.'}
+                  </p>
+                </div>
+                {isSecond && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Mostrar</span>
+                    <Switch
+                      checked={section.enabled}
+                      disabled={disabled}
+                      onCheckedChange={(checked) => updateSection(index, { enabled: checked })}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className={`grid gap-4 md:grid-cols-2 ${fieldsDisabled ? 'opacity-60' : ''}`}>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Título (opcional)</Label>
+                  <Input
+                    value={section.title}
+                    disabled={fieldsDisabled}
+                    onChange={(event) => updateSection(index, { title: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Texto</Label>
+                  <Textarea
+                    value={section.body}
+                    disabled={fieldsDisabled}
+                    onChange={(event) => updateSection(index, { body: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Posición de la imagen</Label>
+                  <Select
+                    value={section.imagePosition}
+                    onValueChange={(value) => updateSection(index, { imagePosition: value })}
+                    disabled={fieldsDisabled}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona posición" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRESENTATION_POSITION_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Foto</Label>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="h-28 w-40 rounded-xl border border-border/60 bg-muted/40 flex items-center justify-center overflow-hidden">
+                      {section.imageUrl ? (
+                        <img src={section.imageUrl} alt="Presentación" className="h-full w-full object-cover" />
+                      ) : (
+                        <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        disabled={fieldsDisabled || uploadingPresentation !== null}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] || null;
+                          event.target.value = '';
+                          if (!fieldsDisabled) handlePresentationImageUpload(scope, index, file);
+                        }}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={fieldsDisabled || !section.imageUrl || uploadingPresentation !== null}
+                          onClick={() => handlePresentationImageRemove(scope, index)}
+                        >
+                          Quitar imagen
+                        </Button>
+                        {uploadingPresentation === uploadingKey && (
+                          <span className="text-xs text-muted-foreground self-center">Subiendo...</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const handleLocationLandingOverride = (checked: boolean) => {
     if (checked) {
-      updateLandingConfig(setLocationConfig, brandLandingItems);
+      const baseLanding =
+        brandConfig?.landing && typeof brandConfig.landing === 'object' && !Array.isArray(brandConfig.landing)
+          ? brandConfig.landing
+          : {};
+      const nextLanding = { ...baseLanding, ...buildLandingConfigValue(brandLandingItems) };
+      setLocationConfig((prev) => updateNestedValue(prev, ['landing'], nextLanding));
       return;
     }
     setLocationConfig((prev) => {
@@ -784,6 +1138,14 @@ const PlatformBrands: React.FC = () => {
           heroBackgroundFileId: baseBranding.heroBackgroundFileId || '',
           heroImageUrl: baseBranding.heroImageUrl || '',
           heroImageFileId: baseBranding.heroImageFileId || '',
+          heroImage2Url: baseBranding.heroImage2Url || '',
+          heroImage2FileId: baseBranding.heroImage2FileId || '',
+          heroImage3Url: baseBranding.heroImage3Url || '',
+          heroImage3FileId: baseBranding.heroImage3FileId || '',
+          heroImage4Url: baseBranding.heroImage4Url || '',
+          heroImage4FileId: baseBranding.heroImage4FileId || '',
+          heroImage5Url: baseBranding.heroImage5Url || '',
+          heroImage5FileId: baseBranding.heroImage5FileId || '',
           heroBackgroundDimmed: baseBranding.heroBackgroundDimmed ?? true,
           heroBackgroundOpacity: baseBranding.heroBackgroundOpacity ?? 90,
           heroBadgeEnabled: baseBranding.heroBadgeEnabled ?? true,
@@ -891,6 +1253,10 @@ const PlatformBrands: React.FC = () => {
         const currentLocationFileIds = {
           heroBackgroundFileId: locationConfig?.branding?.heroBackgroundFileId || null,
           heroImageFileId: locationConfig?.branding?.heroImageFileId || null,
+          heroImage2FileId: locationConfig?.branding?.heroImage2FileId || null,
+          heroImage3FileId: locationConfig?.branding?.heroImage3FileId || null,
+          heroImage4FileId: locationConfig?.branding?.heroImage4FileId || null,
+          heroImage5FileId: locationConfig?.branding?.heroImage5FileId || null,
           signImageFileId: locationConfig?.branding?.signImageFileId || null,
         };
         await Promise.all(
@@ -2104,8 +2470,21 @@ const PlatformBrands: React.FC = () => {
                           <div className="grid gap-4">
                             {renderBrandAssetInput('heroBackground')}
                             {renderBrandAssetInput('heroImage')}
+                            {renderBrandAssetInput('heroImage2')}
+                            {renderBrandAssetInput('heroImage3')}
+                            {renderBrandAssetInput('heroImage4')}
+                            {renderBrandAssetInput('heroImage5')}
                             {renderBrandAssetInput('signImage')}
                           </div>
+                        </div>
+                        <div className="pt-4 border-t border-border/60 space-y-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-widest text-muted-foreground">Presentación del negocio</p>
+                            <p className="text-xs text-muted-foreground">
+                              Dos bloques con foto y texto. La segunda sección es opcional.
+                            </p>
+                          </div>
+                          {renderPresentationEditor('brand', false)}
                         </div>
                       </div>
                     </CardContent>
@@ -2359,11 +2738,41 @@ const PlatformBrands: React.FC = () => {
                                     disabled: !isLocationBrandingOverride,
                                     inheritedLabel: 'Hereda marca',
                                   })}
+                                  {renderLocationAssetInput('heroImage2', {
+                                    disabled: !isLocationBrandingOverride,
+                                    inheritedLabel: 'Hereda marca',
+                                  })}
+                                  {renderLocationAssetInput('heroImage3', {
+                                    disabled: !isLocationBrandingOverride,
+                                    inheritedLabel: 'Hereda marca',
+                                  })}
+                                  {renderLocationAssetInput('heroImage4', {
+                                    disabled: !isLocationBrandingOverride,
+                                    inheritedLabel: 'Hereda marca',
+                                  })}
+                                  {renderLocationAssetInput('heroImage5', {
+                                    disabled: !isLocationBrandingOverride,
+                                    inheritedLabel: 'Hereda marca',
+                                  })}
                                   {renderLocationAssetInput('signImage', {
                                     disabled: !isLocationBrandingOverride,
                                     inheritedLabel: 'Hereda marca',
                                   })}
                                 </div>
+                              </div>
+                              <div className="pt-4 border-t border-border/60 space-y-4">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-xs uppercase tracking-widest text-muted-foreground">Presentación del negocio</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Personaliza los bloques de presentación para este local.
+                                    </p>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {isLocationLandingOverride ? 'Editando local' : 'Hereda marca'}
+                                  </span>
+                                </div>
+                                {renderPresentationEditor('location', !isLocationLandingOverride)}
                               </div>
                             </div>
                           </>
