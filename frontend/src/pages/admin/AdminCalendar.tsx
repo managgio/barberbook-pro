@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
+import { getAdminStripeConfig, getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, PaymentMethod, Service, User } from '@/data/types';
 import { 
   ChevronLeft, 
@@ -70,6 +70,7 @@ const AdminCalendar: React.FC = () => {
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
 
   const getProductsTotal = (appointment: Appointment) =>
     appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0;
@@ -95,6 +96,24 @@ const AdminCalendar: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    let active = true;
+    const loadStripeConfig = async () => {
+      try {
+        const data = await getAdminStripeConfig();
+        if (active) {
+          setStripeEnabled(Boolean(data?.brandEnabled && data?.platformEnabled && data?.localEnabled));
+        }
+      } catch {
+        if (active) setStripeEnabled(false);
+      }
+    };
+    loadStripeConfig();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -555,7 +574,12 @@ const AdminCalendar: React.FC = () => {
                       <SelectItem value="cash">Efectivo</SelectItem>
                       <SelectItem value="card">Tarjeta</SelectItem>
                       <SelectItem value="bizum">Bizum</SelectItem>
-                      <SelectItem value="stripe">Stripe</SelectItem>
+                      {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
+                      {!stripeEnabled && paymentMethodDraft === 'stripe' && (
+                        <SelectItem value="stripe" disabled>
+                          Stripe
+                        </SelectItem>
+                      )}
                       <SelectItem value="none">Sin método</SelectItem>
                     </SelectContent>
                   </Select>

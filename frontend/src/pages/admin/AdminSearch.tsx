@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
+import { getAdminStripeConfig, getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
 import { Appointment, Barber, PaymentMethod, Service, User } from '@/data/types';
 import { Search, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -45,6 +45,7 @@ const AdminSearch: React.FC = () => {
   const [savingPayment, setSavingPayment] = useState<Record<string, boolean>>({});
   const [savingPrice, setSavingPrice] = useState<Record<string, boolean>>({});
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
 
   const loadData = useCallback(async (withLoading = true) => {
     if (withLoading) setIsLoading(true);
@@ -67,6 +68,24 @@ const AdminSearch: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    let active = true;
+    const loadStripeConfig = async () => {
+      try {
+        const data = await getAdminStripeConfig();
+        if (active) {
+          setStripeEnabled(Boolean(data?.brandEnabled && data?.platformEnabled && data?.localEnabled));
+        }
+      } catch {
+        if (active) setStripeEnabled(false);
+      }
+    };
+    loadStripeConfig();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -369,7 +388,12 @@ const AdminSearch: React.FC = () => {
                               <SelectItem value="cash">Efectivo</SelectItem>
                               <SelectItem value="card">Tarjeta</SelectItem>
                               <SelectItem value="bizum">Bizum</SelectItem>
-                              <SelectItem value="stripe">Stripe</SelectItem>
+                              {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
+                              {!stripeEnabled && (paymentMethodDrafts[apt.id] ?? apt.paymentMethod) === 'stripe' && (
+                                <SelectItem value="stripe" disabled>
+                                  Stripe
+                                </SelectItem>
+                              )}
                               <SelectItem value="none">Sin método</SelectItem>
                             </SelectContent>
                           </Select>

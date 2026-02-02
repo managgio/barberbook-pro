@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { createClientNote, deleteClientNote, getAppointments, getBarbers, getClientNotes, getServices, getUsers, updateAppointment, updateUserBlockStatus } from '@/data/api';
+import { createClientNote, deleteClientNote, getAdminStripeConfig, getAppointments, getBarbers, getClientNotes, getServices, getUsers, updateAppointment, updateUserBlockStatus } from '@/data/api';
 import { Appointment, Barber, ClientNote, PaymentMethod, Service, User } from '@/data/types';
 import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { format, parseISO, subMonths, isAfter } from 'date-fns';
@@ -49,6 +49,7 @@ const AdminClients: React.FC = () => {
   const [savingPayment, setSavingPayment] = useState<Record<string, boolean>>({});
   const [savingPrice, setSavingPrice] = useState<Record<string, boolean>>({});
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
 
   const loadData = useCallback(async (withLoading = true) => {
     if (withLoading) setIsLoading(true);
@@ -71,6 +72,24 @@ const AdminClients: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    let active = true;
+    const loadStripeConfig = async () => {
+      try {
+        const data = await getAdminStripeConfig();
+        if (active) {
+          setStripeEnabled(Boolean(data?.brandEnabled && data?.platformEnabled && data?.localEnabled));
+        }
+      } catch {
+        if (active) setStripeEnabled(false);
+      }
+    };
+    loadStripeConfig();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -683,7 +702,12 @@ const AdminClients: React.FC = () => {
                                   <SelectItem value="cash">Efectivo</SelectItem>
                                   <SelectItem value="card">Tarjeta</SelectItem>
                                   <SelectItem value="bizum">Bizum</SelectItem>
-                                  <SelectItem value="stripe">Stripe</SelectItem>
+                                  {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
+                                  {!stripeEnabled && (paymentMethodDrafts[apt.id] ?? apt.paymentMethod) === 'stripe' && (
+                                    <SelectItem value="stripe" disabled>
+                                      Stripe
+                                    </SelectItem>
+                                  )}
                                   <SelectItem value="none">Sin método</SelectItem>
                                 </SelectContent>
                               </Select>

@@ -464,7 +464,7 @@ const AdminCashRegister: React.FC = () => {
         </Card>
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Neto estimado</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Neto del local</CardTitle>
             <BadgeDollarSign className="w-4 h-4 text-indigo-500 md:w-5 md:h-5 lg:w-6 lg:h-6" />
           </CardHeader>
           <CardContent>
@@ -553,6 +553,11 @@ const AdminCashRegister: React.FC = () => {
                 return (
                   <div key={key} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: METHOD_COLORS[key] }}
+                        aria-hidden="true"
+                      />
                       <Icon className="w-4 h-4" />
                       {methodLabels[key]}
                     </div>
