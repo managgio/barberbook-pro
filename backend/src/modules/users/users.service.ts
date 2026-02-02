@@ -43,6 +43,32 @@ export class UsersService {
     return data;
   }
 
+  private async getBrandSuperAdminEmail(): Promise<string> {
+    const brandConfig = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
+    return (brandConfig.superAdminEmail || SUPER_ADMIN_EMAIL).toLowerCase();
+  }
+
+  private mapUserWithAccess(
+    user: User,
+    options: { adminRoleId?: string | null; isLocalAdmin?: boolean; isBlocked?: boolean },
+    brandSuperAdminEmail: string,
+  ) {
+    const email = user.email?.toLowerCase() || '';
+    const isBrandSuperAdmin = email === brandSuperAdminEmail;
+    const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(email);
+    const mapped = mapUser(user, {
+      adminRoleId: options.adminRoleId,
+      isLocalAdmin: options.isLocalAdmin,
+      isBlocked: options.isBlocked,
+      isPlatformAdmin,
+    });
+    return {
+      ...mapped,
+      isSuperAdmin: mapped.isSuperAdmin || isBrandSuperAdmin,
+      isPlatformAdmin: mapped.isPlatformAdmin || isPlatformAdmin,
+    };
+  }
+
   private mapPrefs(data: Partial<CreateUserDto | UpdateUserDto>, useDefaults = false) {
     return {
       notificationEmail: data.notificationEmail ?? (useDefaults ? true : undefined),
@@ -119,6 +145,7 @@ export class UsersService {
   async findAll() {
     const brandId = getCurrentBrandId();
     const localId = getCurrentLocalId();
+    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
     const users = await this.prisma.user.findMany({
       where: { brandMemberships: { some: { brandId } } },
       include: {
@@ -135,17 +162,22 @@ export class UsersService {
       },
     });
     return users.map((user) =>
-      mapUser(user, {
-        adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-        isLocalAdmin: user.localStaffRoles.length > 0,
-        isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-      }),
+      this.mapUserWithAccess(
+        user,
+        {
+          adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+          isLocalAdmin: user.localStaffRoles.length > 0,
+          isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
+        },
+        brandSuperAdminEmail,
+      ),
     );
   }
 
   async findOne(id: string) {
     const brandId = getCurrentBrandId();
     const localId = getCurrentLocalId();
+    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
     const user = await this.prisma.user.findFirst({
       where: { id, brandMemberships: { some: { brandId } } },
       include: {
@@ -162,16 +194,21 @@ export class UsersService {
       },
     });
     if (!user) throw new NotFoundException('User not found');
-    return mapUser(user, {
-      adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-      isLocalAdmin: user.localStaffRoles.length > 0,
-      isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-    });
+    return this.mapUserWithAccess(
+      user,
+      {
+        adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+        isLocalAdmin: user.localStaffRoles.length > 0,
+        isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
+      },
+      brandSuperAdminEmail,
+    );
   }
 
   async findByEmail(email: string) {
     const brandId = getCurrentBrandId();
     const localId = getCurrentLocalId();
+    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
     const user = await this.prisma.user.findFirst({
       where: { email: email.toLowerCase(), brandMemberships: { some: { brandId } } },
       include: {
@@ -191,17 +228,22 @@ export class UsersService {
       throw new ForbiddenException('Usuario bloqueado');
     }
     return user
-      ? mapUser(user, {
-          adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-          isLocalAdmin: user.localStaffRoles.length > 0,
-          isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-        })
+      ? this.mapUserWithAccess(
+          user,
+          {
+            adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+            isLocalAdmin: user.localStaffRoles.length > 0,
+            isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
+          },
+          brandSuperAdminEmail,
+        )
       : null;
   }
 
   async findByFirebaseUid(firebaseUid: string) {
     const brandId = getCurrentBrandId();
     const localId = getCurrentLocalId();
+    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
     const user = await this.prisma.user.findFirst({
       where: { firebaseUid, brandMemberships: { some: { brandId } } },
       include: {
@@ -221,11 +263,15 @@ export class UsersService {
       throw new ForbiddenException('Usuario bloqueado');
     }
     return user
-      ? mapUser(user, {
-          adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-          isLocalAdmin: user.localStaffRoles.length > 0,
-          isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-        })
+      ? this.mapUserWithAccess(
+          user,
+          {
+            adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
+            isLocalAdmin: user.localStaffRoles.length > 0,
+            isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
+          },
+          brandSuperAdminEmail,
+        )
       : null;
   }
 
