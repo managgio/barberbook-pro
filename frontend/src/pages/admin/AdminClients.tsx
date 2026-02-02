@@ -48,7 +48,7 @@ const AdminClients: React.FC = () => {
       const [appts, barbersData, servicesData, usersData] = await Promise.all([
         getAppointments(),
         getBarbers(),
-        getServices(),
+        getServices({ includeArchived: true }),
         getUsers(),
       ]);
       setAppointments(appts);

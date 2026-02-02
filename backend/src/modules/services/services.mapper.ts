@@ -13,6 +13,7 @@ export const mapService = (service: ServiceWithCategory, pricing?: ReturnType<ty
     price,
     finalPrice,
     duration: service.duration,
+    isArchived: service.isArchived,
     categoryId: service.categoryId,
     category: service.category
       ? {

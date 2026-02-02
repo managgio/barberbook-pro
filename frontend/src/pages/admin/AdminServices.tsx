@@ -306,6 +306,12 @@ const AdminServices: React.FC = () => {
           ? `Los clientes verán los servicios agrupados por categoría.${pendingNotice ? ` ${pendingNotice}` : ''}`
           : 'Los servicios se mostrarán en lista simple.',
       });
+      if (enabled && uncategorizedServices.length > 0) {
+        toast({
+          title: 'Asigna las categorías pendientes',
+          description: 'Puedes crear categorías y asignarlas a los servicios sin categoría.',
+        });
+      }
     } catch (error: any) {
       toast({
         title: 'No se pudo actualizar',

@@ -358,6 +358,7 @@ model Service {
   description String
   price       Decimal       @db.Decimal(10, 2)
   duration    Int
+  isArchived  Boolean       @default(false)
   categoryId  String?
   category    ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   appointments Appointment[]

@@ -46,17 +46,6 @@ export class SettingsService {
     const normalized = normalizeSettings(settings);
     normalized.products.enabled = await this.resolveProductsEnabled();
 
-    if (normalized.services.categoriesEnabled) {
-      const uncategorized = await this.prisma.service.count({
-        where: { categoryId: null, localId },
-      });
-      if (uncategorized > 0) {
-        throw new BadRequestException(
-          'Asigna una categoría a todos los servicios antes de activar la categorización.',
-        );
-      }
-    }
-
     if (normalized.products.categoriesEnabled) {
       const uncategorizedProducts = await this.prisma.product.count({
         where: { categoryId: null, localId },

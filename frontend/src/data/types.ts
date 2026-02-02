@@ -134,6 +134,7 @@ export interface Service {
   price: number;
   finalPrice?: number;
   duration: number; // Minutes
+  isArchived?: boolean;
   categoryId?: string | null;
   category?: ServiceCategory | null;
   appliedOffer?: AppliedOffer | null;

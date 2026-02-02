@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
 import { BreakRange, DayKey, ShopSchedule, SiteSettings } from '@/data/types';
-import { getServices, getShopSchedule, getSiteSettings, updateShopSchedule, updateSiteSettings, getAdminStripeConfig, updateAdminStripeConfig, createAdminStripeConnect } from '@/data/api';
+import { getShopSchedule, getSiteSettings, updateShopSchedule, updateSiteSettings, getAdminStripeConfig, updateAdminStripeConfig, createAdminStripeConnect } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
@@ -164,19 +164,6 @@ const AdminSettings: React.FC = () => {
     fromSchedule ? setIsSavingSchedule(true) : setIsSaving(true);
     try {
       const payload = buildSettingsPayload(settings);
-      if (payload.services.categoriesEnabled) {
-        const servicesData = await getServices();
-        const missingCategory = servicesData.filter((service) => !service.categoryId);
-        if (missingCategory.length > 0) {
-          toast({
-            title: 'No se pudo guardar',
-            description: 'Asigna una categoría a todos los servicios o desactiva la categorización.',
-            variant: 'destructive',
-          });
-          return;
-        }
-      }
-
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
       setPhoneParts(normalizePhoneParts(updated.contact.phone));
