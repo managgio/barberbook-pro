@@ -52,7 +52,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 bg-sidebar border-r border-sidebar-border flex flex-col z-40 w-64 transform transition-all duration-300',
+        'fixed inset-y-0 left-0 h-[100dvh] bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden z-40 w-64 transform transition-all duration-300',
         collapsed ? '-translate-x-full md:translate-x-0 md:w-20' : 'translate-x-0 md:w-64'
       )}
     >
@@ -95,7 +95,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
       )}
 
       {/* Navigation */}
-      <nav className={cn('flex-1 p-4 space-y-1 overflow-y-auto overflow-x-visible', collapsed && 'px-2')}>
+      <nav className={cn('flex-1 min-h-0 p-4 space-y-1 overflow-y-auto overflow-x-visible', collapsed && 'px-2')}>
         {isLoading && !user?.isSuperAdmin && !user?.isPlatformAdmin && (
           <p className="text-xs text-muted-foreground px-2">Cargando accesos...</p>
         )}

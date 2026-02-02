@@ -997,9 +997,9 @@ const AdminDashboard: React.FC = () => {
             </p>
           </CardHeader>
           <CardContent className="h-[320px] min-w-0 overflow-hidden">
-            <div className="h-full w-full min-w-0 overflow-x-auto overflow-y-auto">
-              <div className="min-w-auto space-y-2">
-                <div className="grid grid-cols-[44px_repeat(7,minmax(48px,1fr))] gap-2 text-xs text-muted-foreground">
+            <div className="h-full w-full min-w-0 overflow-x-hidden overflow-y-auto">
+              <div className="min-w-0 space-y-2">
+                <div className="grid grid-cols-[44px_repeat(7,minmax(0,1fr))] gap-1 sm:gap-2 text-[11px] sm:text-xs text-muted-foreground">
                   <div />
                   {weekdayLabels.map((label) => (
                     <div key={label} className="text-center">
@@ -1009,8 +1009,8 @@ const AdminDashboard: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   {occupancyHours.map((hour, rowIndex) => (
-                    <div key={hour} className="grid grid-cols-[44px_repeat(7,minmax(48px,1fr))] gap-2 items-center">
-                      <span className="text-xs text-muted-foreground tabular-nums">
+                    <div key={hour} className="grid grid-cols-[44px_repeat(7,minmax(0,1fr))] gap-1 sm:gap-2 items-center">
+                      <span className="text-[11px] sm:text-xs text-muted-foreground tabular-nums">
                         {hour.toString().padStart(2, '0')}:00
                       </span>
                       {weekDays.map((day, colIndex) => {
