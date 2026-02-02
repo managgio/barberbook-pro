@@ -21,6 +21,15 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
   const location = useLocation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const shouldCollapseOnNavigate = () => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(max-width: 767px)').matches;
+  };
+  const handleNavClick = () => {
+    if (!collapsed && shouldCollapseOnNavigate()) {
+      onToggle();
+    }
+  };
 
   const isActive = (path: string) => {
     if (path === '/platform') return location.pathname === '/platform';
@@ -35,7 +44,11 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
       )}
     >
       <div className={cn('border-b border-sidebar-border relative', collapsed ? 'p-4' : 'p-5')}>
-        <Link to="/platform" className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
+        <Link
+          to="/platform"
+          onClick={handleNavClick}
+          className={cn('flex items-center gap-3', collapsed && 'justify-center')}
+        >
           <div className="w-11 h-11 rounded-xl flex items-center justify-center">
             <img src={managgioLogo} alt="Managgio logo" className="w-10 h-10 object-contain" />
           </div>
@@ -66,6 +79,7 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
             <Link
               key={item.href}
               to={item.href}
+              onClick={handleNavClick}
               className={cn(
                 'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 isActive(item.href)
