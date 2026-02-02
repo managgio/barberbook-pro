@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { createClientNote, deleteClientNote, getAppointments, getBarbers, getClientNotes, getServices, getUsers, updateAppointment, updateUserBlockStatus } from '@/data/api';
-import { Appointment, Barber, ClientNote, Service, User } from '@/data/types';
+import { Appointment, Barber, ClientNote, PaymentMethod, Service, User } from '@/data/types';
 import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { format, parseISO, subMonths, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -19,6 +20,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+
+const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 
 const AdminClients: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -41,6 +44,11 @@ const AdminClients: React.FC = () => {
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
+  const [paymentMethodDrafts, setPaymentMethodDrafts] = useState<Record<string, PaymentMethod | 'none'>>({});
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [savingPayment, setSavingPayment] = useState<Record<string, boolean>>({});
+  const [savingPrice, setSavingPrice] = useState<Record<string, boolean>>({});
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
 
   const loadData = useCallback(async (withLoading = true) => {
     if (withLoading) setIsLoading(true);
@@ -142,6 +150,117 @@ const AdminClients: React.FC = () => {
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
+
+  const applyAppointmentUpdate = useCallback((updated: Appointment) => {
+    setAppointments((prev) =>
+      prev.map((appointment) => (appointment.id === updated.id ? updated : appointment)),
+    );
+    setPaymentMethodDrafts((prev) => ({
+      ...prev,
+      [updated.id]: updated.paymentMethod ?? 'none',
+    }));
+    setPriceDrafts((prev) => ({
+      ...prev,
+      [updated.id]: formatPriceInput(updated.price ?? 0),
+    }));
+    dispatchAppointmentsUpdated({ source: 'admin-clients' });
+  }, []);
+
+  useEffect(() => {
+    if (appointments.length === 0) return;
+    setPaymentMethodDrafts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      appointments.forEach((apt) => {
+        if (savingPayment[apt.id]) return;
+        const nextValue = apt.paymentMethod ?? 'none';
+        if (next[apt.id] !== nextValue) {
+          next[apt.id] = nextValue;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setPriceDrafts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      appointments.forEach((apt) => {
+        if (editingPriceId === apt.id || savingPrice[apt.id]) return;
+        const nextValue = formatPriceInput(apt.price ?? 0);
+        if (next[apt.id] !== nextValue) {
+          next[apt.id] = nextValue;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [appointments, editingPriceId, savingPayment, savingPrice]);
+
+  const handlePaymentMethodChange = async (appointment: Appointment, value: string) => {
+    if (savingPayment[appointment.id]) return;
+    setPaymentMethodDrafts((prev) => ({
+      ...prev,
+      [appointment.id]: value as PaymentMethod | 'none',
+    }));
+    setSavingPayment((prev) => ({ ...prev, [appointment.id]: true }));
+    try {
+      const updated = await updateAppointment(appointment.id, {
+        paymentMethod: value === 'none' ? null : (value as PaymentMethod),
+      });
+      applyAppointmentUpdate(updated);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el método de pago.',
+        variant: 'destructive',
+      });
+      setPaymentMethodDrafts((prev) => ({
+        ...prev,
+        [appointment.id]: appointment.paymentMethod ?? 'none',
+      }));
+    } finally {
+      setSavingPayment((prev) => ({ ...prev, [appointment.id]: false }));
+    }
+  };
+
+  const commitPrice = async (appointment: Appointment) => {
+    if (savingPrice[appointment.id]) return;
+    const currentPrice = appointment.price ?? 0;
+    const rawValue = (priceDrafts[appointment.id] ?? formatPriceInput(currentPrice)).trim();
+    const normalized = rawValue.replace(',', '.');
+    if (!normalized) {
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+      return;
+    }
+    const parsed = Number(normalized);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      toast({
+        title: 'Precio inválido',
+        description: 'Introduce un importe válido para la cita.',
+        variant: 'destructive',
+      });
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+      return;
+    }
+    if (Math.abs(parsed - currentPrice) < 0.009) {
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+      return;
+    }
+    setSavingPrice((prev) => ({ ...prev, [appointment.id]: true }));
+    try {
+      const updated = await updateAppointment(appointment.id, { price: parsed });
+      applyAppointmentUpdate(updated);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el precio final.',
+        variant: 'destructive',
+      });
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+    } finally {
+      setSavingPrice((prev) => ({ ...prev, [appointment.id]: false }));
+    }
+  };
 
   useEffect(() => {
     if (!isNotesOpen || !selectedClient) return;
@@ -543,19 +662,66 @@ const AdminClients: React.FC = () => {
                                 {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: es })} · {getBarber(apt.barberId)?.name}
                               </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                               <AppointmentStatusPicker
                                 appointment={apt}
                                 serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
-                                onStatusUpdated={(updated) => {
-                                  setAppointments((prev) =>
-                                    prev.map((appointment) =>
-                                      appointment.id === updated.id ? updated : appointment,
-                                    ),
-                                  );
-                                  dispatchAppointmentsUpdated({ source: 'admin-clients' });
-                                }}
+                                onStatusUpdated={applyAppointmentUpdate}
                               />
+                              <Select
+                                value={paymentMethodDrafts[apt.id] ?? (apt.paymentMethod ?? 'none')}
+                                onValueChange={(value) => handlePaymentMethodChange(apt, value)}
+                                disabled={Boolean(savingPayment[apt.id])}
+                              >
+                                <SelectTrigger className="h-8 w-[120px] rounded-full bg-background/70 px-3 text-xs">
+                                  <SelectValue placeholder="Método de pago" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="cash">Efectivo</SelectItem>
+                                  <SelectItem value="card">Tarjeta</SelectItem>
+                                  <SelectItem value="bizum">Bizum</SelectItem>
+                                  <SelectItem value="stripe">Stripe</SelectItem>
+                                  <SelectItem value="none">Sin método</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {savingPayment[apt.id] && (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              )}
+                              <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1.5">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={priceDrafts[apt.id] ?? formatPriceInput(apt.price ?? 0)}
+                                  onFocus={(event) => {
+                                    setEditingPriceId(apt.id);
+                                    event.currentTarget.select();
+                                  }}
+                                  onBlur={() => {
+                                    setEditingPriceId(null);
+                                    void commitPrice(apt);
+                                  }}
+                                  onChange={(event) =>
+                                    setPriceDrafts((prev) => ({ ...prev, [apt.id]: event.target.value }))
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.currentTarget.blur();
+                                    }
+                                    if (event.key === 'Escape') {
+                                      setPriceDrafts((prev) => ({
+                                        ...prev,
+                                        [apt.id]: formatPriceInput(apt.price ?? 0),
+                                      }));
+                                      event.currentTarget.blur();
+                                    }
+                                  }}
+                                  className="w-[60px] bg-transparent text-center text-base font-semibold text-primary outline-none"
+                                  aria-label="Precio final"
+                                  disabled={Boolean(savingPrice[apt.id])}
+                                />
+                                <span className="text-xs font-semibold text-primary">€</span>
+                                {savingPrice[apt.id] && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                              </div>
                               <Button
                                 size="icon"
                                 variant="ghost"

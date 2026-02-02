@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { getAdminProducts, getProducts, getProductCategories, getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings, anonymizeAppointment } from '@/data/api';
-import { Appointment, AppointmentStatus, Barber, PaymentMethod, Product, ProductCategory, Service, ServiceCategory } from '@/data/types';
+import { Appointment, AppointmentStatus, Barber, Product, ProductCategory, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -44,7 +44,6 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [anonymizeOpen, setAnonymizeOpen] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
-  const [priceTouched, setPriceTouched] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
   const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
   const isAdminContext = context === 'admin';
@@ -56,8 +55,6 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     date: '',
     time: '',
     notes: '',
-    price: '',
-    paymentMethod: '' as '' | PaymentMethod,
     status: 'scheduled' as AppointmentStatus,
   });
 
@@ -93,14 +90,11 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         date: initialDate,
         time: initialTime,
         notes: appointment.notes || '',
-        price: appointment.price.toFixed(2),
-        paymentMethod: appointment.paymentMethod || '',
         status: appointment.status,
       });
       setSelectedProducts(
         appointment.products?.map((item) => ({ productId: item.productId, quantity: item.quantity })) ?? [],
       );
-      setPriceTouched(false);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo cargar la información.', variant: 'destructive' });
       onClose();
@@ -148,10 +142,6 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     [services, form.serviceId],
   );
 
-  const selectedServicePrice = useMemo(() => {
-    const service = selectableServices.find((item) => item.id === form.serviceId);
-    return service ? (service.finalPrice ?? service.price) : 0;
-  }, [form.serviceId, selectableServices]);
   const selectedProductsTotal = useMemo(() => {
     return selectedProducts.reduce((acc, item) => {
       const product = products.find((prod) => prod.id === item.productId);
@@ -184,12 +174,6 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       imageUrl: string | null;
     }>;
   }, [products, selectedProducts]);
-
-  useEffect(() => {
-    if (!isAdminContext || priceTouched) return;
-    const total = selectedServicePrice + selectedProductsTotal;
-    setForm((prev) => ({ ...prev, price: total.toFixed(2) }));
-  }, [isAdminContext, priceTouched, selectedProductsTotal, selectedServicePrice]);
 
   const slotGroups = useMemo(() => {
     const morning: string[] = [];
@@ -230,18 +214,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const canShowProducts = productsEnabled && (isAdminContext || clientPurchaseEnabled);
 
   const handleServiceChange = (value: string) => {
-    setForm((prev) => {
-      const nextForm = { ...prev, serviceId: value, time: '' };
-      if (!priceTouched) {
-        const nextService = selectableServices.find((service) => service.id === value);
-        const nextPrice = nextService?.finalPrice ?? nextService?.price;
-        if (nextPrice !== undefined) {
-          const total = nextPrice + selectedProductsTotal;
-          nextForm.price = total.toFixed(2);
-        }
-      }
-      return nextForm;
-    });
+    setForm((prev) => ({ ...prev, serviceId: value, time: '' }));
   };
 
   const handleSave = async () => {
@@ -249,16 +222,6 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     if (!form.serviceId || !form.barberId || !form.date || !form.time) {
       toast({ title: 'Campos incompletos', description: 'Selecciona servicio, barbero, fecha y hora.' });
       return;
-    }
-    let priceValue: number | null = null;
-    if (isAdminContext && priceTouched) {
-      const normalizedPrice = form.price.trim().replace(',', '.');
-      const parsedPrice = Number(normalizedPrice);
-      if (!normalizedPrice || Number.isNaN(parsedPrice) || parsedPrice < 0) {
-        toast({ title: 'Precio inválido', description: 'Introduce un importe válido para la cita.' });
-        return;
-      }
-      priceValue = parsedPrice;
     }
     setIsSaving(true);
     try {
@@ -269,13 +232,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         barberId: form.barberId,
         startDateTime: dateTime,
         ...(isAdminContext ? {} : { notes: form.notes.trim() }),
-        ...(isAdminContext
-          ? {
-              status: form.status,
-              ...(priceTouched ? { price: priceValue ?? undefined } : {}),
-              paymentMethod: form.paymentMethod || null,
-            }
-          : {}),
+        ...(isAdminContext ? { status: form.status } : {}),
         ...(productsPayload ? { products: productsPayload } : {}),
       });
       if (context === 'admin') {
@@ -537,51 +494,6 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                     La compra de productos no está disponible para clientes en este local.
                   </div>
                 )}
-              </div>
-            )}
-
-            {isAdminContext && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Precio final</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.price}
-                    onChange={(e) => {
-                      setPriceTouched(true);
-                      setForm((prev) => ({ ...prev, price: e.target.value }));
-                    }}
-                    placeholder="0.00"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Este importe es el que se usa en caja registradora.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Método de pago</Label>
-                  <Select
-                    value={form.paymentMethod || 'none'}
-                    onValueChange={(value) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        paymentMethod: value === 'none' ? '' : (value as PaymentMethod),
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un método" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Efectivo</SelectItem>
-                      <SelectItem value="card">Tarjeta</SelectItem>
-                      <SelectItem value="bizum">Bizum</SelectItem>
-                      <SelectItem value="stripe">Stripe</SelectItem>
-                      <SelectItem value="none">Sin método</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             )}
 

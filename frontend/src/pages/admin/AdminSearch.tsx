@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
-import { Appointment, Barber, Service, User } from '@/data/types';
-import { Search, Calendar, Clock, Pencil, Trash2 } from 'lucide-react';
+import { Appointment, Barber, PaymentMethod, Service, User } from '@/data/types';
+import { Search, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
@@ -19,8 +19,11 @@ import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 
+const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
+
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
+  const DATE_STORAGE_KEY = 'managgio.adminSearchDate';
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -28,12 +31,20 @@ const AdminSearch: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(DATE_STORAGE_KEY) ?? '';
+  });
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [paymentMethodDrafts, setPaymentMethodDrafts] = useState<Record<string, PaymentMethod | 'none'>>({});
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [savingPayment, setSavingPayment] = useState<Record<string, boolean>>({});
+  const [savingPrice, setSavingPrice] = useState<Record<string, boolean>>({});
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
 
   const loadData = useCallback(async (withLoading = true) => {
     if (withLoading) setIsLoading(true);
@@ -87,6 +98,45 @@ const AdminSearch: React.FC = () => {
     setFilteredAppointments(filtered);
   }, [appointments, selectedBarberId, selectedDate]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (selectedDate) {
+      window.localStorage.setItem(DATE_STORAGE_KEY, selectedDate);
+    } else {
+      window.localStorage.removeItem(DATE_STORAGE_KEY);
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (appointments.length === 0) return;
+    setPaymentMethodDrafts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      appointments.forEach((apt) => {
+        if (savingPayment[apt.id]) return;
+        const nextValue = apt.paymentMethod ?? 'none';
+        if (next[apt.id] !== nextValue) {
+          next[apt.id] = nextValue;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setPriceDrafts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      appointments.forEach((apt) => {
+        if (editingPriceId === apt.id || savingPrice[apt.id]) return;
+        const nextValue = formatPriceInput(apt.price ?? 0);
+        if (next[apt.id] !== nextValue) {
+          next[apt.id] = nextValue;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [appointments, editingPriceId, savingPayment, savingPrice]);
+
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
   const getClientInfo = (appointment: Appointment) => {
@@ -101,6 +151,87 @@ const AdminSearch: React.FC = () => {
   const clearFilters = () => {
     setSelectedBarberId('all');
     setSelectedDate('');
+  };
+
+  const applyAppointmentUpdate = useCallback((updated: Appointment) => {
+    setAppointments((prev) =>
+      prev.map((appointment) => (appointment.id === updated.id ? updated : appointment)),
+    );
+    setPaymentMethodDrafts((prev) => ({
+      ...prev,
+      [updated.id]: updated.paymentMethod ?? 'none',
+    }));
+    setPriceDrafts((prev) => ({
+      ...prev,
+      [updated.id]: formatPriceInput(updated.price ?? 0),
+    }));
+    dispatchAppointmentsUpdated({ source: 'admin-search' });
+  }, []);
+
+  const handlePaymentMethodChange = async (appointment: Appointment, value: string) => {
+    if (savingPayment[appointment.id]) return;
+    setPaymentMethodDrafts((prev) => ({
+      ...prev,
+      [appointment.id]: value as PaymentMethod | 'none',
+    }));
+    setSavingPayment((prev) => ({ ...prev, [appointment.id]: true }));
+    try {
+      const updated = await updateAppointment(appointment.id, {
+        paymentMethod: value === 'none' ? null : (value as PaymentMethod),
+      });
+      applyAppointmentUpdate(updated);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el método de pago.',
+        variant: 'destructive',
+      });
+      setPaymentMethodDrafts((prev) => ({
+        ...prev,
+        [appointment.id]: appointment.paymentMethod ?? 'none',
+      }));
+    } finally {
+      setSavingPayment((prev) => ({ ...prev, [appointment.id]: false }));
+    }
+  };
+
+  const commitPrice = async (appointment: Appointment) => {
+    if (savingPrice[appointment.id]) return;
+    const currentPrice = appointment.price ?? 0;
+    const rawValue = (priceDrafts[appointment.id] ?? formatPriceInput(currentPrice)).trim();
+    const normalized = rawValue.replace(',', '.');
+    if (!normalized) {
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+      return;
+    }
+    const parsed = Number(normalized);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      toast({
+        title: 'Precio inválido',
+        description: 'Introduce un importe válido para la cita.',
+        variant: 'destructive',
+      });
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+      return;
+    }
+    if (Math.abs(parsed - currentPrice) < 0.009) {
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+      return;
+    }
+    setSavingPrice((prev) => ({ ...prev, [appointment.id]: true }));
+    try {
+      const updated = await updateAppointment(appointment.id, { price: parsed });
+      applyAppointmentUpdate(updated);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el precio final.',
+        variant: 'destructive',
+      });
+      setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
+    } finally {
+      setSavingPrice((prev) => ({ ...prev, [appointment.id]: false }));
+    }
   };
 
   return (
@@ -172,6 +303,8 @@ const AdminSearch: React.FC = () => {
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Servicio</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Barbero</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Estado</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Método</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Precio final</th>
                     <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Acciones</th>
                   </tr>
                 </thead>
@@ -219,15 +352,68 @@ const AdminSearch: React.FC = () => {
                         <AppointmentStatusPicker
                           appointment={apt}
                           serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
-                          onStatusUpdated={(updated) => {
-                            setAppointments((prev) =>
-                              prev.map((appointment) =>
-                                appointment.id === updated.id ? updated : appointment,
-                              ),
-                            );
-                            dispatchAppointmentsUpdated({ source: 'admin-search' });
-                          }}
+                          onStatusUpdated={applyAppointmentUpdate}
                         />
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={paymentMethodDrafts[apt.id] ?? (apt.paymentMethod ?? 'none')}
+                            onValueChange={(value) => handlePaymentMethodChange(apt, value)}
+                            disabled={Boolean(savingPayment[apt.id])}
+                          >
+                            <SelectTrigger className="h-8 w-[120px] rounded-full bg-background/70 px-3 text-xs">
+                              <SelectValue placeholder="Método de pago" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">Efectivo</SelectItem>
+                              <SelectItem value="card">Tarjeta</SelectItem>
+                              <SelectItem value="bizum">Bizum</SelectItem>
+                              <SelectItem value="stripe">Stripe</SelectItem>
+                              <SelectItem value="none">Sin método</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {savingPayment[apt.id] && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex justify-end">
+                          <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1.5">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={priceDrafts[apt.id] ?? formatPriceInput(apt.price ?? 0)}
+                              onFocus={(event) => {
+                                setEditingPriceId(apt.id);
+                                event.currentTarget.select();
+                              }}
+                              onBlur={() => {
+                                setEditingPriceId(null);
+                                void commitPrice(apt);
+                              }}
+                              onChange={(event) =>
+                                setPriceDrafts((prev) => ({ ...prev, [apt.id]: event.target.value }))
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.currentTarget.blur();
+                                }
+                                if (event.key === 'Escape') {
+                                  setPriceDrafts((prev) => ({
+                                    ...prev,
+                                    [apt.id]: formatPriceInput(apt.price ?? 0),
+                                  }));
+                                  event.currentTarget.blur();
+                                }
+                              }}
+                              className="w-[60px] bg-transparent text-center text-base font-semibold text-primary outline-none"
+                              aria-label="Precio final"
+                              disabled={Boolean(savingPrice[apt.id])}
+                            />
+                            <span className="text-xs font-semibold text-primary">€</span>
+                            {savingPrice[apt.id] && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                          </div>
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-2">
