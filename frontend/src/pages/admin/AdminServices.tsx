@@ -26,6 +26,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { Switch } from '@/components/ui/switch';
+import { dispatchServicesUpdated } from '@/lib/adminEvents';
 
 const UNCATEGORIZED_VALUE = 'none';
 
@@ -197,6 +198,7 @@ const AdminServices: React.FC = () => {
       }
       
       await loadData(false);
+      dispatchServicesUpdated({ source: 'admin-services' });
       setIsDialogOpen(false);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo guardar el servicio.', variant: 'destructive' });
@@ -222,6 +224,7 @@ const AdminServices: React.FC = () => {
         toast({ title: 'Categoría creada', description: 'Añade servicios dentro de ella.' });
       }
       await loadData(false);
+      dispatchServicesUpdated({ source: 'admin-services' });
       setIsCategoryDialogOpen(false);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo guardar la categoría.', variant: 'destructive' });
@@ -237,6 +240,7 @@ const AdminServices: React.FC = () => {
       await deleteService(deletingServiceId);
       toast({ title: 'Servicio eliminado', description: 'El servicio ha sido eliminado.' });
       await loadData(false);
+      dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo eliminar el servicio.', variant: 'destructive' });
     } finally {
@@ -251,6 +255,7 @@ const AdminServices: React.FC = () => {
       await deleteServiceCategory(deletingCategoryId);
       toast({ title: 'Categoría eliminada', description: 'Los servicios asociados quedan sin categoría.' });
       await loadData(false);
+      dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error: any) {
       toast({
         title: 'No se pudo eliminar',
@@ -281,6 +286,7 @@ const AdminServices: React.FC = () => {
       await updateService(service.id, { categoryId: normalizedCategoryId });
       await loadData(false);
       toast({ title: 'Servicio actualizado', description: 'Categoría asignada correctamente.' });
+      dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo actualizar la categoría.', variant: 'destructive' });
     } finally {
@@ -297,6 +303,7 @@ const AdminServices: React.FC = () => {
         services: { categoriesEnabled: enabled },
       });
       setSettings(updated);
+      dispatchServicesUpdated({ source: 'admin-services' });
       const pendingNotice = enabled && uncategorizedServices.length > 0
         ? `Tienes ${uncategorizedServices.length} servicio(s) sin categoría. Asignalos para completar la vista.`
         : '';

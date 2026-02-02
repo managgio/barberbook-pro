@@ -13,6 +13,7 @@ import { getBarbers, createBarber, updateBarber, deleteBarber, getBarberSchedule
 import { Barber, DayKey, ShopSchedule } from '@/data/types';
 import { Plus, Pencil, Trash2, Calendar, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { dispatchBarbersUpdated } from '@/lib/adminEvents';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/components/admin/BarberPhotoUploader';
@@ -347,6 +348,7 @@ const AdminBarbers: React.FC = () => {
       }
       
       await fetchBarbers();
+      dispatchBarbersUpdated({ source: 'admin-barbers' });
       setIsDialogOpen(false);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo guardar el barbero.', variant: 'destructive' });
@@ -362,6 +364,7 @@ const AdminBarbers: React.FC = () => {
       await deleteBarber(deletingBarberId);
       toast({ title: 'Barbero eliminado', description: 'El barbero ha sido eliminado.' });
       await fetchBarbers();
+      dispatchBarbersUpdated({ source: 'admin-barbers' });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo eliminar el barbero.', variant: 'destructive' });
     } finally {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import { Barber, Product, ProductCategory, Service, ServiceCategory, User } from
 import { Plus, Search, Loader2, UserCircle2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
 
 const QuickAppointmentButton: React.FC = () => {
@@ -43,41 +43,63 @@ const QuickAppointmentButton: React.FC = () => {
 
   const minDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  useEffect(() => {
-    const fetchData = async () => {
+  const fetchData = useCallback(async (withLoader = true) => {
+    if (withLoader) {
       setIsLoadingData(true);
-      try {
-        const [usersData, barbersData, servicesData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
-          getUsers(),
-          getBarbers(),
-          getServices(),
-          getServiceCategories(true),
-          getSiteSettings(),
-          getAdminProducts(),
-          getProductCategories(true),
-        ]);
-        setClients(usersData.filter((user) => user.role === 'client'));
-        setBarbers(barbersData);
-        setServices(servicesData);
-        setServiceCategories(categoriesData);
-        setCategoriesEnabled(settingsData.services.categoriesEnabled);
-        setProductsEnabled(settingsData.products.enabled);
-        setProducts(productsData);
-        setProductCategories(productCategoriesData);
-      } catch (error) {
-        console.error(error);
-        toast({
-          title: 'Error',
-          description: 'No se pudo cargar la información para crear citas.',
-          variant: 'destructive',
-        });
-      } finally {
+    }
+    try {
+      const [usersData, barbersData, servicesData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
+        getUsers(),
+        getBarbers(),
+        getServices(),
+        getServiceCategories(true),
+        getSiteSettings(),
+        getAdminProducts(),
+        getProductCategories(true),
+      ]);
+      setClients(usersData.filter((user) => user.role === 'client'));
+      setBarbers(barbersData);
+      setServices(servicesData);
+      setServiceCategories(categoriesData);
+      setCategoriesEnabled(settingsData.services.categoriesEnabled);
+      setProductsEnabled(settingsData.products.enabled);
+      setProducts(productsData);
+      setProductCategories(productCategoriesData);
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo cargar la información para crear citas.',
+        variant: 'destructive',
+      });
+    } finally {
+      if (withLoader) {
         setIsLoadingData(false);
       }
-    };
-
-    fetchData();
+    }
   }, [toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchData(false);
+    };
+    window.addEventListener(ADMIN_EVENTS.servicesUpdated, handleRefresh);
+    window.addEventListener(ADMIN_EVENTS.barbersUpdated, handleRefresh);
+    return () => {
+      window.removeEventListener(ADMIN_EVENTS.servicesUpdated, handleRefresh);
+      window.removeEventListener(ADMIN_EVENTS.barbersUpdated, handleRefresh);
+    };
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchData(false);
+    }
+  }, [isOpen, fetchData]);
 
   useEffect(() => {
     if (!selectedBarberId || !selectedDate || !selectedServiceId) {
@@ -105,7 +127,7 @@ const QuickAppointmentButton: React.FC = () => {
     };
 
     fetchSlots();
-  }, [selectedBarberId, selectedDate, selectedServiceId, toast]);
+  }, [selectedBarberId, selectedDate, selectedServiceId, services, barbers, toast]);
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLowerCase();

@@ -5,7 +5,7 @@ import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { mapAppointment } from './appointments.mapper';
-import { generateSlotsForShift, isDateInRange, normalizeRange, timeToMinutes } from '../schedules/schedule.utils';
+import { generateSlotsForShift, isDateInRange, minutesToTime, normalizeRange, timeToMinutes } from '../schedules/schedule.utils';
 import { HolidaysService } from '../holidays/holidays.service';
 import { SchedulesService } from '../schedules/schedules.service';
 import { DEFAULT_SHOP_SCHEDULE } from '../schedules/schedule.types';
@@ -869,7 +869,7 @@ export class AppointmentsService {
       return { start: startMinutes, end: startMinutes + duration + Math.max(0, bufferMinutes) };
     });
 
-    return uniqueSlots.filter((slot) => {
+    const baseSlots = uniqueSlots.filter((slot) => {
       const slotStart = timeToMinutes(slot);
       const slotEnd = slotStart + targetDurationWithBuffer;
       const overlapsBreak = dayBreaks.some((range) => {
@@ -880,6 +880,61 @@ export class AppointmentsService {
       if (overlapsBreak) return false;
       return bookedRanges.every((range) => slotEnd <= range.start || slotStart >= range.end);
     });
+
+    const breakRanges = dayBreaks.map((range) => ({
+      start: timeToMinutes(range.start),
+      end: timeToMinutes(range.end),
+    }));
+
+    const blockedRanges = [...breakRanges, ...bookedRanges].filter((range) => range.end > range.start);
+
+    const subtractRange = (intervals: Array<{ start: number; end: number }>, block: { start: number; end: number }) => {
+      if (intervals.length === 0) return intervals;
+      const next: Array<{ start: number; end: number }> = [];
+      intervals.forEach((interval) => {
+        if (block.end <= interval.start || block.start >= interval.end) {
+          next.push(interval);
+          return;
+        }
+        if (block.start > interval.start) {
+          next.push({ start: interval.start, end: Math.min(block.start, interval.end) });
+        }
+        if (block.end < interval.end) {
+          next.push({ start: Math.max(block.end, interval.start), end: interval.end });
+        }
+      });
+      return next;
+    };
+
+    const getFreeIntervalsForShift = (shift: { enabled: boolean; start: string; end: string }) => {
+      if (!shift.enabled) return [] as Array<{ start: number; end: number }>;
+      const shiftStart = timeToMinutes(shift.start);
+      const shiftEnd = timeToMinutes(shift.end);
+      if (shiftStart >= shiftEnd) return [];
+      let intervals: Array<{ start: number; end: number }> = [{ start: shiftStart, end: shiftEnd }];
+      blockedRanges.forEach((block) => {
+        intervals = subtractRange(intervals, block);
+      });
+      return intervals.filter((interval) => interval.end > interval.start);
+    };
+
+    const slotSet = new Set(baseSlots);
+    const baseSlotMinutes = baseSlots.map(timeToMinutes);
+    const minRequired = targetDurationWithBuffer;
+
+    const maybeAddGapSlot = (interval: { start: number; end: number }) => {
+      if (interval.end - interval.start < minRequired) return;
+      const latestStart = interval.end - minRequired;
+      const hasGridSlot = baseSlotMinutes.some((slotMinute) => slotMinute >= interval.start && slotMinute <= latestStart);
+      if (!hasGridSlot) {
+        slotSet.add(minutesToTime(interval.start));
+      }
+    };
+
+    getFreeIntervalsForShift(daySchedule.morning).forEach(maybeAddGapSlot);
+    getFreeIntervalsForShift(daySchedule.afternoon).forEach(maybeAddGapSlot);
+
+    return Array.from(slotSet).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
   }
 
   private async notifyAppointment(appointment: any, action: 'creada' | 'actualizada' | 'cancelada') {
