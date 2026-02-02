@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ServicesService } from './services.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -9,13 +9,13 @@ export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
   @Get()
-  findAll() {
-    return this.servicesService.findAll();
+  findAll(@Query('includeArchived') includeArchived?: string) {
+    return this.servicesService.findAll(includeArchived === 'true');
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.servicesService.findOne(id);
+  findOne(@Param('id') id: string, @Query('includeArchived') includeArchived?: string) {
+    return this.servicesService.findOne(id, includeArchived === 'true');
   }
 
   @Post()

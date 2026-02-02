@@ -1,0 +1,1 @@
+ALTER TABLE `Service` ADD COLUMN `isArchived` BOOLEAN NOT NULL DEFAULT false;

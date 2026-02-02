@@ -66,7 +66,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     setIsLoading(true);
     try {
       const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
-        getServices(),
+        getServices({ includeArchived: isAdminContext }),
         getBarbers(),
         getServiceCategories(true),
         getSiteSettings(),
@@ -143,10 +143,15 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.barberId, form.date, form.serviceId]);
 
+  const selectableServices = useMemo(
+    () => services.filter((service) => !service.isArchived || service.id === form.serviceId),
+    [services, form.serviceId],
+  );
+
   const selectedServicePrice = useMemo(() => {
-    const service = services.find((item) => item.id === form.serviceId);
+    const service = selectableServices.find((item) => item.id === form.serviceId);
     return service ? (service.finalPrice ?? service.price) : 0;
-  }, [form.serviceId, services]);
+  }, [form.serviceId, selectableServices]);
   const selectedProductsTotal = useMemo(() => {
     return selectedProducts.reduce((acc, item) => {
       const product = products.find((prod) => prod.id === item.productId);
@@ -210,13 +215,16 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     [serviceCategories],
   );
 
-  const uncategorizedServices = useMemo(() => services.filter((service) => !service.categoryId), [services]);
+  const uncategorizedServices = useMemo(
+    () => selectableServices.filter((service) => !service.categoryId),
+    [selectableServices],
+  );
   const servicesByCategory = useMemo(
     () => orderedCategories.reduce<Record<string, Service[]>>((acc, cat) => {
-      acc[cat.id] = services.filter((service) => service.categoryId === cat.id);
+      acc[cat.id] = selectableServices.filter((service) => service.categoryId === cat.id);
       return acc;
     }, {}),
-    [orderedCategories, services],
+    [orderedCategories, selectableServices],
   );
 
   const canShowProducts = productsEnabled && (isAdminContext || clientPurchaseEnabled);
@@ -225,7 +233,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     setForm((prev) => {
       const nextForm = { ...prev, serviceId: value, time: '' };
       if (!priceTouched) {
-        const nextService = services.find((service) => service.id === value);
+        const nextService = selectableServices.find((service) => service.id === value);
         const nextPrice = nextService?.finalPrice ?? nextService?.price;
         if (nextPrice !== undefined) {
           const total = nextPrice + selectedProductsTotal;
@@ -365,7 +373,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                         )}
                       </>
                     ) : (
-                      services.map((service) => (
+                      selectableServices.map((service) => (
                         <SelectItem key={service.id} value={service.id}>
                           {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
                         </SelectItem>

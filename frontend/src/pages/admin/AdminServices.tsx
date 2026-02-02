@@ -290,15 +290,6 @@ const AdminServices: React.FC = () => {
 
   const handleToggleCategories = async (enabled: boolean) => {
     if (!settings) return;
-    if (enabled && uncategorizedServices.length > 0) {
-      toast({
-        title: 'Asigna las categorías pendientes',
-        description: 'Todos los servicios deben tener una categoría antes de activar esta vista.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsSavingSettings(true);
     try {
       const updated = await updateSiteSettings({
@@ -312,6 +303,12 @@ const AdminServices: React.FC = () => {
           ? 'Los clientes verán los servicios agrupados por categoría.'
           : 'Los servicios se mostrarán en lista simple.',
       });
+      if (enabled && uncategorizedServices.length > 0) {
+        toast({
+          title: 'Asigna las categorías pendientes',
+          description: 'Puedes crear categorías y asignarlas a los servicios sin categoría.',
+        });
+      }
     } catch (error: any) {
       toast({
         title: 'No se pudo actualizar',

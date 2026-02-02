@@ -11,11 +11,12 @@ import { computeServicePricing, isOfferActiveNow } from './services.pricing';
 export class ServicesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(includeArchived = false) {
     const localId = getCurrentLocalId();
+    const serviceWhere = includeArchived ? { localId } : { localId, isArchived: false };
     const [services, offers] = await Promise.all([
       this.prisma.service.findMany({
-        where: { localId },
+        where: serviceWhere,
         orderBy: { name: 'asc' },
         include: { category: true },
       }),
@@ -29,11 +30,12 @@ export class ServicesService {
     return services.map((service) => mapService(service, computeServicePricing(service, activeOffers)));
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, includeArchived = false) {
     const localId = getCurrentLocalId();
+    const serviceWhere = includeArchived ? { id, localId } : { id, localId, isArchived: false };
     const [service, offers] = await Promise.all([
       this.prisma.service.findFirst({
-        where: { id, localId },
+        where: serviceWhere,
         include: { category: true },
       }),
       this.prisma.offer.findMany({
@@ -55,7 +57,7 @@ export class ServicesService {
 
   private async resolveCategoryId(id: string, incomingCategoryId: string | null | undefined) {
     const localId = getCurrentLocalId();
-    const existing = await this.prisma.service.findFirst({ where: { id, localId } });
+    const existing = await this.prisma.service.findFirst({ where: { id, localId, isArchived: false } });
     if (!existing) throw new NotFoundException('Service not found');
     return incomingCategoryId === undefined ? existing.categoryId : incomingCategoryId;
   }
@@ -124,7 +126,14 @@ export class ServicesService {
     const localId = getCurrentLocalId();
     const existing = await this.prisma.service.findFirst({ where: { id, localId } });
     if (!existing) throw new NotFoundException('Service not found');
-    await this.prisma.service.delete({ where: { id } });
+    if (existing.isArchived) {
+      return { success: true };
+    }
+
+    await this.prisma.service.update({
+      where: { id },
+      data: { isArchived: true },
+    });
     return { success: true };
   }
 }
