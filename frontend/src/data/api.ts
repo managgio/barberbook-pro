@@ -40,7 +40,7 @@ import {
   StripeAvailability,
 } from './types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
-import { getAdminUserId } from '@/lib/authStorage';
+import { buildAuthHeaders } from '@/lib/authToken';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -71,14 +71,14 @@ const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promis
   const url = buildUrl(path.startsWith('http') ? path : `${API_BASE}${path}`, query);
   const localId = getStoredLocalId();
   const tenantOverride = getTenantSubdomainOverride();
-  const adminUserId = getAdminUserId();
+  const authHeaders = await buildAuthHeaders();
   const response = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...(localId ? { 'x-local-id': localId } : {}),
       ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
-      ...(adminUserId ? { 'x-admin-user-id': adminUserId } : {}),
       ...(headers || {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -349,47 +349,28 @@ export const removeBarberHolidayRange = async (barberId: string, range: HolidayR
 export const postAiAssistantChat = async (payload: {
   message: string;
   sessionId?: string | null;
-  adminUserId: string;
-  role?: string;
 }): Promise<AiChatResponse> =>
   apiRequest('/admin/ai-assistant/chat', {
     method: 'POST',
     body: { message: payload.message, sessionId: payload.sessionId || undefined },
-    headers: {
-      'x-admin-user-id': payload.adminUserId,
-      ...(payload.role ? { 'x-user-role': payload.role } : {}),
-      ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
-      ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
-    },
   });
 
 export const getAiAssistantSession = async (payload: {
   sessionId: string;
-  adminUserId: string;
-  role?: string;
 }): Promise<AiChatSessionResponse> =>
-  apiRequest(`/admin/ai-assistant/session/${payload.sessionId}`, {
-    headers: {
-      'x-admin-user-id': payload.adminUserId,
-      ...(payload.role ? { 'x-user-role': payload.role } : {}),
-      ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
-      ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
-    },
-  });
+  apiRequest(`/admin/ai-assistant/session/${payload.sessionId}`);
 
 export const postAiAssistantTranscribe = async (payload: {
   file: File;
-  adminUserId: string;
-  role?: string;
 }): Promise<{ text: string }> => {
   const formData = new FormData();
   formData.append('file', payload.file);
   const url = buildUrl(`${API_BASE}/admin/ai-assistant/transcribe`);
+  const authHeaders = await buildAuthHeaders();
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'x-admin-user-id': payload.adminUserId,
-      ...(payload.role ? { 'x-user-role': payload.role } : {}),
+      ...authHeaders,
       ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
       ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
     },
@@ -416,183 +397,137 @@ export const postAiAssistantTranscribe = async (payload: {
 };
 
 // Platform Admin API
-type PlatformAdminHeaders = { 'x-admin-user-id': string };
 
-const withPlatformHeaders = (adminUserId: string): PlatformAdminHeaders => ({
-  'x-admin-user-id': adminUserId,
-});
+export const getPlatformBrands = async (): Promise<any[]> =>
+  apiRequest('/platform/brands');
 
-export const getPlatformBrands = async (adminUserId: string): Promise<any[]> =>
-  apiRequest('/platform/brands', {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformMetrics = async (windowDays = 7): Promise<PlatformUsageMetrics> =>
+  apiRequest(`/platform/metrics?window=${windowDays}`);
 
-export const getPlatformMetrics = async (adminUserId: string, windowDays = 7): Promise<PlatformUsageMetrics> =>
-  apiRequest(`/platform/metrics?window=${windowDays}`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
-
-export const refreshPlatformMetrics = async (adminUserId: string, windowDays = 7): Promise<PlatformUsageMetrics> =>
+export const refreshPlatformMetrics = async (windowDays = 7): Promise<PlatformUsageMetrics> =>
   apiRequest(`/platform/metrics/refresh?window=${windowDays}`, {
     method: 'POST',
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const getPlatformBrand = async (adminUserId: string, brandId: string): Promise<any> =>
-  apiRequest(`/platform/brands/${brandId}`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformBrand = async (brandId: string): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}`);
 
 export const createPlatformBrand = async (
-  adminUserId: string,
   data: { name: string; subdomain: string; customDomain?: string | null; isActive?: boolean },
 ): Promise<any> =>
   apiRequest('/platform/brands', {
     method: 'POST',
     body: data,
-    headers: withPlatformHeaders(adminUserId),
   });
 
 export const updatePlatformBrand = async (
-  adminUserId: string,
   brandId: string,
   data: Partial<{ name: string; subdomain: string; customDomain?: string | null; isActive?: boolean; defaultLocationId?: string | null }>,
 ): Promise<any> =>
   apiRequest(`/platform/brands/${brandId}`, {
     method: 'PATCH',
     body: data,
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const deletePlatformBrand = async (adminUserId: string, brandId: string): Promise<void> =>
+export const deletePlatformBrand = async (brandId: string): Promise<void> =>
   apiRequest(`/platform/brands/${brandId}`, {
     method: 'DELETE',
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const getPlatformLocations = async (adminUserId: string, brandId: string): Promise<any[]> =>
-  apiRequest(`/platform/brands/${brandId}/locations`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformLocations = async (brandId: string): Promise<any[]> =>
+  apiRequest(`/platform/brands/${brandId}/locations`);
 
 export const createPlatformLocation = async (
-  adminUserId: string,
   brandId: string,
   data: { name: string; slug?: string | null; isActive?: boolean },
 ): Promise<any> =>
   apiRequest(`/platform/brands/${brandId}/locations`, {
     method: 'POST',
     body: data,
-    headers: withPlatformHeaders(adminUserId),
   });
 
 export const updatePlatformLocation = async (
-  adminUserId: string,
   localId: string,
   data: Partial<{ name: string; slug?: string | null; isActive?: boolean }>,
 ): Promise<any> =>
   apiRequest(`/platform/locations/${localId}`, {
     method: 'PATCH',
     body: data,
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const deletePlatformLocation = async (adminUserId: string, localId: string): Promise<void> =>
+export const deletePlatformLocation = async (localId: string): Promise<void> =>
   apiRequest(`/platform/locations/${localId}`, {
     method: 'DELETE',
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const getPlatformBrandConfig = async (adminUserId: string, brandId: string): Promise<any> =>
-  apiRequest(`/platform/brands/${brandId}/config`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformBrandConfig = async (brandId: string): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/config`);
 
 export const updatePlatformBrandConfig = async (
-  adminUserId: string,
   brandId: string,
   data: Record<string, unknown>,
 ): Promise<any> =>
   apiRequest(`/platform/brands/${brandId}/config`, {
     method: 'PATCH',
     body: { data },
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const getPlatformLocationConfig = async (adminUserId: string, localId: string): Promise<any> =>
-  apiRequest(`/platform/locations/${localId}/config`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformLocationConfig = async (localId: string): Promise<any> =>
+  apiRequest(`/platform/locations/${localId}/config`);
 
 export const updatePlatformLocationConfig = async (
-  adminUserId: string,
   localId: string,
   data: Record<string, unknown>,
 ): Promise<any> =>
   apiRequest(`/platform/locations/${localId}/config`, {
     method: 'PATCH',
     body: { data },
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const connectPlatformStripeBrand = async (adminUserId: string, brandId: string): Promise<any> =>
+export const connectPlatformStripeBrand = async (brandId: string): Promise<any> =>
   apiRequest(`/platform/payments/stripe/brand/${brandId}/connect`, {
     method: 'POST',
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const connectPlatformStripeLocation = async (adminUserId: string, localId: string): Promise<any> =>
+export const connectPlatformStripeLocation = async (localId: string): Promise<any> =>
   apiRequest(`/platform/payments/stripe/location/${localId}/connect`, {
     method: 'POST',
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const getPlatformBrandLegalSettings = async (adminUserId: string, brandId: string): Promise<LegalSettings> =>
-  apiRequest(`/platform/brands/${brandId}/legal/settings`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformBrandLegalSettings = async (brandId: string): Promise<LegalSettings> =>
+  apiRequest(`/platform/brands/${brandId}/legal/settings`);
 
 export const updatePlatformBrandLegalSettings = async (
-  adminUserId: string,
   brandId: string,
   data: Partial<LegalSettings>,
 ): Promise<LegalSettings> =>
   apiRequest(`/platform/brands/${brandId}/legal/settings`, {
     method: 'PUT',
     body: data,
-    headers: withPlatformHeaders(adminUserId),
   });
 
-export const getPlatformBrandDpa = async (adminUserId: string, brandId: string): Promise<LegalPolicyResponse> =>
-  apiRequest(`/platform/brands/${brandId}/legal/dpa`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformBrandDpa = async (brandId: string): Promise<LegalPolicyResponse> =>
+  apiRequest(`/platform/brands/${brandId}/legal/dpa`);
 
-export const getPlatformBrandAdmins = async (adminUserId: string, brandId: string): Promise<any> =>
-  apiRequest(`/platform/brands/${brandId}/admins`, {
-    headers: withPlatformHeaders(adminUserId),
-  });
+export const getPlatformBrandAdmins = async (brandId: string): Promise<any> =>
+  apiRequest(`/platform/brands/${brandId}/admins`);
 
 export const assignPlatformBrandAdmin = async (
-  adminUserId: string,
   brandId: string,
   data: { email: string; localId?: string; applyToAll?: boolean; adminRoleId?: string | null },
 ): Promise<any> =>
   apiRequest(`/platform/brands/${brandId}/admins`, {
     method: 'POST',
     body: data,
-    headers: withPlatformHeaders(adminUserId),
   });
 
 export const removePlatformBrandAdmin = async (
-  adminUserId: string,
   brandId: string,
   data: { userId?: string; email?: string; localId?: string; removeFromAll?: boolean },
 ): Promise<any> =>
   apiRequest(`/platform/brands/${brandId}/admins`, {
     method: 'DELETE',
     body: data,
-    headers: withPlatformHeaders(adminUserId),
   });
 
 // Referrals & Rewards API

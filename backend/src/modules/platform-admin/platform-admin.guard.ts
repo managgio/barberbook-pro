@@ -1,24 +1,18 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { AuthService } from '../../auth/auth.service';
 
 @Injectable()
 export class PlatformAdminGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly authService: AuthService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const adminUserId = request.headers['x-admin-user-id'];
-
-    if (!adminUserId || typeof adminUserId !== 'string') {
-      throw new UnauthorizedException('Se requiere autenticación de plataforma.');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: adminUserId } });
-    if (!user || !user.isPlatformAdmin) {
+    const user = await this.authService.requireUser(request);
+    if (!user.isPlatformAdmin) {
       throw new ForbiddenException('Acceso restringido a plataforma.');
     }
 
-    request.platformUserId = adminUserId;
+    request.platformUserId = user.id;
     return true;
   }
 }

@@ -12,6 +12,7 @@ import { AiMemoryService } from './ai-memory.service';
 import { AiToolsRegistry } from './ai-tools.registry';
 import { AiAssistantGuard } from './ai-assistant.guard';
 import { AiMemoryCleanupService } from './ai-memory-cleanup.service';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AiMemoryCleanupService } from './ai-memory-cleanup.service';
     AlertsModule,
     TenancyModule,
     UsageMetricsModule,
+    AuthModule,
   ],
   controllers: [AiAssistantController],
   providers: [AiAssistantService, AiMemoryService, AiToolsRegistry, AiAssistantGuard, AiMemoryCleanupService],

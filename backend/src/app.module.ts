@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { TenantMiddleware } from './tenancy/tenant.middleware';
 import { AdminGuard } from './auth/admin.guard';
+import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { BarbersModule } from './modules/barbers/barbers.module';
 import { ServicesModule } from './modules/services/services.module';
@@ -36,6 +37,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     TenancyModule,
+    AuthModule,
     UsersModule,
     BarbersModule,
     ServicesModule,

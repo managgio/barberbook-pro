@@ -114,7 +114,7 @@ const PlatformDashboard: React.FC = () => {
     const load = async () => {
       setIsLoading(true);
       try {
-        const data = await getPlatformBrands(user.id);
+        const data = await getPlatformBrands();
         setBrands(data);
       } catch (error) {
         toast({ title: 'Error', description: 'No se pudo cargar el resumen de plataforma.', variant: 'destructive' });
@@ -131,8 +131,8 @@ const PlatformDashboard: React.FC = () => {
       setIsUsageLoading(true);
       try {
         const data = forceRefresh
-          ? await refreshPlatformMetrics(user.id, usageRange)
-          : await getPlatformMetrics(user.id, usageRange);
+          ? await refreshPlatformMetrics(usageRange)
+          : await getPlatformMetrics(usageRange);
         setUsageMetrics(data);
       } catch (error) {
         toast({ title: 'Error', description: 'No se pudieron cargar las métricas de consumo.', variant: 'destructive' });

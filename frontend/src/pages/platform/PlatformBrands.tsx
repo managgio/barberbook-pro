@@ -559,7 +559,7 @@ const PlatformBrands: React.FC = () => {
     if (!user?.id) return;
     setIsLoading(true);
     try {
-      const data = await getPlatformBrands(user.id);
+      const data = await getPlatformBrands();
       setBrands(data);
       if (!data.length) {
         setSelectedBrandId(null);
@@ -588,9 +588,9 @@ const PlatformBrands: React.FC = () => {
     if (!user?.id) return;
     try {
       const [brand, config, admins] = await Promise.all([
-        getPlatformBrand(user.id, brandId),
-        getPlatformBrandConfig(user.id, brandId),
-        getPlatformBrandAdmins(user.id, brandId),
+        getPlatformBrand(brandId),
+        getPlatformBrandConfig(brandId),
+        getPlatformBrandAdmins(brandId),
       ]);
       setBrandForm({
         name: brand.name,
@@ -628,7 +628,7 @@ const PlatformBrands: React.FC = () => {
         applyToAll: false,
       }));
       if (defaultLocation) {
-        const locationCfg = await getPlatformLocationConfig(user.id, defaultLocation);
+        const locationCfg = await getPlatformLocationConfig(defaultLocation);
         const normalizedLocationCfg = stripEmptyTheme(locationCfg || {});
         if (normalizedLocationCfg.imagekit?.folder) {
           normalizedLocationCfg.imagekit = {
@@ -668,8 +668,8 @@ const PlatformBrands: React.FC = () => {
     setIsLegalLoading(true);
     try {
       const [legal, dpa] = await Promise.all([
-        getPlatformBrandLegalSettings(user.id, brandId),
-        getPlatformBrandDpa(user.id, brandId),
+        getPlatformBrandLegalSettings(brandId),
+        getPlatformBrandDpa(brandId),
       ]);
       if (legal) {
         setLegalSettings({
@@ -705,7 +705,7 @@ const PlatformBrands: React.FC = () => {
   useEffect(() => {
     const loadLocationConfig = async () => {
       if (!user?.id || !selectedLocationId || !selectedBrand) return;
-      const config = await getPlatformLocationConfig(user.id, selectedLocationId);
+      const config = await getPlatformLocationConfig(selectedLocationId);
       const normalizedConfig = config || {};
       if (normalizedConfig.imagekit?.folder) {
         normalizedConfig.imagekit = {
@@ -1237,16 +1237,16 @@ const PlatformBrands: React.FC = () => {
         delete cleanedBrandConfig.twilio;
       }
       const sanitizedLocationConfig = stripEmptyTheme(locationConfig);
-      await updatePlatformBrand(user.id, selectedBrand.id, {
+      await updatePlatformBrand(selectedBrand.id, {
         name: brandForm.name,
         subdomain: brandForm.subdomain,
         customDomain: brandForm.customDomain || null,
         isActive: brandForm.isActive,
         defaultLocationId: selectedLocationId,
       });
-      await updatePlatformBrandConfig(user.id, selectedBrand.id, cleanedBrandConfig);
+      await updatePlatformBrandConfig(selectedBrand.id, cleanedBrandConfig);
       if (selectedLocationId) {
-        await updatePlatformLocationConfig(user.id, selectedLocationId, sanitizedLocationConfig);
+        await updatePlatformLocationConfig(selectedLocationId, sanitizedLocationConfig);
       }
       const shouldSyncBrandTheme =
         !applyThemeToAll && previousPrimary && nextPrimary && previousPrimary !== nextPrimary;
@@ -1255,16 +1255,16 @@ const PlatformBrands: React.FC = () => {
         if (targetColor) {
           await Promise.all(
             selectedBrand.locations.map(async (location: any) => {
-              const existing = await getPlatformLocationConfig(user.id, location.id);
+              const existing = await getPlatformLocationConfig(location.id);
               const next = updateNestedValue(existing || {}, ['theme', 'primary'], targetColor);
-              await updatePlatformLocationConfig(user.id, location.id, next);
+              await updatePlatformLocationConfig(location.id, next);
             }),
           );
         }
       } else if (shouldSyncBrandTheme && selectedBrand.locations?.length) {
         await Promise.all(
           selectedBrand.locations.map(async (location: any) => {
-            const existing = await getPlatformLocationConfig(user.id, location.id);
+            const existing = await getPlatformLocationConfig(location.id);
             const existingPrimary = normalizeHexInput(existing?.theme?.primary || '');
             if (!existingPrimary || existingPrimary !== previousPrimary) return;
             const next = { ...(existing || {}) } as Record<string, any>;
@@ -1275,7 +1275,7 @@ const PlatformBrands: React.FC = () => {
             } else {
               next.theme = theme;
             }
-            await updatePlatformLocationConfig(user.id, location.id, next);
+            await updatePlatformLocationConfig(location.id, next);
           }),
         );
       }
@@ -1450,13 +1450,13 @@ const PlatformBrands: React.FC = () => {
         optionalCustomSections: normalizeCustomSections(legalSettings.optionalCustomSections),
         retentionDays: legalSettings.retentionDays ? Number(legalSettings.retentionDays) : null,
       };
-      const updated = await updatePlatformBrandLegalSettings(user.id, selectedBrand.id, payload);
+      const updated = await updatePlatformBrandLegalSettings(selectedBrand.id, payload);
       setLegalSettings({
         ...updated,
         optionalCustomSections: normalizeCustomSections(updated.optionalCustomSections),
       });
       setAiProvidersInput(updated.aiProviderNames?.join(', ') || '');
-      const dpa = await getPlatformBrandDpa(user.id, selectedBrand.id);
+      const dpa = await getPlatformBrandDpa(selectedBrand.id);
       setDpaContent(dpa);
       toast({ title: 'Legal actualizado', description: 'Cambios guardados en la marca.' });
     } catch (error) {
@@ -1470,7 +1470,7 @@ const PlatformBrands: React.FC = () => {
     if (!user?.id) return;
     setIsSaving(true);
     try {
-      const created = await createPlatformBrand(user.id, {
+      const created = await createPlatformBrand({
         name: newBrandForm.name,
         subdomain: newBrandForm.subdomain,
         customDomain: newBrandForm.customDomain || null,
@@ -1538,8 +1538,8 @@ const PlatformBrands: React.FC = () => {
     try {
       const response =
         scope === 'brand'
-          ? await connectPlatformStripeBrand(user.id, id)
-          : await connectPlatformStripeLocation(user.id, id);
+          ? await connectPlatformStripeBrand(id)
+          : await connectPlatformStripeLocation(id);
       if (response?.url) {
         window.open(response.url, '_blank', 'noopener');
       }
@@ -1644,7 +1644,7 @@ const PlatformBrands: React.FC = () => {
     if (!user?.id || !selectedBrand) return;
     if (!window.confirm('¿Seguro que quieres eliminar esta marca?')) return;
     try {
-      await deletePlatformBrand(user.id, selectedBrand.id);
+      await deletePlatformBrand(selectedBrand.id);
       setSelectedBrandId(null);
       await loadBrands();
     } catch (error) {
@@ -1655,7 +1655,7 @@ const PlatformBrands: React.FC = () => {
   const handleCreateLocation = async () => {
     if (!user?.id || !selectedBrand) return;
     try {
-      const location = await createPlatformLocation(user.id, selectedBrand.id, {
+      const location = await createPlatformLocation(selectedBrand.id, {
         name: newLocationForm.name,
         slug: newLocationForm.slug || null,
         isActive: newLocationForm.isActive,
@@ -1673,7 +1673,7 @@ const PlatformBrands: React.FC = () => {
   const handleUpdateLocation = async (localId: string, payload: { name?: string; slug?: string | null; isActive?: boolean }) => {
     if (!user?.id) return;
     try {
-      await updatePlatformLocation(user.id, localId, payload);
+      await updatePlatformLocation(localId, payload);
       await loadBrands();
       if (selectedBrand) {
         await loadBrandDetails(selectedBrand.id);
@@ -1687,7 +1687,7 @@ const PlatformBrands: React.FC = () => {
     if (!user?.id) return;
     if (!window.confirm('¿Seguro que quieres eliminar este local?')) return;
     try {
-      await deletePlatformLocation(user.id, localId);
+      await deletePlatformLocation(localId);
       await loadBrands();
       if (selectedBrand) {
         await loadBrandDetails(selectedBrand.id);
@@ -1713,7 +1713,7 @@ const PlatformBrands: React.FC = () => {
 
     setIsAdminSaving(true);
     try {
-      await assignPlatformBrandAdmin(user.id, selectedBrand.id, {
+      await assignPlatformBrandAdmin(selectedBrand.id, {
         email,
         applyToAll,
         localId,
@@ -1736,7 +1736,7 @@ const PlatformBrands: React.FC = () => {
     if (!user?.id || !selectedBrand) return;
     setIsAdminSaving(true);
     try {
-      await removePlatformBrandAdmin(user.id, selectedBrand.id, payload);
+      await removePlatformBrandAdmin(selectedBrand.id, payload);
       toast({ title: 'Admin eliminado', description: 'El acceso se ha revocado.' });
       await loadBrandDetails(selectedBrand.id);
     } catch (error) {

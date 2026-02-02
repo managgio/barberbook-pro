@@ -2,14 +2,14 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
-import { PrismaService } from '../../prisma/prisma.service';
 import { AdminEndpoint } from '../../auth/admin.decorator';
+import { AuthService } from '../../auth/auth.service';
 
 @Controller('appointments')
 export class AppointmentsController {
   constructor(
     private readonly appointmentsService: AppointmentsService,
-    private readonly prisma: PrismaService,
+    private readonly authService: AuthService,
   ) {}
 
   @Get('availability')
@@ -67,15 +67,10 @@ export class AppointmentsController {
   }
 
   private async resolveAdminUserId(req: any): Promise<string | null> {
-    const adminUserId = req.headers?.['x-admin-user-id'];
-    if (!adminUserId || typeof adminUserId !== 'string') return null;
-    const user = await this.prisma.user.findUnique({
-      where: { id: adminUserId },
-      select: { role: true, isSuperAdmin: true, isPlatformAdmin: true },
-    });
+    const user = await this.authService.resolveUserFromRequest(req);
     if (!user) return null;
     if (user.isSuperAdmin || user.isPlatformAdmin || user.role === 'admin') {
-      return adminUserId;
+      return user.id;
     }
     return null;
   }

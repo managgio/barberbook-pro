@@ -83,7 +83,7 @@ Modulos principales:
 - **Platform Admin**: gestion de marcas, locales y configuracion global.
 
 Seguridad actual (importante):
-- Endpoints admin se validan via `x-admin-user-id` (no hay JWT en backend).
+- Endpoints admin se validan via `Authorization: Bearer <Firebase ID Token>` (JWT verificado en backend con Firebase Admin).
 - `PlatformAdminGuard` exige `user.isPlatformAdmin`.
 - `AiAssistantGuard` restringe a admins del local/plataforma.
 
@@ -94,7 +94,7 @@ Entradas y layouts:
 - Protecciones: `ProtectedRoute` por rol y plataforma.
 
 Contextos principales:
-- **AuthContext**: autentica con Firebase, sincroniza usuario con backend y guarda `managgio.adminUserId`.
+- **AuthContext**: autentica con Firebase y sincroniza usuario con backend.
 - **TenantContext**: carga tenant y configura theme.
 - **AdminPermissionsContext**: permisos por rol (AdminRole + adminSidebar oculto por config).
 
@@ -173,7 +173,7 @@ Flujos:
 2) **Login y sincronizacion**
    - Firebase Auth maneja login/registro.
    - Front crea/actualiza User en backend.
-   - Se guarda `x-admin-user-id` en localStorage para endpoints admin.
+   - El frontend usa `Authorization: Bearer <Firebase ID Token>` para endpoints admin.
    - Si `BrandUser.isBlocked` esta activo, se bloquea el acceso del cliente a la app.
 
 3) **Disponibilidad de citas**
@@ -273,8 +273,8 @@ Frontend (`frontend/.env*`):
 - Scripts DB: `scripts/db_dump.sh` y `scripts/db_restore.sh`.
 
 ## Seguridad, riesgos y casuisticas (checklist rapido)
-- **Auth admin por header**: `x-admin-user-id` es facil de falsear si se expone sin autenticacion real.
-- **TODO JWT**: migrar a tokens firmados (JWT) con expiracion y refresh, manteniendo compatibilidad temporal con header.
+- **Auth admin por JWT**: `Authorization: Bearer <Firebase ID Token>` verificado en backend.
+- **Expiración JWT**: los ID tokens expiran y se renuevan en el cliente; manejar 401/403 y reintentos si aplica.
 - **CORS**: habilitado global; revisar origenes en produccion.
 - **Multi-tenant**: validar siempre `localId` en queries (ya se usa `getCurrentLocalId`).
 - **Jobs cron**: iteran por marca/local para evitar usar `DEFAULT_LOCAL_ID` en multi-tenant.
@@ -286,7 +286,7 @@ Frontend (`frontend/.env*`):
 
 ## Puntos de fallo comunes (para debug rapido)
 - Subdominio invalido: `TENANT_SUBDOMAIN_REQUIRED` o `TENANT_NOT_FOUND`.
-- Sin `x-admin-user-id`: endpoints admin devuelven 401/403.
+- Sin `Authorization` (Bearer): endpoints admin devuelven 401/403.
 - Precio de cita incorrecto: revisar ofertas activas y categoria/servicio.
 - Slots vacios: revisar horario del barbero, festivos o duracion.
 - No llegan recordatorios: revisar Twilio + `notificationPrefs` (sms/whatsapp) + preferencias del usuario.

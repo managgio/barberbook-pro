@@ -157,11 +157,7 @@ const AdminAiAssistant: React.FC = () => {
       loadedSessionRef.current = sessionId;
       setIsLoadingHistory(true);
       try {
-        const session = await getAiAssistantSession({
-          sessionId,
-          adminUserId: user.id,
-          role: user.role,
-        });
+        const session = await getAiAssistantSession({ sessionId });
         setMessages(session.messages.map((message) => ({
           id: message.id,
           role: message.role,
@@ -229,8 +225,6 @@ const AdminAiAssistant: React.FC = () => {
       const response = await postAiAssistantChat({
         message: trimmed,
         sessionId,
-        adminUserId: user.id,
-        role: user.role,
       });
       handleResponse(response);
     } catch (error) {
@@ -328,11 +322,7 @@ const AdminAiAssistant: React.FC = () => {
       setIsTranscribing(true);
       const extension = getFileExtension(blob.type);
       const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blob.type });
-      const response = await postAiAssistantTranscribe({
-        file,
-        adminUserId: user.id,
-        role: user.role,
-      });
+      const response = await postAiAssistantTranscribe({ file });
       if (!response.text.trim()) {
         toast({
           title: 'Sin texto',

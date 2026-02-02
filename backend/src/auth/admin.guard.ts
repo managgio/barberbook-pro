@@ -1,14 +1,16 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
 import { ADMIN_ENDPOINT_KEY } from './admin.decorator';
 import { getCurrentLocalId } from '../tenancy/tenant.context';
+import { AuthService } from './auth.service';
 
 @Injectable()
 export class AdminGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
+    private readonly authService: AuthService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -21,16 +23,8 @@ export class AdminGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const adminUserId = request.headers['x-admin-user-id'];
-
-    if (!adminUserId || typeof adminUserId !== 'string') {
-      throw new UnauthorizedException('Se requiere autenticación de administrador.');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: adminUserId } });
-    if (!user) {
-      throw new UnauthorizedException('Se requiere autenticación de administrador.');
-    }
+    const user = await this.authService.requireUser(request);
+    const adminUserId = user.id;
 
     if (user.isSuperAdmin || user.isPlatformAdmin) {
       request.adminUserId = adminUserId;

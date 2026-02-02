@@ -1,29 +1,23 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { AuthService } from '../../auth/auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 
 @Injectable()
 export class AiAssistantGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authService: AuthService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const adminUserId = request.headers['x-admin-user-id'];
-    const role = request.headers['x-user-role'];
-
-    if (!adminUserId || typeof adminUserId !== 'string') {
-      throw new UnauthorizedException('Se requiere autenticación de administrador.');
-    }
-
-    if (role && role !== 'admin') {
-      throw new ForbiddenException('Acceso restringido a administradores.');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: adminUserId } });
-    if (!user) {
-      throw new UnauthorizedException('Se requiere autenticación de administrador.');
-    }
+    const user = await this.authService.requireUser(request);
+    const adminUserId = user.id;
     if (!user.isSuperAdmin && !user.isPlatformAdmin) {
+      if (user.role !== 'admin') {
+        throw new ForbiddenException('Acceso restringido a administradores.');
+      }
       const localId = getCurrentLocalId();
       const staff = await this.prisma.locationStaff.findUnique({
         where: {

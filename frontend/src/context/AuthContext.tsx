@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { User, UserRole } from '@/data/types';
 import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api';
 import {
@@ -11,7 +11,6 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import { getFirebaseAuth, googleProvider } from '@/lib/firebaseConfig';
-import { setAdminUserId } from '@/lib/authStorage';
 import { useTenant } from './TenantContext';
 
 interface AuthContextType {
@@ -198,15 +197,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       })
       .finally(() => setIsLoading(false));
   }, [tenantReady, currentLocationId]);
-
-  useLayoutEffect(() => {
-    if (!user) {
-      setAdminUserId(null);
-      return;
-    }
-    const hasAdminAccess = user.isSuperAdmin || user.isPlatformAdmin || user.isLocalAdmin;
-    setAdminUserId(hasAdminAccess ? user.id : null);
-  }, [user]);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {

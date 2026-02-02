@@ -12,6 +12,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { ReferralsModule } from '../referrals/referrals.module';
 import { ReviewsModule } from '../reviews/reviews.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ReviewsModule } from '../reviews/reviews.module';
     LoyaltyModule,
     ReferralsModule,
     ReviewsModule,
+    AuthModule,
   ],
   controllers: [AppointmentsController],
   providers: [AppointmentsService, AppointmentsStatusSyncService, AppointmentsRetentionService],

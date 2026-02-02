@@ -1,5 +1,5 @@
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
-import { getAdminUserId } from '@/lib/authStorage';
+import { buildAuthHeaders } from '@/lib/authToken';
 
 const UPLOAD_URL = 'https://upload.imagekit.io/api/v1/files/upload';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -7,7 +7,6 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 export type ImageKitRequestOptions = {
   subdomainOverride?: string;
   localIdOverride?: string;
-  adminUserIdOverride?: string;
 };
 
 export type ImageKitAuth = {
@@ -22,12 +21,12 @@ export type ImageKitAuth = {
 export const requestImageKitAuth = async (options: ImageKitRequestOptions = {}): Promise<ImageKitAuth> => {
   const localId = options.localIdOverride ?? getStoredLocalId();
   const tenantOverride = options.subdomainOverride ?? getTenantSubdomainOverride();
-  const adminUserId = options.adminUserIdOverride ?? getAdminUserId();
+  const authHeaders = await buildAuthHeaders();
   const response = await fetch(`${API_BASE}/imagekit/sign`, {
     headers: {
+      ...authHeaders,
       ...(localId ? { 'x-local-id': localId } : {}),
       ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
-      ...(adminUserId ? { 'x-admin-user-id': adminUserId } : {}),
     },
   });
   if (!response.ok) {
@@ -106,13 +105,13 @@ export const uploadToImageKit = async (
 export const deleteFromImageKit = async (fileId: string, options: ImageKitRequestOptions = {}): Promise<void> => {
   const localId = options.localIdOverride ?? getStoredLocalId();
   const tenantOverride = options.subdomainOverride ?? getTenantSubdomainOverride();
-  const adminUserId = options.adminUserIdOverride ?? getAdminUserId();
+  const authHeaders = await buildAuthHeaders();
   const response = await fetch(`${API_BASE}/imagekit/file/${fileId}`, {
     method: 'DELETE',
     headers: {
+      ...authHeaders,
       ...(localId ? { 'x-local-id': localId } : {}),
       ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
-      ...(adminUserId ? { 'x-admin-user-id': adminUserId } : {}),
     },
   });
   if (!response.ok) {
