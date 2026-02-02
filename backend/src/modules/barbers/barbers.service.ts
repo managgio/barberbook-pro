@@ -113,7 +113,12 @@ export class BarbersService {
       });
       return { success: true, archived: true };
     }
-    await this.prisma.barber.delete({ where: { id } });
+
+    await this.prisma.$transaction([
+      this.prisma.barberHoliday.deleteMany({ where: { barberId: id, localId } }),
+      this.prisma.barberSchedule.deleteMany({ where: { barberId: id, localId } }),
+      this.prisma.barber.delete({ where: { id } }),
+    ]);
     return { success: true };
   }
 }
