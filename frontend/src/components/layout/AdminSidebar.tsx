@@ -79,10 +79,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
         <Button
           variant="ghost"
           size="icon"
-          className={cn(
-            'hidden md:inline-flex transition-all duration-300',
-            collapsed ? 'absolute top-3 -right-5' : 'absolute top-4 -right-4 bg-background shadow-lg border rounded-full'
-          )}
+          className="sr-only"
           onClick={onToggle}
         >
           {collapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}

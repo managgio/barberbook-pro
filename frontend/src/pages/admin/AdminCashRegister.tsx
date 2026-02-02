@@ -252,17 +252,8 @@ const AdminCashRegister: React.FC = () => {
       const key = !stripeEnabled && raw === 'stripe' ? 'card' : raw;
       totals[key] += getAppointmentAmount(appointment);
     });
-    if (paymentBarberFilter === 'all') {
-      movements
-        .filter((movement) => movement.type === 'in')
-        .forEach((movement) => {
-          const raw = movement.method ?? 'unknown';
-          const key = !stripeEnabled && raw === 'stripe' ? 'card' : raw;
-          totals[key] += movement.amount;
-        });
-    }
     return totals;
-  }, [paymentFilteredAppointments, movements, paymentBarberFilter, getAppointmentAmount, stripeEnabled]);
+  }, [paymentFilteredAppointments, getAppointmentAmount, stripeEnabled]);
 
   const methodData = useMemo(
     () =>
@@ -454,7 +445,8 @@ const AdminCashRegister: React.FC = () => {
           <CardContent>
             <p className="text-2xl font-semibold text-foreground">{currencyFormatter.format(totalIncome)}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {completedAppointments.length} citas completadas · {currencyFormatter.format(ticketAverage)} ticket medio
+              {completedAppointments.length} citas completadas · {pendingAppointments.length}{' '}
+              {pendingAppointments.length === 1 ? 'cita pendiente' : 'citas pendientes'}
             </p>
           </CardContent>
         </Card>
@@ -532,8 +524,8 @@ const AdminCashRegister: React.FC = () => {
               </Select>
             </div>
             <p className="text-sm text-muted-foreground">
-              Distribución de ingresos confirmados
-              {paymentBarberFilter === 'all' ? ' y entradas manuales.' : ' por barbero (sin movimientos manuales).'}
+              Distribución de ingresos confirmados por citas completadas
+              {paymentBarberFilter === 'all' ? '.' : ' por barbero.'}
             </p>
           </CardHeader>
           <CardContent className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">

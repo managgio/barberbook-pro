@@ -5,11 +5,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
-import { Appointment, Barber, Service, User } from '@/data/types';
+import { Appointment, Barber, PaymentMethod, Service, User } from '@/data/types';
 import { 
   ChevronLeft, 
   ChevronRight, 
   Clock,
+  Loader2,
   User as UserIcon,
   Scissors,
   MessageSquare,
@@ -48,6 +49,7 @@ const currencyFormatter = new Intl.NumberFormat('es-ES', {
   currency: 'EUR',
   minimumFractionDigits: 2,
 });
+const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
@@ -63,6 +65,11 @@ const AdminCalendar: React.FC = () => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [paymentMethodDraft, setPaymentMethodDraft] = useState<'cash' | 'card' | 'bizum' | 'stripe' | 'none'>('none');
+  const [priceDraft, setPriceDraft] = useState('');
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
 
   const getProductsTotal = (appointment: Appointment) =>
     appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0;
@@ -118,6 +125,88 @@ const AdminCalendar: React.FC = () => {
   const selectedClientInfo = selectedAppointment ? getClientInfo(selectedAppointment) : null;
   const selectedProductsTotal = selectedAppointment ? getProductsTotal(selectedAppointment) : 0;
   const hasSelectedProducts = selectedProductsTotal > 0;
+
+  const applyAppointmentUpdate = useCallback((updated: Appointment) => {
+    setAppointments((prev) =>
+      prev.map((appointment) => (appointment.id === updated.id ? updated : appointment)),
+    );
+    setSelectedAppointment(updated);
+    dispatchAppointmentsUpdated({ source: 'admin-calendar' });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAppointment) {
+      setPaymentMethodDraft('none');
+      setPriceDraft('');
+      setIsEditingPrice(false);
+      return;
+    }
+    setPaymentMethodDraft(selectedAppointment.paymentMethod ?? 'none');
+    if (!isEditingPrice) {
+      setPriceDraft(formatPriceInput(selectedAppointment.price ?? 0));
+    }
+  }, [selectedAppointment, isEditingPrice]);
+
+  const handlePaymentMethodChange = async (value: string) => {
+    if (!selectedAppointment || isSavingPayment) return;
+    if (value === paymentMethodDraft) return;
+    setPaymentMethodDraft(value as typeof paymentMethodDraft);
+    setIsSavingPayment(true);
+    try {
+      const updated = await updateAppointment(selectedAppointment.id, {
+        paymentMethod: value === 'none' ? null : (value as PaymentMethod),
+      });
+      applyAppointmentUpdate(updated);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el método de pago.',
+        variant: 'destructive',
+      });
+      setPaymentMethodDraft(selectedAppointment.paymentMethod ?? 'none');
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
+  const commitPrice = async () => {
+    if (!selectedAppointment || isSavingPrice) return;
+    const currentPrice = selectedAppointment.price ?? 0;
+    const normalized = priceDraft.trim().replace(',', '.');
+    if (!normalized) {
+      setPriceDraft(formatPriceInput(currentPrice));
+      return;
+    }
+    const parsed = Number(normalized);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      toast({
+        title: 'Precio inválido',
+        description: 'Introduce un importe válido para la cita.',
+        variant: 'destructive',
+      });
+      setPriceDraft(formatPriceInput(currentPrice));
+      return;
+    }
+    if (Math.abs(parsed - currentPrice) < 0.009) {
+      setPriceDraft(formatPriceInput(currentPrice));
+      return;
+    }
+    setIsSavingPrice(true);
+    try {
+      const updated = await updateAppointment(selectedAppointment.id, { price: parsed });
+      applyAppointmentUpdate(updated);
+      setPriceDraft(formatPriceInput(updated.price ?? parsed));
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el precio final.',
+        variant: 'destructive',
+      });
+      setPriceDraft(formatPriceInput(currentPrice));
+    } finally {
+      setIsSavingPrice(false);
+    }
+  };
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
 
@@ -447,24 +536,61 @@ const AdminCalendar: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-2">
-                <AppointmentStatusPicker
-                  appointment={selectedAppointment}
-                  serviceDurationMinutes={getService(selectedAppointment.serviceId)?.duration ?? 30}
-                  onStatusUpdated={(updated) => {
-                    setAppointments((prev) =>
-                      prev.map((appointment) =>
-                        appointment.id === updated.id ? updated : appointment,
-                      ),
-                    );
-                    setSelectedAppointment(updated);
-                    dispatchAppointmentsUpdated({ source: 'admin-calendar' });
-                  }}
-                />
-                <div className="text-right">
-                  <span className="text-xl font-bold text-primary">
-                    {currencyFormatter.format(selectedAppointment.price)}
-                  </span>
+              <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <AppointmentStatusPicker
+                    appointment={selectedAppointment}
+                    serviceDurationMinutes={getService(selectedAppointment.serviceId)?.duration ?? 30}
+                    onStatusUpdated={applyAppointmentUpdate}
+                  />
+                  <Select
+                    value={paymentMethodDraft}
+                    onValueChange={handlePaymentMethodChange}
+                    disabled={isSavingPayment}
+                  >
+                    <SelectTrigger className="h-8 w-[140px] rounded-full bg-background/70 px-3 text-xs">
+                      <SelectValue placeholder="Método de pago" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Efectivo</SelectItem>
+                      <SelectItem value="card">Tarjeta</SelectItem>
+                      <SelectItem value="bizum">Bizum</SelectItem>
+                      <SelectItem value="stripe">Stripe</SelectItem>
+                      <SelectItem value="none">Sin método</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1.5">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={priceDraft}
+                      onFocus={(event) => {
+                        setIsEditingPrice(true);
+                        event.currentTarget.select();
+                      }}
+                      onBlur={() => {
+                        setIsEditingPrice(false);
+                        void commitPrice();
+                      }}
+                      onChange={(event) => setPriceDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.currentTarget.blur();
+                        }
+                        if (event.key === 'Escape') {
+                          setPriceDraft(formatPriceInput(selectedAppointment.price ?? 0));
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      className="w-[60px] bg-transparent text-center text-xl font-bold text-primary outline-none sm:w-[72px]"
+                      aria-label="Precio final"
+                      disabled={isSavingPrice}
+                    />
+                    <span className="text-sm font-semibold text-primary">€</span>
+                    {isSavingPrice && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                  </div>
                   {hasSelectedProducts && (
                     <p className="text-xs text-muted-foreground">
                       Incluye {currencyFormatter.format(selectedProductsTotal)} en productos

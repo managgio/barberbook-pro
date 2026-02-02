@@ -8,7 +8,7 @@ import AdminSpotlight from '@/components/admin/AdminSpotlight';
 import AdminSpotlightTrigger from '@/components/admin/AdminSpotlightTrigger';
 import { AdminPermissionsProvider, useAdminPermissions } from '@/context/AdminPermissionsContext';
 import { Button } from '@/components/ui/button';
-import { Menu, X } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { AdminSpotlightProvider } from '@/components/admin/AdminSpotlightContext';
 
 const AdminLayoutContent: React.FC = () => {
@@ -29,13 +29,25 @@ const AdminLayoutContent: React.FC = () => {
         variant="ghost"
         size="icon"
         className={cn(
-          'fixed top-4 z-50 md:hidden transition-all duration-300',
+          'fixed top-4 z-[1000] md:hidden transition-all duration-300',
           collapsed ? 'left-4' : 'left-64 -translate-x-1/2'
         )}
         onClick={() => setCollapsed((prev) => !prev)}
         aria-label={collapsed ? 'Abrir menú' : 'Cerrar menú'}
       >
-        {collapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
+        {collapsed ? <ChevronsRight className="h-5 w-5" /> : <ChevronsLeft className="h-5 w-5" />}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn(
+          'fixed top-4 z-[1000] hidden md:inline-flex transition-all duration-300',
+          collapsed ? 'left-20 -translate-x-1/2' : 'left-64 -translate-x-1/2'
+        )}
+        onClick={() => setCollapsed((prev) => !prev)}
+        aria-label={collapsed ? 'Expandir sidebar' : 'Contraer sidebar'}
+      >
+        {collapsed ? <ChevronsRight className="h-5 w-5" /> : <ChevronsLeft className="h-5 w-5" />}
       </Button>
       {!collapsed && (
         <div
