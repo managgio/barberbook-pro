@@ -4,9 +4,12 @@ import AdminSidebar from './AdminSidebar';
 import { cn } from '@/lib/utils';
 import AiAssistantFloatingButton from '@/components/admin/AiAssistantFloatingButton';
 import QuickAppointmentButton from '@/components/admin/QuickAppointmentButton';
+import AdminSpotlight from '@/components/admin/AdminSpotlight';
+import AdminSpotlightTrigger from '@/components/admin/AdminSpotlightTrigger';
 import { AdminPermissionsProvider, useAdminPermissions } from '@/context/AdminPermissionsContext';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
+import { AdminSpotlightProvider } from '@/components/admin/AdminSpotlightContext';
 
 const AdminLayoutContent: React.FC = () => {
   const [collapsed, setCollapsed] = useState(() => {
@@ -42,6 +45,7 @@ const AdminLayoutContent: React.FC = () => {
         />
       )}
       <AdminSidebar collapsed={collapsed} onToggle={() => setCollapsed((prev) => !prev)} />
+      <AdminSpotlight />
       <main
         className={cn(
           'p-4 sm:p-6 md:p-8 transition-all duration-300 ml-0',
@@ -52,6 +56,7 @@ const AdminLayoutContent: React.FC = () => {
       </main>
       {showFloatingActions && (
         <>
+          <AdminSpotlightTrigger />
           <AiAssistantFloatingButton />
           <QuickAppointmentButton />
         </>
@@ -62,7 +67,9 @@ const AdminLayoutContent: React.FC = () => {
 
 const AdminLayout: React.FC = () => (
   <AdminPermissionsProvider>
-    <AdminLayoutContent />
+    <AdminSpotlightProvider>
+      <AdminLayoutContent />
+    </AdminSpotlightProvider>
   </AdminPermissionsProvider>
 );
 

@@ -1,63 +1,17 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import {
-  Calendar,
-  Search,
-  Users,
-  UserPlus,
-  Scissors,
-  UserCircle,
-  Bell,
-  LayoutDashboard,
-  LogOut,
-  ChevronLeft,
-  ChevronsLeft,
-  ChevronsRight,
-  CalendarDays,
-  Shield,
-  Settings,
-  Wallet,
-  Tag,
-  Boxes,
-  Award,
-  Star,
-} from 'lucide-react';
+import { UserCircle, LogOut, ChevronLeft, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { AdminSectionKey } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import LocationSwitcher from '@/components/common/LocationSwitcher';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
+import { adminNavItems } from './adminNavItems';
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ElementType;
-  section: AdminSectionKey;
-}
-
-const navItems: NavItem[] = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, section: 'dashboard' },
-  { href: '/admin/calendar', label: 'Calendario', icon: Calendar, section: 'calendar' },
-  { href: '/admin/search', label: 'Buscar Citas', icon: Search, section: 'search' },
-  { href: '/admin/clients', label: 'Clientes', icon: Users, section: 'clients' },
-  { href: '/admin/cash-register', label: 'Caja Registradora', icon: Wallet, section: 'cash-register' },
-  { href: '/admin/stock', label: 'Control de stock', icon: Boxes, section: 'stock' },
-  { href: '/admin/services', label: 'Servicios', icon: Scissors, section: 'services' },
-  { href: '/admin/barbers', label: 'Barberos', icon: UserCircle, section: 'barbers' },
-  { href: '/admin/loyalty', label: 'Fidelización', icon: Award, section: 'loyalty' },
-  { href: '/admin/referrals', label: 'Referidos', icon: UserPlus, section: 'referrals' },
-  { href: '/admin/reviews', label: 'Reseñas', icon: Star, section: 'reviews' },
-  { href: '/admin/alerts', label: 'Alertas', icon: Bell, section: 'alerts' },
-  { href: '/admin/offers', label: 'Ofertas', icon: Tag, section: 'offers' },
-  { href: '/admin/holidays', label: 'Festivos', icon: CalendarDays, section: 'holidays' },
-  { href: '/admin/settings', label: 'Configuración', icon: Settings, section: 'settings' },
-  { href: '/admin/roles', label: 'Roles', icon: Shield, section: 'roles' },
-];
 
 interface AdminSidebarProps {
   collapsed: boolean;
@@ -87,7 +41,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
     return location.pathname.startsWith(path);
   };
 
-  const visibleNavItems = navItems.filter((item) => canAccessSection(item.section));
+  const visibleNavItems = adminNavItems.filter((item) => canAccessSection(item.section));
   const showNoAccessMessage =
     user?.role === 'admin' &&
     !user?.isSuperAdmin &&
