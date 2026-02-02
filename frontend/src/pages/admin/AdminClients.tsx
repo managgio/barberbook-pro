@@ -371,14 +371,17 @@ const AdminClients: React.FC = () => {
 
       <div className="mt-4 grid lg:grid-cols-3 gap-6">
         {/* Client List */}
-        <Card variant="elevated" className="lg:col-span-1 h-[calc(100vh-150px)] flex flex-col">
+        <Card
+          variant="elevated"
+          className="lg:col-span-1 h-auto max-h-[28vh] sm:max-h-[32vh] lg:h-[calc(100vh-150px)] lg:max-h-none flex flex-col"
+        >
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserIcon className="w-5 h-5 text-primary" />
               Lista de clientes
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 min-h-0 overflow-hidden">
+          <CardContent className="flex-1 min-h-0 overflow-hidden pt-2">
             <div className="flex h-full flex-col">
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
