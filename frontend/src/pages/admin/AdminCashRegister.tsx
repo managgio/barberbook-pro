@@ -11,6 +11,7 @@ import {
   deleteCashMovement,
   getAppointmentsByDate,
   getAppointmentsByDateForLocal,
+  getAdminStripeConfig,
   getBarbers,
   getCashMovements,
   getCashMovementsForLocal,
@@ -63,6 +64,12 @@ const methodIcons: Record<PaymentMethod | 'unknown', React.ElementType> = {
   unknown: BadgeDollarSign,
 };
 
+type StripeConfig = {
+  brandEnabled?: boolean;
+  platformEnabled?: boolean;
+  localEnabled?: boolean;
+};
+
 const AdminCashRegister: React.FC = () => {
   const { toast } = useToast();
   const { locations, currentLocationId, tenant } = useTenant();
@@ -73,6 +80,7 @@ const AdminCashRegister: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingMovement, setIsSavingMovement] = useState(false);
   const [deletingMovementId, setDeletingMovementId] = useState<string | null>(null);
+  const [stripeConfig, setStripeConfig] = useState<StripeConfig | null>(null);
   const [netAllLocations, setNetAllLocations] = useState<number | null>(null);
   const [paymentBarberFilter, setPaymentBarberFilter] = useState<string>('all');
   const [barberPaymentMethodFilter, setBarberPaymentMethodFilter] = useState<
@@ -91,6 +99,12 @@ const AdminCashRegister: React.FC = () => {
     note: '',
   });
   const today = format(new Date(), 'yyyy-MM-dd');
+  const stripeEnabled = Boolean(
+    stripeConfig?.brandEnabled && stripeConfig?.platformEnabled && stripeConfig?.localEnabled,
+  );
+  const visibleMethods: Array<PaymentMethod | 'unknown'> = stripeEnabled
+    ? ['cash', 'card', 'bizum', 'stripe', 'unknown']
+    : ['cash', 'card', 'bizum', 'unknown'];
 
   const getProductsTotal = useCallback(
     (appointment: Appointment) =>
@@ -160,6 +174,31 @@ const AdminCashRegister: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let active = true;
+    const loadStripeConfig = async () => {
+      try {
+        const data = await getAdminStripeConfig();
+        if (active) setStripeConfig(data as StripeConfig);
+      } catch {
+        if (active) setStripeConfig(null);
+      }
+    };
+    loadStripeConfig();
+    return () => {
+      active = false;
+    };
+  }, [currentLocationId]);
+
+  useEffect(() => {
+    if (!stripeEnabled && barberPaymentMethodFilter === 'stripe') {
+      setBarberPaymentMethodFilter('all');
+    }
+    if (!stripeEnabled && movementDraft.method === 'stripe') {
+      setMovementDraft((prev) => ({ ...prev, method: 'cash' }));
+    }
+  }, [stripeEnabled, barberPaymentMethodFilter, movementDraft.method]);
+
   const completedAppointments = useMemo(
     () => appointments.filter((appointment) => appointment.status === 'completed'),
     [appointments],
@@ -209,23 +248,25 @@ const AdminCashRegister: React.FC = () => {
       unknown: 0,
     };
     paymentFilteredAppointments.forEach((appointment) => {
-      const key = appointment.paymentMethod ?? 'unknown';
+      const raw = appointment.paymentMethod ?? 'unknown';
+      const key = !stripeEnabled && raw === 'stripe' ? 'card' : raw;
       totals[key] += getAppointmentAmount(appointment);
     });
     if (paymentBarberFilter === 'all') {
       movements
         .filter((movement) => movement.type === 'in')
         .forEach((movement) => {
-          const key = movement.method ?? 'unknown';
+          const raw = movement.method ?? 'unknown';
+          const key = !stripeEnabled && raw === 'stripe' ? 'card' : raw;
           totals[key] += movement.amount;
         });
     }
     return totals;
-  }, [paymentFilteredAppointments, movements, paymentBarberFilter, getAppointmentAmount]);
+  }, [paymentFilteredAppointments, movements, paymentBarberFilter, getAppointmentAmount, stripeEnabled]);
 
   const methodData = useMemo(
     () =>
-      (Object.keys(methodTotals) as Array<PaymentMethod | 'unknown'>)
+      visibleMethods
         .map((key) => ({
           name: methodLabels[key],
           value: methodTotals[key],
@@ -233,7 +274,7 @@ const AdminCashRegister: React.FC = () => {
           key,
         }))
         .filter((item) => item.value > 0),
-    [methodTotals],
+    [methodTotals, visibleMethods],
   );
 
   const barberTotals = useMemo(() => {
@@ -515,7 +556,7 @@ const AdminCashRegister: React.FC = () => {
               )}
             </div>
             <div className="space-y-3">
-              {(Object.keys(methodTotals) as Array<PaymentMethod | 'unknown'>).map((key) => {
+              {visibleMethods.map((key) => {
                 const Icon = methodIcons[key];
                 return (
                   <div key={key} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2">
@@ -549,7 +590,7 @@ const AdminCashRegister: React.FC = () => {
                   <SelectItem value="cash">Efectivo</SelectItem>
                   <SelectItem value="card">Tarjeta</SelectItem>
                   <SelectItem value="bizum">Bizum</SelectItem>
-                  <SelectItem value="stripe">Stripe</SelectItem>
+                  {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
                   <SelectItem value="unknown">Sin método</SelectItem>
                 </SelectContent>
               </Select>
@@ -681,7 +722,7 @@ const AdminCashRegister: React.FC = () => {
                   <SelectItem value="cash">Efectivo</SelectItem>
                   <SelectItem value="card">Tarjeta</SelectItem>
                   <SelectItem value="bizum">Bizum</SelectItem>
-                  <SelectItem value="stripe">Stripe</SelectItem>
+                  {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
                   <SelectItem value="none">Sin método</SelectItem>
                 </SelectContent>
               </Select>
@@ -718,7 +759,9 @@ const AdminCashRegister: React.FC = () => {
               ) : (
                 movements.map((movement) => {
                   const badgeVariant = movement.type === 'in' ? 'default' : 'destructive';
-                  const methodLabel = methodLabels[movement.method ?? 'unknown'];
+                  const rawMethod = movement.method ?? 'unknown';
+                  const methodKey = !stripeEnabled && rawMethod === 'stripe' ? 'card' : rawMethod;
+                  const methodLabel = methodLabels[methodKey];
                   return (
                     <div
                       key={movement.id}

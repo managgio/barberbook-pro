@@ -334,10 +334,12 @@ const AdminServices: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => openCategoryDialog()}>
-            <FolderTree className="w-4 h-4 mr-2" />
-            Nueva categoría
-          </Button>
+          {categoriesEnabled && (
+            <Button variant="outline" onClick={() => openCategoryDialog()}>
+              <FolderTree className="w-4 h-4 mr-2" />
+              Nueva categoría
+            </Button>
+          )}
           <Button onClick={openCreateDialog}>
             <Plus className="w-4 h-4 mr-2" />
             Nuevo servicio
@@ -368,98 +370,98 @@ const AdminServices: React.FC = () => {
                 onCheckedChange={handleToggleCategories}
               />
             </div>
-            {categoriesEnabled ? (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2 text-primary font-medium">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Categorización activa
+            {categoriesEnabled && (
+              <>
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-primary font-medium">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Categorización activa
+                  </div>
+                  <p className="mt-2">
+                    Asegúrate de que todos los servicios tengan categoría asignada para una experiencia limpia.
+                  </p>
                 </div>
-                <p className="mt-2">
-                  Asegúrate de que todos los servicios tengan categoría asignada para una experiencia limpia.
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
-                Los clientes verán un listado simple de servicios.
-              </div>
-            )}
-            {uncategorizedServices.length > 0 && (
-              <div className="rounded-xl border border-amber-200/60 bg-amber-50 text-amber-700 text-xs p-3">
-                Tienes {uncategorizedServices.length} servicio(s) sin categoría. Asígnalos para activar la vista agrupada.
-              </div>
+                {uncategorizedServices.length > 0 && (
+                  <div className="rounded-xl border border-amber-200/60 bg-amber-50 text-amber-700 text-xs p-3">
+                    Tienes {uncategorizedServices.length} servicio(s) sin categoría. Asígnalos para activar la vista agrupada.
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
 
         {/* Categories */}
-        <Card variant="elevated" className="lg:col-span-3">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FolderTree className="w-4 h-4 text-primary" />
-                Categorías
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Agrupa servicios por familias para una navegación más ligera.
-              </p>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {isLoading ? (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {[1, 2, 3].map((i) => <CardSkeleton key={i} />)}
+        {categoriesEnabled && (
+          <Card variant="elevated" className="lg:col-span-3">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <FolderTree className="w-4 h-4 text-primary" />
+                  Categorías
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Agrupa servicios por familias para una navegación más ligera.
+                </p>
               </div>
-            ) : orderedCategories.length > 0 ? (
-              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {orderedCategories.map((category) => {
-                  const count =
-                    category.services?.length ??
-                    services.filter((service) => service.categoryId === category.id).length;
-                  return (
-                    <div
-                      key={category.id}
-                      className="rounded-xl border border-border p-4 bg-background/60 flex flex-col gap-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-foreground">{category.name}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">
-                            {category.description || 'Sin descripción'}
-                          </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {isLoading ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[1, 2, 3].map((i) => <CardSkeleton key={i} />)}
+                </div>
+              ) : orderedCategories.length > 0 ? (
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {orderedCategories.map((category) => {
+                    const count =
+                      category.services?.length ??
+                      services.filter((service) => service.categoryId === category.id).length;
+                    return (
+                      <div
+                        key={category.id}
+                        className="rounded-xl border border-border p-4 bg-background/60 flex flex-col gap-3"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1">
+                            <p className="font-semibold text-foreground">{category.name}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-2">
+                              {category.description || 'Sin descripción'}
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openCategoryDialog(category)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openCategoryDeleteDialog(category.id)}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openCategoryDialog(category)}>
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openCategoryDeleteDialog(category.id)}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{count} servicio(s)</span>
+                          <span className="px-2 py-1 rounded-full border border-border">
+                            Orden {category.position ?? 0}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{count} servicio(s)</span>
-                        <span className="px-2 py-1 rounded-full border border-border">
-                          Orden {category.position ?? 0}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyState
-                icon={FolderTree}
-                title="Sin categorías aún"
-                description="Crea categorías para organizar el catálogo."
-                action={{ label: 'Crear categoría', onClick: () => openCategoryDialog() }}
-              />
-            )}
-          </CardContent>
-        </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={FolderTree}
+                  title="Sin categorías aún"
+                  description="Crea categorías para organizar el catálogo."
+                  action={{ label: 'Crear categoría', onClick: () => openCategoryDialog() }}
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Services Grid */}
@@ -509,35 +511,36 @@ const AdminServices: React.FC = () => {
                     {service.appliedOffer.name} · ahorras {service.appliedOffer.amountOff.toFixed(2)}€
                   </div>
                 )}
-                <div className="flex items-center justify-between rounded-xl border border-dashed border-border px-3 py-2">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs text-muted-foreground">Categoría</span>
-                    {service.category ? (
-                      <Badge variant="secondary" className="w-fit">{service.category.name}</Badge>
-                    ) : (
-                      <Badge variant="outline" className="w-fit">Sin categoría</Badge>
+                {categoriesEnabled && (
+                  <div className="flex items-center justify-between rounded-xl border border-dashed border-border px-3 py-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-muted-foreground">Categoría</span>
+                      {service.category ? (
+                        <Badge variant="secondary" className="w-fit">{service.category.name}</Badge>
+                      ) : (
+                        <Badge variant="outline" className="w-fit">Sin categoría</Badge>
+                      )}
+                    </div>
+                    <Select
+                      value={service.categoryId || UNCATEGORIZED_VALUE}
+                      onValueChange={(value) => handleAssignCategory(service, value)}
+                    >
+                      <SelectTrigger className="w-[160px]">
+                        <SelectValue placeholder="Asignar" />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        {orderedCategories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {updatingServiceCategoryId === service.id && (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
                     )}
                   </div>
-                  <Select
-                    value={service.categoryId || UNCATEGORIZED_VALUE}
-                    onValueChange={(value) => handleAssignCategory(service, value)}
-                  >
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue placeholder="Asignar" />
-                    </SelectTrigger>
-                    <SelectContent align="end">
-                      {!categoriesEnabled && (
-                        <SelectItem value={UNCATEGORIZED_VALUE}>Sin categoría</SelectItem>
-                      )}
-                      {orderedCategories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {updatingServiceCategoryId === service.id && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-                </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -613,28 +616,29 @@ const AdminServices: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Categoría</Label>
-                <Select
-                  value={formData.categoryId}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, categoryId: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={categoriesEnabled ? 'Selecciona una categoría' : 'Opcional'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {!categoriesEnabled && <SelectItem value={UNCATEGORIZED_VALUE}>Sin categoría</SelectItem>}
-                    {orderedCategories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {categoriesEnabled && orderedCategories.length === 0 && (
-                  <p className="text-xs text-destructive">Crea una categoría antes de añadir servicios.</p>
-                )}
-              </div>
+              {categoriesEnabled && (
+                <div className="space-y-2">
+                  <Label>Categoría</Label>
+                  <Select
+                    value={formData.categoryId}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, categoryId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona una categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orderedCategories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {orderedCategories.length === 0 && (
+                    <p className="text-xs text-destructive">Crea una categoría antes de añadir servicios.</p>
+                  )}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
