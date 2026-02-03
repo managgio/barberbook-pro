@@ -306,6 +306,13 @@ const AdminSettings: React.FC = () => {
     });
   };
 
+  const handleEndOverflowMinutesChange = (value: number) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      return { ...prev, endOverflowMinutes: Math.max(0, Math.floor(value)) };
+    });
+  };
+
   const handleAddBreak = (day: DayKey) => {
     setShopSchedule((prev) => {
       if (!prev) return prev;
@@ -963,19 +970,35 @@ const AdminSettings: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2 max-w-xs">
-              <Label>Tiempo entre servicios (minutos)</Label>
-              <Input
-                type="number"
-                min={0}
-                step={5}
-                value={shopSchedule?.bufferMinutes ?? 0}
-                onChange={(e) => handleBufferMinutesChange(parseInt(e.target.value, 10) || 0)}
-                disabled={isScheduleLoading || !shopSchedule}
-              />
-              <p className="text-xs text-muted-foreground">
-                Se aplica a todos los barberos para limpieza, preparación o descanso.
-              </p>
+            <div className="space-y-4 max-w-xs">
+              <div className="space-y-2">
+                <Label>Tiempo entre servicios (minutos)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={5}
+                  value={shopSchedule?.bufferMinutes ?? 0}
+                  onChange={(e) => handleBufferMinutesChange(parseInt(e.target.value, 10) || 0)}
+                  disabled={isScheduleLoading || !shopSchedule}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se aplica a todos los barberos para limpieza, preparación o descanso.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Tolerancia fin de jornada (minutos)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={5}
+                  value={shopSchedule?.endOverflowMinutes ?? 0}
+                  onChange={(e) => handleEndOverflowMinutesChange(parseInt(e.target.value, 10) || 0)}
+                  disabled={isScheduleLoading || !shopSchedule}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Permite reservar si la cita termina unos minutos después del cierre.
+                </p>
+              </div>
             </div>
             <div className="rounded-xl border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
               Estos bloques impiden reservar en las franjas indicadas y se aplican a todo el equipo.

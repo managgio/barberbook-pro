@@ -28,6 +28,7 @@ export type BreakSchedule = Record<DayKey, BreakRange[]>;
 
 export type ShopSchedule = {
   bufferMinutes?: number;
+  endOverflowMinutes?: number;
   breaks?: BreakSchedule;
   monday: DaySchedule;
   tuesday: DaySchedule;
@@ -45,6 +46,7 @@ export type HolidayRange = {
 
 export const DEFAULT_SHOP_SCHEDULE: ShopSchedule = {
   bufferMinutes: 0,
+  endOverflowMinutes: 0,
   breaks: {
     monday: [],
     tuesday: [],

@@ -796,11 +796,23 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         }
       }, 2000);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo completar la reserva. Inténtalo de nuevo.',
-        variant: 'destructive',
-      });
+      const message = error instanceof Error ? error.message : '';
+      const isSlotConflict = message.toLowerCase().includes('horario no disponible');
+      if (isSlotConflict) {
+        toast({
+          title: 'Horario ocupado',
+          description: 'Ese horario se acaba de reservar. Hemos actualizado la disponibilidad.',
+          variant: 'destructive',
+        });
+        setBooking((prev) => ({ ...prev, dateTime: null }));
+        await fetchSlots();
+      } else {
+        toast({
+          title: 'Error',
+          description: 'No se pudo completar la reserva. Inténtalo de nuevo.',
+          variant: 'destructive',
+        });
+      }
       setIsSubmitting(false);
     }
   };

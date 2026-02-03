@@ -110,10 +110,15 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, appointment?.id]);
 
-  const loadSlots = async (barberId: string, date: string, serviceId?: string) => {
+  const loadSlots = async (
+    barberId: string,
+    date: string,
+    serviceId?: string,
+    options?: { silent?: boolean },
+  ): Promise<string[]> => {
     if (!barberId || !date || !serviceId) {
       setAvailableSlots([]);
-      return;
+      return [];
     }
     setSlotsLoading(true);
     try {
@@ -122,9 +127,13 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         appointmentIdToIgnore: appointment?.id,
       });
       setAvailableSlots(slots);
+      return slots;
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo cargar la disponibilidad.', variant: 'destructive' });
+      if (!options?.silent) {
+        toast({ title: 'Error', description: 'No se pudo cargar la disponibilidad.', variant: 'destructive' });
+      }
       setAvailableSlots([]);
+      return [];
     } finally {
       setSlotsLoading(false);
     }
@@ -242,7 +251,21 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       onSaved?.(updated);
       onClose();
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo actualizar la cita.', variant: 'destructive' });
+      const message = error instanceof Error ? error.message : '';
+      const isSlotConflict = message.toLowerCase().includes('horario no disponible');
+      if (isSlotConflict) {
+        toast({
+          title: 'Horario ocupado',
+          description: 'Ese horario se acaba de reservar. Hemos actualizado la disponibilidad.',
+          variant: 'destructive',
+        });
+        const slots = await loadSlots(form.barberId, form.date, form.serviceId, { silent: true });
+        if (slots.length === 0 || !slots.includes(form.time)) {
+          setForm((prev) => ({ ...prev, time: '' }));
+        }
+      } else {
+        toast({ title: 'Error', description: 'No se pudo actualizar la cita.', variant: 'destructive' });
+      }
     } finally {
       setIsSaving(false);
     }

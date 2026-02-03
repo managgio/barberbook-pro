@@ -66,6 +66,8 @@ const normalizeBufferMinutes = (value: unknown): number => {
   return Math.max(0, Math.floor(parsed));
 };
 
+const normalizeEndOverflowMinutes = (value: unknown): number => normalizeBufferMinutes(value);
+
 const parseTime = (value?: string | null): number | null => {
   if (!value) return null;
   const [hour, minute] = value.split(':').map((part) => Number(part));
@@ -139,9 +141,19 @@ const convertLegacyDay = (
   };
 };
 
-export const normalizeSchedule = (schedule?: Partial<ShopSchedule>): ShopSchedule => {
+export const normalizeSchedule = (
+  schedule?: Partial<ShopSchedule>,
+  options?: { preserveEndOverflowUndefined?: boolean },
+): ShopSchedule => {
   const normalized: Partial<ShopSchedule> = {};
   normalized.bufferMinutes = normalizeBufferMinutes(schedule?.bufferMinutes);
+  if (options?.preserveEndOverflowUndefined && schedule?.endOverflowMinutes === undefined) {
+    normalized.endOverflowMinutes = undefined;
+  } else {
+    normalized.endOverflowMinutes = normalizeEndOverflowMinutes(
+      schedule?.endOverflowMinutes ?? DEFAULT_SHOP_SCHEDULE.endOverflowMinutes,
+    );
+  }
   normalized.breaks = normalizeBreaks(schedule?.breaks);
   DAY_KEYS.forEach((day) => {
     const fallback = cloneDaySchedule(DEFAULT_SHOP_SCHEDULE[day]);

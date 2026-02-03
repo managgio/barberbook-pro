@@ -231,6 +231,17 @@ const AdminBarbers: React.FC = () => {
     });
   };
 
+  const handleEndOverflowMinutesChange = (value: string) => {
+    setScheduleForm(prev => {
+      if (!prev) return prev;
+      if (value.trim() === '') {
+        return { ...prev, endOverflowMinutes: undefined };
+      }
+      const parsed = Math.max(0, Math.floor(Number(value)));
+      return { ...prev, endOverflowMinutes: Number.isFinite(parsed) ? parsed : undefined };
+    });
+  };
+
   const handleCopySchedule = () => {
     if (scheduleForm) {
       setCopiedSchedule(cloneSchedule(scheduleForm));
@@ -587,6 +598,22 @@ const AdminBarbers: React.FC = () => {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="rounded-2xl border border-border/60 bg-muted/30 p-3">
+                <div className="space-y-2 max-w-xs">
+                  <Label className="text-sm">Tolerancia fin de jornada (minutos)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={scheduleForm.endOverflowMinutes ?? ''}
+                    onChange={(e) => handleEndOverflowMinutesChange(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Si lo dejas vacío, se usa el valor configurado en el local.
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-3">

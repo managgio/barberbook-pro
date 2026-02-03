@@ -5,7 +5,7 @@ import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { mapAppointment } from './appointments.mapper';
-import { generateSlotsForShift, isDateInRange, minutesToTime, normalizeRange, timeToMinutes } from '../schedules/schedule.utils';
+import { isDateInRange, minutesToTime, normalizeRange, timeToMinutes } from '../schedules/schedule.utils';
 import { HolidaysService } from '../holidays/holidays.service';
 import { SchedulesService } from '../schedules/schedules.service';
 import { DEFAULT_SHOP_SCHEDULE } from '../schedules/schedule.types';
@@ -36,6 +36,10 @@ const ANONYMIZED_NAME = 'Invitado anonimizado';
 
 const buildAnonymizedContact = (id: string) => `anonimo+${id.slice(0, 8)}@example.invalid`;
 
+type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
+  include: { user: true; barber: true; service: true; products: { include: { product: true } } };
+}>;
+
 @Injectable()
 export class AppointmentsService {
   constructor(
@@ -59,6 +63,53 @@ export class AppointmentsService {
       where: { id: serviceId, localId },
     });
     return service?.duration ?? DEFAULT_SERVICE_DURATION;
+  }
+
+  private isTransactionConflict(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+  }
+
+  private async assertNoOverlappingAppointment(
+    tx: Prisma.TransactionClient,
+    params: {
+      barberId: string;
+      startDateTime: Date;
+      duration: number;
+      bufferMinutes: number;
+      appointmentIdToIgnore?: string;
+    },
+  ) {
+    const localId = getCurrentLocalId();
+    const dateOnly = formatDateInTimeZone(params.startDateTime, APP_TIMEZONE);
+    const appointments = await tx.appointment.findMany({
+      where: {
+        localId,
+        barberId: params.barberId,
+        status: { not: 'cancelled' },
+        startDateTime: {
+          gte: startOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+          lte: endOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+        },
+        NOT: params.appointmentIdToIgnore ? { id: params.appointmentIdToIgnore } : undefined,
+      },
+      include: { service: true },
+    });
+
+    const buffer = Math.max(0, params.bufferMinutes);
+    const newStart = params.startDateTime;
+    const newEnd = new Date(newStart.getTime() + (params.duration + buffer) * 60 * 1000);
+
+    const overlaps = appointments.some((appointment) => {
+      const existingDuration = appointment.service?.duration ?? DEFAULT_SERVICE_DURATION;
+      const existingEnd = new Date(
+        appointment.startDateTime.getTime() + (existingDuration + buffer) * 60 * 1000,
+      );
+      return newStart < existingEnd && newEnd > appointment.startDateTime;
+    });
+
+    if (overlaps) {
+      throw new BadRequestException('Horario no disponible.');
+    }
   }
 
   private async assertSlotAvailable(params: {
@@ -267,6 +318,9 @@ export class AppointmentsService {
       startDateTime: data.startDateTime,
     });
 
+    const shopSchedule = await this.schedulesService.getShopSchedule();
+    const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
+    const targetDuration = await this.getServiceDuration(data.serviceId);
     const pricing = await this.calculateAppointmentPrice(data.serviceId, startDateTime);
     const serviceName = pricing.serviceName;
     let servicePrice = pricing.price;
@@ -327,98 +381,116 @@ export class AppointmentsService {
       typeof paymentContext?.amount === 'number' ? paymentContext.amount : totalPrice;
     const paymentCurrency = paymentContext?.currency || DEFAULT_CURRENCY;
 
-    const appointment = await this.prisma.$transaction(async (tx) => {
-      if (shouldHoldStock && productSelection.items.length > 0) {
-        for (const item of productSelection.items) {
-          if (item.product.stock < item.quantity) {
-            throw new BadRequestException(`Stock insuficiente para "${item.product.name}".`);
-          }
-        }
-        for (const item of productSelection.items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { decrement: item.quantity } },
+    let appointment: AppointmentWithRelations;
+    try {
+      appointment = await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertNoOverlappingAppointment(tx, {
+            barberId: data.barberId,
+            startDateTime,
+            duration: targetDuration,
+            bufferMinutes,
           });
-        }
-      }
 
-      const created = await tx.appointment.create({
-        data: {
-          localId,
-          userId: data.userId,
-          barberId: data.barberId,
-          serviceId: data.serviceId,
-          barberNameSnapshot,
-          serviceNameSnapshot: serviceName,
-          loyaltyProgramId,
-          loyaltyRewardApplied,
-          referralAttributionId: shouldHoldStock ? referralAttribution?.id ?? null : null,
-          appliedCouponId: shouldHoldStock ? appliedCouponId : null,
-          walletAppliedAmount: new Prisma.Decimal(shouldHoldStock ? walletAppliedAmount : 0),
-          startDateTime,
-          price: new Prisma.Decimal(totalPrice),
-          paymentMethod: paymentContext?.method ?? null,
-          paymentStatus,
-          paymentAmount: new Prisma.Decimal(paymentAmount),
-          paymentCurrency,
-          paymentExpiresAt: paymentContext?.expiresAt ?? null,
-          stripePaymentIntentId: paymentContext?.stripePaymentIntentId ?? null,
-          stripeCheckoutSessionId: paymentContext?.stripeCheckoutSessionId ?? null,
-          status: nextStatus,
-          notes: data.notes,
-          guestName: data.guestName,
-          guestContact: data.guestContact,
-          reminderSent: false,
-          products: productSelection.items.length > 0
-            ? {
-                create: productSelection.items.map((item) => ({
-                  productId: item.productId,
-                  quantity: item.quantity,
-                  unitPrice: new Prisma.Decimal(item.unitPrice),
-                })),
+          if (shouldHoldStock && productSelection.items.length > 0) {
+            for (const item of productSelection.items) {
+              if (item.product.stock < item.quantity) {
+                throw new BadRequestException(`Stock insuficiente para "${item.product.name}".`);
               }
-            : undefined,
+            }
+            for (const item of productSelection.items) {
+              await tx.product.update({
+                where: { id: item.productId },
+                data: { stock: { decrement: item.quantity } },
+              });
+            }
+          }
+
+          const created = await tx.appointment.create({
+            data: {
+              localId,
+              userId: data.userId,
+              barberId: data.barberId,
+              serviceId: data.serviceId,
+              barberNameSnapshot,
+              serviceNameSnapshot: serviceName,
+              loyaltyProgramId,
+              loyaltyRewardApplied,
+              referralAttributionId: shouldHoldStock ? referralAttribution?.id ?? null : null,
+              appliedCouponId: shouldHoldStock ? appliedCouponId : null,
+              walletAppliedAmount: new Prisma.Decimal(shouldHoldStock ? walletAppliedAmount : 0),
+              startDateTime,
+              price: new Prisma.Decimal(totalPrice),
+              paymentMethod: paymentContext?.method ?? null,
+              paymentStatus,
+              paymentAmount: new Prisma.Decimal(paymentAmount),
+              paymentCurrency,
+              paymentExpiresAt: paymentContext?.expiresAt ?? null,
+              stripePaymentIntentId: paymentContext?.stripePaymentIntentId ?? null,
+              stripeCheckoutSessionId: paymentContext?.stripeCheckoutSessionId ?? null,
+              status: nextStatus,
+              notes: data.notes,
+              guestName: data.guestName,
+              guestContact: data.guestContact,
+              reminderSent: false,
+              products: productSelection.items.length > 0
+                ? {
+                    create: productSelection.items.map((item) => ({
+                      productId: item.productId,
+                      quantity: item.quantity,
+                      unitPrice: new Prisma.Decimal(item.unitPrice),
+                    })),
+                  }
+                : undefined,
+            },
+            include: { user: true, barber: true, service: true, products: { include: { product: true } } },
+          });
+
+          if (shouldHoldStock && referralAttribution) {
+            await this.referralAttributionService.attachAttributionToAppointment({
+              attributionId: referralAttribution.id,
+              appointmentId: created.id,
+              userId: data.userId ?? null,
+              guestContact: data.guestContact ?? null,
+              tx,
+            });
+          }
+
+          if (shouldHoldStock && walletAppliedAmount > 0 && data.userId) {
+            await this.rewardsService.reserveWalletHold(
+              {
+                userId: data.userId,
+                appointmentId: created.id,
+                amount: walletAppliedAmount,
+                description: 'Reserva de saldo por cita programada.',
+              },
+              tx,
+            );
+          }
+
+          if (shouldHoldStock && appliedCouponId && data.userId) {
+            await this.rewardsService.reserveCouponUsage(
+              {
+                userId: data.userId,
+                couponId: appliedCouponId,
+                appointmentId: created.id,
+                amount: couponDiscount,
+                description: 'Cupón aplicado a cita programada.',
+              },
+              tx,
+            );
+          }
+
+          return created;
         },
-        include: { user: true, barber: true, service: true, products: { include: { product: true } } },
-      });
-
-      if (shouldHoldStock && referralAttribution) {
-        await this.referralAttributionService.attachAttributionToAppointment({
-          attributionId: referralAttribution.id,
-          appointmentId: created.id,
-          userId: data.userId ?? null,
-          guestContact: data.guestContact ?? null,
-          tx,
-        });
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (this.isTransactionConflict(error)) {
+        throw new BadRequestException('Horario no disponible.');
       }
-
-      if (shouldHoldStock && walletAppliedAmount > 0 && data.userId) {
-        await this.rewardsService.reserveWalletHold(
-          {
-            userId: data.userId,
-            appointmentId: created.id,
-            amount: walletAppliedAmount,
-            description: 'Reserva de saldo por cita programada.',
-          },
-          tx,
-        );
-      }
-
-      if (shouldHoldStock && appliedCouponId && data.userId) {
-        await this.rewardsService.reserveCouponUsage(
-          {
-            userId: data.userId,
-            couponId: appliedCouponId,
-            appointmentId: created.id,
-            amount: couponDiscount,
-            description: 'Cupón aplicado a cita programada.',
-          },
-          tx,
-        );
-      }
-
-      return created;
-    });
+      throw error;
+    }
 
     if (nextStatus === 'completed') {
       await this.rewardsService.confirmWalletHold(appointment.id);
@@ -694,59 +766,84 @@ export class AppointmentsService {
       }
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      for (const adjustment of stockAdjustments) {
-        if (adjustment.delta > 0) {
-          await tx.product.update({
-            where: { id: adjustment.productId },
-            data: { stock: { decrement: adjustment.delta } },
-          });
-        } else if (adjustment.delta < 0) {
-          await tx.product.update({
-            where: { id: adjustment.productId },
-            data: { stock: { increment: Math.abs(adjustment.delta) } },
-          });
-        }
-      }
+    const shopSchedule = await this.schedulesService.getShopSchedule();
+    const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
+    const nextDuration = await this.getServiceDuration(nextServiceId);
 
-      return tx.appointment.update({
-        where: { id },
-        data: {
-          userId: data.userId,
-          barberId: data.barberId,
-          serviceId: data.serviceId,
-          ...snapshotUpdates,
-          loyaltyProgramId,
-          loyaltyRewardApplied,
-          referralAttributionId:
-            data.referralAttributionId === undefined ? undefined : data.referralAttributionId,
-          appliedCouponId: data.appliedCouponId === undefined ? undefined : data.appliedCouponId,
-          walletAppliedAmount:
-            data.walletAppliedAmount === undefined
-              ? undefined
-              : new Prisma.Decimal(data.walletAppliedAmount),
-          startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
-          price,
-          paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,
-          status: data.status,
-          notes: data.notes,
-          guestName: data.guestName,
-          guestContact: data.guestContact,
-          reminderSent,
-          products: productsInputProvided
-            ? {
-                deleteMany: {},
-                create: nextProductSelection.items.map((item) => ({
-                  productId: item.productId,
-                  quantity: item.quantity,
-                  unitPrice: new Prisma.Decimal(item.unitPrice),
-                })),
-              }
-            : undefined,
+    let updated: AppointmentWithRelations;
+    try {
+      updated = await this.prisma.$transaction(
+        async (tx) => {
+          if (startChanged || serviceChanged || barberChanged) {
+            await this.assertNoOverlappingAppointment(tx, {
+              barberId: nextBarberId,
+              startDateTime: nextStartDateTime,
+              duration: nextDuration,
+              bufferMinutes,
+              appointmentIdToIgnore: current.id,
+            });
+          }
+
+          for (const adjustment of stockAdjustments) {
+            if (adjustment.delta > 0) {
+              await tx.product.update({
+                where: { id: adjustment.productId },
+                data: { stock: { decrement: adjustment.delta } },
+              });
+            } else if (adjustment.delta < 0) {
+              await tx.product.update({
+                where: { id: adjustment.productId },
+                data: { stock: { increment: Math.abs(adjustment.delta) } },
+              });
+            }
+          }
+
+          return tx.appointment.update({
+            where: { id },
+            data: {
+              userId: data.userId,
+              barberId: data.barberId,
+              serviceId: data.serviceId,
+              ...snapshotUpdates,
+              loyaltyProgramId,
+              loyaltyRewardApplied,
+              referralAttributionId:
+                data.referralAttributionId === undefined ? undefined : data.referralAttributionId,
+              appliedCouponId: data.appliedCouponId === undefined ? undefined : data.appliedCouponId,
+              walletAppliedAmount:
+                data.walletAppliedAmount === undefined
+                  ? undefined
+                  : new Prisma.Decimal(data.walletAppliedAmount),
+              startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
+              price,
+              paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,
+              status: data.status,
+              notes: data.notes,
+              guestName: data.guestName,
+              guestContact: data.guestContact,
+              reminderSent,
+              products: productsInputProvided
+                ? {
+                    deleteMany: {},
+                    create: nextProductSelection.items.map((item) => ({
+                      productId: item.productId,
+                      quantity: item.quantity,
+                      unitPrice: new Prisma.Decimal(item.unitPrice),
+                    })),
+                  }
+                : undefined,
+            },
+            include: { user: true, barber: true, service: true, products: { include: { product: true } } },
+          });
         },
-        include: { user: true, barber: true, service: true, products: { include: { product: true } } },
-      });
-    });
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (this.isTransactionConflict(error)) {
+        throw new BadRequestException('Horario no disponible.');
+      }
+      throw error;
+    }
 
     if (statusChanged) {
       if (nextStatus === 'completed') {
@@ -829,6 +926,7 @@ export class AppointmentsService {
     const schedule = await this.schedulesService.getBarberSchedule(barberId);
     const shopSchedule = await this.schedulesService.getShopSchedule();
     const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
+    const endOverflowMinutes = schedule.endOverflowMinutes ?? shopSchedule.endOverflowMinutes ?? 0;
     const dayKey = getWeekdayKey(dateOnly, APP_TIMEZONE);
     const daySchedule = (schedule || DEFAULT_SHOP_SCHEDULE)[dayKey];
     if (!daySchedule || daySchedule.closed) return [];
@@ -841,9 +939,41 @@ export class AppointmentsService {
 
     const targetDuration = await this.getServiceDuration(options?.serviceId);
     const targetDurationWithBuffer = targetDuration + Math.max(0, bufferMinutes);
+    const normalizedEndOverflow = Math.max(0, Math.floor(endOverflowMinutes));
+
+    const lastShiftKey = daySchedule.afternoon?.enabled ? 'afternoon' : daySchedule.morning?.enabled ? 'morning' : null;
+
+    const getShiftLimits = (shift: { enabled: boolean; start: string; end: string }, applyOverflow: boolean) => {
+      const startMinutes = timeToMinutes(shift.start);
+      const endMinutes = timeToMinutes(shift.end);
+      const maxEnd = applyOverflow
+        ? Math.min(endMinutes + normalizedEndOverflow, 24 * 60 - 1)
+        : endMinutes;
+      return { startMinutes, endMinutes, maxEnd };
+    };
+
+    const generateSlotsForShiftWithOverflow = (
+      shift: { enabled: boolean; start: string; end: string },
+      applyOverflow: boolean,
+    ) => {
+      if (!shift.enabled) return [] as string[];
+      const { startMinutes, endMinutes, maxEnd } = getShiftLimits(shift, applyOverflow);
+      if (startMinutes >= endMinutes || targetDurationWithBuffer <= 0) return [];
+      const slots: string[] = [];
+      for (let current = startMinutes; current < endMinutes; current += SLOT_INTERVAL_MINUTES) {
+        if (current + targetDurationWithBuffer <= maxEnd) {
+          slots.push(minutesToTime(current));
+        }
+      }
+      return slots;
+    };
+
+    const morningLimits = getShiftLimits(daySchedule.morning, lastShiftKey === 'morning');
+    const afternoonLimits = getShiftLimits(daySchedule.afternoon, lastShiftKey === 'afternoon');
+
     const rawSlots = [
-      ...generateSlotsForShift(daySchedule.morning, targetDurationWithBuffer, SLOT_INTERVAL_MINUTES),
-      ...generateSlotsForShift(daySchedule.afternoon, targetDurationWithBuffer, SLOT_INTERVAL_MINUTES),
+      ...generateSlotsForShiftWithOverflow(daySchedule.morning, lastShiftKey === 'morning'),
+      ...generateSlotsForShiftWithOverflow(daySchedule.afternoon, lastShiftKey === 'afternoon'),
     ];
     if (rawSlots.length === 0) return [];
     const uniqueSlots = Array.from(new Set(rawSlots));
@@ -864,7 +994,7 @@ export class AppointmentsService {
 
     const bookedRanges = appointments.map((appointment) => {
       const start = appointment.startDateTime;
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
+      const startMinutes = timeToMinutes(formatTimeInTimeZone(start, APP_TIMEZONE));
       const duration = appointment.service?.duration ?? DEFAULT_SERVICE_DURATION;
       return { start: startMinutes, end: startMinutes + duration + Math.max(0, bufferMinutes) };
     });
@@ -906,33 +1036,49 @@ export class AppointmentsService {
       return next;
     };
 
-    const getFreeIntervalsForShift = (shift: { enabled: boolean; start: string; end: string }) => {
-      if (!shift.enabled) return [] as Array<{ start: number; end: number }>;
-      const shiftStart = timeToMinutes(shift.start);
-      const shiftEnd = timeToMinutes(shift.end);
-      if (shiftStart >= shiftEnd) return [];
-      let intervals: Array<{ start: number; end: number }> = [{ start: shiftStart, end: shiftEnd }];
+    const getFreeIntervalsForShift = (
+      shift: { enabled: boolean; start: string; end: string },
+      limits: { startMinutes: number; endMinutes: number; maxEnd: number },
+    ) => {
+      if (!shift.enabled) return { intervals: [] as Array<{ start: number; end: number }>, shiftEnd: limits.endMinutes };
+      if (limits.startMinutes >= limits.endMinutes) {
+        return { intervals: [] as Array<{ start: number; end: number }>, shiftEnd: limits.endMinutes };
+      }
+      let intervals: Array<{ start: number; end: number }> = [{ start: limits.startMinutes, end: limits.maxEnd }];
       blockedRanges.forEach((block) => {
         intervals = subtractRange(intervals, block);
       });
-      return intervals.filter((interval) => interval.end > interval.start);
+      return {
+        intervals: intervals.filter((interval) => interval.end > interval.start),
+        shiftEnd: limits.endMinutes,
+      };
     };
 
     const slotSet = new Set(baseSlots);
     const baseSlotMinutes = baseSlots.map(timeToMinutes);
     const minRequired = targetDurationWithBuffer;
 
-    const maybeAddGapSlot = (interval: { start: number; end: number }) => {
+    const maybeAddGapSlot = (interval: { start: number; end: number }, shiftEnd: number) => {
+      if (interval.start >= shiftEnd) return;
       if (interval.end - interval.start < minRequired) return;
-      const latestStart = interval.end - minRequired;
+      const isGridAligned = interval.start % SLOT_INTERVAL_MINUTES === 0;
+      if (!isGridAligned) {
+        slotSet.add(minutesToTime(interval.start));
+        return;
+      }
+      const latestStart = Math.min(interval.end - minRequired, shiftEnd - 1);
+      if (latestStart < interval.start) return;
       const hasGridSlot = baseSlotMinutes.some((slotMinute) => slotMinute >= interval.start && slotMinute <= latestStart);
       if (!hasGridSlot) {
         slotSet.add(minutesToTime(interval.start));
       }
     };
 
-    getFreeIntervalsForShift(daySchedule.morning).forEach(maybeAddGapSlot);
-    getFreeIntervalsForShift(daySchedule.afternoon).forEach(maybeAddGapSlot);
+    const morningFree = getFreeIntervalsForShift(daySchedule.morning, morningLimits);
+    morningFree.intervals.forEach((interval) => maybeAddGapSlot(interval, morningFree.shiftEnd));
+
+    const afternoonFree = getFreeIntervalsForShift(daySchedule.afternoon, afternoonLimits);
+    afternoonFree.intervals.forEach((interval) => maybeAddGapSlot(interval, afternoonFree.shiftEnd));
 
     return Array.from(slotSet).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
   }

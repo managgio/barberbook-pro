@@ -101,33 +101,41 @@ const QuickAppointmentButton: React.FC = () => {
     }
   }, [isOpen, fetchData]);
 
-  useEffect(() => {
-    if (!selectedBarberId || !selectedDate || !selectedServiceId) {
-      setAvailableSlots([]);
-      setSelectedTime('');
-      return;
-    }
-
-    const fetchSlots = async () => {
+  const refreshSlots = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!selectedBarberId || !selectedDate || !selectedServiceId) {
+        setAvailableSlots([]);
+        setSelectedTime('');
+        return;
+      }
       setSlotsLoading(true);
       try {
         const slots = await getAvailableSlots(selectedBarberId, selectedDate, {
           serviceId: selectedServiceId,
         });
         setAvailableSlots(slots);
+        if (selectedTime && !slots.includes(selectedTime)) {
+          setSelectedTime('');
+        }
       } catch (error) {
-        toast({
-          title: 'Error',
-          description: 'No se pudo cargar la disponibilidad del barbero.',
-          variant: 'destructive',
-        });
+        if (!options?.silent) {
+          toast({
+            title: 'Error',
+            description: 'No se pudo cargar la disponibilidad del barbero.',
+            variant: 'destructive',
+          });
+        }
+        setAvailableSlots([]);
       } finally {
         setSlotsLoading(false);
       }
-    };
+    },
+    [selectedBarberId, selectedDate, selectedServiceId, selectedTime, toast],
+  );
 
-    fetchSlots();
-  }, [selectedBarberId, selectedDate, selectedServiceId, services, barbers, toast]);
+  useEffect(() => {
+    refreshSlots();
+  }, [refreshSlots, services, barbers]);
 
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLowerCase();
@@ -263,11 +271,23 @@ const QuickAppointmentButton: React.FC = () => {
       handleOpenChange(false);
     } catch (error) {
       console.error(error);
-      toast({
-        title: 'Error',
-        description: 'No se pudo crear la cita. Intenta de nuevo.',
-        variant: 'destructive',
-      });
+      const message = error instanceof Error ? error.message : '';
+      const isSlotConflict = message.toLowerCase().includes('horario no disponible');
+      if (isSlotConflict) {
+        toast({
+          title: 'Horario ocupado',
+          description: 'Ese horario se acaba de reservar. Hemos actualizado la disponibilidad.',
+          variant: 'destructive',
+        });
+        setSelectedTime('');
+        await refreshSlots({ silent: true });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'No se pudo crear la cita. Intenta de nuevo.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }

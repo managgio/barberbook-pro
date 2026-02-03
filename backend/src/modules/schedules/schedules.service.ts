@@ -50,14 +50,15 @@ export class SchedulesService {
       where: { barberId, localId: getCurrentLocalId() },
     });
     if (!record) {
-      return cloneSchedule(DEFAULT_SHOP_SCHEDULE);
+      const shopSchedule = await this.ensureShopSchedule();
+      return cloneSchedule(shopSchedule);
     }
-    return normalizeSchedule(record.data as Partial<ShopSchedule>);
+    return normalizeSchedule(record.data as Partial<ShopSchedule>, { preserveEndOverflowUndefined: true });
   }
 
   async updateBarberSchedule(barberId: string, schedule: ShopSchedule): Promise<ShopSchedule> {
     const localId = getCurrentLocalId();
-    const normalized = normalizeSchedule(schedule);
+    const normalized = normalizeSchedule(schedule, { preserveEndOverflowUndefined: true });
     await this.prisma.barberSchedule.upsert({
       where: { barberId },
       update: { data: normalized },

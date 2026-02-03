@@ -258,6 +258,7 @@ export interface BreakRange {
 
 export interface ShopSchedule {
   bufferMinutes?: number;
+  endOverflowMinutes?: number;
   breaks?: Record<DayKey, BreakRange[]>;
   monday: DaySchedule;
   tuesday: DaySchedule;
