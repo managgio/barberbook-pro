@@ -140,8 +140,8 @@ PaymentStatus | Enum | pending/paid/failed/cancelled/exempt/in_person
 Alert | Avisos | Mensajes con tipo y rango de fechas
 GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
-ShopSchedule | Horario local | JSON con turnos diarios, descansos por dia y `bufferMinutes`
-BarberSchedule | Horario barbero | JSON con turnos diarios
+ShopSchedule | Horario local | JSON con turnos diarios, descansos por dia, `bufferMinutes` y `endOverflowMinutes`
+BarberSchedule | Horario barbero | JSON con turnos diarios y `endOverflowMinutes` (override opcional por barbero)
 SiteSettings | Configuracion sitio | JSON con branding, contacto, horarios y stats visibles (toggle por admin)
 AiChatSession | Sesiones IA | Conversaciones por admin/local
 AiChatMessage | Mensajes IA | Historial y tool payload
@@ -177,10 +177,17 @@ Flujos:
    - Si `BrandUser.isBlocked` esta activo, se bloquea el acceso del cliente a la app.
 
 3) **Disponibilidad de citas**
-   - Se calcula por horario del barbero + horario local.
-   - Se excluyen festivos (local y por barbero).
-   - Se aplican descansos configurados por dia y buffer entre servicios.
-   - Slots por intervalos de 15 min y duracion de servicio.
+   - Se calcula por horario del barbero (por dia/turno) + horario del local.
+   - Se excluyen festivos (local y por barbero) y descansos por dia.
+   - Se aplica `bufferMinutes` del local a duraciones y solapes.
+   - Slots base en intervalos de 15 min (`SLOT_INTERVAL_MINUTES`).
+   - **Overflow de fin de jornada**: `endOverflowMinutes` permite aceptar servicios que terminen un poco despues del cierre (solo en el ultimo turno del dia). Si no hay valor, no se excede el horario oficial.
+   - `endOverflowMinutes` se configura a nivel local y puede sobrescribirse por barbero (si no hay valor, hereda del local).
+   - **Relleno de huecos no alineados**: si hay un intervalo libre cuyo inicio no cae en un multiplo de 15, se agrega un unico slot extra en el minuto exacto del inicio del hueco para evitar huecos grandes sin saturar la UI.
+   - Se computan rangos ocupados con duracion real del servicio + buffer, y se filtran slots que solapen.
+   - Todas las comparaciones de dia/hora usan `APP_TIMEZONE` y helpers `startOfDayInTimeZone/endOfDayInTimeZone` para evitar errores de zona horaria.
+   - En creacion/edicion de cita se valida disponibilidad dos veces: pre-check y verificacion final dentro de una transaccion serializable (si hay conflicto: “Horario no disponible”).
+   - En frontend (cliente y admin), si el backend responde “Horario no disponible”, se muestra un mensaje explicito y se refrescan automaticamente los slots.
 
 4) **Pricing y ofertas**
    - Price base del servicio y productos añadidos.
@@ -218,6 +225,13 @@ Flujos:
 10) **Branding y landing**
    - Configuracion por marca/local en plataforma (orden y visibilidad de secciones con drag & drop).
    - Los overrides de local tienen prioridad sobre la marca; hero siempre fijo primero.
+
+11) **Spotlight (Admin Command Palette)**
+   - Disponible en el panel admin para navegar rapido por secciones.
+   - Atajo: `Ctrl/Cmd + B` (no interrumpe si el foco esta en un input editable).
+   - Basado en `CommandDialog` (shadcn/ui) y items de `adminNavItems`.
+   - Filtra por permisos (`AdminPermissionsContext`) y keywords.
+   - Se integra en `AdminLayout` con `AdminSpotlightProvider` y un trigger flotante.
    - Secciones opcionales (ej. productos) se excluyen si el modulo esta desactivado.
    - Hero: se puede ocultar la imagen principal, cambiar su posicion, definir color del texto, ajustar opacidad del fondo, mostrar/ocultar la card de ubicacion, activar el badge de reserva online y alinear el contenido cuando no hay imagen.
    - Logos por modo: se guarda logo para modo claro/oscuro y se usa segun `theme.mode`.

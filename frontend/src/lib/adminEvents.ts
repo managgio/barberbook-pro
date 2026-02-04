@@ -4,6 +4,7 @@ export const ADMIN_EVENTS = {
   alertsUpdated: 'admin:alerts-updated',
   servicesUpdated: 'admin:services-updated',
   barbersUpdated: 'admin:barbers-updated',
+  schedulesUpdated: 'admin:schedules-updated',
 } as const;
 
 export const dispatchAppointmentsUpdated = (detail?: Record<string, unknown>) => {
@@ -29,4 +30,9 @@ export const dispatchServicesUpdated = (detail?: Record<string, unknown>) => {
 export const dispatchBarbersUpdated = (detail?: Record<string, unknown>) => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.barbersUpdated, { detail }));
+};
+
+export const dispatchSchedulesUpdated = (detail?: Record<string, unknown>) => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.schedulesUpdated, { detail }));
 };

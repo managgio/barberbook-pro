@@ -13,7 +13,7 @@ import { getBarbers, createBarber, updateBarber, deleteBarber, getBarberSchedule
 import { Barber, DayKey, ShopSchedule } from '@/data/types';
 import { Plus, Pencil, Trash2, Calendar, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { dispatchBarbersUpdated } from '@/lib/adminEvents';
+import { dispatchBarbersUpdated, dispatchSchedulesUpdated } from '@/lib/adminEvents';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/components/admin/BarberPhotoUploader';
@@ -278,6 +278,7 @@ const AdminBarbers: React.FC = () => {
     try {
       const updated = await updateBarberSchedule(scheduleDialog.barber.id, scheduleForm);
       setScheduleCache(prev => ({ ...prev, [scheduleDialog.barber!.id]: updated }));
+      dispatchSchedulesUpdated({ source: 'admin-barbers' });
       toast({ title: 'Horario guardado', description: 'Se ha actualizado el horario del barbero.' });
       closeScheduleDialog();
     } catch (error) {

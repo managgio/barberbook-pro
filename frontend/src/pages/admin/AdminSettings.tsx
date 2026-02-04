@@ -11,6 +11,7 @@ import { getShopSchedule, getSiteSettings, updateShopSchedule, updateSiteSetting
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
+import { dispatchSchedulesUpdated } from '@/lib/adminEvents';
 import {
   Loader2,
   MapPin,
@@ -359,6 +360,7 @@ const AdminSettings: React.FC = () => {
     try {
       const updated = await updateShopSchedule(shopSchedule);
       setShopSchedule(updated);
+      dispatchSchedulesUpdated({ source: 'admin-settings' });
       toast({
         title: 'Disponibilidad actualizada',
         description: 'Los descansos y tiempos entre servicios se han guardado.',

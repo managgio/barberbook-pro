@@ -137,6 +137,16 @@ const QuickAppointmentButton: React.FC = () => {
     refreshSlots();
   }, [refreshSlots, services, barbers]);
 
+  useEffect(() => {
+    const handleScheduleRefresh = () => {
+      void refreshSlots({ silent: true });
+    };
+    window.addEventListener(ADMIN_EVENTS.schedulesUpdated, handleScheduleRefresh);
+    return () => {
+      window.removeEventListener(ADMIN_EVENTS.schedulesUpdated, handleScheduleRefresh);
+    };
+  }, [refreshSlots]);
+
   const filteredClients = useMemo(() => {
     const query = clientSearch.trim().toLowerCase();
     if (!query) return [];
