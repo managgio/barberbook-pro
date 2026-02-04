@@ -5,7 +5,7 @@ import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
 import { useTenant } from '@/context/TenantContext';
 
 export const useSiteSettings = () => {
-  const { tenant } = useTenant();
+  const { tenant, currentLocationId } = useTenant();
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -36,7 +36,7 @@ export const useSiteSettings = () => {
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+  }, [refresh, currentLocationId]);
 
   useEffect(() => {
     const handleUpdate = (event: Event) => {

@@ -354,6 +354,9 @@ export interface SiteSettings {
     clientPurchaseEnabled: boolean;
     showOnLanding: boolean;
   };
+  adminSidebar?: {
+    order?: AdminSectionKey[];
+  };
   qrSticker: QrSticker | null;
 }
 

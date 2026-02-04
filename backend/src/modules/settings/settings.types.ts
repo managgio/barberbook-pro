@@ -60,6 +60,9 @@ export type SiteSettings = {
     clientPurchaseEnabled: boolean;
     showOnLanding: boolean;
   };
+  adminSidebar: {
+    order: string[];
+  };
   qrSticker: QrSticker | null;
 };
 
@@ -113,6 +116,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     clientPurchaseEnabled: false,
     showOnLanding: false,
   },
+  adminSidebar: {
+    order: [],
+  },
   qrSticker: null,
 };
 
@@ -122,6 +128,9 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
     ...DEFAULT_SITE_SETTINGS.stats.visibility,
     ...(data?.stats?.visibility ?? {}),
   };
+  const sidebarOrder = Array.isArray(data?.adminSidebar?.order)
+    ? data.adminSidebar.order.filter((section): section is string => typeof section === 'string')
+    : DEFAULT_SITE_SETTINGS.adminSidebar.order;
   return {
   branding: { ...DEFAULT_SITE_SETTINGS.branding, ...(data?.branding ?? {}) },
   location: { ...DEFAULT_SITE_SETTINGS.location, ...(data?.location ?? {}) },
@@ -142,6 +151,10 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
   products: {
     ...DEFAULT_SITE_SETTINGS.products,
     ...(data?.products ?? {}),
+  },
+  adminSidebar: {
+    ...DEFAULT_SITE_SETTINGS.adminSidebar,
+    order: sidebarOrder,
   },
   qrSticker: data?.qrSticker ?? null,
   };

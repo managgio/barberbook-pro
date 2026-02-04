@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { UserCircle, LogOut, ChevronLeft, ChevronsLeft, ChevronsRight } from 'lucide-react';
@@ -10,7 +10,7 @@ import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import LocationSwitcher from '@/components/common/LocationSwitcher';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
-import { adminNavItems } from './adminNavItems';
+import { adminNavItems, sortAdminNavItems } from './adminNavItems';
 
 
 interface AdminSidebarProps {
@@ -41,7 +41,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
     return location.pathname.startsWith(path);
   };
 
-  const visibleNavItems = adminNavItems.filter((item) => canAccessSection(item.section));
+  const visibleNavItems = useMemo(
+    () => sortAdminNavItems(adminNavItems.filter((item) => canAccessSection(item.section)), settings.adminSidebar?.order),
+    [canAccessSection, settings.adminSidebar?.order],
+  );
   const showNoAccessMessage =
     user?.role === 'admin' &&
     !user?.isSuperAdmin &&

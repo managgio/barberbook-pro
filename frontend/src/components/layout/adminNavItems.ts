@@ -45,3 +45,35 @@ export const adminNavItems: AdminNavItem[] = [
   { href: '/admin/settings', label: 'Configuración', icon: Settings, section: 'settings', keywords: ['ajustes'] },
   { href: '/admin/roles', label: 'Roles', icon: Shield, section: 'roles', keywords: ['permisos'] },
 ];
+
+export const ADMIN_NAV_DEFAULT_ORDER: AdminSectionKey[] = adminNavItems.map((item) => item.section);
+const ADMIN_NAV_DEFAULT_INDEX = new Map(ADMIN_NAV_DEFAULT_ORDER.map((section, index) => [section, index]));
+const ADMIN_NAV_SECTION_SET = new Set(ADMIN_NAV_DEFAULT_ORDER);
+
+export const normalizeAdminNavOrder = (order?: string[] | null): AdminSectionKey[] => {
+  if (!Array.isArray(order)) return [];
+  const seen = new Set<string>();
+  return order.filter((section): section is AdminSectionKey => {
+    const key = section as AdminSectionKey;
+    if (!ADMIN_NAV_SECTION_SET.has(key)) return false;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+export const resolveAdminNavOrder = (order?: string[] | null): AdminSectionKey[] => {
+  const configured = normalizeAdminNavOrder(order);
+  return [...configured, ...ADMIN_NAV_DEFAULT_ORDER.filter((section) => !configured.includes(section))];
+};
+
+export const sortAdminNavItems = <T extends AdminNavItem>(items: T[], order?: string[] | null): T[] => {
+  const resolvedOrder = resolveAdminNavOrder(order);
+  const resolvedIndex = new Map(resolvedOrder.map((section, index) => [section, index]));
+  return [...items].sort((a, b) => {
+    const rankA = resolvedIndex.get(a.section) ?? Number.MAX_SAFE_INTEGER;
+    const rankB = resolvedIndex.get(b.section) ?? Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return (ADMIN_NAV_DEFAULT_INDEX.get(a.section) ?? 0) - (ADMIN_NAV_DEFAULT_INDEX.get(b.section) ?? 0);
+  });
+};

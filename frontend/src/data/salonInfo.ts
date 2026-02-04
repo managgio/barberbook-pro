@@ -86,5 +86,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     clientPurchaseEnabled: false,
     showOnLanding: false,
   },
+  adminSidebar: {
+    order: [],
+  },
   qrSticker: null,
 };
