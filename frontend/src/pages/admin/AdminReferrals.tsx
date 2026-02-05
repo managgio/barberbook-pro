@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/context/TenantContext';
+import { useBusinessCopy } from '@/lib/businessCopy';
 import {
   getReferralConfig,
   updateReferralConfig,
@@ -31,6 +32,7 @@ const rewardTypeOptions = [
 const AdminReferrals: React.FC = () => {
   const { toast } = useToast();
   const { locations, currentLocationId } = useTenant();
+  const copy = useBusinessCopy();
   const [config, setConfig] = useState<ReferralProgramConfig | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [overview, setOverview] = useState<any>(null);
@@ -51,7 +53,7 @@ const AdminReferrals: React.FC = () => {
     },
     newCustomer: {
       title: 'Solo nuevos clientes',
-      body: 'Cuando está activo, el referido solo es válido si el invitado no tiene citas previas en este local.',
+      body: `Cuando está activo, el referido solo es válido si el invitado no tiene citas previas en ${copy.location.definiteSingular}.`,
     },
     monthlyLimit: {
       title: 'Límite mensual por embajador',
@@ -71,7 +73,7 @@ const AdminReferrals: React.FC = () => {
     },
     antiFraud: {
       title: 'Anti-fraude',
-      body: 'Bloquear auto-referidos por usuario: impide que alguien se refiera a sí mismo con su propia cuenta. Bloquear auto-referidos por contacto: evita que el invitado use el mismo email o teléfono que el embajador. Bloquear contactos duplicados: una misma identidad (email/teléfono) no puede generar más de una recompensa en este local.',
+      body: `Bloquear auto-referidos por usuario: impide que alguien se refiera a sí mismo con su propia cuenta. Bloquear auto-referidos por contacto: evita que el invitado use el mismo email o teléfono que el embajador. Bloquear contactos duplicados: una misma identidad (email/teléfono) no puede generar más de una recompensa en ${copy.location.definiteSingular}.`,
     },
   } as const;
 
@@ -172,7 +174,7 @@ const AdminReferrals: React.FC = () => {
     try {
       const updated = await copyReferralConfig(selectedCopyLocation);
       setConfig(updated);
-      toast({ title: 'Configuración copiada', description: 'Se aplicó la configuración del local.' });
+      toast({ title: 'Configuración copiada', description: `Se aplicó la configuración ${copy.location.fromWithDefinite}.` });
       setCopyDialogOpen(false);
     } catch (error) {
       toast({
@@ -217,7 +219,7 @@ const AdminReferrals: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-primary" />
-                Configuración local
+                Configuración {copy.location.fromWithDefinite}
               </CardTitle>
               <CardDescription>
                 Ajusta reglas, recompensas y anti-fraude.
@@ -227,7 +229,9 @@ const AdminReferrals: React.FC = () => {
               <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-foreground">Activar programa</p>
-                  <p className="text-xs text-muted-foreground">Habilita el programa de referidos en este local.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita el programa de referidos en {copy.location.definiteSingular}.
+                  </p>
                 </div>
                 <Switch checked={config.enabled} onCheckedChange={(val) => updateConfigField('enabled', val)} />
               </div>
@@ -280,7 +284,9 @@ const AdminReferrals: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <div>
                     <p className="text-sm font-medium text-foreground">Solo nuevos clientes</p>
-                    <p className="text-xs text-muted-foreground">Solo cuenta la primera cita en este local.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Solo cuenta la primera cita en {copy.location.definiteSingular}.
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -601,12 +607,14 @@ const AdminReferrals: React.FC = () => {
       <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Copiar configuración desde otro local</DialogTitle>
-            <DialogDescription>Selecciona el local origen para copiar su configuración.</DialogDescription>
+            <DialogTitle>Copiar configuración desde {copy.location.indefiniteSingular}</DialogTitle>
+            <DialogDescription>
+              Selecciona {copy.location.definiteSingular} origen para copiar su configuración.
+            </DialogDescription>
           </DialogHeader>
           <Select value={selectedCopyLocation} onValueChange={setSelectedCopyLocation}>
             <SelectTrigger>
-              <SelectValue placeholder="Selecciona un local" />
+              <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
             </SelectTrigger>
             <SelectContent>
               {availableCopyLocations.map((loc) => (

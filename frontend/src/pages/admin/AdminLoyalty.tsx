@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { useBusinessCopy } from '@/lib/businessCopy';
 import EmptyState from '@/components/common/EmptyState';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import {
@@ -29,6 +30,7 @@ const scopeLabels: Record<LoyaltyScope, string> = {
 
 const AdminLoyalty: React.FC = () => {
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [programs, setPrograms] = useState<LoyaltyProgram[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -188,8 +190,8 @@ const AdminLoyalty: React.FC = () => {
   const scopeHelper = useMemo(() => {
     if (form.scope === 'service') return 'Se aplicará solo al servicio seleccionado.';
     if (form.scope === 'category') return 'Se aplicará a cualquier servicio de la categoría.';
-    return 'Se aplicará a cualquier servicio del local.';
-  }, [form.scope]);
+    return `Se aplicará a cualquier servicio ${copy.location.fromWithDefinite}.`;
+  }, [form.scope, copy.location.fromWithDefinite]);
 
   return (
     <div className="space-y-6 animate-fade-in">

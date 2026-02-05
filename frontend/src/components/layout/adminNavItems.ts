@@ -18,6 +18,7 @@ import {
   Star,
 } from 'lucide-react';
 import { AdminSectionKey } from '@/data/types';
+import type { BusinessCopy } from '@/lib/businessCopy';
 
 export type AdminNavItem = {
   href: string;
@@ -45,6 +46,12 @@ export const adminNavItems: AdminNavItem[] = [
   { href: '/admin/settings', label: 'Configuración', icon: Settings, section: 'settings', keywords: ['ajustes'] },
   { href: '/admin/roles', label: 'Roles', icon: Shield, section: 'roles', keywords: ['permisos'] },
 ];
+
+export const resolveAdminNavItemLabel = (item: AdminNavItem, copy?: BusinessCopy | null) => {
+  if (!copy) return item.label;
+  if (item.section === 'barbers') return copy.staff.plural;
+  return item.label;
+};
 
 export const ADMIN_NAV_DEFAULT_ORDER: AdminSectionKey[] = adminNavItems.map((item) => item.section);
 const ADMIN_NAV_DEFAULT_INDEX = new Map(ADMIN_NAV_DEFAULT_ORDER.map((section, index) => [section, index]));

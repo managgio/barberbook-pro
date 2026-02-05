@@ -10,6 +10,7 @@ import { ReferralSummaryResponse, RewardWalletSummary, ReferralAttributionItem }
 import { Copy, Share2, QrCode, Gift, Wallet, Ticket } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const buildWhatsAppMessage = (link: string) =>
   `Invita a alguien de confianza. Cuando complete su primera visita, ambos ganáis. ${link}`;
@@ -50,6 +51,7 @@ const ReferralStatusCard: React.FC<{ item: ReferralAttributionItem }> = ({ item 
 const ReferralsPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [summary, setSummary] = useState<ReferralSummaryResponse | null>(null);
   const [walletSummary, setWalletSummary] = useState<RewardWalletSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,7 +110,11 @@ const ReferralsPage: React.FC = () => {
     return <div className="text-muted-foreground">No pudimos cargar el programa de referidos.</div>;
   }
   if (summary.programEnabled === false) {
-    return <div className="text-muted-foreground">El programa de referidos no está activo en este local.</div>;
+    return (
+      <div className="text-muted-foreground">
+        El programa de referidos no está activo en {copy.location.definiteSingular}.
+      </div>
+    );
   }
 
   return (
@@ -128,7 +134,7 @@ const ReferralsPage: React.FC = () => {
               Comparte tu invitación
             </CardTitle>
             <CardDescription>
-              Comparte tu enlace o muestra el QR en el local.
+              Comparte tu enlace o muestra el QR en {copy.location.definiteSingular}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

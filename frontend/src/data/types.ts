@@ -47,6 +47,15 @@ export interface FirebaseWebConfig {
   measurementId?: string;
 }
 
+export type TenantBusinessType =
+  | 'barbershop'
+  | 'hair_salon'
+  | 'aesthetics'
+  | 'nails'
+  | 'physio'
+  | 'clinic'
+  | 'mixed_center';
+
 export interface TenantBootstrap {
   brand: Brand | null;
   locations: Location[];
@@ -99,6 +108,9 @@ export interface TenantBootstrap {
     } | null;
     features?: {
       barberServiceAssignmentEnabled?: boolean;
+    } | null;
+    business?: {
+      type?: TenantBusinessType;
     } | null;
     landing?: {
       order?: string[];

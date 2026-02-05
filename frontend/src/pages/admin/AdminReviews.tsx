@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useBusinessCopy } from '@/lib/businessCopy';
 import {
   getReviewConfig,
   updateReviewConfig,
@@ -24,6 +25,7 @@ const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
 const AdminReviews: React.FC = () => {
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [config, setConfig] = useState<ReviewProgramConfig | null>(null);
   const [metrics, setMetrics] = useState<ReviewMetrics | null>(null);
   const [feedback, setFeedback] = useState<{ total: number; items: ReviewFeedbackItem[] }>({ total: 0, items: [] });
@@ -44,11 +46,11 @@ const AdminReviews: React.FC = () => {
   const infoContent = {
     googleUrl: {
       title: 'URL de reseña en Google',
-      body: 'Enlace directo para escribir una reseña del local en Google. Se abre en nueva pestaña cuando el cliente acepta.',
+      body: `Enlace directo para escribir una reseña ${copy.location.fromWithDefinite} en Google. Se abre en nueva pestaña cuando el cliente acepta.`,
     },
     cooldown: {
       title: 'Cooldown',
-      body: 'Tiempo mínimo entre solicitudes de reseña para el mismo cliente en este local.',
+      body: `Tiempo mínimo entre solicitudes de reseña para el mismo cliente en ${copy.location.definiteSingular}.`,
     },
     minVisits: {
       title: 'Mínimo de visitas',
@@ -468,7 +470,7 @@ const AdminReviews: React.FC = () => {
                             {item.clientName || item.guestContact || 'Invitado'}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {item.serviceName || 'Servicio'} · {item.barberName || 'Barbero'}
+                            {item.serviceName || 'Servicio'} · {item.barberName || copy.staff.singular}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {item.appointmentDate ? new Date(item.appointmentDate).toLocaleString() : ''}

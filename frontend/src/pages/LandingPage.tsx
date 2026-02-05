@@ -27,6 +27,7 @@ import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
@@ -50,6 +51,7 @@ const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
+  const copy = useBusinessCopy();
   const leBlondLogo = '/leBlondLogo.png';
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const heroBackgroundUrl = tenant?.config?.branding?.heroBackgroundUrl || heroBackgroundFallback;
@@ -517,7 +519,7 @@ const LandingPage: React.FC = () => {
       <div className="container px-4">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Nuestro equipo
+            {copy.staff.plural}
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
             Profesionales apasionados por su oficio, siempre al día con las últimas tendencias.
@@ -549,7 +551,7 @@ const LandingPage: React.FC = () => {
           ))}
           {barbers.length === 0 && (
             <div className="md:col-span-2 lg:col-span-4 text-center text-muted-foreground">
-              Cargando equipo...
+              Cargando {copy.staff.pluralLower}...
             </div>
           )}
         </div>

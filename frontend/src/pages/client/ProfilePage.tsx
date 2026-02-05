@@ -14,11 +14,13 @@ import { LoyaltySummary } from '@/data/types';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
   const { tenant } = useTenant();
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -333,15 +335,15 @@ const ProfilePage: React.FC = () => {
               Preferencias de reserva
             </CardTitle>
             <CardDescription>
-              Decide si quieres elegir barbero al pedir tu cita.
+              Decide si quieres elegir {copy.staff.singularLower} al pedir tu cita.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between py-2">
               <div className="space-y-0.5">
-                <Label htmlFor="barber-select-pref">Elegir barbero</Label>
+                <Label htmlFor="barber-select-pref">Elegir {copy.staff.singularLower}</Label>
                 <p className="text-sm text-muted-foreground">
-                  Si lo desactivas, asignaremos automáticamente a un barbero disponible.
+                  Si lo desactivas, asignaremos automáticamente a {copy.staff.indefiniteSingular} disponible.
                 </p>
               </div>
               <Switch

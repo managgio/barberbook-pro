@@ -45,6 +45,7 @@ import {
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { useTenant } from '@/context/TenantContext';
 import ProductSelector from '@/components/common/ProductSelector';
+import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
 
 const currencyFormatter = new Intl.NumberFormat('es-ES', {
   style: 'currency',
@@ -85,6 +86,7 @@ type StripeConfig = {
 const AdminCashRegister: React.FC = () => {
   const { toast } = useToast();
   const { locations, currentLocationId, tenant } = useTenant();
+  const copy = useBusinessCopy();
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -592,13 +594,15 @@ const AdminCashRegister: React.FC = () => {
         </Card>
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Neto del local</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Neto {copy.location.fromWithDefinite}
+            </CardTitle>
             <BadgeDollarSign className="w-4 h-4 text-indigo-500 md:w-5 md:h-5 lg:w-6 lg:h-6" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold text-foreground">{currencyFormatter.format(netTotal)}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Solo incluye el local actual.
+              Solo incluye {copy.location.definiteSingular} actual.
             </p>
           </CardContent>
         </Card>
@@ -613,7 +617,7 @@ const AdminCashRegister: React.FC = () => {
                 {currencyFormatter.format(effectiveNetTotal)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Suma {locations.length} locales.
+                Suma {locations.length} {copy.location.pluralLower}.
               </p>
             </CardContent>
           </Card>
@@ -639,10 +643,10 @@ const AdminCashRegister: React.FC = () => {
               <CardTitle>Fuentes de pago</CardTitle>
               <Select value={paymentBarberFilter} onValueChange={setPaymentBarberFilter}>
                 <SelectTrigger className="w-[210px]">
-                  <SelectValue placeholder="Filtrar barbero" />
+                  <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los barberos</SelectItem>
+                  <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
                   {barbers.map((barber) => (
                     <SelectItem key={barber.id} value={barber.id}>
                       {barber.name}
@@ -653,7 +657,7 @@ const AdminCashRegister: React.FC = () => {
             </div>
             <p className="text-sm text-muted-foreground">
               Distribución de ingresos confirmados por citas completadas
-              {paymentBarberFilter === 'all' ? '.' : ' por barbero.'}
+              {paymentBarberFilter === 'all' ? '.' : ` por ${copy.staff.singularLower}.`}
             </p>
           </CardHeader>
           <CardContent className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
@@ -702,7 +706,7 @@ const AdminCashRegister: React.FC = () => {
         <Card variant="elevated" className="flex flex-col">
           <CardHeader className="space-y-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Ingresos por barbero</CardTitle>
+              <CardTitle>Ingresos por {copy.staff.singularLower}</CardTitle>
               <Select
                 value={barberPaymentMethodFilter}
                 onValueChange={(value) => setBarberPaymentMethodFilter(value as 'all' | PaymentMethod | 'unknown')}
@@ -920,8 +924,8 @@ const AdminCashRegister: React.FC = () => {
                 <span>{selectedMovementProductsSummary.units} unidad(es) seleccionadas</span>
                 <span>
                   {productMovementDraft.operationType === 'sale'
-                    ? 'Reduce stock del local'
-                    : 'Incrementa stock del local'}
+                    ? `Reduce stock ${copy.location.fromWithDefinite}`
+                    : `Incrementa stock ${copy.location.fromWithDefinite}`}
                 </span>
               </div>
             </>

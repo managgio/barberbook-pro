@@ -16,6 +16,7 @@ import {
   ADMIN_NAV_DEFAULT_ORDER,
   adminNavItems,
   resolveAdminNavOrder,
+  resolveAdminNavItemLabel,
   sortAdminNavItems,
 } from '@/components/layout/adminNavItems';
 import { useAdminSpotlight } from '@/components/admin/AdminSpotlightContext';
@@ -24,6 +25,7 @@ import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useToast } from '@/hooks/use-toast';
 import { AdminSectionKey } from '@/data/types';
 import { GripVertical, Loader2, RotateCcw } from 'lucide-react';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const isHotkey = (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
@@ -56,6 +58,7 @@ const AdminSpotlight: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const { settings } = useSiteSettings();
   const { canAccessSection, isLoading } = useAdminPermissions();
   const { open, setOpen } = useAdminSpotlight();
@@ -82,8 +85,11 @@ const AdminSpotlight: React.FC = () => {
 
   const items = useMemo(() => {
     const visibleItems = adminNavItems.filter((item) => canAccessSection(item.section));
-    return sortAdminNavItems(visibleItems, sidebarOrder);
-  }, [canAccessSection, sidebarOrder]);
+    return sortAdminNavItems(visibleItems, sidebarOrder).map((item) => ({
+      ...item,
+      label: resolveAdminNavItemLabel(item, copy),
+    }));
+  }, [canAccessSection, sidebarOrder, copy]);
 
   const isDefaultSidebarOrder = useMemo(
     () => toOrderKey(resolveAdminNavOrder(sidebarOrder)) === toOrderKey(ADMIN_NAV_DEFAULT_ORDER),

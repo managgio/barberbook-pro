@@ -12,9 +12,14 @@ import { cn } from '@/lib/utils';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
 import { isBarberEligibleForService } from '@/lib/barberServiceAssignment';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
+  const copy = useBusinessCopy();
+  const compatibleStaffLabel = copy.staff.isCollective
+    ? `${copy.staff.singularLower} compatible`
+    : `${copy.staff.pluralLower} compatibles`;
   const [isOpen, setIsOpen] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [clients, setClients] = useState<User[]>([]);
@@ -124,7 +129,7 @@ const QuickAppointmentButton: React.FC = () => {
         if (!options?.silent) {
           toast({
             title: 'Error',
-            description: 'No se pudo cargar la disponibilidad del barbero.',
+            description: `No se pudo cargar la disponibilidad ${copy.staff.fromWithDefinite}.`,
             variant: 'destructive',
           });
         }
@@ -133,7 +138,7 @@ const QuickAppointmentButton: React.FC = () => {
         setSlotsLoading(false);
       }
     },
-    [selectedBarberId, selectedDate, selectedServiceId, selectedTime, toast],
+    [selectedBarberId, selectedDate, selectedServiceId, selectedTime, toast, copy],
   );
 
   useEffect(() => {
@@ -322,8 +327,8 @@ const QuickAppointmentButton: React.FC = () => {
         await refreshSlots({ silent: true });
       } else if (isBarberMismatch) {
         toast({
-          title: 'Barbero no disponible',
-          description: 'Selecciona otro barbero para este servicio.',
+          title: `${copy.staff.singular} no disponible`,
+          description: `Selecciona otro ${copy.staff.singularLower} para este servicio.`,
           variant: 'destructive',
         });
         setSelectedBarberId('');
@@ -532,19 +537,19 @@ const QuickAppointmentButton: React.FC = () => {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Barbero</Label>
+                  <Label>{copy.staff.singular}</Label>
                   <Select value={selectedBarberId} onValueChange={(value) => {
                     setSelectedBarberId(value);
                     setSelectedDate('');
                     setSelectedTime('');
                   }}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un barbero" />
+                      <SelectValue placeholder={`Selecciona ${copy.staff.indefiniteSingular}`} />
                     </SelectTrigger>
                     <SelectContent>
                       {eligibleBarbers.length === 0 ? (
                         <SelectItem value="__none__" disabled>
-                          No hay barberos compatibles
+                          No hay {compatibleStaffLabel}
                         </SelectItem>
                       ) : (
                         eligibleBarbers.map((barber) => (
@@ -638,7 +643,7 @@ const QuickAppointmentButton: React.FC = () => {
                     <div className="min-h-[100px] rounded-2xl border border-dashed border-border p-3">
                       {!selectedServiceId || !selectedBarberId || !selectedDate ? (
                         <p className="text-sm text-muted-foreground">
-                          Selecciona servicio, barbero y fecha para ver la disponibilidad.
+                          Selecciona servicio, {copy.staff.singularLower} y fecha para ver la disponibilidad.
                         </p>
                       ) : slotsLoading ? (
                         <div className="flex items-center justify-center py-6">

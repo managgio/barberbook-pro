@@ -17,6 +17,7 @@ import { es } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
 import { ADMIN_EVENTS, dispatchHolidaysUpdated } from '@/lib/adminEvents';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const AdminHolidays: React.FC = () => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -27,6 +28,7 @@ const AdminHolidays: React.FC = () => {
   const [monthsToShow, setMonthsToShow] = useState(2);
   const [selectedBarber, setSelectedBarber] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const copy = useBusinessCopy();
 
   const loadInitialData = useCallback(async () => {
     setIsLoading(true);
@@ -154,14 +156,14 @@ const AdminHolidays: React.FC = () => {
       <div className="pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Festivos</h1>
         <p className="text-muted-foreground mt-1">
-          Administra los días no laborables generales y por barbero.
+          Administra los días no laborables generales y por {copy.staff.singularLower}.
         </p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Festivos de la barbería</CardTitle>
+            <CardTitle>Festivos {copy.location.fromWithDefinite}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="border rounded-2xl p-4 bg-card/60">
@@ -210,12 +212,12 @@ const AdminHolidays: React.FC = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Festivos por barbero</CardTitle>
+            <CardTitle>Festivos por {copy.staff.singularLower}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <Select value={selectedBarber} onValueChange={setSelectedBarber}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecciona un barbero" />
+                <SelectValue placeholder={`Selecciona ${copy.staff.indefiniteSingular}`} />
               </SelectTrigger>
               <SelectContent>
                 {barbers.map((barber) => (
@@ -235,7 +237,7 @@ const AdminHolidays: React.FC = () => {
                 className="mx-auto"
               />
               <p className="text-xs text-muted-foreground text-center mt-3">
-                Selecciona uno o varios días para bloquear al barbero seleccionado.
+                Selecciona uno o varios días para bloquear la disponibilidad {copy.staff.fromWithDefinite}.
               </p>
             </div>
 
@@ -254,7 +256,9 @@ const AdminHolidays: React.FC = () => {
             <div className="flex flex-wrap gap-2">
               {barberHolidays.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  {selectedBarber ? 'No hay festivos para este barbero.' : 'Selecciona un barbero.'}
+                  {selectedBarber
+                    ? `No hay festivos asignados ${copy.staff.toWithDefinite}.`
+                    : `Selecciona ${copy.staff.indefiniteSingular}.`}
                 </p>
               )}
               {barberHolidays.map((range, index) => (

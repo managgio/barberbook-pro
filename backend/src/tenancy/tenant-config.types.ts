@@ -77,6 +77,19 @@ export type TenantFeaturesConfig = {
   barberServiceAssignmentEnabled?: boolean;
 };
 
+export type TenantBusinessType =
+  | 'barbershop'
+  | 'hair_salon'
+  | 'aesthetics'
+  | 'nails'
+  | 'physio'
+  | 'clinic'
+  | 'mixed_center';
+
+export type TenantBusinessConfig = {
+  type?: TenantBusinessType;
+};
+
 export type StripePaymentsMode = 'brand' | 'location';
 
 export type TenantStripePaymentsConfig = {
@@ -138,6 +151,7 @@ export type BrandConfigData = {
   landing?: TenantLandingConfig;
   notificationPrefs?: TenantNotificationPrefs;
   features?: TenantFeaturesConfig;
+  business?: TenantBusinessConfig;
   branding?: TenantBrandingConfig;
   theme?: TenantThemeConfig;
 };

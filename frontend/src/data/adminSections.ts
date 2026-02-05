@@ -1,4 +1,5 @@
 import { AdminSectionKey } from './types';
+import type { BusinessCopy } from '@/lib/businessCopy';
 
 export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description: string }[] = [
   {
@@ -14,7 +15,7 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
   {
     key: 'search',
     label: 'Buscar citas',
-    description: 'Historial completo de citas filtrado por barbero o fecha.',
+    description: 'Historial completo de citas filtrado por profesional o fecha.',
   },
   {
     key: 'offers',
@@ -39,7 +40,7 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
   {
     key: 'services',
     label: 'Servicios',
-    description: 'Catálogo de servicios disponibles en el salón.',
+    description: 'Catálogo de servicios disponibles en el negocio.',
   },
   {
     key: 'barbers',
@@ -69,7 +70,7 @@ export const ADMIN_SECTIONS: { key: AdminSectionKey; label: string; description:
   {
     key: 'holidays',
     label: 'Festivos',
-    description: 'Bloqueo de días no laborables generales o por barbero.',
+    description: 'Bloqueo de días no laborables generales o por profesional.',
   },
   {
     key: 'roles',
@@ -95,3 +96,38 @@ export const ADMIN_REQUIRED_SECTIONS: AdminSectionKey[] = [
   'holidays',
   'settings',
 ];
+
+export const resolveAdminSectionLabel = (
+  section: { key: AdminSectionKey; label: string },
+  copy?: BusinessCopy | null,
+) => {
+  if (!copy) return section.label;
+  if (section.key === 'barbers') return copy.staff.plural;
+  return section.label;
+};
+
+export const resolveAdminSectionDescription = (
+  section: { key: AdminSectionKey; description: string },
+  copy?: BusinessCopy | null,
+) => {
+  if (!copy) return section.description;
+  switch (section.key) {
+    case 'search':
+      return `Historial completo de citas filtrado por ${copy.staff.singularLower} o fecha.`;
+    case 'services':
+      return `Catálogo de servicios disponibles en ${copy.location.definiteSingular}.`;
+    case 'barbers':
+      return `Administración ${copy.staff.fromWithDefinitePlural}.`;
+    case 'holidays':
+      return `Bloqueo de días no laborables generales o por ${copy.staff.singularLower}.`;
+    default:
+      return section.description;
+  }
+};
+
+export const getAdminSections = (copy?: BusinessCopy | null) =>
+  ADMIN_SECTIONS.map((section) => ({
+    ...section,
+    label: resolveAdminSectionLabel(section, copy),
+    description: resolveAdminSectionDescription(section, copy),
+  }));

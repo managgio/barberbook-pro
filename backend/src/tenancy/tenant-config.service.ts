@@ -103,6 +103,7 @@ export class TenantConfigService {
       brandConfig.features || {},
       locationConfig.features || {},
     );
+    const business = mergeConfig(brandConfig.business || {}, {});
     return {
       branding: Object.keys(branding).length ? branding : null,
       theme: Object.keys(theme).length ? theme : null,
@@ -110,6 +111,7 @@ export class TenantConfigService {
       notificationPrefs: Object.keys(notificationPrefs).length ? notificationPrefs : null,
       landing: Object.keys(landing).length ? landing : null,
       features: Object.keys(features).length ? features : null,
+      business: Object.keys(business).length ? business : null,
     };
   }
 }

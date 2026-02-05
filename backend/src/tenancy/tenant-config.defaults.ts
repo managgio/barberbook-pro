@@ -8,6 +8,9 @@ const parseNumber = (value?: string) => {
 
 export const buildBrandConfigFromEnv = (): BrandConfigData => ({
   superAdminEmail: process.env.SUPER_ADMIN_EMAIL?.toLowerCase(),
+  business: {
+    type: 'barbershop',
+  },
   notificationPrefs: {
     email: true,
     whatsapp: true,

@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/context/TenantContext';
+import { useBusinessCopy } from '@/lib/businessCopy';
 import {
   createProduct,
   createProductCategory,
@@ -34,6 +35,7 @@ import { cn } from '@/lib/utils';
 const AdminStock: React.FC = () => {
   const { toast } = useToast();
   const { locations, currentLocationId, tenant } = useTenant();
+  const copy = useBusinessCopy();
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -388,7 +390,7 @@ const AdminStock: React.FC = () => {
         <div className="pl-12 md:pl-0">
           <h1 className="text-2xl font-bold text-foreground">Control de stock</h1>
           <p className="text-sm text-muted-foreground">
-            Gestiona el inventario y el catálogo de productos por local.
+            Gestiona el inventario y el catálogo de productos por {copy.location.singularLower}.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -894,10 +896,10 @@ const AdminStock: React.FC = () => {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Local origen</Label>
+              <Label>Origen {copy.location.fromWithDefinite}</Label>
               <Select value={importSourceLocalId} onValueChange={setImportSourceLocalId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un local" />
+                  <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
                 </SelectTrigger>
                 <SelectContent>
                   {locations.filter((loc) => loc.id !== importTargetLocalId).map((loc) => (
@@ -909,10 +911,10 @@ const AdminStock: React.FC = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Local destino</Label>
+              <Label>Destino {copy.location.fromWithDefinite}</Label>
               <Select value={importTargetLocalId} onValueChange={setImportTargetLocalId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un local" />
+                  <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
                 </SelectTrigger>
                 <SelectContent>
                   {locations.map((loc) => (
@@ -924,7 +926,7 @@ const AdminStock: React.FC = () => {
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              El local destino debe tener habilitado el control de productos.
+              Para completar la importación, {copy.location.definiteSingular} de destino debe tener habilitado el control de productos.
             </p>
           </div>
           <DialogFooter>

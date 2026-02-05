@@ -11,11 +11,13 @@ import { format, isPast, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import defaultAvatar from '@/assets/img/default-image.webp';
+import { useBusinessCopy } from '@/lib/businessCopy';
 import { isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 
 const ClientDashboard: React.FC = () => {
   const { user } = useAuth();
+  const copy = useBusinessCopy();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -149,7 +151,7 @@ const ClientDashboard: React.FC = () => {
           { label: 'Próximas citas', value: upcomingAppointments.length, icon: Calendar },
           { label: 'Total de visitas', value: completedAppointments.length, icon: User },
           { label: 'Corte más solicitado por ti', value: favoriteServiceName, icon: Scissors },
-          { label: 'Barbero más visitado', value: favoriteBarberName, icon: Crown },
+          { label: `${copy.staff.singular} más visitado`, value: favoriteBarberName, icon: Crown },
         ].map((stat, index) => (
           <Card key={stat.label} variant="glass" className="animate-scale-in" style={{ animationDelay: `${index * 0.1}s` }}>
             <CardContent className="p-4 flex items-center gap-3">
@@ -202,7 +204,7 @@ const ClientDashboard: React.FC = () => {
               {upcomingAppointments.slice(0, 3).map((appointment) => {
                 const barber = getBarber(appointment.barberId);
                 const service = getService(appointment.serviceId);
-                const barberName = barber?.name ?? appointment.barberNameSnapshot ?? 'Barbero eliminado';
+                const barberName = barber?.name ?? appointment.barberNameSnapshot ?? `${copy.staff.singular} eliminado`;
                 const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
                 const date = parseISO(appointment.startDateTime);
                 

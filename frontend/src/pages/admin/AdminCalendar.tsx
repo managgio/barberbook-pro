@@ -38,6 +38,7 @@ import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
 
 const START_HOUR = 9;
 const END_HOUR = 20;
@@ -53,6 +54,7 @@ const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -314,17 +316,17 @@ const AdminCalendar: React.FC = () => {
         <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Calendario</h1>
           <p className="text-muted-foreground mt-1">
-            Gestiona las citas de la barbería.
+            Gestiona las citas {copy.location.fromWithDefinite}.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Select value={selectedBarberId} onValueChange={setSelectedBarberId}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filtrar barbero" />
+              <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos los barberos</SelectItem>
+              <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
               {barbers.map(barber => (
                 <SelectItem key={barber.id} value={barber.id}>{barber.name}</SelectItem>
               ))}
@@ -526,7 +528,7 @@ const AdminCalendar: React.FC = () => {
                   className="w-10 h-10 rounded-full object-cover"
                 />
                 <div>
-                  <p className="text-sm text-muted-foreground">Barbero</p>
+                  <p className="text-sm text-muted-foreground">{copy.staff.singular}</p>
                   <p className="font-medium text-foreground">
                     {getBarber(selectedAppointment.barberId)?.name}
                   </p>

@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
 import { dispatchSchedulesUpdated } from '@/lib/adminEvents';
+import { useBusinessCopy } from '@/lib/businessCopy';
 import {
   Loader2,
   MapPin,
@@ -77,6 +78,7 @@ const AdminSettings: React.FC = () => {
 
   const { toast } = useToast();
   const { tenant } = useTenant();
+  const copy = useBusinessCopy();
   const productsModuleEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('stock');
   const [settings, setSettings] = useState<SiteSettings>(() => cloneSettings(DEFAULT_SITE_SETTINGS));
   const [isLoading, setIsLoading] = useState(true);
@@ -220,7 +222,9 @@ const AdminSettings: React.FC = () => {
       setStripeConfig((prev) => (prev ? { ...prev, localEnabled: enabled } : prev));
       toast({
         title: 'Preferencias de pago actualizadas',
-        description: enabled ? 'Stripe quedó habilitado para este local.' : 'Stripe quedó deshabilitado para este local.',
+        description: enabled
+          ? `Stripe quedó habilitado para ${copy.location.definiteSingular}.`
+          : `Stripe quedó deshabilitado para ${copy.location.definiteSingular}.`,
       });
     } catch (error) {
       toast({
@@ -456,7 +460,7 @@ const AdminSettings: React.FC = () => {
         : 'Sin conectar';
   const stripeModeLabel = stripeConfig?.mode === 'brand'
     ? 'Cuenta centralizada de la marca'
-    : 'Cuenta propia por local';
+    : `Cuenta propia por ${copy.location.singularLower}`;
   const stripeVisible = Boolean(stripeConfig?.brandEnabled && stripeConfig?.platformEnabled);
 
   return (
@@ -494,7 +498,7 @@ const AdminSettings: React.FC = () => {
           <CardContent className="space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Nombre del salón</Label>
+                <Label>Nombre {copy.location.fromWithDefinite}</Label>
                 <Input
                   value={settings.branding.name}
                   onChange={(e) => handleBrandingChange('name', e.target.value)}
@@ -811,10 +815,12 @@ const AdminSettings: React.FC = () => {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-foreground">Habilitar Stripe en este local</p>
+                <p className="text-sm font-medium text-foreground">
+                  Habilitar Stripe en {copy.location.definiteSingular}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {stripeConfig.brandEnabled
-                    ? 'Los clientes podrán elegir pagar online o en el local.'
+                    ? `Los clientes podrán elegir pagar online o en ${copy.location.definiteSingular}.`
                     : 'La marca no tiene Stripe activo.'}
                 </p>
               </div>
@@ -984,7 +990,7 @@ const AdminSettings: React.FC = () => {
                   disabled={isScheduleLoading || !shopSchedule}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Se aplica a todos los barberos para limpieza, preparación o descanso.
+                  Se aplica {copy.staff.toWithDefinitePlural} para limpieza, preparación o descanso.
                 </p>
               </div>
               <div className="space-y-2">
@@ -1095,7 +1101,7 @@ const AdminSettings: React.FC = () => {
               Horario de apertura (informativo)
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Este horario se muestra en la web y es independiente de la disponibilidad de barberos.
+              Este horario se muestra en la web y es independiente de la disponibilidad {copy.staff.fromWithDefinitePlural}.
             </p>
           </div>
           <Button onClick={() => handleSave(true)} disabled={isSavingSchedule || isSaving || isLoading}>

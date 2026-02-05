@@ -32,6 +32,7 @@ import { useTenant } from '@/context/TenantContext';
 import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/components/admin/BarberPhotoUploader';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const DAY_LABELS: { key: DayKey; label: string; short: string }[] = [
   { key: 'monday', label: 'Lunes', short: 'Lun' },
@@ -64,6 +65,16 @@ const normalizeIds = (ids?: string[]) =>
 const AdminBarbers: React.FC = () => {
   const { toast } = useToast();
   const { tenant } = useTenant();
+  const copy = useBusinessCopy();
+  const staffCompatibleLabel = copy.staff.isCollective
+    ? `${copy.staff.singularLower} compatible`
+    : `${copy.staff.pluralLower} compatibles`;
+  const staffResetAvailabilityLabel = copy.staff.isCollective
+    ? `${copy.staff.definiteSingular} volverá a estar disponible para cualquier servicio.`
+    : `${copy.staff.definitePlural} volverán a estar disponibles para cualquier servicio.`;
+  const emptyStaffDescription = copy.staff.isCollective
+    ? 'Añade miembros del equipo para gestionar la agenda.'
+    : `Añade ${copy.staff.pluralLower} para gestionar el equipo.`;
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -296,7 +307,7 @@ const AdminBarbers: React.FC = () => {
       dispatchBarbersUpdated({ source: 'admin-barbers' });
       toast({
         title: 'Asignaciones guardadas',
-        description: 'La configuración del barbero se ha actualizado.',
+        description: `La configuración ${copy.staff.fromWithDefinite} se ha actualizado.`,
       });
       closeAssignmentDialog();
     } catch (error: any) {
@@ -325,8 +336,8 @@ const AdminBarbers: React.FC = () => {
       toast({
         title: enabled ? 'Asignación activada' : 'Asignación desactivada',
         description: enabled
-          ? 'Los clientes verán solo barberos compatibles con el servicio elegido.'
-          : 'Todos los barberos volverán a estar disponibles para cualquier servicio.',
+          ? `Los clientes verán solo ${staffCompatibleLabel} con el servicio elegido.`
+          : staffResetAvailabilityLabel,
       });
     } catch (error: any) {
       toast({
@@ -414,7 +425,7 @@ const AdminBarbers: React.FC = () => {
   const handleCopySchedule = () => {
     if (scheduleForm) {
       setCopiedSchedule(cloneSchedule(scheduleForm));
-      toast({ title: 'Horario copiado', description: 'Ahora puedes pegarlo en otro barbero.' });
+    toast({ title: 'Horario copiado', description: `Ahora puedes pegarlo en otro ${copy.staff.singularLower}.` });
     }
   };
 
@@ -448,7 +459,7 @@ const AdminBarbers: React.FC = () => {
       const updated = await updateBarberSchedule(scheduleDialog.barber.id, scheduleForm);
       setScheduleCache(prev => ({ ...prev, [scheduleDialog.barber!.id]: updated }));
       dispatchSchedulesUpdated({ source: 'admin-barbers' });
-      toast({ title: 'Horario guardado', description: 'Se ha actualizado el horario del barbero.' });
+    toast({ title: 'Horario guardado', description: `Se ha actualizado el horario ${copy.staff.fromWithDefinite}.` });
       closeScheduleDialog();
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo guardar el horario.', variant: 'destructive' });
@@ -512,7 +523,7 @@ const AdminBarbers: React.FC = () => {
           endDate: formData.endDate ? formData.endDate : null,
           isActive: formData.isActive,
         });
-        toast({ title: 'Barbero actualizado', description: 'Los cambios han sido guardados.' });
+        toast({ title: `${copy.staff.singular} actualizado`, description: 'Los cambios han sido guardados.' });
       } else {
         await createBarber({
           name: formData.name,
@@ -525,14 +536,14 @@ const AdminBarbers: React.FC = () => {
           endDate: formData.endDate ? formData.endDate : null,
           isActive: formData.isActive,
         });
-        toast({ title: 'Barbero añadido', description: 'El nuevo barbero ha sido añadido.' });
+        toast({ title: `${copy.staff.singular} añadido`, description: `El nuevo ${copy.staff.singularLower} ha sido añadido.` });
       }
       
       await fetchBarbers();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
       setIsDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar el barbero.', variant: 'destructive' });
+      toast({ title: 'Error', description: `No se pudo guardar ${copy.staff.definiteSingular}.`, variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -543,11 +554,11 @@ const AdminBarbers: React.FC = () => {
     
     try {
       await deleteBarber(deletingBarberId);
-      toast({ title: 'Barbero eliminado', description: 'El barbero ha sido eliminado.' });
+      toast({ title: `${copy.staff.singular} eliminado`, description: `${copy.staff.definiteSingular} ha sido eliminado.` });
       await fetchBarbers();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar el barbero.', variant: 'destructive' });
+      toast({ title: 'Error', description: `No se pudo eliminar ${copy.staff.definiteSingular}.`, variant: 'destructive' });
     } finally {
       setIsDeleteDialogOpen(false);
       setDeletingBarberId(null);
@@ -559,28 +570,28 @@ const AdminBarbers: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Barberos</h1>
+          <h1 className="text-3xl font-bold text-foreground">{copy.staff.plural}</h1>
           <p className="text-muted-foreground mt-1">
             Gestiona el equipo y sus festivos.
           </p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="w-4 h-4 mr-2" />
-          Nuevo barbero
+          Nuevo {copy.staff.singularLower}
         </Button>
       </div>
 
       {assignmentFeatureVisible && (
         <Card variant="elevated">
           <CardHeader>
-            <CardTitle className="text-base">Asignación de servicios por barbero</CardTitle>
+            <CardTitle className="text-base">Asignación de servicios por {copy.staff.singularLower}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-xl border border-border p-3">
               <div>
                 <p className="font-medium text-sm text-foreground">Activar reglas de asignación</p>
                 <p className="text-xs text-muted-foreground">
-                  Si está activo, en reservas solo aparecerán barberos compatibles con el servicio elegido.
+                  Si está activo, en reservas solo aparecerán {staffCompatibleLabel} con el servicio elegido.
                 </p>
               </div>
               <Switch
@@ -590,7 +601,7 @@ const AdminBarbers: React.FC = () => {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Regla automática: si un barbero no tiene ninguna categoría ni servicio asignado, se considera disponible para todos los servicios.
+            Regla automática: si {copy.staff.indefiniteSingular} no tiene ninguna categoría ni servicio asignado, se considera disponible para todos los servicios.
             </p>
           </CardContent>
         </Card>
@@ -667,9 +678,9 @@ const AdminBarbers: React.FC = () => {
       ) : (
         <EmptyState
           icon={UserCircle}
-          title="Sin barberos"
-          description="Añade barberos para gestionar el equipo."
-          action={{ label: 'Añadir barbero', onClick: openCreateDialog }}
+          title={`Sin ${copy.staff.pluralLower}`}
+          description={emptyStaffDescription}
+          action={{ label: `Añadir ${copy.staff.singularLower}`, onClick: openCreateDialog }}
         />
       )}
 
@@ -678,7 +689,7 @@ const AdminBarbers: React.FC = () => {
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingBarber ? 'Editar barbero' : 'Nuevo barbero'}
+              {editingBarber ? `Editar ${copy.staff.singularLower}` : `Nuevo ${copy.staff.singularLower}`}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
@@ -756,7 +767,7 @@ const AdminBarbers: React.FC = () => {
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editingBarber ? 'Guardar cambios' : 'Añadir barbero'}
+                {editingBarber ? 'Guardar cambios' : `Añadir ${copy.staff.singularLower}`}
               </Button>
             </DialogFooter>
           </form>
@@ -780,14 +791,16 @@ const AdminBarbers: React.FC = () => {
           <div className="space-y-5">
             <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
               {!assignmentForm.serviceIds.length && !assignmentForm.categoryIds.length
-                ? 'Sin asignaciones explícitas: este barbero estará disponible para todos los servicios.'
+                ? `Sin asignaciones explícitas: ${copy.staff.definiteSingular} estará disponible para todos los servicios.`
                 : `Asignaciones actuales: ${assignmentForm.serviceIds.length} servicio(s) y ${assignmentForm.categoryIds.length} categoría(s).`}
             </div>
 
             <div className="space-y-3">
               <Label className="text-sm">Categorías completas</Label>
               {orderedCategories.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay categorías creadas en este local.</p>
+                <p className="text-sm text-muted-foreground">
+                  No hay categorías creadas en {copy.location.definiteSingular}.
+                </p>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-2">
                   {orderedCategories.map((category) => (
@@ -910,7 +923,7 @@ const AdminBarbers: React.FC = () => {
                 </Button>
                 <Select key={copySource} onValueChange={handleCopyFromBarber} disabled={otherBarbers.length === 0}>
                   <SelectTrigger className="w-full sm:w-64">
-                    <SelectValue placeholder="Copiar desde otro barbero" />
+                    <SelectValue placeholder={`Copiar desde otro ${copy.staff.singularLower}`} />
                   </SelectTrigger>
                   <SelectContent>
                     {otherBarbers.map((barber) => (
@@ -933,7 +946,7 @@ const AdminBarbers: React.FC = () => {
                     onChange={(e) => handleEndOverflowMinutesChange(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Si lo dejas vacío, se usa el valor configurado en el local.
+                    Si lo dejas vacío, se usa el valor configurado en {copy.location.definiteSingular}.
                   </p>
                 </div>
               </div>
@@ -1029,9 +1042,9 @@ const AdminBarbers: React.FC = () => {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar barbero?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar {copy.staff.singularLower}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. El barbero será eliminado permanentemente.
+              Esta acción no se puede deshacer. {copy.staff.definiteSingular} será eliminado permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

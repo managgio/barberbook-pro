@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveStaffSingular } from '../../tenancy/business-copy';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { ImageKitService } from '../imagekit/imagekit.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateBarberDto } from './dto/create-barber.dto';
@@ -19,6 +21,7 @@ export class BarbersService {
     private readonly prisma: PrismaService,
     private readonly imageKit: ImageKitService,
     private readonly settingsService: SettingsService,
+    private readonly tenantConfigService: TenantConfigService,
   ) {}
 
   private normalizeIds(values?: string[] | null) {
@@ -114,8 +117,10 @@ export class BarbersService {
   async assertBarberCanProvideService(barberId: string, serviceId: string) {
     const allowed = await this.isBarberAllowedForService(barberId, serviceId);
     if (!allowed) {
+      const config = await this.tenantConfigService.getEffectiveConfig();
+      const staffSingular = resolveStaffSingular(config.business?.type);
       throw new BadRequestException(
-        'El barbero seleccionado no está disponible para este servicio.',
+        `El ${staffSingular} seleccionado no está disponible para este servicio.`,
       );
     }
   }

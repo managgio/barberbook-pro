@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import defaultAvatar from '@/assets/img/default-image.webp';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 export type PhotoChangePayload = {
   previewUrl: string;
@@ -64,6 +65,7 @@ export const cropAndCompress = async (src: string, zoom: number) => {
 
 export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const copy = useBusinessCopy();
   const [previewUrl, setPreviewUrl] = useState<string>(value);
   const [selectedDataUrl, setSelectedDataUrl] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number>(1.05);
@@ -101,7 +103,7 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-1">
-          <Label>Foto del barbero</Label>
+          <Label>Foto {copy.staff.fromWithDefinite}</Label>
           <p className="text-sm text-muted-foreground">
             Recorte automático a cuadrado y compresión WebP antes de guardar la imagen.
           </p>

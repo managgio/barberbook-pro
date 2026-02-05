@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter, isWithinInterval, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useBusinessCopy } from '@/lib/businessCopy';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { CardSkeleton } from '@/components/common/Skeleton';
@@ -34,7 +35,6 @@ import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { getStoredReferralAttribution, clearStoredReferralAttribution } from '@/lib/referrals';
 
-const STEPS = ['Servicio', 'Barbero y horario', 'Confirmación'];
 
 interface BookingWizardProps {
   isGuest?: boolean;
@@ -45,6 +45,17 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const copy = useBusinessCopy();
+  const steps = useMemo(
+    () => ['Servicio', `${copy.staff.singular} y horario`, 'Confirmación'],
+    [copy.staff.singular],
+  );
+  const staffAvailabilityLabel = copy.staff.isCollective
+    ? `${copy.staff.singularLower} disponible`
+    : `${copy.staff.pluralLower} disponibles`;
+  const staffActiveAvailabilityLabel = copy.staff.isCollective
+    ? `${copy.staff.singularLower} activo disponible`
+    : `${copy.staff.pluralLower} activos disponibles`;
 
   const [currentStep, setCurrentStep] = useState(0);
   const [services, setServices] = useState<Service[]>([]);
@@ -181,7 +192,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         setBarbers([]);
         setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
         toast({
-          title: 'No pudimos cargar los barberos',
+          title: `No pudimos cargar ${copy.staff.definitePlural}`,
           description: 'Intenta de nuevo en unos segundos.',
           variant: 'destructive',
         });
@@ -721,7 +732,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   };
 
   const handleNext = () => {
-    if (currentStep < STEPS.length - 1) {
+    if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -842,8 +853,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         await fetchSlots();
       } else if (isBarberMismatch) {
         toast({
-          title: 'Barbero no disponible',
-          description: 'Elige otro barbero para este servicio.',
+          title: `${copy.staff.singular} no disponible`,
+          description: `Elige otro ${copy.staff.singularLower} para este servicio.`,
           variant: 'destructive',
         });
         if (booking.serviceId) {
@@ -876,8 +887,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       );
       if (eligibleBarbers.length === 0) {
         toast({
-          title: 'No hay barberos disponibles',
-          description: 'Elige otro horario para asignarte un barbero disponible.',
+          title: `No hay ${staffAvailabilityLabel}`,
+          description: `Elige otro horario para asignarte ${copy.staff.indefiniteSingular} disponible.`,
           variant: 'destructive',
         });
         return;
@@ -931,7 +942,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
       {/* Progress Steps */}
       <div className="flex items-center justify-between">
-        {STEPS.map((step, index) => (
+        {steps.map((step, index) => (
           <React.Fragment key={step}>
             <div className="flex flex-col items-center">
               <div 
@@ -953,7 +964,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 {step}
               </span>
             </div>
-            {index < STEPS.length - 1 && (
+            {index < steps.length - 1 && (
               <div className={cn(
                 'flex-1 h-0.5 mx-2',
                 index < currentStep ? 'bg-primary' : 'bg-border'
@@ -1058,16 +1069,20 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground mb-1">
-                    {selectBarber ? 'Elige tu barbero y horario' : 'Elige tu horario'}
+                    {selectBarber
+                      ? `Elige tu ${copy.staff.singularLower} y horario`
+                      : 'Elige tu horario'}
                   </h2>
                   <p className="text-sm text-muted-foreground">
                     {selectBarber
                       ? 'Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.'
-                      : 'Selecciona el día y la hora; asignaremos automáticamente a un barbero disponible.'}
+                      : `Selecciona el día y la hora; asignaremos automáticamente a ${copy.staff.indefiniteSingular} disponible.`}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 rounded-full border border-border bg-secondary/40 px-4 py-2">
-                  <span className="text-xs font-medium text-muted-foreground">Elegir barbero</span>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Elegir {copy.staff.singularLower}
+                  </span>
                   <Switch checked={selectBarber} onCheckedChange={handleBarberSelectionToggle} />
                 </div>
               </div>
@@ -1075,7 +1090,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               {!selectBarber && (
                 <div className="rounded-2xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
                   <p>
-                    Barbero asignado: {!assignedBarber?.name ? 'A determinar' : ''}
+                    {copy.staff.singular} asignado: {!assignedBarber?.name ? 'A determinar' : ''}
                   </p>
                   {assignedBarber && booking.dateTime && (
                     <div className="mt-3 flex items-center gap-3 rounded-xl border border-border/60 bg-background/70 p-3 text-foreground">
@@ -1085,7 +1100,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         className="w-12 h-12 rounded-xl object-cover"
                       />
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Barbero asignado</p>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {copy.staff.singular} asignado
+                        </p>
                         <p className="font-semibold text-foreground">{assignedBarber.name}</p>
                       </div>
                     </div>
@@ -1128,8 +1145,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       ) : (
                         <p className="text-sm text-muted-foreground">
                           {booking.serviceId
-                            ? 'No hay barberos activos disponibles para este servicio.'
-                            : 'No hay barberos activos disponibles.'}
+                            ? `No hay ${staffActiveAvailabilityLabel} para este servicio.`
+                            : `No hay ${staffActiveAvailabilityLabel}.`}
                         </p>
                       )}
                     </div>
@@ -1283,7 +1300,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   ) : (
                     <div className="flex flex-col items-center justify-center text-center py-16 gap-3 text-muted-foreground">
                       <Calendar className="w-10 h-10" />
-                      <p className="text-sm font-medium">Selecciona primero a un barbero para revisar su agenda.</p>
+                      <p className="text-sm font-medium">
+                        Selecciona primero a {copy.staff.indefiniteSingular} para revisar su agenda.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1550,7 +1569,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                               <CheckCircle className="h-5 w-5 text-muted-foreground" />
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-foreground">Pagar en el local</p>
+                              <p className="text-sm font-semibold text-foreground">
+                                Pagar en {copy.location.definiteSingular}
+                              </p>
                               <p className="text-xs text-muted-foreground">Pagarás el día de la cita.</p>
                             </div>
                           </div>
@@ -1611,7 +1632,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     className="w-12 h-12 rounded-lg object-cover"
                   />
                   <div>
-                    <p className="text-sm text-muted-foreground">Barbero</p>
+                    <p className="text-sm text-muted-foreground">{copy.staff.singular}</p>
                     <p className="font-semibold text-foreground">{getBarber()?.name}</p>
                   </div>
                 </div>
@@ -1648,7 +1669,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     className="min-h-[110px] resize-none"
                   />
                   <p className="text-xs text-muted-foreground">
-                    El comentario lo verá tu barbero para preparar la cita.
+                    El comentario lo verá tu {copy.staff.singularLower} para preparar la cita.
                   </p>
                 </div>
 
@@ -1690,7 +1711,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Para cambios o cancelaciones, contacta directamente con el salón.
+                      Para cambios o cancelaciones, contacta directamente con {copy.location.definiteSingular}.
                     </p>
                     <hr className="border-border" />
                   </>
@@ -1742,7 +1763,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         )}
 
         <div className={currentStep === 0 ? "ml-auto" : ""}>
-          {currentStep < STEPS.length - 1 ? (
+          {currentStep < steps.length - 1 ? (
             <Button onClick={handleNext} disabled={!canProceed()}>
               Siguiente
               <ChevronRight className="w-4 h-4 ml-1" />

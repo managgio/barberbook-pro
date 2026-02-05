@@ -7,14 +7,16 @@ import { Button } from '@/components/ui/button';
 import { getBarbers } from '@/data/api';
 import { Barber } from '@/data/types';
 import { useAuth } from '@/context/AuthContext';
-import { Calendar, Loader2 } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import defaultAvatar from '@/assets/img/default-image.webp';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const BarbersPage: React.FC = () => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { isAuthenticated } = useAuth();
+  const copy = useBusinessCopy();
 
   useEffect(() => {
     const fetchBarbers = async () => {
@@ -34,7 +36,7 @@ const BarbersPage: React.FC = () => {
           {/* Header */}
           <div className="text-center mb-16">
             <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
-              Nuestros <span className="text-gradient">barberos</span>
+              <span className="text-gradient">{copy.staff.plural}</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Conoce a los profesionales que harán realidad tu estilo. 
@@ -67,7 +69,7 @@ const BarbersPage: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <span className="text-xs text-foreground bg-primary/20 backdrop-blur-sm px-2 py-1 rounded-md">
-                        {barber.role === 'admin' ? 'Senior' : 'Barbero'}
+                        {barber.role === 'admin' ? 'Senior' : copy.staff.singular}
                       </span>
                     </div>
                   </div>

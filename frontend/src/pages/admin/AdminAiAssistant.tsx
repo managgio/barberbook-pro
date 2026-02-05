@@ -22,6 +22,7 @@ import { getAiAssistantSession, postAiAssistantChat, postAiAssistantTranscribe }
 import { AiChatResponse } from '@/data/types';
 import { cn } from '@/lib/utils';
 import { dispatchAlertsUpdated, dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 interface ChatMessage {
   id: string;
@@ -35,6 +36,7 @@ const SEND_COMMAND = 'enviar';
 const AdminAiAssistant: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const { canAccessSection } = useAdminPermissions();
   const canCreateAlerts = canAccessSection('alerts');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -63,6 +65,13 @@ const AdminAiAssistant: React.FC = () => {
   const supportsSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const supportsVoiceCommand = typeof window !== 'undefined'
     && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+  const staffSingularLabel = copy.staff.isCollective ? 'miembro del equipo' : copy.staff.singularLower;
+  const staffPluralLabel = copy.staff.isCollective ? 'miembros del equipo' : copy.staff.pluralLower;
+  const staffNameExample = copy.staff.isCollective ? 'con Juan.' : `con ${copy.staff.singularLower} Juan.`;
+  const staffNameExampleAlt = copy.staff.isCollective ? 'con Alejandro.' : `con ${copy.staff.singularLower} Alejandro.`;
+  const staffHolidayPlaceholder = copy.staff.isCollective
+    ? `miembro del equipo o ${copy.location.singularLower}`
+    : `${copy.staff.singularLower} o ${copy.location.singularLower}`;
 
   const getSupportedMimeType = () => {
     if (typeof MediaRecorder === 'undefined') return '';
@@ -477,7 +486,7 @@ const AdminAiAssistant: React.FC = () => {
                 Citas nuevas
               </span>
               <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
-                Festivos local o barberos
+                Festivos {copy.location.singularLower} o {staffPluralLabel}
               </span>
               {canCreateAlerts && (
                 <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
@@ -501,36 +510,38 @@ const AdminAiAssistant: React.FC = () => {
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Pide citas nuevas con fecha, hora, servicio y barbero. Si falta algo, el asistente te lo pide.
+                      Pide citas nuevas con fecha, hora, servicio y {staffSingularLabel}. Si falta algo, el asistente te lo pide.
                     </p>
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea una cita para Marta Sancho el viernes a las 18:30 con servicio corte clasico y barbero Juan.
+                        Crea una cita para Marta Sancho el viernes a las 18:30 con servicio corte clasico y {staffNameExample}
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Reserva para el cliente Luis Martínez el 12 de enero a las 10:00 con corte clásico y con peluquero Alejandro.
+                        Reserva para el cliente Luis Martínez el 12 de enero a las 10:00 con corte clásico y {staffNameExampleAlt}
                       </div>
                     </div>
                   </div>
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="festivos" className="border-border/60">
-                <AccordionTrigger className="text-sm">Festivos flexibles: local, barberos y rangos</AccordionTrigger>
+                <AccordionTrigger className="text-sm">
+                  Festivos flexibles: {copy.location.singularLower}, {staffPluralLabel} y rangos
+                </AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Puedes crear festivos para el local o para uno o varios barberos. Si no dices el alcance,
-                      se entiende local. Tambien puedes mezclar varios festivos en un solo mensaje.
+                      Puedes crear festivos para {copy.location.definiteSingular} o para uno o varios {staffPluralLabel}. Si no dices el alcance,
+                      se entiende {copy.location.singularLower}. Tambien puedes mezclar varios festivos en un solo mensaje.
                     </p>
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea un festivo para el local el martes que viene.
+                        Crea un festivo para {copy.location.definiteSingular} el martes que viene.
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
                         Festivo del 15 al 18 de este mes para Alejandro y Pablo.
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea un festivo para el salon el 5 y otro del 8 al 10 de marzo para Ana.
+                        Crea un festivo para {copy.location.definiteSingular} el 5 y otro del 8 al 10 de marzo para Ana.
                       </div>
                     </div>
                   </div>
@@ -550,7 +561,7 @@ const AdminAiAssistant: React.FC = () => {
                           Crea una alerta para anunciar un nuevo servicio de color premium.
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Avisa del cierre del salon este sabado por la tarde.
+                          Avisa del cierre {copy.location.fromWithDefinite} este sabado por la tarde.
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
                           Alerta informativa para felicitar San Valentin a los clientes.
@@ -656,7 +667,7 @@ const AdminAiAssistant: React.FC = () => {
                 size="sm"
                 className="rounded-full"
                 onClick={() =>
-                  applyTemplate('Crea una cita para [cliente] el [fecha] a las [hora] con [servicio] y [barbero].')
+                  applyTemplate(`Crea una cita para [cliente] el [fecha] a las [hora] con [servicio] y [${staffSingularLabel}].`)
                 }
                 disabled={isSending || isTranscribing || isRecording}
               >
@@ -667,7 +678,7 @@ const AdminAiAssistant: React.FC = () => {
                 size="sm"
                 className="rounded-full"
                 onClick={() =>
-                  applyTemplate('Crea un festivo para [barbero o local] del [fecha inicio] al [fecha fin].')
+                  applyTemplate(`Crea un festivo para [${staffHolidayPlaceholder}] del [fecha inicio] al [fecha fin].`)
                 }
                 disabled={isSending || isTranscribing || isRecording}
               >

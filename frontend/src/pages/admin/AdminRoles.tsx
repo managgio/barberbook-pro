@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { ADMIN_SECTIONS } from '@/data/adminSections';
+import { getAdminSections } from '@/data/adminSections';
 import { AdminRole, AdminSectionKey, User } from '@/data/types';
 import { 
   getAdminRoles,
@@ -24,12 +24,15 @@ import { useAuth } from '@/context/AuthContext';
 import { Loader2, Shield, Users } from 'lucide-react';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const isSuperAdminUser = (candidate: User) => Boolean(candidate.isSuperAdmin || candidate.isPlatformAdmin);
 
 const AdminRoles: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const copy = useBusinessCopy();
+  const adminSections = useMemo(() => getAdminSections(copy), [copy]);
 
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -351,7 +354,7 @@ const AdminRoles: React.FC = () => {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {role.permissions.map((permission) => {
-                      const section = ADMIN_SECTIONS.find((sec) => sec.key === permission);
+                      const section = adminSections.find((sec) => sec.key === permission);
                       return (
                         <span
                           key={`${role.id}-${permission}`}
@@ -467,7 +470,7 @@ const AdminRoles: React.FC = () => {
             <div className="space-y-3">
               <Label>Permisos del sidebar</Label>
               <div className="grid sm:grid-cols-2 gap-2">
-                {ADMIN_SECTIONS.map((section) => (
+                {adminSections.map((section) => (
                   <label
                     key={section.key}
                     className={cn(

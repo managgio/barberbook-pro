@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
 import { isBarberEligibleForService } from '@/lib/barberServiceAssignment';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 interface AppointmentEditorDialogProps {
   open: boolean;
@@ -31,6 +32,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   context = 'admin',
 }) => {
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
@@ -256,7 +258,10 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const handleSave = async () => {
     if (!appointment) return;
     if (!form.serviceId || !form.barberId || !form.date || !form.time) {
-      toast({ title: 'Campos incompletos', description: 'Selecciona servicio, barbero, fecha y hora.' });
+      toast({
+        title: 'Campos incompletos',
+        description: `Selecciona servicio, ${copy.staff.singularLower}, fecha y hora.`,
+      });
       return;
     }
     setIsSaving(true);
@@ -293,8 +298,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         }
       } else if (isBarberMismatch) {
         toast({
-          title: 'Barbero no disponible',
-          description: 'Selecciona otro barbero compatible con este servicio.',
+          title: `${copy.staff.singular} no disponible`,
+          description: `Selecciona otro ${copy.staff.singularLower} compatible con este servicio.`,
           variant: 'destructive',
         });
         setForm((prev) => ({ ...prev, barberId: '', time: '' }));
@@ -332,7 +337,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Editar cita</DialogTitle>
           <DialogDescription>
-            Actualiza el servicio, barbero o horario de esta cita.
+            Actualiza el servicio, {copy.staff.singularLower} u horario de esta cita.
           </DialogDescription>
         </DialogHeader>
 
@@ -399,10 +404,10 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Barbero</Label>
+                <Label>{copy.staff.singular}</Label>
                 <Select value={form.barberId} onValueChange={(value) => setForm((prev) => ({ ...prev, barberId: value }))}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un barbero" />
+                    <SelectValue placeholder={`Selecciona ${copy.staff.indefiniteSingular}`} />
                   </SelectTrigger>
                   <SelectContent>
                     {filteredBarbers.map((barber) => (
@@ -435,7 +440,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
               <div className="min-h-[120px] rounded-2xl border border-dashed border-border p-3">
                 {!form.serviceId || !form.barberId || !form.date ? (
                   <p className="text-sm text-muted-foreground">
-                    Selecciona servicio, barbero y fecha.
+                    Selecciona servicio, {copy.staff.singularLower} y fecha.
                   </p>
                 ) : slotsLoading ? (
                   <div className="flex items-center justify-center py-6">
@@ -550,7 +555,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                 </div>
                 {!canShowProducts && (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                    La compra de productos no está disponible para clientes en este local.
+                    La compra de productos no está disponible para clientes en {copy.location.definiteSingular}.
                   </div>
                 )}
               </div>

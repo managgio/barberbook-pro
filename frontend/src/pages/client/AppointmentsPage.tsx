@@ -17,12 +17,14 @@ import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { getAppointmentStatusBadgeClass, getAppointmentStatusLabel, isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
+import { useBusinessCopy } from '@/lib/businessCopy';
 
 const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { settings } = useSiteSettings();
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -84,7 +86,7 @@ const AppointmentsPage: React.FC = () => {
     const service = getService(appointment.serviceId);
     const barber = getBarber(appointment.barberId);
     const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio';
-    const barberName = barber?.name ?? appointment.barberNameSnapshot ?? 'Barbero';
+    const barberName = barber?.name ?? appointment.barberNameSnapshot ?? copy.staff.singular;
     const startDate = parseISO(appointment.startDateTime);
     const durationMinutes = service?.duration ?? 30;
     const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
@@ -108,7 +110,7 @@ const AppointmentsPage: React.FC = () => {
   }) => {
     const barber = getBarber(appointment.barberId);
     const service = getService(appointment.serviceId);
-    const barberName = barber?.name ?? appointment.barberNameSnapshot ?? 'Barbero eliminado';
+    const barberName = barber?.name ?? appointment.barberNameSnapshot ?? `${copy.staff.singular} eliminado`;
     const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
     const date = parseISO(appointment.startDateTime);
     const basePrice = service?.price ?? appointment.price;

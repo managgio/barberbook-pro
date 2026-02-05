@@ -37,7 +37,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Building2, ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
-import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS } from '@/data/adminSections';
+import { BUSINESS_TYPE_OPTIONS, getBusinessCopy } from '@/lib/businessCopy';
+import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS, getAdminSections } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
 import MarkdownContent from '@/components/common/MarkdownContent';
 
@@ -377,7 +378,7 @@ const LANDING_SECTION_META: Record<LandingSectionKey, { label: string; descripti
   },
   barbers: {
     label: 'Equipo',
-    description: 'Presentación de barberos y especialistas.',
+    description: 'Presentación del equipo y especialistas.',
     icon: Users,
   },
   cta: {
@@ -841,6 +842,24 @@ const PlatformBrands: React.FC = () => {
     ? locationConfig?.features?.barberServiceAssignmentEnabled !== false
     : brandBarberAssignmentEnabled;
   const hasMultipleLocations = (selectedBrand?.locations?.length || 0) > 1;
+  const selectedBusinessType = (brandConfig?.business?.type as string) || 'barbershop';
+  const selectedBusinessCopy = getBusinessCopy(selectedBusinessType);
+  const adminSections = useMemo(() => getAdminSections(selectedBusinessCopy), [selectedBusinessCopy]);
+  const staffAssignmentLabel = `Asignación servicio-${selectedBusinessCopy.staff.singularLower}`;
+  const staffAvailabilityDescription = `Control maestro por marca para limitar la disponibilidad ${selectedBusinessCopy.staff.fromWithDefinitePlural} por servicio.`;
+  const staffAllLabel = selectedBusinessCopy.staff.isCollective
+    ? selectedBusinessCopy.staff.definiteSingular
+    : selectedBusinessCopy.staff.definitePlural;
+  const staffAllVerb = selectedBusinessCopy.staff.isCollective ? 'podrá' : 'podrán';
+  const resolveLandingSectionMeta = (key: LandingSectionKey) => {
+    const base = LANDING_SECTION_META[key];
+    if (key !== 'barbers') return base;
+    return {
+      ...base,
+      label: selectedBusinessCopy.staff.plural,
+      description: `Presentación ${selectedBusinessCopy.staff.fromWithDefinitePlural} y especialistas.`,
+    };
+  };
 
   const updateSidebarVisibility = (
     setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
@@ -2146,6 +2165,30 @@ const PlatformBrands: React.FC = () => {
                     />
                     <span className="text-sm text-muted-foreground">Marca activa</span>
                   </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Tipo de negocio</Label>
+                    <Select
+                      value={selectedBusinessType}
+                      onValueChange={(value) =>
+                        setBrandConfig((prev) => updateNestedValue(prev, ['business', 'type'], value))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BUSINESS_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Personal en UI: {selectedBusinessCopy.staff.singular} / {selectedBusinessCopy.staff.plural} ·
+                      Local: {selectedBusinessCopy.location.singular}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex justify-end">
                   <Button onClick={handleSaveBrand} disabled={isSaving}>
@@ -2363,7 +2406,7 @@ const PlatformBrands: React.FC = () => {
                         Define las secciones visibles por defecto para todos los locales.
                       </p>
                       <div className="space-y-3">
-                        {ADMIN_SECTIONS.map((section) => {
+                        {adminSections.map((section) => {
                           const isRequired = isAdminSectionRequired(section.key);
                           const isVisible = isAdminSectionVisible(brandConfig, section.key);
                           return (
@@ -2397,17 +2440,17 @@ const PlatformBrands: React.FC = () => {
                   {hasMultipleLocations && (
                     <Card className="border border-border/60 bg-card/80">
                       <CardHeader>
-                        <CardTitle className="text-base">Por local</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {selectedBrand.locations?.length ? (
-                          <>
-                            <div className="space-y-2">
-                              <Label>Local a configurar</Label>
-                              <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona local" />
-                                </SelectTrigger>
+                              <CardTitle className="text-base">Por {selectedBusinessCopy.location.singularLower}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              {selectedBrand.locations?.length ? (
+                                <>
+                                  <div className="space-y-2">
+                                    <Label>{selectedBusinessCopy.location.singular} a configurar</Label>
+                                    <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder={`Selecciona ${selectedBusinessCopy.location.indefiniteSingular}`} />
+                                      </SelectTrigger>
                                 <SelectContent>
                                   {selectedBrand.locations?.map((location: any) => (
                                     <SelectItem key={location.id} value={location.id}>
@@ -2417,20 +2460,20 @@ const PlatformBrands: React.FC = () => {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <Switch
-                                checked={isLocationSidebarOverride}
-                                onCheckedChange={handleLocationSidebarOverride}
-                              />
-                              <span className="text-sm text-muted-foreground">
-                                Personalizar visibilidad para este local
-                              </span>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              Si está desactivado, el local hereda la configuración de la marca.
-                            </p>
-                            <div className="space-y-3">
-                              {ADMIN_SECTIONS.map((section) => {
+                              <div className="flex items-center gap-3">
+                                <Switch
+                                  checked={isLocationSidebarOverride}
+                                  onCheckedChange={handleLocationSidebarOverride}
+                                />
+                                <span className="text-sm text-muted-foreground">
+                                Personalizar visibilidad para {selectedBusinessCopy.location.definiteSingular}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                              Si está desactivado, {selectedBusinessCopy.location.definiteSingular} hereda la configuración de la marca.
+                              </p>
+                              <div className="space-y-3">
+                              {adminSections.map((section) => {
                                 const isRequired = isAdminSectionRequired(section.key);
                                 const isVisible = isAdminSectionVisible(locationSidebarConfig, section.key);
                                 return (
@@ -2493,7 +2536,7 @@ const PlatformBrands: React.FC = () => {
                       </div>
                       <div className="space-y-3">
                         {brandLandingItems.map((item, index) => {
-                          const meta = LANDING_SECTION_META[item.key];
+                          const meta = resolveLandingSectionMeta(item.key);
                           const Icon = meta.icon;
                           const isDragging = draggingLandingScope === 'brand' && draggingLandingKey === item.key;
                           const isDragOver = draggingLandingScope === 'brand' && dragOverLandingIndex === index && !isDragging;
@@ -2722,7 +2765,7 @@ const PlatformBrands: React.FC = () => {
                             </div>
                             <div className="space-y-3">
                               {locationLandingItems.map((item, index) => {
-                                const meta = LANDING_SECTION_META[item.key];
+                                const meta = resolveLandingSectionMeta(item.key);
                                 const Icon = meta.icon;
                                 const isDisabled = !isLocationLandingOverride;
                                 const isDragging = draggingLandingScope === 'location' && draggingLandingKey === item.key;
@@ -3127,9 +3170,9 @@ const PlatformBrands: React.FC = () => {
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Citas</p>
                         <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                           <div>
-                            <div className="text-sm font-semibold text-foreground">Asignacion servicio-barbero</div>
+                            <div className="text-sm font-semibold text-foreground">{staffAssignmentLabel}</div>
                             <p className="text-xs text-muted-foreground">
-                              Control maestro por marca para limitar que barberos aparecen por servicio.
+                              {staffAvailabilityDescription}
                             </p>
                           </div>
                           <Switch
@@ -3369,9 +3412,9 @@ const PlatformBrands: React.FC = () => {
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-semibold text-foreground">Asignacion servicio-barbero</p>
+                              <p className="text-sm font-semibold text-foreground">{staffAssignmentLabel}</p>
                               <p className="text-xs text-muted-foreground">
-                                Sobrescribe el comportamiento de la marca para este local.
+                                Sobrescribe el comportamiento de la marca para {selectedBusinessCopy.location.definiteSingular}.
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -3384,9 +3427,11 @@ const PlatformBrands: React.FC = () => {
                           </div>
                           <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                             <div>
-                              <div className="text-sm font-semibold text-foreground">Activar en este local</div>
+                              <div className="text-sm font-semibold text-foreground">
+                                Activar en {selectedBusinessCopy.location.definiteSingular}
+                              </div>
                               <p className="text-xs text-muted-foreground">
-                                Si esta desactivado, todos los barberos podran realizar todos los servicios.
+                                Si esta desactivado, {staffAllLabel} {staffAllVerb} realizar todos los servicios.
                               </p>
                             </div>
                             <Switch

@@ -10,7 +10,8 @@ import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import LocationSwitcher from '@/components/common/LocationSwitcher';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
-import { adminNavItems, sortAdminNavItems } from './adminNavItems';
+import { useBusinessCopy } from '@/lib/businessCopy';
+import { adminNavItems, resolveAdminNavItemLabel, sortAdminNavItems } from './adminNavItems';
 
 
 interface AdminSidebarProps {
@@ -23,6 +24,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   const { user, logout } = useAuth();
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
+  const copy = useBusinessCopy();
   const leBlondLogo = '/leBlondLogo.png';
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const { isLoading, canAccessSection } = useAdminPermissions();
@@ -105,6 +107,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           </p>
         )}
         {visibleNavItems.map((item) => {
+          const label = resolveAdminNavItemLabel(item, copy);
           const link = (
             <Link
               to={item.href}
@@ -118,7 +121,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
               )}
             >
               <item.icon className="w-5 h-5" />
-              {!collapsed && item.label}
+              {!collapsed && label}
             </Link>
           );
 
@@ -134,7 +137,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
             <Tooltip key={item.href}>
               <TooltipTrigger asChild>{link}</TooltipTrigger>
               <TooltipContent side="right" align="center" className="text-xs">
-                {item.label}
+                {label}
               </TooltipContent>
             </Tooltip>
           );

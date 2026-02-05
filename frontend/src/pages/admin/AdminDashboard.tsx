@@ -52,6 +52,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { isAppointmentActive, isAppointmentRevenueStatus } from '@/lib/appointmentStatus';
+import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
 import {
   ResponsiveContainer,
   LineChart,
@@ -111,6 +112,7 @@ const AdminDashboard: React.FC = () => {
   const { canAccessSection } = useAdminPermissions();
   const { toast } = useToast();
   const { settings, isLoading: isSettingsLoading } = useSiteSettings();
+  const copy = useBusinessCopy();
   const qrSticker = settings.qrSticker;
 
   useEffect(() => {
@@ -465,16 +467,16 @@ const AdminDashboard: React.FC = () => {
         <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            Resumen de la actividad de la barbería.
+            Resumen de la actividad {copy.location.fromWithDefinite}.
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
             <SelectTrigger className="h-9 w-full sm:w-[210px]">
-              <SelectValue placeholder="Filtrar barbero" />
+              <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
             </SelectTrigger>
             <SelectContent align="end">
-              <SelectItem value="all">Todos los barberos</SelectItem>
+              <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
               {barbers.map((barber) => (
                 <SelectItem key={barber.id} value={barber.id}>
                   {barber.name}

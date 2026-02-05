@@ -10,6 +10,7 @@ Objetivo UX/Producto (reglas de oro):
 - Experiencia profesional a nivel empresa grande.
 - Codigo modular, compartimentado y escalable (componentes y servicios reutilizables).
 - No dar nada por sentado: cubrir casos limite, fallos de red, permisos, datos incompletos y validaciones fuertes.
+- Regla de mantenimiento: este documento debe actualizarse siempre que un cambio de arquitectura, flujos, modelo de datos o configuracion publica lo requiera.
 
 ## Estructura del repositorio
 - `frontend/`: app web (Vite + React + TypeScript + Tailwind + shadcn-ui).
@@ -42,7 +43,8 @@ Infra/Dev:
 - Soporta `customDomain` por marca.
 - `PLATFORM_SUBDOMAIN` redirige al panel de plataforma.
 - Contexto de tenant via `AsyncLocalStorage` (brandId/localId/host/subdomain).
-- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing/features, logos por modo y flags de hero).
+- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing/features/business, logos por modo y flags de hero).
+- `business.type` (brand-level, hereda a todos los locales) define el vocabulario usado en UI para staff y local.
 
 **Frontend**
 - `TenantProvider` llama `GET /api/tenant/bootstrap`.
@@ -50,6 +52,7 @@ Infra/Dev:
 - Aplica theme por marca/local (`theme.primary`) y modo visual (`theme.mode` light/dark).
 - Config publica incluye landing (orden + secciones ocultas) con override por local.
 - Puede forzar subdominio con `VITE_TENANT_SUBDOMAIN`.
+- `useBusinessCopy` normaliza el copy de staff/local (articulos y plurales) segun `business.type` y se usa en landing, reservas y panel admin.
 
 ## Arquitectura backend (NestJS)
 Patrones globales:
@@ -114,7 +117,7 @@ Location | Local/sucursal | Relacion con Brand, nombre, slug, estado
 AdminRole | Rol admin por local | Permisos por seccion (JSON)
 BrandUser | Membresia marca-usuario | Vinculo usuario <-> marca + `isBlocked`
 LocationStaff | Staff local | Vinculo usuario <-> local y rol admin
-BrandConfig | Configuracion por marca | JSON (branding, theme, landing order/hidden, notification prefs, features, twilio, email, imagekit, ai, etc)
+BrandConfig | Configuracion por marca | JSON (branding, theme, landing order/hidden, notification prefs, features, business.type, twilio, email, imagekit, ai, etc)
 LocationConfig | Configuracion por local | JSON (branding overrides, theme, landing order/hidden, notification prefs, features, imagekit folder, adminSidebar)
 Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
 Service | Servicio | Precio, duracion, categoria

@@ -18,11 +18,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
 
 const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
+  const copy = useBusinessCopy();
   const DATE_STORAGE_KEY = 'managgio.adminSearchDate';
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -259,7 +261,7 @@ const AdminSearch: React.FC = () => {
       <div className="pl-12 md:pl-0">
         <h1 className="text-3xl font-bold text-foreground">Buscar citas</h1>
         <p className="text-muted-foreground mt-1">
-          Busca citas por barbero y fecha.
+          Busca citas por {copy.staff.singularLower} y fecha.
         </p>
       </div>
 
@@ -268,13 +270,13 @@ const AdminSearch: React.FC = () => {
         <CardContent className="p-6">
           <div className="grid md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Barbero</Label>
+              <Label>{copy.staff.singular}</Label>
               <Select value={selectedBarberId} onValueChange={setSelectedBarberId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar barbero" />
+                  <SelectValue placeholder={`Seleccionar ${copy.staff.singularLower}`} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los barberos</SelectItem>
+                  <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
                   {barbers.map(barber => (
                     <SelectItem key={barber.id} value={barber.id}>{barber.name}</SelectItem>
                   ))}
@@ -320,7 +322,9 @@ const AdminSearch: React.FC = () => {
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Hora</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Cliente</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Servicio</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Barbero</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                      {copy.staff.singular}
+                    </th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Estado</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Método</th>
                     <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Precio final</th>
