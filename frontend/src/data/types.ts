@@ -168,6 +168,7 @@ export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_sh
 export type PaymentMethod = 'cash' | 'card' | 'bizum' | 'stripe';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled' | 'exempt' | 'in_person';
 export type CashMovementType = 'in' | 'out';
+export type CashMovementProductOperationType = 'purchase' | 'sale';
 
 export interface AppointmentProductItem {
   id: string;
@@ -221,6 +222,16 @@ export interface CashMovement {
   amount: number;
   method?: PaymentMethod | null;
   note?: string | null;
+  productOperationType?: CashMovementProductOperationType | null;
+  productItems?: Array<{
+    id: string;
+    productId?: string | null;
+    productName: string;
+    productNameSnapshot: string;
+    quantity: number;
+    unitAmount: number;
+    totalAmount: number;
+  }>;
   occurredAt: string;
   createdAt: string;
   updatedAt: string;

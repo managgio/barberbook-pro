@@ -1,5 +1,18 @@
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
-import { CashMovementType, PaymentMethod } from '@prisma/client';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { CashMovementProductOperationType, CashMovementType, PaymentMethod } from '@prisma/client';
+import { CashMovementProductItemDto } from './cash-movement-product-item.dto';
 
 export class CreateCashMovementDto {
   @IsEnum(CashMovementType)
@@ -21,4 +34,15 @@ export class CreateCashMovementDto {
   @IsOptional()
   @IsDateString()
   occurredAt?: string;
+
+  @IsOptional()
+  @IsEnum(CashMovementProductOperationType)
+  productOperationType?: CashMovementProductOperationType;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => CashMovementProductItemDto)
+  productItems?: CashMovementProductItemDto[];
 }

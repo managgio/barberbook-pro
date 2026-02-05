@@ -281,6 +281,12 @@ export const createCashMovement = async (data: {
   method?: PaymentMethod | null;
   note?: string;
   occurredAt?: string;
+  productOperationType?: 'purchase' | 'sale';
+  productItems?: Array<{
+    productId: string;
+    quantity: number;
+    unitAmount?: number;
+  }>;
 }): Promise<CashMovement> => apiRequest('/cash-register/movements', { method: 'POST', body: data });
 export const updateCashMovement = async (
   id: string,

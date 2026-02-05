@@ -137,7 +137,8 @@ Product | Producto | Precio, stock, imagen, visibilidad y categoria
 AppointmentProduct | Linea producto | Productos agregados a la cita (qty + precio unitario)
 Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, referidos, cupon, wallet, pagos Stripe (status/ids)
 ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
-CashMovement | Movimiento de caja | Entradas/salidas manuales y metodo de pago
+CashMovement | Movimiento de caja | Entradas/salidas manuales y operaciones de compra/venta de productos
+CashMovementProductItem | Linea de movimiento de caja | Productos y cantidades asociados a una compra/venta de caja, con snapshot de nombre y precio unitario
 PaymentMethod | Enum | Tarjeta, efectivo, bizum u otros metodos
 PaymentStatus | Enum | pending/paid/failed/cancelled/exempt/in_person
 Alert | Avisos | Mensajes con tipo y rango de fechas
@@ -226,6 +227,10 @@ Flujos:
  
 8) **Caja registradora**
    - Combina citas (precio final, incluye productos) + movimientos manuales.
+   - Soporta movimientos de **compra/venta de productos sin cita** (venta suelta) desde caja.
+   - Compra incrementa stock y venta decrementa stock en el inventario del local.
+   - Si se elimina un movimiento de compra/venta, se revierte el ajuste de stock para mantener consistencia.
+   - La opcion de compra/venta de productos solo aparece si el modulo de stock esta habilitado para el local.
    - KPIs por local y desglose por barbero/metodo de pago.
 
 9) **Productos y stock**

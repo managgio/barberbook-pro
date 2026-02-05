@@ -9,14 +9,25 @@ import { useToast } from '@/hooks/use-toast';
 import {
   createCashMovement,
   deleteCashMovement,
+  getAdminProducts,
   getAppointmentsByDate,
   getAppointmentsByDateForLocal,
   getAdminStripeConfig,
   getBarbers,
   getCashMovements,
   getCashMovementsForLocal,
+  getProductCategories,
 } from '@/data/api';
-import { Appointment, Barber, CashMovement, CashMovementType, PaymentMethod } from '@/data/types';
+import {
+  Appointment,
+  Barber,
+  CashMovement,
+  CashMovementProductOperationType,
+  CashMovementType,
+  PaymentMethod,
+  Product,
+  ProductCategory,
+} from '@/data/types';
 import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -33,6 +44,7 @@ import {
 } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { useTenant } from '@/context/TenantContext';
+import ProductSelector from '@/components/common/ProductSelector';
 
 const currencyFormatter = new Intl.NumberFormat('es-ES', {
   style: 'currency',
@@ -77,6 +89,8 @@ const AdminCashRegister: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [movements, setMovements] = useState<CashMovement[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingMovement, setIsSavingMovement] = useState(false);
   const [deletingMovementId, setDeletingMovementId] = useState<string | null>(null);
@@ -87,6 +101,7 @@ const AdminCashRegister: React.FC = () => {
     'all' | PaymentMethod | 'unknown'
   >('all');
   const productsEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
+  const [movementMode, setMovementMode] = useState<'manual' | 'products'>('manual');
   const [movementDraft, setMovementDraft] = useState<{
     type: CashMovementType;
     amount: string;
@@ -97,6 +112,17 @@ const AdminCashRegister: React.FC = () => {
     amount: '',
     method: 'cash',
     note: '',
+  });
+  const [productMovementDraft, setProductMovementDraft] = useState<{
+    operationType: CashMovementProductOperationType;
+    method: PaymentMethod | '';
+    note: string;
+    products: Array<{ productId: string; quantity: number }>;
+  }>({
+    operationType: 'sale',
+    method: 'cash',
+    note: '',
+    products: [],
   });
   const today = format(new Date(), 'yyyy-MM-dd');
   const stripeEnabled = Boolean(
@@ -133,14 +159,18 @@ const AdminCashRegister: React.FC = () => {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [appointmentsData, barbersData, movementsData] = await Promise.all([
+      const [appointmentsData, barbersData, movementsData, productsData, productCategoriesData] = await Promise.all([
         getAppointmentsByDate(selectedDate),
         getBarbers(),
         getCashMovements(selectedDate),
+        productsEnabled ? getAdminProducts() : Promise.resolve([]),
+        productsEnabled ? getProductCategories(true) : Promise.resolve([]),
       ]);
       setAppointments(appointmentsData);
       setBarbers(barbersData);
       setMovements(movementsData);
+      setProducts(productsData as Product[]);
+      setProductCategories(productCategoriesData as ProductCategory[]);
       const localNet = calculateNetTotal(appointmentsData, movementsData);
       const locationIds = (locations || []).map((loc) => loc.id).filter(Boolean);
       if (!currentLocationId || locationIds.length <= 1) {
@@ -168,7 +198,7 @@ const AdminCashRegister: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, toast, calculateNetTotal, locations, currentLocationId]);
+  }, [selectedDate, toast, calculateNetTotal, locations, currentLocationId, productsEnabled]);
 
   useEffect(() => {
     loadData();
@@ -197,7 +227,15 @@ const AdminCashRegister: React.FC = () => {
     if (!stripeEnabled && movementDraft.method === 'stripe') {
       setMovementDraft((prev) => ({ ...prev, method: 'cash' }));
     }
-  }, [stripeEnabled, barberPaymentMethodFilter, movementDraft.method]);
+    if (!stripeEnabled && productMovementDraft.method === 'stripe') {
+      setProductMovementDraft((prev) => ({ ...prev, method: 'cash' }));
+    }
+  }, [stripeEnabled, barberPaymentMethodFilter, movementDraft.method, productMovementDraft.method]);
+
+  useEffect(() => {
+    if (productsEnabled) return;
+    setMovementMode('manual');
+  }, [productsEnabled]);
 
   const completedAppointments = useMemo(
     () => appointments.filter((appointment) => appointment.status === 'completed'),
@@ -327,43 +365,122 @@ const AdminCashRegister: React.FC = () => {
     );
   }, [productSales, productsEnabled]);
 
+  const selectedMovementProductDetails = useMemo(() => {
+    return productMovementDraft.products
+      .map((item) => {
+        const product = products.find((entry) => entry.id === item.productId);
+        if (!product) return null;
+        const unitAmount = product.finalPrice ?? product.price;
+        return {
+          productId: product.id,
+          productName: product.name,
+          quantity: item.quantity,
+          unitAmount,
+          totalAmount: unitAmount * item.quantity,
+        };
+      })
+      .filter(Boolean) as Array<{
+      productId: string;
+      productName: string;
+      quantity: number;
+      unitAmount: number;
+      totalAmount: number;
+    }>;
+  }, [productMovementDraft.products, products]);
+
+  const selectedMovementProductsSummary = useMemo(() => {
+    return selectedMovementProductDetails.reduce(
+      (acc, item) => ({
+        units: acc.units + item.quantity,
+        amount: acc.amount + item.totalAmount,
+      }),
+      { units: 0, amount: 0 },
+    );
+  }, [selectedMovementProductDetails]);
+
   const handleCreateMovement = async () => {
     if (isSavingMovement) return;
-    const normalizedAmount = movementDraft.amount.trim().replace(',', '.');
-    const amount = Number(normalizedAmount);
-    if (!normalizedAmount || Number.isNaN(amount) || amount <= 0) {
-      toast({
-        title: 'Importe inválido',
-        description: 'Introduce un importe válido para la caja.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (movementDraft.type === 'in' && !movementDraft.method) {
-      toast({
-        title: 'Método requerido',
-        description: 'Selecciona un método de pago para la entrada.',
-        variant: 'destructive',
-      });
-      return;
-    }
     setIsSavingMovement(true);
     try {
       const occurredAt = `${selectedDate}T12:00:00`;
-      const created = await createCashMovement({
-        type: movementDraft.type,
-        amount,
-        method: movementDraft.method || null,
-        note: movementDraft.note.trim() || undefined,
-        occurredAt,
-      });
+      let created: CashMovement;
+
+      if (movementMode === 'products' && productsEnabled) {
+        const amount = selectedMovementProductsSummary.amount;
+        if (selectedMovementProductDetails.length === 0 || amount <= 0) {
+          toast({
+            title: 'Selecciona productos',
+            description: 'Añade al menos un producto con cantidad válida.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        const movementType =
+          productMovementDraft.operationType === 'sale' ? 'in' : 'out';
+        if (movementType === 'in' && !productMovementDraft.method) {
+          toast({
+            title: 'Método requerido',
+            description: 'Selecciona un método de pago para la venta.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        created = await createCashMovement({
+          type: movementType,
+          amount,
+          method: productMovementDraft.method || null,
+          note: productMovementDraft.note.trim() || undefined,
+          occurredAt,
+          productOperationType: productMovementDraft.operationType,
+          productItems: selectedMovementProductDetails.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitAmount: item.unitAmount,
+          })),
+        });
+        setProductMovementDraft((prev) => ({
+          ...prev,
+          note: '',
+          products: [],
+        }));
+      } else {
+        const normalizedAmount = movementDraft.amount.trim().replace(',', '.');
+        const amount = Number(normalizedAmount);
+        if (!normalizedAmount || Number.isNaN(amount) || amount <= 0) {
+          toast({
+            title: 'Importe inválido',
+            description: 'Introduce un importe válido para la caja.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        if (movementDraft.type === 'in' && !movementDraft.method) {
+          toast({
+            title: 'Método requerido',
+            description: 'Selecciona un método de pago para la entrada.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        created = await createCashMovement({
+          type: movementDraft.type,
+          amount,
+          method: movementDraft.method || null,
+          note: movementDraft.note.trim() || undefined,
+          occurredAt,
+        });
+        setMovementDraft((prev) => ({
+          ...prev,
+          amount: '',
+          note: '',
+        }));
+      }
+
       setMovements((prev) => [created, ...prev]);
-      setMovementDraft((prev) => ({
-        ...prev,
-        amount: '',
-        note: '',
-      }));
       toast({ title: 'Movimiento guardado', description: 'La caja se actualizó correctamente.' });
+      if (created.productOperationType) {
+        await loadData();
+      }
     } catch (error) {
       toast({
         title: 'No se pudo guardar',
@@ -395,6 +512,17 @@ const AdminCashRegister: React.FC = () => {
 
   const quickSetDate = (daysAgo: number) => {
     setSelectedDate(format(subDays(new Date(), daysAgo), 'yyyy-MM-dd'));
+  };
+
+  const getMovementProductsSummary = (movement: CashMovement) => {
+    const items = movement.productItems || [];
+    if (items.length === 0) return '';
+    const preview = items
+      .slice(0, 2)
+      .map((item) => `${item.productName} x${item.quantity}`)
+      .join(' · ');
+    if (items.length <= 2) return preview;
+    return `${preview} · +${items.length - 2} más`;
   };
 
   const PieTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) => {
@@ -668,72 +796,197 @@ const AdminCashRegister: React.FC = () => {
 
       <Card variant="elevated" className="flex flex-col">
         <CardHeader className="space-y-1">
-          <CardTitle>Movimientos de caja</CardTitle>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>Movimientos de caja</CardTitle>
+            {productsEnabled && (
+              <div className="inline-flex rounded-lg border border-border/70 bg-muted/20 p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={movementMode === 'manual' ? 'default' : 'ghost'}
+                  onClick={() => setMovementMode('manual')}
+                >
+                  Manual
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={movementMode === 'products' ? 'default' : 'ghost'}
+                  onClick={() => setMovementMode('products')}
+                >
+                  Productos
+                </Button>
+              </div>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
-            Añade entradas o salidas manuales (compras, ajustes, propinas, etc.).
+            {movementMode === 'products' && productsEnabled
+              ? 'Registra compras y ventas sueltas de productos con ajuste automático de stock.'
+              : 'Añade entradas o salidas manuales (compras, ajustes, propinas, etc.).'}
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Tipo</label>
-              <Select
-                value={movementDraft.type}
-                onValueChange={(value) => setMovementDraft((prev) => ({ ...prev, type: value as CashMovementType }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in">Entrada</SelectItem>
-                  <SelectItem value="out">Salida</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Importe</label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={movementDraft.amount}
-                onChange={(e) => setMovementDraft((prev) => ({ ...prev, amount: e.target.value }))}
-                placeholder="0.00"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Método</label>
-              <Select
-                value={movementDraft.method || 'none'}
-                onValueChange={(value) =>
-                  setMovementDraft((prev) => ({
+          {movementMode === 'products' && productsEnabled ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Operación</label>
+                  <Select
+                    value={productMovementDraft.operationType}
+                    onValueChange={(value) =>
+                      setProductMovementDraft((prev) => ({
+                        ...prev,
+                        operationType: value as CashMovementProductOperationType,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona operación" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sale">Venta de productos</SelectItem>
+                      <SelectItem value="purchase">Compra de productos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Tipo</label>
+                  <Input
+                    value={productMovementDraft.operationType === 'sale' ? 'Entrada' : 'Salida'}
+                    readOnly
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Método</label>
+                  <Select
+                    value={productMovementDraft.method || 'none'}
+                    onValueChange={(value) =>
+                      setProductMovementDraft((prev) => ({
+                        ...prev,
+                        method: value === 'none' ? '' : (value as PaymentMethod),
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona método" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Efectivo</SelectItem>
+                      <SelectItem value="card">Tarjeta</SelectItem>
+                      <SelectItem value="bizum">Bizum</SelectItem>
+                      {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
+                      <SelectItem value="none">Sin método</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Importe estimado</label>
+                  <Input value={currencyFormatter.format(selectedMovementProductsSummary.amount)} readOnly />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Nota</label>
+                <Textarea
+                  value={productMovementDraft.note}
+                  onChange={(e) =>
+                    setProductMovementDraft((prev) => ({
+                      ...prev,
+                      note: e.target.value,
+                    }))
+                  }
+                  placeholder={
+                    productMovementDraft.operationType === 'sale'
+                      ? 'Ej: Venta suelta de productos'
+                      : 'Ej: Compra de reposición'
+                  }
+                  className="min-h-[42px] resize-none"
+                />
+              </div>
+              <ProductSelector
+                products={products}
+                categories={productCategories}
+                selected={productMovementDraft.products}
+                onChange={(items) =>
+                  setProductMovementDraft((prev) => ({
                     ...prev,
-                    method: value === 'none' ? '' : (value as PaymentMethod),
+                    products: items,
                   }))
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona método" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Efectivo</SelectItem>
-                  <SelectItem value="card">Tarjeta</SelectItem>
-                  <SelectItem value="bizum">Bizum</SelectItem>
-                  {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
-                  <SelectItem value="none">Sin método</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Nota</label>
-              <Textarea
-                value={movementDraft.note}
-                onChange={(e) => setMovementDraft((prev) => ({ ...prev, note: e.target.value }))}
-                placeholder="Ej: Compra de productos"
-                className="min-h-[42px] resize-none"
+                showStock
+                allowOverstock={productMovementDraft.operationType === 'purchase'}
+                disabled={isSavingMovement || isLoading}
               />
+              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                <span>{selectedMovementProductsSummary.units} unidad(es) seleccionadas</span>
+                <span>
+                  {productMovementDraft.operationType === 'sale'
+                    ? 'Reduce stock del local'
+                    : 'Incrementa stock del local'}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Tipo</label>
+                <Select
+                  value={movementDraft.type}
+                  onValueChange={(value) => setMovementDraft((prev) => ({ ...prev, type: value as CashMovementType }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in">Entrada</SelectItem>
+                    <SelectItem value="out">Salida</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Importe</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={movementDraft.amount}
+                  onChange={(e) => setMovementDraft((prev) => ({ ...prev, amount: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Método</label>
+                <Select
+                  value={movementDraft.method || 'none'}
+                  onValueChange={(value) =>
+                    setMovementDraft((prev) => ({
+                      ...prev,
+                      method: value === 'none' ? '' : (value as PaymentMethod),
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Efectivo</SelectItem>
+                    <SelectItem value="card">Tarjeta</SelectItem>
+                    <SelectItem value="bizum">Bizum</SelectItem>
+                    {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
+                    <SelectItem value="none">Sin método</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Nota</label>
+                <Textarea
+                  value={movementDraft.note}
+                  onChange={(e) => setMovementDraft((prev) => ({ ...prev, note: e.target.value }))}
+                  placeholder="Ej: Compra de productos"
+                  className="min-h-[42px] resize-none"
+                />
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex justify-end">
             <Button onClick={handleCreateMovement} disabled={isSavingMovement || isLoading} className="gap-2">
               <Plus className="w-4 h-4" />
@@ -752,7 +1005,7 @@ const AdminCashRegister: React.FC = () => {
               {isLoading ? (
                 <p className="text-sm text-muted-foreground">Cargando movimientos...</p>
               ) : movements.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay movimientos manuales en esta fecha.</p>
+                <p className="text-sm text-muted-foreground">No hay movimientos de caja en esta fecha.</p>
               ) : (
                 movements.map((movement) => {
                   const badgeVariant = movement.type === 'in' ? 'default' : 'destructive';
@@ -767,11 +1020,21 @@ const AdminCashRegister: React.FC = () => {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <Badge variant={badgeVariant}>{movement.type === 'in' ? 'Entrada' : 'Salida'}</Badge>
+                          {movement.productOperationType && (
+                            <Badge variant="outline">
+                              {movement.productOperationType === 'sale' ? 'Venta de productos' : 'Compra de productos'}
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted-foreground">{methodLabel}</span>
                         </div>
                         <p className="text-sm text-foreground">
                           {movement.note || 'Movimiento sin nota'}
                         </p>
+                        {movement.productItems && movement.productItems.length > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            {getMovementProductsSummary(movement)}
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground">
                           {format(parseISO(movement.occurredAt), "d MMM yyyy, HH:mm", { locale: es })}
                         </p>

@@ -45,6 +45,11 @@ enum CashMovementType {
   out
 }
 
+enum CashMovementProductOperationType {
+  purchase
+  sale
+}
+
 enum ConsentType {
   PRIVACY
   COOKIES
@@ -398,6 +403,7 @@ model Product {
   isArchived  Boolean         @default(false)
   offers      Offer[]         @relation("OfferProducts")
   appointmentItems AppointmentProduct[]
+  cashMovementItems CashMovementProductItem[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -691,12 +697,30 @@ model CashMovement {
   amount     Decimal          @db.Decimal(10, 2)
   method     PaymentMethod?
   note       String?
+  productOperationType CashMovementProductOperationType?
+  productItems CashMovementProductItem[]
   occurredAt DateTime         @default(now())
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
   @@index([localId])
   @@index([occurredAt])
+}
+
+model CashMovementProductItem {
+  id          String      @id @default(cuid())
+  movementId  String
+  movement    CashMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productNameSnapshot String
+  quantity    Int
+  unitAmount  Decimal     @db.Decimal(10, 2)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([movementId])
+  @@index([productId])
 }
 
 model ClientNote {
