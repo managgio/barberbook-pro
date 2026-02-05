@@ -834,6 +834,12 @@ const PlatformBrands: React.FC = () => {
     whatsapp: locationNotificationPrefsSource?.whatsapp !== false,
     sms: locationNotificationPrefsSource?.sms !== false,
   };
+  const brandBarberAssignmentEnabled = brandConfig?.features?.barberServiceAssignmentEnabled !== false;
+  const isLocationBarberAssignmentOverride =
+    typeof locationConfig?.features?.barberServiceAssignmentEnabled === 'boolean';
+  const locationBarberAssignmentEnabled = isLocationBarberAssignmentOverride
+    ? locationConfig?.features?.barberServiceAssignmentEnabled !== false
+    : brandBarberAssignmentEnabled;
   const hasMultipleLocations = (selectedBrand?.locations?.length || 0) > 1;
 
   const updateSidebarVisibility = (
@@ -875,6 +881,29 @@ const PlatformBrands: React.FC = () => {
       if (!prev.notificationPrefs) return prev;
       const { notificationPrefs, ...rest } = prev;
       return rest;
+    });
+  };
+
+  const handleLocationBarberAssignmentOverride = (checked: boolean) => {
+    if (checked) {
+      setLocationConfig((prev) =>
+        updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], brandBarberAssignmentEnabled),
+      );
+      return;
+    }
+    setLocationConfig((prev) => {
+      const next = { ...prev } as Record<string, any>;
+      if (!next.features || typeof next.features !== 'object' || Array.isArray(next.features)) {
+        return next;
+      }
+      const features = { ...(next.features as Record<string, any>) };
+      delete features.barberServiceAssignmentEnabled;
+      if (Object.keys(features).length === 0) {
+        delete next.features;
+      } else {
+        next.features = features;
+      }
+      return next;
     });
   };
 
@@ -3095,6 +3124,26 @@ const PlatformBrands: React.FC = () => {
                       </div>
 
                       <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Citas</p>
+                        <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">Asignacion servicio-barbero</div>
+                            <p className="text-xs text-muted-foreground">
+                              Control maestro por marca para limitar que barberos aparecen por servicio.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={brandBarberAssignmentEnabled}
+                            onCheckedChange={(checked) =>
+                              setBrandConfig((prev) =>
+                                updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], checked),
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Stripe (pagos)</p>
                         <div className="space-y-3">
                           <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
@@ -3314,6 +3363,41 @@ const PlatformBrands: React.FC = () => {
                                 }
                               />
                             </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">Asignacion servicio-barbero</p>
+                              <p className="text-xs text-muted-foreground">
+                                Sobrescribe el comportamiento de la marca para este local.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">Personalizar</span>
+                              <Switch
+                                checked={isLocationBarberAssignmentOverride}
+                                onCheckedChange={handleLocationBarberAssignmentOverride}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Activar en este local</div>
+                              <p className="text-xs text-muted-foreground">
+                                Si esta desactivado, todos los barberos podran realizar todos los servicios.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={locationBarberAssignmentEnabled}
+                              disabled={!isLocationBarberAssignmentOverride}
+                              onCheckedChange={(checked) =>
+                                setLocationConfig((prev) =>
+                                  updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], checked),
+                                )
+                              }
+                            />
                           </div>
                         </div>
 

@@ -344,6 +344,8 @@ model Barber {
   appointments Appointment[]
   schedule    BarberSchedule?
   holidays    BarberHoliday[]
+  serviceAssignments BarberServiceAssignment[]
+  serviceCategoryAssignments BarberServiceCategoryAssignment[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
@@ -369,6 +371,7 @@ model Service {
   referralReferrerTemplates ReferralConfigTemplate[] @relation("ReferralTemplateReferrerService")
   referralReferredTemplates ReferralConfigTemplate[] @relation("ReferralTemplateReferredService")
   coupons Coupon[]
+  barberAssignments BarberServiceAssignment[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -835,10 +838,35 @@ model ServiceCategory {
   services    Service[]
   offers      Offer[]   @relation("OfferCategories")
   loyaltyPrograms LoyaltyProgram[]
+  barberAssignments BarberServiceCategoryAssignment[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([localId])
+}
+
+model BarberServiceAssignment {
+  id        String   @id @default(cuid())
+  barberId  String
+  barber    Barber   @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  serviceId String
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([barberId, serviceId])
+  @@index([serviceId])
+}
+
+model BarberServiceCategoryAssignment {
+  id         String          @id @default(cuid())
+  barberId   String
+  barber     Barber          @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt  DateTime        @default(now())
+
+  @@unique([barberId, categoryId])
+  @@index([categoryId])
 }
 
 model ProductCategory {

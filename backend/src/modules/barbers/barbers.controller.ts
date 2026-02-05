@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { BarbersService } from './barbers.service';
 import { CreateBarberDto } from './dto/create-barber.dto';
 import { UpdateBarberDto } from './dto/update-barber.dto';
+import { UpdateBarberServiceAssignmentDto } from './dto/update-barber-service-assignment.dto';
 import { AdminEndpoint } from '../../auth/admin.decorator';
 
 @Controller('barbers')
@@ -9,8 +10,8 @@ export class BarbersController {
   constructor(private readonly barbersService: BarbersService) {}
 
   @Get()
-  findAll() {
-    return this.barbersService.findAll();
+  findAll(@Query('serviceId') serviceId?: string) {
+    return this.barbersService.findAll(serviceId);
   }
 
   @Get(':id')
@@ -28,6 +29,12 @@ export class BarbersController {
   @AdminEndpoint()
   update(@Param('id') id: string, @Body() data: UpdateBarberDto) {
     return this.barbersService.update(id, data);
+  }
+
+  @Patch(':id/service-assignment')
+  @AdminEndpoint()
+  updateServiceAssignment(@Param('id') id: string, @Body() data: UpdateBarberServiceAssignmentDto) {
+    return this.barbersService.updateServiceAssignment(id, data);
   }
 
   @Delete(':id')

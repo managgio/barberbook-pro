@@ -73,6 +73,10 @@ export type TenantNotificationPrefs = {
   sms?: boolean;
 };
 
+export type TenantFeaturesConfig = {
+  barberServiceAssignmentEnabled?: boolean;
+};
+
 export type StripePaymentsMode = 'brand' | 'location';
 
 export type TenantStripePaymentsConfig = {
@@ -133,6 +137,7 @@ export type BrandConfigData = {
   adminSidebar?: TenantAdminSidebarConfig;
   landing?: TenantLandingConfig;
   notificationPrefs?: TenantNotificationPrefs;
+  features?: TenantFeaturesConfig;
   branding?: TenantBrandingConfig;
   theme?: TenantThemeConfig;
 };
@@ -142,6 +147,7 @@ export type LocationConfigData = {
   payments?: TenantPaymentsConfig;
   adminSidebar?: TenantAdminSidebarConfig;
   landing?: TenantLandingConfig;
+  features?: TenantFeaturesConfig;
   branding?: Partial<TenantBrandingConfig>;
   theme?: TenantThemeConfig;
   notificationPrefs?: TenantNotificationPrefs;

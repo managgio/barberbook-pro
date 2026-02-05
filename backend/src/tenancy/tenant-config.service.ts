@@ -99,12 +99,17 @@ export class TenantConfigService {
       brandConfig.landing || {},
       locationConfig.landing || {},
     );
+    const features = mergeConfig(
+      brandConfig.features || {},
+      locationConfig.features || {},
+    );
     return {
       branding: Object.keys(branding).length ? branding : null,
       theme: Object.keys(theme).length ? theme : null,
       adminSidebar: Object.keys(adminSidebar).length ? adminSidebar : null,
       notificationPrefs: Object.keys(notificationPrefs).length ? notificationPrefs : null,
       landing: Object.keys(landing).length ? landing : null,
+      features: Object.keys(features).length ? features : null,
     };
   }
 }

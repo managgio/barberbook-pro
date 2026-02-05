@@ -123,9 +123,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData, stripeData] = await Promise.all([
+        const [servicesData, categoriesData, settingsData, productsData, productCategoriesData, stripeData] = await Promise.all([
           getServices(),
-          getBarbers(),
           getServiceCategories(true),
           getSiteSettings(),
           getProducts('booking'),
@@ -133,7 +132,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           getStripeAvailability().catch(() => null),
         ]);
         setServices(servicesData);
-        setBarbers(barbersData);
         setServiceCategories(categoriesData);
         setCategoriesEnabled(settingsData.services.categoriesEnabled);
         setProductsEnabled(settingsData.products.enabled);
@@ -160,6 +158,41 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     };
     fetchData();
   }, [searchParams, toast]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const refreshBarbersByService = async () => {
+      try {
+        const nextBarbers = await getBarbers(
+          booking.serviceId ? { serviceId: booking.serviceId } : undefined,
+        );
+        if (!isMounted) return;
+        setBarbers(nextBarbers);
+        setBooking((prev) => {
+          if (!prev.barberId) return prev;
+          const stillAvailable = nextBarbers.some(
+            (barber) => barber.id === prev.barberId && barber.isActive !== false,
+          );
+          if (stillAvailable) return prev;
+          return { ...prev, barberId: null, dateTime: null };
+        });
+      } catch (error) {
+        if (!isMounted) return;
+        setBarbers([]);
+        setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
+        toast({
+          title: 'No pudimos cargar los barberos',
+          description: 'Intenta de nuevo en unos segundos.',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    refreshBarbersByService();
+    return () => {
+      isMounted = false;
+    };
+  }, [booking.serviceId, toast]);
 
   useEffect(() => {
     const preselected = searchParams.get('product');
@@ -798,6 +831,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       const isSlotConflict = message.toLowerCase().includes('horario no disponible');
+      const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
       if (isSlotConflict) {
         toast({
           title: 'Horario ocupado',
@@ -806,6 +840,21 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         });
         setBooking((prev) => ({ ...prev, dateTime: null }));
         await fetchSlots();
+      } else if (isBarberMismatch) {
+        toast({
+          title: 'Barbero no disponible',
+          description: 'Elige otro barbero para este servicio.',
+          variant: 'destructive',
+        });
+        if (booking.serviceId) {
+          const nextBarbers = await getBarbers({ serviceId: booking.serviceId }).catch(() => null);
+          if (nextBarbers) {
+            setBarbers(nextBarbers);
+          }
+        }
+        setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
+        setAvailableSlots([]);
+        setSlotsByBarber({});
       } else {
         toast({
           title: 'Error',
@@ -1077,7 +1126,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           </button>
                         ))
                       ) : (
-                        <p className="text-sm text-muted-foreground">No hay barberos activos disponibles.</p>
+                        <p className="text-sm text-muted-foreground">
+                          {booking.serviceId
+                            ? 'No hay barberos activos disponibles para este servicio.'
+                            : 'No hay barberos activos disponibles.'}
+                        </p>
                       )}
                     </div>
                   </div>

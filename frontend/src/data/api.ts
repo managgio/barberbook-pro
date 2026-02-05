@@ -141,12 +141,17 @@ export const getTenantBootstrap = async (): Promise<TenantBootstrap> =>
   apiRequest('/tenant/bootstrap');
 
 // Barbers API
-export const getBarbers = async (): Promise<Barber[]> => apiRequest('/barbers');
+export const getBarbers = async (options?: { serviceId?: string }): Promise<Barber[]> =>
+  apiRequest('/barbers', { query: { serviceId: options?.serviceId } });
 export const getBarberById = async (id: string): Promise<Barber | undefined> => apiRequest(`/barbers/${id}`);
 export const createBarber = async (data: Omit<Barber, 'id'>): Promise<Barber> =>
   apiRequest('/barbers', { method: 'POST', body: data });
 export const updateBarber = async (id: string, data: Partial<Barber>): Promise<Barber> =>
   apiRequest(`/barbers/${id}`, { method: 'PATCH', body: data });
+export const updateBarberServiceAssignment = async (
+  id: string,
+  data: { serviceIds?: string[]; categoryIds?: string[] },
+): Promise<Barber> => apiRequest(`/barbers/${id}/service-assignment`, { method: 'PATCH', body: data });
 export const deleteBarber = async (id: string): Promise<void> =>
   apiRequest(`/barbers/${id}`, { method: 'DELETE' });
 

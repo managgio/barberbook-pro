@@ -8,7 +8,12 @@ const sanitizeBarberPhoto = (photo?: string | null): string | null => {
   return photo;
 };
 
-export const mapBarber = (barber: Barber) => ({
+type BarberWithAssignments = Barber & {
+  serviceAssignments?: Array<{ serviceId: string }>;
+  serviceCategoryAssignments?: Array<{ categoryId: string }>;
+};
+
+export const mapBarber = (barber: BarberWithAssignments) => ({
   id: barber.id,
   name: barber.name,
   photo: sanitizeBarberPhoto(barber.photo) || null,
@@ -20,4 +25,8 @@ export const mapBarber = (barber: Barber) => ({
   endDate: barber.endDate ? barber.endDate.toISOString().split('T')[0] : null,
   isActive: barber.isActive,
   userId: barber.userId || null,
+  assignedServiceIds: barber.serviceAssignments?.map((item) => item.serviceId) || [],
+  assignedCategoryIds: barber.serviceCategoryAssignments?.map((item) => item.categoryId) || [],
+  hasAnyServiceAssignment:
+    (barber.serviceAssignments?.length || 0) > 0 || (barber.serviceCategoryAssignments?.length || 0) > 0,
 });

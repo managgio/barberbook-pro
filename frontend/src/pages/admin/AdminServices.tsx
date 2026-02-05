@@ -300,7 +300,10 @@ const AdminServices: React.FC = () => {
     try {
       const updated = await updateSiteSettings({
         ...settings,
-        services: { categoriesEnabled: enabled },
+        services: {
+          ...settings.services,
+          categoriesEnabled: enabled,
+        },
       });
       setSettings(updated);
       dispatchServicesUpdated({ source: 'admin-services' });

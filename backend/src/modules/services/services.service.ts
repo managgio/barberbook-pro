@@ -134,6 +134,9 @@ export class ServicesService {
       where: { id },
       data: { isArchived: true },
     });
+    await this.prisma.barberServiceAssignment.deleteMany({
+      where: { serviceId: id },
+    });
     return { success: true };
   }
 }

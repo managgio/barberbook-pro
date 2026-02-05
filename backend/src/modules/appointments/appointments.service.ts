@@ -19,6 +19,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { ReferralAttributionService } from '../referrals/referral-attribution.service';
 import { RewardsService } from '../referrals/rewards.service';
 import { ReviewRequestService } from '../reviews/review-request.service';
+import { BarbersService } from '../barbers/barbers.service';
 import {
   APP_TIMEZONE,
   endOfDayInTimeZone,
@@ -54,6 +55,7 @@ export class AppointmentsService {
     private readonly referralAttributionService: ReferralAttributionService,
     private readonly rewardsService: RewardsService,
     private readonly reviewRequestService: ReviewRequestService,
+    private readonly barbersService: BarbersService,
   ) {}
 
   private async getServiceDuration(serviceId?: string) {
@@ -266,6 +268,18 @@ export class AppointmentsService {
     return barber.name;
   }
 
+  private async assertBarberServiceCompatibility(barberId: string, serviceId: string) {
+    const localId = getCurrentLocalId();
+    const service = await this.prisma.service.findFirst({
+      where: { id: serviceId, localId, isArchived: false },
+      select: { id: true },
+    });
+    if (!service) {
+      throw new NotFoundException('Service not found');
+    }
+    await this.barbersService.assertBarberCanProvideService(barberId, serviceId);
+  }
+
   async create(
     data: CreateAppointmentDto,
     context?: {
@@ -311,6 +325,8 @@ export class AppointmentsService {
         throw new BadRequestException('La compra de productos no está disponible en este local.');
       }
     }
+
+    await this.assertBarberServiceCompatibility(data.barberId, data.serviceId);
 
     await this.assertSlotAvailable({
       barberId: data.barberId,
@@ -588,6 +604,7 @@ export class AppointmentsService {
     const barberChanged = data.barberId !== undefined && data.barberId !== current.barberId;
     const userChanged = data.userId !== undefined && data.userId !== current.userId;
     if (startChanged || serviceChanged || barberChanged) {
+      await this.assertBarberServiceCompatibility(nextBarberId, nextServiceId);
       await this.assertSlotAvailable({
         barberId: data.barberId || current.barberId,
         serviceId: data.serviceId || current.serviceId,
@@ -917,6 +934,14 @@ export class AppointmentsService {
     });
     const dateOnly = date.split('T')[0];
     if (!barber || barber.isActive === false) return [];
+
+    if (options?.serviceId) {
+      const canProvideService = await this.barbersService.isBarberAllowedForService(
+        barberId,
+        options.serviceId,
+      );
+      if (!canProvideService) return [];
+    }
 
     const startDate = barber.startDate ? barber.startDate.toISOString().split('T')[0] : null;
     const endDate = barber.endDate ? barber.endDate.toISOString().split('T')[0] : null;

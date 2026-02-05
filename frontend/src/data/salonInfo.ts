@@ -79,6 +79,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   },
   services: {
     categoriesEnabled: false,
+    barberServiceAssignmentEnabled: false,
   },
   products: {
     enabled: false,

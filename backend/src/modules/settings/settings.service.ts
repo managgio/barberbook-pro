@@ -11,11 +11,16 @@ export class SettingsService {
     private readonly tenantConfig: TenantConfigService,
   ) {}
 
-  private async resolveProductsEnabled() {
+  private async resolveRuntimeFlags() {
     const config = await this.tenantConfig.getEffectiveConfig();
     const hidden = config.adminSidebar?.hiddenSections;
-    if (!Array.isArray(hidden)) return true;
-    return !hidden.includes('stock');
+    const productsEnabled = !Array.isArray(hidden) || !hidden.includes('stock');
+    const barberServiceAssignmentPlatformEnabled =
+      config.features?.barberServiceAssignmentEnabled !== false;
+    return {
+      productsEnabled,
+      barberServiceAssignmentPlatformEnabled,
+    };
   }
 
   private async ensureSettings(): Promise<SiteSettings> {
@@ -33,18 +38,40 @@ export class SettingsService {
   }
 
   async getSettings(): Promise<SiteSettings> {
-    const settings = await this.ensureSettings();
-    const productsEnabled = await this.resolveProductsEnabled();
+    const [settings, runtimeFlags] = await Promise.all([
+      this.ensureSettings(),
+      this.resolveRuntimeFlags(),
+    ]);
     return cloneSettings({
       ...settings,
-      products: { ...settings.products, enabled: productsEnabled },
+      services: {
+        ...settings.services,
+        barberServiceAssignmentEnabled:
+          runtimeFlags.barberServiceAssignmentPlatformEnabled
+            ? settings.services.barberServiceAssignmentEnabled
+            : false,
+      },
+      products: { ...settings.products, enabled: runtimeFlags.productsEnabled },
     });
   }
 
   async updateSettings(settings: SiteSettings): Promise<SiteSettings> {
     const localId = getCurrentLocalId();
     const normalized = normalizeSettings(settings);
-    normalized.products.enabled = await this.resolveProductsEnabled();
+    const runtimeFlags = await this.resolveRuntimeFlags();
+    normalized.products.enabled = runtimeFlags.productsEnabled;
+
+    if (!runtimeFlags.barberServiceAssignmentPlatformEnabled) {
+      const existing = await this.prisma.siteSettings.findUnique({
+        where: { localId },
+        select: { data: true },
+      });
+      const existingNormalized = normalizeSettings(
+        (existing?.data || undefined) as Partial<SiteSettings> | undefined,
+      );
+      normalized.services.barberServiceAssignmentEnabled =
+        existingNormalized.services.barberServiceAssignmentEnabled;
+    }
 
     if (normalized.products.categoriesEnabled) {
       const uncategorizedProducts = await this.prisma.product.count({
@@ -67,6 +94,6 @@ export class SettingsService {
       update: { data: normalized.openingHours },
       create: { localId, data: normalized.openingHours },
     });
-    return cloneSettings(normalized);
+    return this.getSettings();
   }
 }

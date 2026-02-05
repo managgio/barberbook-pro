@@ -97,6 +97,9 @@ export interface TenantBootstrap {
       whatsapp?: boolean;
       sms?: boolean;
     } | null;
+    features?: {
+      barberServiceAssignmentEnabled?: boolean;
+    } | null;
     landing?: {
       order?: string[];
       hiddenSections?: string[];
@@ -125,6 +128,9 @@ export interface Barber {
   startDate: string;
   endDate?: string | null;
   isActive?: boolean;
+  assignedServiceIds?: string[];
+  assignedCategoryIds?: string[];
+  hasAnyServiceAssignment?: boolean;
 }
 
 export interface Service {
@@ -347,6 +353,7 @@ export interface SiteSettings {
   };
   services: {
     categoriesEnabled: boolean;
+    barberServiceAssignmentEnabled: boolean;
   };
   products: {
     enabled: boolean;

@@ -1,21 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
-import { getBarbers, createBarber, updateBarber, deleteBarber, getBarberSchedule, updateBarberSchedule } from '@/data/api';
-import { Barber, DayKey, ShopSchedule } from '@/data/types';
-import { Plus, Pencil, Trash2, Calendar, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste } from 'lucide-react';
+import {
+  getBarbers,
+  createBarber,
+  updateBarber,
+  deleteBarber,
+  getBarberSchedule,
+  updateBarberSchedule,
+  getServices,
+  getServiceCategories,
+  getSiteSettings,
+  updateSiteSettings,
+  updateBarberServiceAssignment,
+} from '@/data/api';
+import { Barber, DayKey, Service, ServiceCategory, ShopSchedule, SiteSettings } from '@/data/types';
+import { Plus, Pencil, Trash2, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste, WandSparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { dispatchBarbersUpdated, dispatchSchedulesUpdated } from '@/lib/adminEvents';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
+import { useTenant } from '@/context/TenantContext';
 import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/components/admin/BarberPhotoUploader';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
@@ -45,20 +58,37 @@ const SHIFT_LABELS: Record<ShiftKey, { label: string; hint: string }> = {
 };
 
 const cloneSchedule = (schedule: ShopSchedule) => JSON.parse(JSON.stringify(schedule)) as ShopSchedule;
+const normalizeIds = (ids?: string[]) =>
+  Array.from(new Set((ids || []).filter((id): id is string => Boolean(id))));
 
 const AdminBarbers: React.FC = () => {
   const { toast } = useToast();
+  const { tenant } = useTenant();
   const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMetaLoading, setIsMetaLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [editingBarber, setEditingBarber] = useState<Barber | null>(null);
   const [deletingBarberId, setDeletingBarberId] = useState<string | null>(null);
   const [scheduleDialog, setScheduleDialog] = useState<{ open: boolean; barber: Barber | null }>({ open: false, barber: null });
   const [scheduleForm, setScheduleForm] = useState<ShopSchedule | null>(null);
   const [isScheduleLoading, setIsScheduleLoading] = useState(false);
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
+  const [assignmentDialog, setAssignmentDialog] = useState<{ open: boolean; barber: Barber | null }>({
+    open: false,
+    barber: null,
+  });
+  const [assignmentForm, setAssignmentForm] = useState<{ serviceIds: string[]; categoryIds: string[] }>({
+    serviceIds: [],
+    categoryIds: [],
+  });
+  const [isAssignmentSaving, setIsAssignmentSaving] = useState(false);
   const [scheduleCache, setScheduleCache] = useState<Record<string, ShopSchedule>>({});
   const [copiedSchedule, setCopiedSchedule] = useState<ShopSchedule | null>(null);
   const [copySource, setCopySource] = useState(0);
@@ -78,13 +108,39 @@ const AdminBarbers: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchBarbers();
+    void Promise.all([fetchBarbers(), fetchMeta()]);
   }, []);
 
   const fetchBarbers = async () => {
-    const data = await getBarbers();
-    setBarbers(data);
-    setIsLoading(false);
+    try {
+      const data = await getBarbers();
+      setBarbers(data);
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo cargar el equipo.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchMeta = async () => {
+    try {
+      const [servicesData, categoriesData, settingsData] = await Promise.all([
+        getServices(),
+        getServiceCategories(true),
+        getSiteSettings(),
+      ]);
+      setServices(servicesData);
+      setCategories(categoriesData);
+      setSettings(settingsData);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo cargar la configuración de asignaciones.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsMetaLoading(false);
+    }
   };
 
   const openCreateDialog = () => {
@@ -162,12 +218,125 @@ const AdminBarbers: React.FC = () => {
     [barbers, scheduleDialog.barber]
   );
 
+  const orderedCategories = useMemo(
+    () =>
+      [...categories].sort(
+        (a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name),
+      ),
+    [categories],
+  );
+
+  const servicesByCategory = useMemo(
+    () =>
+      orderedCategories.reduce<Record<string, Service[]>>((acc, category) => {
+        acc[category.id] = services.filter((service) => service.categoryId === category.id);
+        return acc;
+      }, {}),
+    [orderedCategories, services],
+  );
+
+  const uncategorizedServices = useMemo(
+    () => services.filter((service) => !service.categoryId),
+    [services],
+  );
+
+  const assignmentEnabled = settings?.services.barberServiceAssignmentEnabled ?? false;
+  const assignmentFeatureVisible = tenant?.config?.features?.barberServiceAssignmentEnabled !== false;
+
   const closeScheduleDialog = () => {
     setScheduleDialog({ open: false, barber: null });
     setScheduleForm(null);
     setCopySource(0);
     setIsScheduleLoading(false);
     setIsScheduleSaving(false);
+  };
+
+  const openAssignmentDialog = (barber: Barber) => {
+    if (!assignmentFeatureVisible) return;
+    setAssignmentDialog({ open: true, barber });
+    setAssignmentForm({
+      serviceIds: normalizeIds(barber.assignedServiceIds),
+      categoryIds: normalizeIds(barber.assignedCategoryIds),
+    });
+  };
+
+  const closeAssignmentDialog = () => {
+    setAssignmentDialog({ open: false, barber: null });
+    setAssignmentForm({ serviceIds: [], categoryIds: [] });
+    setIsAssignmentSaving(false);
+  };
+
+  const toggleAssignedService = (serviceId: string, checked: boolean) => {
+    setAssignmentForm((prev) => ({
+      ...prev,
+      serviceIds: checked
+        ? normalizeIds([...prev.serviceIds, serviceId])
+        : prev.serviceIds.filter((id) => id !== serviceId),
+    }));
+  };
+
+  const toggleAssignedCategory = (categoryId: string, checked: boolean) => {
+    setAssignmentForm((prev) => ({
+      ...prev,
+      categoryIds: checked
+        ? normalizeIds([...prev.categoryIds, categoryId])
+        : prev.categoryIds.filter((id) => id !== categoryId),
+    }));
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!assignmentDialog.barber) return;
+    setIsAssignmentSaving(true);
+    try {
+      await updateBarberServiceAssignment(assignmentDialog.barber.id, {
+        serviceIds: normalizeIds(assignmentForm.serviceIds),
+        categoryIds: normalizeIds(assignmentForm.categoryIds),
+      });
+      await fetchBarbers();
+      dispatchBarbersUpdated({ source: 'admin-barbers' });
+      toast({
+        title: 'Asignaciones guardadas',
+        description: 'La configuración del barbero se ha actualizado.',
+      });
+      closeAssignmentDialog();
+    } catch (error: any) {
+      toast({
+        title: 'No se pudo guardar',
+        description: error?.message || 'Revisa los servicios y categorías seleccionados.',
+        variant: 'destructive',
+      });
+      setIsAssignmentSaving(false);
+    }
+  };
+
+  const handleToggleAssignmentMode = async (enabled: boolean) => {
+    if (!settings) return;
+    setIsSavingSettings(true);
+    try {
+      const updated = await updateSiteSettings({
+        ...settings,
+        services: {
+          ...settings.services,
+          barberServiceAssignmentEnabled: enabled,
+        },
+      });
+      setSettings(updated);
+      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      toast({
+        title: enabled ? 'Asignación activada' : 'Asignación desactivada',
+        description: enabled
+          ? 'Los clientes verán solo barberos compatibles con el servicio elegido.'
+          : 'Todos los barberos volverán a estar disponibles para cualquier servicio.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'No se pudo actualizar',
+        description: error?.message || 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   const handleShiftTimeChange = (
@@ -401,6 +570,32 @@ const AdminBarbers: React.FC = () => {
         </Button>
       </div>
 
+      {assignmentFeatureVisible && (
+        <Card variant="elevated">
+          <CardHeader>
+            <CardTitle className="text-base">Asignación de servicios por barbero</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between rounded-xl border border-border p-3">
+              <div>
+                <p className="font-medium text-sm text-foreground">Activar reglas de asignación</p>
+                <p className="text-xs text-muted-foreground">
+                  Si está activo, en reservas solo aparecerán barberos compatibles con el servicio elegido.
+                </p>
+              </div>
+              <Switch
+                checked={assignmentEnabled}
+                disabled={!settings || isSavingSettings || isMetaLoading}
+                onCheckedChange={handleToggleAssignmentMode}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Regla automática: si un barbero no tiene ninguna categoría ni servicio asignado, se considera disponible para todos los servicios.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Barbers Grid */}
       {isLoading ? (
         <div className="grid md:grid-cols-2 gap-4">
@@ -424,6 +619,11 @@ const AdminBarbers: React.FC = () => {
                         <p className="text-sm text-primary">{barber.specialty}</p>
                       </div>
                       <div className="flex gap-1">
+                        {assignmentFeatureVisible && (
+                          <Button variant="ghost" size="icon" onClick={() => openAssignmentDialog(barber)}>
+                            <WandSparkles className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => openScheduleDialog(barber)}>
                           <CalendarClock className="w-4 h-4" />
                         </Button>
@@ -443,6 +643,13 @@ const AdminBarbers: React.FC = () => {
                       }`}>
                         {barber.isActive === false ? 'Oculto' : 'Activo'}
                       </span>
+                      {assignmentFeatureVisible && assignmentEnabled && (
+                        <span className="text-xs text-muted-foreground">
+                          {!barber.hasAnyServiceAssignment
+                            ? 'Sin asignaciones (atiende todos los servicios)'
+                            : `${barber.assignedServiceIds?.length ?? 0} servicio(s) + ${barber.assignedCategoryIds?.length ?? 0} categoría(s)`}
+                        </span>
+                      )}
                     </div>
                     {barber.bio && (
                       <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{barber.bio}</p>
@@ -553,6 +760,120 @@ const AdminBarbers: React.FC = () => {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={assignmentFeatureVisible && assignmentDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeAssignmentDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Asignaciones de {assignmentDialog.barber?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+              {!assignmentForm.serviceIds.length && !assignmentForm.categoryIds.length
+                ? 'Sin asignaciones explícitas: este barbero estará disponible para todos los servicios.'
+                : `Asignaciones actuales: ${assignmentForm.serviceIds.length} servicio(s) y ${assignmentForm.categoryIds.length} categoría(s).`}
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-sm">Categorías completas</Label>
+              {orderedCategories.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hay categorías creadas en este local.</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {orderedCategories.map((category) => (
+                    <label
+                      key={category.id}
+                      className="flex items-center gap-3 rounded-xl border border-border px-3 py-2"
+                    >
+                      <Checkbox
+                        checked={assignmentForm.categoryIds.includes(category.id)}
+                        onCheckedChange={(checked) => toggleAssignedCategory(category.id, checked === true)}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{category.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {servicesByCategory[category.id]?.length ?? 0} servicio(s)
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-sm">Servicios individuales</Label>
+              {services.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hay servicios disponibles.</p>
+              ) : (
+                <div className="space-y-3">
+                  {orderedCategories.map((category) => {
+                    const items = servicesByCategory[category.id] || [];
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={category.id} className="rounded-xl border border-border p-3 space-y-2">
+                        <p className="text-sm font-medium text-foreground">{category.name}</p>
+                        <div className="grid sm:grid-cols-2 gap-2">
+                          {items.map((service) => (
+                            <label
+                              key={service.id}
+                              className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2"
+                            >
+                              <Checkbox
+                                checked={assignmentForm.serviceIds.includes(service.id)}
+                                onCheckedChange={(checked) => toggleAssignedService(service.id, checked === true)}
+                              />
+                              <p className="text-sm text-foreground">{service.name}</p>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {uncategorizedServices.length > 0 && (
+                    <div className="rounded-xl border border-border p-3 space-y-2">
+                      <p className="text-sm font-medium text-foreground">Sin categoría</p>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        {uncategorizedServices.map((service) => (
+                          <label
+                            key={service.id}
+                            className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2"
+                          >
+                            <Checkbox
+                              checked={assignmentForm.serviceIds.includes(service.id)}
+                              onCheckedChange={(checked) => toggleAssignedService(service.id, checked === true)}
+                            />
+                            <p className="text-sm text-foreground">{service.name}</p>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeAssignmentDialog}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveAssignment} disabled={isAssignmentSaving}>
+                {isAssignmentSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Guardar asignaciones
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 

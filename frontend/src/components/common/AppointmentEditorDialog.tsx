@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
+import { isBarberEligibleForService } from '@/lib/barberServiceAssignment';
 
 interface AppointmentEditorDialogProps {
   open: boolean;
@@ -36,6 +37,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [products, setProducts] = useState<Product[]>([]);
   const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
+  const [barberServiceAssignmentEnabled, setBarberServiceAssignmentEnabled] = useState(false);
   const [productsEnabled, setProductsEnabled] = useState(false);
   const [clientPurchaseEnabled, setClientPurchaseEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -74,6 +76,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       setBarbers(barbersData);
       setServiceCategories(categoriesData);
       setCategoriesEnabled(settingsData.services.categoriesEnabled);
+      setBarberServiceAssignmentEnabled(settingsData.services.barberServiceAssignmentEnabled);
       setProductsEnabled(settingsData.products.enabled);
       setClientPurchaseEnabled(settingsData.products.clientPurchaseEnabled);
       setProducts(productsData);
@@ -195,11 +198,6 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     return { morning, afternoon };
   }, [availableSlots]);
 
-  const filteredBarbers = useMemo(() => {
-    if (context === 'admin') return barbers;
-    return barbers.filter((barber) => barber.isActive !== false);
-  }, [barbers, context]);
-
   const orderedCategories = useMemo(
     () =>
       [...serviceCategories].sort(
@@ -219,6 +217,35 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     }, {}),
     [orderedCategories, selectableServices],
   );
+
+  const selectedService = useMemo(
+    () => selectableServices.find((service) => service.id === form.serviceId) ?? null,
+    [form.serviceId, selectableServices],
+  );
+
+  const filteredBarbers = useMemo(() => {
+    const baseBarbers =
+      context === 'admin' ? barbers : barbers.filter((barber) => barber.isActive !== false);
+    if (!selectedService) return baseBarbers;
+
+    const eligible = baseBarbers.filter((barber) =>
+      isBarberEligibleForService(barber, selectedService, barberServiceAssignmentEnabled),
+    );
+
+    if (form.barberId && !eligible.some((barber) => barber.id === form.barberId)) {
+      const current = baseBarbers.find((barber) => barber.id === form.barberId);
+      if (current) {
+        return [current, ...eligible];
+      }
+    }
+    return eligible;
+  }, [
+    barbers,
+    context,
+    selectedService,
+    barberServiceAssignmentEnabled,
+    form.barberId,
+  ]);
 
   const canShowProducts = productsEnabled && (isAdminContext || clientPurchaseEnabled);
 
@@ -253,6 +280,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       const isSlotConflict = message.toLowerCase().includes('horario no disponible');
+      const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
       if (isSlotConflict) {
         toast({
           title: 'Horario ocupado',
@@ -263,6 +291,14 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         if (slots.length === 0 || !slots.includes(form.time)) {
           setForm((prev) => ({ ...prev, time: '' }));
         }
+      } else if (isBarberMismatch) {
+        toast({
+          title: 'Barbero no disponible',
+          description: 'Selecciona otro barbero compatible con este servicio.',
+          variant: 'destructive',
+        });
+        setForm((prev) => ({ ...prev, barberId: '', time: '' }));
+        setAvailableSlots([]);
       } else {
         toast({ title: 'Error', description: 'No se pudo actualizar la cita.', variant: 'destructive' });
       }

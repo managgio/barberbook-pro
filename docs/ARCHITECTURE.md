@@ -42,7 +42,7 @@ Infra/Dev:
 - Soporta `customDomain` por marca.
 - `PLATFORM_SUBDOMAIN` redirige al panel de plataforma.
 - Contexto de tenant via `AsyncLocalStorage` (brandId/localId/host/subdomain).
-- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing, logos por modo y flags de hero).
+- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing/features, logos por modo y flags de hero).
 
 **Frontend**
 - `TenantProvider` llama `GET /api/tenant/bootstrap`.
@@ -62,6 +62,7 @@ Modulos principales:
 - **Users**: CRUD usuarios, sync con Firebase, roles admin, membresia de marca.
 - **Roles**: roles admin por local (permisos por seccion).
 - **Barbers**: gestion de barberos y calendario.
+- **Barber Service Assignment**: reglas opcionales por local para limitar que servicios/categorias puede atender cada barbero.
 - **Services**: servicios con precio/duracion, categorias opcionales.
 - **Service Categories**: categorias de servicios (configurable).
 - **Offers**: ofertas con descuentos para servicios y productos (por alcance y target).
@@ -113,11 +114,13 @@ Location | Local/sucursal | Relacion con Brand, nombre, slug, estado
 AdminRole | Rol admin por local | Permisos por seccion (JSON)
 BrandUser | Membresia marca-usuario | Vinculo usuario <-> marca + `isBlocked`
 LocationStaff | Staff local | Vinculo usuario <-> local y rol admin
-BrandConfig | Configuracion por marca | JSON (branding, theme, landing order/hidden, twilio, email, imagekit, ai, etc)
-LocationConfig | Configuracion por local | JSON (branding overrides, theme, landing order/hidden, imagekit folder, adminSidebar)
+BrandConfig | Configuracion por marca | JSON (branding, theme, landing order/hidden, notification prefs, features, twilio, email, imagekit, ai, etc)
+LocationConfig | Configuracion por local | JSON (branding overrides, theme, landing order/hidden, notification prefs, features, imagekit folder, adminSidebar)
 Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
 Service | Servicio | Precio, duracion, categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
+BarberServiceAssignment | Asignacion directa barbero-servicio | Servicios concretos permitidos por barbero
+BarberServiceCategoryAssignment | Asignacion por categoria | Categorias de servicios permitidas por barbero
 Offer | Ofertas | Descuento por scope (all/categories/services/products) y target (service/product)
 LoyaltyProgram | Fidelizacion | Scope (global/servicio/categoria), visitas requeridas, prioridad, activo
 ReferralProgramConfig | Referidos local | Configuracion (recompensas, anti-fraude, expiracion, limites)
@@ -188,6 +191,14 @@ Flujos:
    - Todas las comparaciones de dia/hora usan `APP_TIMEZONE` y helpers `startOfDayInTimeZone/endOfDayInTimeZone` para evitar errores de zona horaria.
    - En creacion/edicion de cita se valida disponibilidad dos veces: pre-check y verificacion final dentro de una transaccion serializable (si hay conflicto: “Horario no disponible”).
    - En frontend (cliente y admin), si el backend responde “Horario no disponible”, se muestra un mensaje explicito y se refrescan automaticamente los slots.
+   - La asignacion servicio-barbero solo aplica cuando **ambas** capas estan activas:
+     - Toggle operativo local en `SiteSettings.services.barberServiceAssignmentEnabled`.
+     - Toggle de plataforma en Tenant Config (`features.barberServiceAssignmentEnabled`), configurable por marca y override por local.
+   - Si ambas estan activas, al elegir servicio solo se consideran barberos compatibles:
+     - Coincidencia directa por servicio.
+     - Coincidencia por categoria del servicio.
+     - **Fallback obligatorio**: si un barbero no tiene ninguna asignacion (ni por servicio ni por categoria), se considera disponible para todos los servicios.
+   - Si cualquiera de las dos capas esta desactivada, todos los barberos aplican para todos los servicios.
 
 4) **Pricing y ofertas**
    - Price base del servicio y productos añadidos.
@@ -309,4 +320,5 @@ Frontend (`frontend/.env*`):
 - Mantener componentes/servicios pequenos y reutilizables.
 - Evitar acoplamientos entre UI y API (usar `data/api.ts`).
 - Documentar cambios en flujos criticos (citas, pricing, multi-tenant).
+- Cualquier cambio con impacto arquitectonico o en flujos base debe reflejarse en este `ARCHITECTURE.md` en el mismo PR/cambio.
 - Tests minimos para logica de scheduling, pricing y permisos.

@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
+import { isBarberEligibleForService } from '@/lib/barberServiceAssignment';
 
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
@@ -21,6 +22,7 @@ const QuickAppointmentButton: React.FC = () => {
   const [services, setServices] = useState<Service[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [categoriesEnabled, setCategoriesEnabled] = useState(false);
+  const [barberServiceAssignmentEnabled, setBarberServiceAssignmentEnabled] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const [productsEnabled, setProductsEnabled] = useState(false);
@@ -62,6 +64,7 @@ const QuickAppointmentButton: React.FC = () => {
       setServices(servicesData);
       setServiceCategories(categoriesData);
       setCategoriesEnabled(settingsData.services.categoriesEnabled);
+      setBarberServiceAssignmentEnabled(settingsData.services.barberServiceAssignmentEnabled);
       setProductsEnabled(settingsData.products.enabled);
       setProducts(productsData);
       setProductCategories(productCategoriesData);
@@ -136,6 +139,31 @@ const QuickAppointmentButton: React.FC = () => {
   useEffect(() => {
     refreshSlots();
   }, [refreshSlots, services, barbers]);
+
+  const selectedService = useMemo(
+    () => services.find((service) => service.id === selectedServiceId) ?? null,
+    [services, selectedServiceId],
+  );
+
+  const eligibleBarbers = useMemo(
+    () =>
+      barbers
+        .filter((barber) => barber.isActive !== false)
+        .filter((barber) =>
+          isBarberEligibleForService(barber, selectedService, barberServiceAssignmentEnabled),
+        ),
+    [barbers, selectedService, barberServiceAssignmentEnabled],
+  );
+
+  useEffect(() => {
+    if (!selectedBarberId) return;
+    const stillEligible = eligibleBarbers.some((barber) => barber.id === selectedBarberId);
+    if (stillEligible) return;
+    setSelectedBarberId('');
+    setSelectedDate('');
+    setSelectedTime('');
+    setAvailableSlots([]);
+  }, [eligibleBarbers, selectedBarberId]);
 
   useEffect(() => {
     const handleScheduleRefresh = () => {
@@ -283,6 +311,7 @@ const QuickAppointmentButton: React.FC = () => {
       console.error(error);
       const message = error instanceof Error ? error.message : '';
       const isSlotConflict = message.toLowerCase().includes('horario no disponible');
+      const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
       if (isSlotConflict) {
         toast({
           title: 'Horario ocupado',
@@ -291,6 +320,16 @@ const QuickAppointmentButton: React.FC = () => {
         });
         setSelectedTime('');
         await refreshSlots({ silent: true });
+      } else if (isBarberMismatch) {
+        toast({
+          title: 'Barbero no disponible',
+          description: 'Selecciona otro barbero para este servicio.',
+          variant: 'destructive',
+        });
+        setSelectedBarberId('');
+        setSelectedDate('');
+        setSelectedTime('');
+        setAvailableSlots([]);
       } else {
         toast({
           title: 'Error',
@@ -503,13 +542,17 @@ const QuickAppointmentButton: React.FC = () => {
                       <SelectValue placeholder="Selecciona un barbero" />
                     </SelectTrigger>
                     <SelectContent>
-                      {barbers
-                        .filter((barber) => barber.isActive !== false)
-                        .map((barber) => (
+                      {eligibleBarbers.length === 0 ? (
+                        <SelectItem value="__none__" disabled>
+                          No hay barberos compatibles
+                        </SelectItem>
+                      ) : (
+                        eligibleBarbers.map((barber) => (
                           <SelectItem key={barber.id} value={barber.id}>
                             {barber.name}
                           </SelectItem>
-                        ))}
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
