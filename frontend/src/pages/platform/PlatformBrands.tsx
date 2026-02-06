@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  assignPlatformBrandAdmin,
+  connectPlatformStripeBrand,
+  connectPlatformStripeLocation,
   createPlatformBrand,
   createPlatformLocation,
   deletePlatformBrand,
@@ -11,16 +14,13 @@ import {
   getPlatformBrandLegalSettings,
   getPlatformBrands,
   getPlatformLocationConfig,
-  assignPlatformBrandAdmin,
   removePlatformBrandAdmin,
-  updatePlatformBrand,
   updatePlatformBrandConfig,
   updatePlatformBrandLegalSettings,
+  updatePlatformBrand,
   updatePlatformLocation,
   updatePlatformLocationConfig,
-  connectPlatformStripeBrand,
-  connectPlatformStripeLocation,
-} from '@/data/api';
+} from '@/data/api/platform';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

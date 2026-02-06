@@ -39,7 +39,11 @@ Infra/Dev:
 ## Multi-tenant y resolucion de marca/local
 **Backend**
 - `TenantMiddleware` resuelve marca/local por `host` o `x-forwarded-host`.
-- Soporta overrides: `x-tenant-subdomain` y `x-local-id` (usado en frontend).
+- Overrides de tenant por cabecera (`x-tenant-subdomain`, `x-local-id`) controlados por entorno:
+  - `TENANT_ALLOW_HEADER_OVERRIDES=true` permite override explícito (recomendado solo en dev/staging controlado).
+  - En producción, por defecto quedan desactivados para evitar forzado de tenant desde cliente.
+- `x-forwarded-host` también queda gobernado por entorno (`TENANT_TRUST_X_FORWARDED_HOST`) para evitar spoofing cuando no hay proxy confiable.
+- Generación de URLs absolutas sensibles (ej. pagos Stripe) reutiliza la misma política de confianza sobre `x-forwarded-*`.
 - Soporta `customDomain` por marca.
 - `PLATFORM_SUBDOMAIN` redirige al panel de plataforma.
 - Contexto de tenant via `AsyncLocalStorage` (brandId/localId/host/subdomain).
@@ -90,6 +94,12 @@ Seguridad actual (importante):
 - Endpoints admin se validan via `Authorization: Bearer <Firebase ID Token>` (JWT verificado en backend con Firebase Admin).
 - `PlatformAdminGuard` exige `user.isPlatformAdmin`.
 - `AiAssistantGuard` restringe a admins del local/plataforma.
+- Endpoints de `users` endurecidos:
+  - listado paginado (`GET /api/users`) solo admin (`@AdminEndpoint`),
+  - consultas/ediciones/borrado de usuario exigen identidad autenticada y política `self-or-admin`,
+  - creación de usuario en autoservicio valida que `firebaseUid/email` coincidan con el token y fuerza rol cliente.
+- Endpoints públicos de referidos con identidad de propietario:
+  - `GET /api/referrals/my-code` y `GET /api/referrals/my-summary` exigen usuario autenticado y validan `self-or-admin`.
 
 ## Arquitectura frontend
 Entradas y layouts:
@@ -109,10 +119,10 @@ Contextos principales:
 
 Caching y sincronizacion frontend:
 - **React Query como cache de dominio**: catalogos y settings usan claves por dominio y por `localId` (evita mezcla de datos entre locales).
-- **API de arranque desacoplada**: `TenantContext` y `AuthContext` consumen modulos ligeros (`frontend/src/data/api/{tenant,settings,users}.ts`) sobre `frontend/src/data/api/request.ts`, evitando arrastrar `data/api.ts` completo al bundle inicial.
+- **Capa API modular por dominio**: los consumidores frontend importan desde `frontend/src/data/api/<dominio>.ts` (ej. `appointments`, `platform`, `payments`, `referrals`, `reviews`, `users`) sobre `frontend/src/data/api/request.ts`; `frontend/src/data/api.ts` queda solo como compatibilidad temporal para no romper migraciones.
 - **CatalogQuery** (`frontend/src/lib/catalogQuery.ts`): acceso cacheado para servicios, barberos, categorias y productos (publico/admin), con `staleTime` corto para UX fluida.
 - **OperationalQuery** (`frontend/src/lib/operationalQuery.ts`): cache compartida para consultas operativas acotadas (`appointments` por rango y `users` por `ids`) en vistas admin de alta frecuencia (dashboard, calendar, search, clients, quick appointment).
-- **API paginada en frontend**: `frontend/src/data/api.ts` expone `getUsersPage` y `getAppointmentsPage` (respuesta `PaginatedResponse<T>`) como contrato principal para vistas admin masivas.
+- **API paginada en frontend**: `frontend/src/data/api/users.ts` expone `getUsersPage` y `frontend/src/data/api/appointments.ts` expone `getAppointmentsPage` (respuesta `PaginatedResponse<T>`) como contrato principal para vistas admin masivas.
 - **Retiro de helpers legacy en frontend**: se eliminan `getUsers()` y `getAppointments()` (lista completa) para evitar usos accidentales fuera de paginacion.
 - **Cliente React Query real**: `ClientDashboard` y `AppointmentsPage` usan `useQuery` con claves por usuario/local (`client-appointments`, `client-loyalty-summary`, `client-referral-summary`) para deduplicar peticiones y reducir cargas manuales por `useEffect`.
 - **Dashboards con React Query real**: `AdminDashboard` consume `GET /api/appointments/dashboard-summary` (ventana operativa de 30 dias y filtro opcional por barbero) y `PlatformDashboard` usa `platform-brands` + `platform-metrics(windowDays)`; ambos eliminan `useEffect + useState` para carga principal y refrescan via `refetch`/cache.
@@ -130,15 +140,17 @@ Caching y sincronizacion frontend:
 - **PlatformBrands query-driven**: `PlatformBrands` consume `useQuery` con claves dedicadas (`platform-brands`, `platform-brand*`, `platform-location-config`) y `useMutation` para escrituras críticas (guardar marca/legal, CRUD de marca/local, asignación de admins), eliminando `load*` imperativos y centralizando refresco con `refetch` + `setQueryData`.
 - **Tipado fuerte en PlatformBrands**: se retiraron `any` explícitos en `PlatformBrands.tsx` para estado/config/modelos de marca/local/admin, reduciendo riesgo de errores silenciosos y mejorando mantenibilidad del flujo de plataforma.
 - **Higiene de tipado en vistas clave**: se retiraron `any` explícitos en `AdminAiAssistant` (speech recognition tipado), `LandingPage` (secciones de presentacion) y `ReferralLandingPage` (payload de referidos), consolidando contratos fuertes en superficies de alto trafico.
-- **Contratos API sin `any` (platform/referrals/payments)**: `frontend/src/data/api.ts` consume tipos explicitos de `frontend/src/data/types.ts` para marcas/locales/config/admins, codigos de referidos y respuestas Stripe (checkout/sesion/config/onboarding), reduciendo deuda tecnica y errores por contratos ambiguos.
+- **Contratos API sin `any` (platform/referrals/payments)**: los modulos de dominio en `frontend/src/data/api/*.ts` consumen tipos explicitos de `frontend/src/data/types.ts` para marcas/locales/config/admins, codigos de referidos y respuestas Stripe (checkout/sesion/config/onboarding), reduciendo deuda tecnica y errores por contratos ambiguos.
 - **Stripe tipado de extremo a extremo**: `AdminSettings` y `AdminCashRegister` consumen `AdminStripeConfig` compartido (sin casts locales), alineando backend/frontend con un contrato unico.
 - **Caja registradora query-driven**: `AdminCashRegister` carga agenda/movimientos/catalogo y neto multi-local con `useQuery` (`cash-register`) y resuelve Stripe por `admin-stripe-config`; los movimientos de caja refrescan por `refetch` y propagan invalidacion de productos cuando hay operaciones sobre stock.
 - **Configuracion admin query-driven**: `AdminSettings` carga `site-settings`, `shop-schedule` y `admin-stripe-config` con `useQuery`, manteniendo estado local solo para edicion de formulario y guardados explicitos; los refrescos de Stripe/disponibilidad pasan por `refetch`.
 - **Referencias estables en vistas calientes**: dashboards y flujos cliente usan fallbacks memoizados para datos de query (evita recrear `[]/{}` en cada render y reduce renders derivados en `useMemo`/selectores).
 - **Higiene de hooks en vistas criticas**: paginas admin/platform (`AdminSettings`, `AdminBarbers`, `AdminLoyalty`, `AdminOffers`, `AdminServices`, `AdminStock`, `AdminAiAssistant`, `AdminCashRegister`, `PlatformBrands`) y superficies publicas clave (`LandingPage`, `ReferralLandingPage`, `AdminSpotlight`) usan callbacks memoizados y dependencias exhaustivas para evitar closures obsoletos, efectos duplicados y renders evitables.
 - **Invalidacion centralizada por eventos** (`frontend/src/lib/adminEvents.ts`): los `dispatch*Updated` invalidan automaticamente las query keys afectadas (`appointments/users/services/barbers/products`) antes de notificar por `window`.
+- **Invalidacion acotada por local**: las invalidaciones por eventos admin filtran por `localId` en cache keys para evitar over-invalidate entre locales en la misma sesión.
 - **Site settings coherentes**: `dispatchSiteSettingsUpdated` actualiza cache (`setQueryData`) + invalida prefijo `site-settings` y emite un unico evento tipado (`SITE_SETTINGS_UPDATED_EVENT`) consumido por `useSiteSettings` y `TenantContext`.
 - **Refresco en primer plano**: `useForegroundRefresh` (`frontend/src/hooks/useForegroundRefresh.ts`) dispara recarga en `focus` y al volver la pestaña a visible, evitando polling constante en background.
+- **Refresco foreground deduplicado**: `useForegroundRefresh` aplica throttle corto y callback estable para evitar doble `refetch` por eventos consecutivos (`focus` + `visibilitychange`).
 - **Politica actual**: para refrescos periodicos/event-driven se prioriza cache + invalidacion de dominio; `force` queda solo para casos de conflicto o forzado explicito.
 
 Observabilidad UX:
@@ -147,13 +159,14 @@ Observabilidad UX:
 - Emision de evento `window` `web-vital` para extensiones de analitica no acopladas.
 - Interceptor global de API (`ApiMetricsInterceptor`) registra latencia/estado por ruta en backend.
 - Resumen operativo solo plataforma: `GET /api/platform/observability/web-vitals?minutes=<n>` y `GET /api/platform/observability/api?minutes=<n>`.
+- **UI operativa de observabilidad en plataforma**: ruta `GET /platform/observability` (frontend) con selector temporal `60 min | 24 h | 7 dias`, tablas de Web Vitals agregadas (`avg`, `p95`, `samples`) y Top endpoints API (`avg`, `p95`, `errorRate`, `hits`) con `React Query` (`platform-observability-webvitals`, `platform-observability-api`), botón de refresco manual, leyenda breve de métricas UX y cards con altura máxima + scroll interno para mantener legibilidad.
 - Alertas operativas por email (event-driven, no periodicas): cuando llega un Web Vital en estado `poor` o cuando una ruta API entra en degradacion (5xx/p95 en ventana), backend envia correo con contexto (metrica, ruta, severidad, tenant, umbral y distribucion de estados). Incluye cooldown por clave para evitar spam.
 
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
 - Cliente: Dashboard, Booking Wizard, Appointments, Profile, Referrals.
 - Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register, Loyalty, Referrals.
-- Plataforma: Dashboard, Brands (gestion multi-tenant, landing reordenable por drag & drop y overrides por local).
+- Plataforma: Dashboard, Brands (gestion multi-tenant, landing reordenable por drag & drop y overrides por local), Observability (salud UX/API en tiempo casi real).
 
 ## Modelo de datos (Prisma / MySQL)
 Tabla | Para que existe | Que guarda
@@ -231,6 +244,7 @@ Flujos:
    - El frontend usa `Authorization: Bearer <Firebase ID Token>` para endpoints admin.
    - Si API responde 401/403, se emite evento global de sesion y el frontend aplica logout/redirect consistente.
    - Si `BrandUser.isBlocked` esta activo, se bloquea el acceso del cliente a la app.
+   - En booking, errores de red/timeout/offline/5xx se traducen a mensajes UX específicos para evitar feedback genérico en confirmaciones críticas.
 
 3) **Disponibilidad de citas**
    - Se calcula por horario del barbero (por dia/turno) + horario del local.
@@ -279,6 +293,8 @@ Flujos:
    - `/api/admin/ai-assistant/chat` con tools para crear citas, alertas festivos.
    - Guarda sesiones/mensajes y resumen para contexto.
    - Transcripcion de audio con OpenAI (whisper-1).
+   - Frontend persiste `sessionId` del asistente por `localId` (`ai-assistant-session-id:<localId>`) para evitar mezclar historiales entre locales.
+   - Si `GET /api/admin/ai-assistant/session/:id` devuelve `404`, el frontend limpia la sesión persistida y continúa con chat nuevo (fallback silencioso).
  
 8) **Caja registradora**
    - Combina citas (precio final, incluye productos) + movimientos manuales.
@@ -345,6 +361,7 @@ Flujos:
    - `AdminRoles` opera con `useQuery` (`admin-roles`, `admin-role-users`, `admin-role-search`) y deja de cargar todos los usuarios del local en cada cambio: carga administradores por paginacion (`GET /api/users?page=...&pageSize=...&role=admin`) y el buscador usa consulta paginada (`q`) bajo demanda con debounce.
    - `QuickAppointmentButton` deja de precargar clientes completos: el selector de cliente hace busqueda server-side paginada (`GET /api/users?page=1&pageSize=25&role=client&q=...`) con debounce.
    - `PlatformDashboard` consume `useQuery` para marcas y consumo (`platform-brands`, `platform-metrics`) y la accion "Recargar" actualiza cache con `setQueryData` tras `POST /api/platform/metrics/refresh`.
+   - `PlatformObservability` consume `useQuery` para resumen de experiencia/API (`platform-observability-webvitals`, `platform-observability-api`) sobre ventana seleccionable (`minutes`) y permite refresh manual sin polling continuo.
    - `PlatformBrands` centraliza lecturas de plataforma en `useQuery` y escrituras en `useMutation` (sin `loadBrands/loadBrandDetails/loadLegalInfo`); la sincronización post-mutación se resuelve por `refetch` de dominio + `setQueryData` en legal, y evita doble carga de config de local al cambiar de marca.
    - Al confirmar una reserva en cliente, `BookingWizard` invalida caches relacionadas (`client-appointments`, `client-loyalty-summary`, `client-referral-summary`, `rewards-wallet`, `booking-loyalty-preview`) y emite `dispatchAppointmentsUpdated` para coherencia inmediata entre vistas cliente/admin.
 
@@ -361,6 +378,8 @@ Flujos:
 Backend (`backend/.env`):
 - DB: `DATABASE_URL`.
 - Tenant defaults: `DEFAULT_BRAND_ID`, `DEFAULT_LOCAL_ID`, `DEFAULT_BRAND_SUBDOMAIN`, `TENANT_BASE_DOMAIN`, `PLATFORM_SUBDOMAIN`, `TENANT_REQUIRE_SUBDOMAIN`, `PLATFORM_ADMIN_EMAILS`.
+- Hardening tenant resolution: `TENANT_ALLOW_HEADER_OVERRIDES`, `TENANT_TRUST_X_FORWARDED_HOST`.
+- CORS: `CORS_ALLOWED_ORIGINS` (lista separada por comas para allowlist explícita en despliegue).
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`, `IMAGEKIT_FOLDER`.
 - Twilio: `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_SID`, `TWILIO_ACCOUNT_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_WHATSAPP_FROM`, `TWILIO_WHATSAPP_TEMPLATE_SID`, `TWILIO_SMS_COST_USD` (opcional).
 - Email: `EMAIL`, `PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_FROM_NAME`.
@@ -391,6 +410,7 @@ Frontend (`frontend/.env*`):
 - Reportes generados en: `docs/perf/PERF_BASELINE.md` y `docs/perf/bundle-report.json`.
 - CI de budgets: workflow `/.github/workflows/frontend-perf-budget.yml` ejecuta `npm run perf:baseline` en PR/push y falla si se exceden umbrales.
 - Capa de red robusta: `apiRequest` usa timeout explicito, retry con backoff para `GET` idempotentes (errores de red/timeout y HTTP transitorios), clasifica errores (`HTTP`, `TIMEOUT`, `OFFLINE`, `NETWORK`, `ABORTED`) y emite evento global de sesion para 401/403.
+- Recharts: usar imports selectivos (`import { LineChart, ... } from 'recharts'`) y evitar namespace imports (`import * as Recharts...`) para no inflar chunks.
 - Carga de fuentes optimizada en `frontend/index.html` con `preconnect` + `preload`/`stylesheet` (sin `@import` bloqueante en CSS).
 - Higiene de imagenes en rutas criticas: logos/avatares/QR y miniaturas usan `loading`, `decoding` y dimensiones explicitas para reducir CLS y trabajo de render en navegacion.
 - Branding estático responsive en puntos críticos (`AuthPage`, `PlatformSidebar`) con `<picture>` + `AVIF/WebP` + `srcSet/sizes`:
@@ -413,10 +433,14 @@ Frontend (`frontend/.env*`):
 - Endpoint agregado para calendario admin: `GET /api/appointments/admin-calendar?dateFrom=...&dateTo=...[&barberId=<id>][&sort=asc|desc]` devuelve `{ items, clients }` (sin segunda consulta a `/users`).
 - Resolucion puntual de usuarios para listados paginados: `GET /api/users?ids=<id1,id2,...>` devuelve solo los usuarios solicitados (acotado al tenant actual).
 - El formato legacy de lista completa para `/users` y `/appointments` queda retirado del contrato backend.
+- `UsersService.update/remove` opera con scope de marca actual:
+  - no permite actualizar usuarios fuera de `brandId` activo,
+  - y en borrado elimina membresía/datos del usuario acotados a la marca actual antes de borrar globalmente (solo si no quedan membresías en otras marcas).
 - `syncAppointmentStatuses` procesa efectos de cierre en lotes (`BATCH_SIZE=20`) para evitar secuencias largas por cita en ciclos de sincronizacion con volumen alto.
 - Observabilidad backend:
   - `POST /api/observability/web-vitals` recibe métricas UX de cliente.
   - `GET /api/platform/observability/web-vitals` y `GET /api/platform/observability/api` exponen resumen de Web Vitals y latencia/errores por ruta para plataforma.
+  - Estado actual de persistencia: los eventos se almacenan en memoria del proceso (buffers con retención) y no en tablas persistentes de BD.
   - Alertas email automáticas (sin cron): disparo por evento degradado con cooldown configurable para evitar ruido.
 - Indices de consultas calientes en `Appointment`:
   - `(localId, startDateTime)`
@@ -445,7 +469,7 @@ Frontend (`frontend/.env*`):
 
 ## Principios de desarrollo continuo
 - Mantener componentes/servicios pequenos y reutilizables.
-- Evitar acoplamientos entre UI y API (usar `data/api.ts`).
+- Evitar acoplamientos entre UI y API (importar desde `data/api/<dominio>.ts`; no volver al monolito).
 - Documentar cambios en flujos criticos (citas, pricing, multi-tenant).
 - Cualquier cambio con impacto arquitectonico o en flujos base debe reflejarse en este `ARCHITECTURE.md` en el mismo PR/cambio.
 - Tests minimos para logica de scheduling, pricing y permisos.
@@ -456,10 +480,13 @@ Este contrato define el estandar minimo de calidad tecnica de Managgio. Cualquie
 ### 1) Reglas de arquitectura y rendimiento (no negociables)
 - No introducir imports eager que rompan el code splitting por dominio (public/client/admin/platform/legal).
 - Toda pantalla o modulo pesado nuevo debe cargarse con `React.lazy` cuando no sea critico de `entry`.
+- No introducir imports desde `@/data/api.ts` en codigo nuevo; usar `@/data/api/<dominio>` para preservar el aislamiento de bundles.
+- En charts, evitar `import * as Recharts...`; usar imports selectivos de componentes requeridos.
 - No romper budgets de frontend definidos en `frontend/perf-budgets.json`.
 - No reintroducir fetch manual duplicado si ya existe contrato equivalente en React Query.
 - No reintroducir endpoints de lista completa para recursos masivos (`users`, `appointments`): siempre paginacion o endpoint agregado.
 - Mantener invalidacion de cache por dominio/evento; evitar `refetch` global indiscriminado.
+- En React Query, no llamar `queryClient.fetchQuery` dentro de `queryFn` con la misma `queryKey` (riesgo de carga infinita por dependencia circular). Para cache de apoyo, usar `getQueryData/getQueryState + setQueryData` o prefetch fuera de `queryFn`.
 - Mantener contratos tipados end-to-end; evitar `any` salvo excepcion justificada y documentada.
 
 ### 2) Reglas de robustez y seguridad

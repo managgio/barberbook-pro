@@ -18,7 +18,7 @@ import {
   getReviewMetrics,
   getReviewFeedback,
   resolveReviewFeedback,
-} from '@/data/api';
+} from '@/data/api/reviews';
 import { ReviewProgramConfig, ReviewMetrics, ReviewFeedbackItem } from '@/data/types';
 import { Info } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

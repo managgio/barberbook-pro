@@ -11,13 +11,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Switch } from '@/components/ui/switch';
 import {
   createBarber,
-  updateBarber,
   deleteBarber,
   getBarberSchedule,
+  updateBarber,
   updateBarberSchedule,
-  updateSiteSettings,
   updateBarberServiceAssignment,
-} from '@/data/api';
+} from '@/data/api/barbers';
+import { updateSiteSettings } from '@/data/api/settings';
 import { Barber, DayKey, Service, ServiceCategory, ShopSchedule } from '@/data/types';
 import { Plus, Pencil, Trash2, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste, WandSparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';

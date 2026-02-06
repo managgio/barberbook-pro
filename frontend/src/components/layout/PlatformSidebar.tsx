@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, LayoutDashboard, Building2, LogOut, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { ShieldCheck, LayoutDashboard, Building2, Activity, LogOut, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -13,6 +13,7 @@ import managgioLogo160Webp from '@/assets/img/managgio/logo-app-160.webp';
 const navItems = [
   { href: '/platform', label: 'Resumen', icon: LayoutDashboard },
   { href: '/platform/brands', label: 'Clientes', icon: Building2 },
+  { href: '/platform/observability', label: 'Observabilidad', icon: Activity },
 ];
 
 interface PlatformSidebarProps {

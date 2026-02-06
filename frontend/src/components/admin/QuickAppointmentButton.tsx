@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAvailableSlots, createAppointment, getUsersPage } from '@/data/api';
+import { createAppointment, getAvailableSlots } from '@/data/api/appointments';
+import { getUsersPage } from '@/data/api/users';
 import { Barber, Product, ProductCategory, Service, ServiceCategory, User } from '@/data/types';
 import { Plus, Search, Loader2, UserCircle2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';

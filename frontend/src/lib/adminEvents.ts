@@ -16,70 +16,83 @@ export const ADMIN_EVENTS = {
 
 export const SITE_SETTINGS_UPDATED_EVENT = 'site-settings-updated';
 
-const invalidateByPrefix = (prefix: string) => {
-  void queryClient.invalidateQueries({ queryKey: [prefix] });
+type AdminEventDetail = Record<string, unknown> & { localId?: string | null };
+
+const resolveLocalScopeKey = (localId?: string | null) => localId || 'default';
+
+const invalidateByPrefix = (prefix: string, options?: { localId?: string | null }) => {
+  const scopedLocalId = options?.localId ?? getStoredLocalId();
+  const localScopeKey = resolveLocalScopeKey(scopedLocalId);
+  void queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      if (!Array.isArray(key) || key[0] !== prefix) return false;
+      if (key.length < 2) return true;
+      return key[1] === localScopeKey;
+    },
+  });
 };
 
-const invalidateServicesCatalog = () => {
-  invalidateByPrefix('services');
-  invalidateByPrefix('service-categories');
+const invalidateServicesCatalog = (localId?: string | null) => {
+  invalidateByPrefix('services', { localId });
+  invalidateByPrefix('service-categories', { localId });
 };
 
-const invalidateBarbersCatalog = () => {
-  invalidateByPrefix('barbers');
+const invalidateBarbersCatalog = (localId?: string | null) => {
+  invalidateByPrefix('barbers', { localId });
 };
 
-const invalidateProductsCatalog = () => {
-  invalidateByPrefix('products');
-  invalidateByPrefix('products-admin');
-  invalidateByPrefix('product-categories');
+const invalidateProductsCatalog = (localId?: string | null) => {
+  invalidateByPrefix('products', { localId });
+  invalidateByPrefix('products-admin', { localId });
+  invalidateByPrefix('product-categories', { localId });
 };
 
-export const dispatchAppointmentsUpdated = (detail?: Record<string, unknown>) => {
-  invalidateByPrefix('appointments');
+export const dispatchAppointmentsUpdated = (detail?: AdminEventDetail) => {
+  invalidateByPrefix('appointments', { localId: detail?.localId });
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.appointmentsUpdated, { detail }));
 };
 
-export const dispatchUsersUpdated = (detail?: Record<string, unknown>) => {
-  invalidateByPrefix('users');
+export const dispatchUsersUpdated = (detail?: AdminEventDetail) => {
+  invalidateByPrefix('users', { localId: detail?.localId });
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.usersUpdated, { detail }));
 };
 
-export const dispatchHolidaysUpdated = (detail?: Record<string, unknown>) => {
-  invalidateByPrefix('holidays');
-  invalidateBarbersCatalog();
+export const dispatchHolidaysUpdated = (detail?: AdminEventDetail) => {
+  invalidateByPrefix('holidays', { localId: detail?.localId });
+  invalidateBarbersCatalog(detail?.localId);
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.holidaysUpdated, { detail }));
 };
 
-export const dispatchAlertsUpdated = (detail?: Record<string, unknown>) => {
-  invalidateByPrefix('alerts');
+export const dispatchAlertsUpdated = (detail?: AdminEventDetail) => {
+  invalidateByPrefix('alerts', { localId: detail?.localId });
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.alertsUpdated, { detail }));
 };
 
-export const dispatchServicesUpdated = (detail?: Record<string, unknown>) => {
-  invalidateServicesCatalog();
+export const dispatchServicesUpdated = (detail?: AdminEventDetail) => {
+  invalidateServicesCatalog(detail?.localId);
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.servicesUpdated, { detail }));
 };
 
-export const dispatchBarbersUpdated = (detail?: Record<string, unknown>) => {
-  invalidateBarbersCatalog();
+export const dispatchBarbersUpdated = (detail?: AdminEventDetail) => {
+  invalidateBarbersCatalog(detail?.localId);
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.barbersUpdated, { detail }));
 };
 
-export const dispatchSchedulesUpdated = (detail?: Record<string, unknown>) => {
-  invalidateBarbersCatalog();
+export const dispatchSchedulesUpdated = (detail?: AdminEventDetail) => {
+  invalidateBarbersCatalog(detail?.localId);
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.schedulesUpdated, { detail }));
 };
 
-export const dispatchProductsUpdated = (detail?: Record<string, unknown>) => {
-  invalidateProductsCatalog();
+export const dispatchProductsUpdated = (detail?: AdminEventDetail) => {
+  invalidateProductsCatalog(detail?.localId);
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ADMIN_EVENTS.productsUpdated, { detail }));
 };
@@ -87,7 +100,7 @@ export const dispatchProductsUpdated = (detail?: Record<string, unknown>) => {
 export const dispatchSiteSettingsUpdated = (settings: SiteSettings) => {
   const localId = getStoredLocalId();
   queryClient.setQueryData(queryKeys.siteSettings(localId), settings);
-  invalidateByPrefix('site-settings');
+  invalidateByPrefix('site-settings', { localId });
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(SITE_SETTINGS_UPDATED_EVENT, { detail: settings }));
 };

@@ -15,14 +15,16 @@ import { useTenant } from '@/context/TenantContext';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import {
   createProduct,
-  createProductCategory,
   deleteProduct,
-  deleteProductCategory,
-  updateSiteSettings,
   importProducts,
   updateProduct,
+} from '@/data/api/products';
+import {
+  createProductCategory,
+  deleteProductCategory,
   updateProductCategory,
-} from '@/data/api';
+} from '@/data/api/product-categories';
+import { updateSiteSettings } from '@/data/api/settings';
 import { Product, ProductCategory } from '@/data/types';
 import { uploadToImageKit, deleteFromImageKit } from '@/lib/imagekit';
 import { Boxes, ImagePlus, Info, Loader2, PackagePlus, Pencil, RefreshCw, Trash2, Sparkles, CheckCircle2 } from 'lucide-react';

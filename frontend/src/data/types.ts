@@ -1002,6 +1002,51 @@ export interface PlatformUsageMetrics {
   imagekit: { series: PlatformUsageSeriesPoint[] };
 }
 
+export type WebVitalMetricName = 'LCP' | 'CLS' | 'INP' | 'FCP' | 'TTFB';
+
+export interface PlatformObservabilityWebVitalMetricSummary {
+  name: WebVitalMetricName;
+  count: number;
+  avg: number;
+  p75: number;
+  p95: number;
+  ratings: {
+    good: number;
+    needsImprovement: number;
+    poor: number;
+  };
+}
+
+export interface PlatformObservabilityWebVitalsSummary {
+  windowMinutes: number;
+  totalEvents: number;
+  byMetric: PlatformObservabilityWebVitalMetricSummary[];
+  topPoorPaths: Array<{ path: string; poorCount: number }>;
+}
+
+export interface PlatformObservabilityApiRouteSummary {
+  method: string;
+  route: string;
+  count: number;
+  errorRate: number;
+  avgDurationMs: number;
+  p95DurationMs: number;
+  statuses: Array<{ status: number; count: number }>;
+}
+
+export interface PlatformObservabilityApiSummary {
+  windowMinutes: number;
+  totalEvents: number;
+  topRoutes: PlatformObservabilityApiRouteSummary[];
+  slowestSamples: Array<{
+    method: string;
+    route: string;
+    statusCode: number;
+    durationMs: number;
+    timestamp: number;
+  }>;
+}
+
 export interface AdminDashboardTodayAppointment {
   id: string;
   startDateTime: string;

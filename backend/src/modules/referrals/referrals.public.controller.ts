@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
+import { AuthService } from '../../auth/auth.service';
 import { ReferralAttributionService } from './referral-attribution.service';
 import { ReferralCodeService } from './referral-code.service';
 import { AttributeReferralDto } from './dto/attribute-referral.dto';
@@ -7,13 +8,23 @@ import { AttributeReferralDto } from './dto/attribute-referral.dto';
 @Controller('referrals')
 export class ReferralsPublicController {
   constructor(
+    private readonly authService: AuthService,
     private readonly attributionService: ReferralAttributionService,
     private readonly referralCodeService: ReferralCodeService,
   ) {}
 
+  private async assertReferralOwner(req: Request | undefined, userId: string) {
+    const actor = await this.authService.requireUser(req);
+    if (actor.id === userId || actor.isSuperAdmin || actor.isPlatformAdmin) {
+      return actor;
+    }
+    throw new ForbiddenException('No tienes permisos para consultar este recurso.');
+  }
+
   @Get('my-code')
   async getMyCode(@Query('userId') userId?: string, @Req() req?: Request) {
     if (!userId) throw new BadRequestException('userId is required');
+    await this.assertReferralOwner(req, userId);
     const code = await this.referralCodeService.getOrCreateCode(userId);
     const rewardSummary = await this.attributionService.getRewardSummaryPayload();
     const originHeader = typeof req?.headers?.origin === 'string' ? req?.headers?.origin : null;
@@ -31,8 +42,9 @@ export class ReferralsPublicController {
   }
 
   @Get('my-summary')
-  async getMySummary(@Query('userId') userId?: string) {
+  async getMySummary(@Req() req: Request, @Query('userId') userId?: string) {
     if (!userId) throw new BadRequestException('userId is required');
+    await this.assertReferralOwner(req, userId);
     return this.attributionService.getReferrerSummary(userId);
   }
 

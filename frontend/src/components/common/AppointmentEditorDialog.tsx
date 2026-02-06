@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
-import { getAvailableSlots, updateAppointment, anonymizeAppointment } from '@/data/api';
+import { getAvailableSlots, updateAppointment, anonymizeAppointment } from '@/data/api/appointments';
 import { Appointment, AppointmentStatus, Barber, Product, ProductCategory, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';

@@ -16,7 +16,7 @@ import {
   deleteLoyaltyProgram,
   getLoyaltyPrograms,
   updateLoyaltyProgram,
-} from '@/data/api';
+} from '@/data/api/loyalty';
 import { LoyaltyProgram, LoyaltyScope, Service, ServiceCategory } from '@/data/types';
 import { Award, Pencil, Plus, Trash2 } from 'lucide-react';
 import { fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalogQuery';

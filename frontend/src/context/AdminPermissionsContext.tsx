@@ -3,7 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { AdminRole, AdminSectionKey } from '@/data/types';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTION_KEYS } from '@/data/adminSections';
-import { getAdminRoles } from '@/data/api';
+import { getAdminRoles } from '@/data/api/roles';
 import { useToast } from '@/hooks/use-toast';
 
 interface AdminPermissionsContextValue {

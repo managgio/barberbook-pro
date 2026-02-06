@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { getAlerts, createAlert, updateAlert, deleteAlert } from '@/data/api';
+import { createAlert, deleteAlert, getAlerts, updateAlert } from '@/data/api/alerts';
 import { Alert as AlertType } from '@/data/types';
 import { Plus, Pencil, Trash2, Bell, Info, AlertTriangle, CheckCircle, Loader2, Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';

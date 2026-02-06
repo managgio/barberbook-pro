@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { resolveReferralCode, attributeReferral } from '@/data/api';
+import { resolveReferralCode, attributeReferral } from '@/data/api/referrals';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { storeReferralAttribution, getStoredReferralAttribution } from '@/lib/referrals';

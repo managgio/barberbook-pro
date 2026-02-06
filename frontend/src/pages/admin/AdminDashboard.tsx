@@ -16,7 +16,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { getAdminDashboardSummary, updateSiteSettings } from '@/data/api';
+import { getAdminDashboardSummary } from '@/data/api/appointments';
+import { updateSiteSettings } from '@/data/api/settings';
 import { AdminDashboardSummary } from '@/data/types';
 import {
   Calendar,

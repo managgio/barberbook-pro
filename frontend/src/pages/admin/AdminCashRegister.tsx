@@ -7,14 +7,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import {
-  createCashMovement,
-  deleteCashMovement,
   getAppointmentsByDate,
   getAppointmentsByDateForLocal,
-  getAdminStripeConfig,
+} from '@/data/api/appointments';
+import {
+  createCashMovement,
+  deleteCashMovement,
   getCashMovements,
   getCashMovementsForLocal,
-} from '@/data/api';
+} from '@/data/api/cash-register';
+import { getAdminStripeConfig } from '@/data/api/payments';
 import {
   AdminStripeConfig,
   Appointment,

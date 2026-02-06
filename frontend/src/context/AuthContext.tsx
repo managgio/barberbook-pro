@@ -58,9 +58,9 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
 
   const phone = extras?.phone || firebaseUser.phoneNumber || existing?.phone;
   const notificationPrefs = {
-    email: existing?.notificationPrefs?.email ?? true,
-    whatsapp: existing?.notificationPrefs?.whatsapp ?? true,
-    sms: existing?.notificationPrefs?.sms ?? true,
+    email: existing?.notificationPrefs?.email ?? defaultNotificationPrefs.email,
+    whatsapp: existing?.notificationPrefs?.whatsapp ?? defaultNotificationPrefs.whatsapp,
+    sms: existing?.notificationPrefs?.sms ?? defaultNotificationPrefs.sms,
   };
   const prefersBarberSelection = existing?.prefersBarberSelection ?? true;
 
@@ -74,18 +74,23 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     adminRoleId: existing?.adminRoleId ?? null,
     isSuperAdmin: existing?.isSuperAdmin,
     isPlatformAdmin: existing?.isPlatformAdmin,
-    notificationPrefs,
     prefersBarberSelection,
   };
 
+  const notificationFields = {
+    notificationEmail: notificationPrefs.email,
+    notificationWhatsapp: notificationPrefs.whatsapp,
+    notificationSms: notificationPrefs.sms,
+  };
+
   if (existing) {
-    const updatePayload: Partial<User> = {
+    const updatePayload = {
       firebaseUid: payload.firebaseUid,
       name: payload.name,
       email: payload.email,
       phone: payload.phone,
       avatar: payload.avatar,
-      notificationPrefs: payload.notificationPrefs,
+      ...notificationFields,
       prefersBarberSelection: payload.prefersBarberSelection,
     };
     return updateUser(existing.id, updatePayload);
@@ -97,7 +102,7 @@ const mapFirebaseUserToProfile = async (firebaseUser: FirebaseUser, extras?: Par
     email,
     phone: payload.phone,
     role: (payload.role || 'client') as UserRole,
-    notificationPrefs: payload.notificationPrefs || notificationPrefs,
+    ...notificationFields,
     prefersBarberSelection,
     avatar: payload.avatar,
     adminRoleId: payload.adminRoleId ?? null,

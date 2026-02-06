@@ -5,7 +5,7 @@ import Navbar from './Navbar';
 import LegalFooter from './LegalFooter';
 import { Calendar, User, LayoutDashboard, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getReferralSummary } from '@/data/api';
+import { getReferralSummary } from '@/data/api/referrals';
 import ReviewPromptModal from '@/components/reviews/ReviewPromptModal';
 
 const clientNavItems = [

@@ -21,7 +21,31 @@ process.on('unhandledRejection', (err: any) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true, rawBody: true });
+  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const isProduction = (process.env.NODE_ENV || '').toLowerCase() === 'production';
+  const corsConfig =
+    allowedOrigins.length === 0
+      ? true
+      : {
+          origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
+            if (!origin) {
+              callback(null, true);
+              return;
+            }
+            const isAllowed = allowedOrigins.includes(origin);
+            callback(isAllowed ? null : new Error('Not allowed by CORS'), isAllowed);
+          },
+          credentials: true,
+        };
+
+  if (isProduction && allowedOrigins.length === 0) {
+    console.warn('CORS allowlist no configurada (CORS_ALLOWED_ORIGINS). Se mantiene modo permissive.');
+  }
+
+  const app = await NestFactory.create(AppModule, { cors: corsConfig, rawBody: true });
 
   app.use('/api/payments/stripe/webhook', raw({ type: '*/*' }));
   app.setGlobalPrefix('api');

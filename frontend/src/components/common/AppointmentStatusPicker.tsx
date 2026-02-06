@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { updateAppointment } from '@/data/api';
+import { updateAppointment } from '@/data/api/appointments';
 import { Appointment, AppointmentStatus } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import {

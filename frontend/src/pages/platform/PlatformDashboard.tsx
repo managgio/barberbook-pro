@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Brain, Building2, ChevronLeft, ChevronRight, Image as ImageIcon, MapPin, PhoneCall, RefreshCcw, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { getPlatformBrands, getPlatformMetrics, refreshPlatformMetrics } from '@/data/api';
+import { getPlatformBrands, getPlatformMetrics, refreshPlatformMetrics } from '@/data/api/platform';
 import { PlatformUsageMetrics, PlatformUsageSeriesPoint } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns';

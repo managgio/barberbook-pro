@@ -17,7 +17,7 @@ import {
   copyReferralConfig,
   getReferralOverview,
   getReferralList,
-} from '@/data/api';
+} from '@/data/api/referrals';
 import { ReferralProgramConfig, Service, ReferralAttributionItem, RewardType } from '@/data/types';
 import { Award, Copy, Users, TrendingUp, Info } from 'lucide-react';
 import { fetchServicesCached } from '@/lib/catalogQuery';

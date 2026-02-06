@@ -9,7 +9,7 @@ import {
   getHolidaysByBarber,
   addBarberHolidayRange,
   removeBarberHolidayRange,
-} from '@/data/api';
+} from '@/data/api/holidays';
 import { Barber, HolidayRange } from '@/data/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';

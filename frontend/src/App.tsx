@@ -49,6 +49,7 @@ const AdminReviews = lazy(() => import("./pages/admin/AdminReviews"));
 const PlatformLayout = lazy(() => import("./components/layout/PlatformLayout"));
 const PlatformDashboard = lazy(() => import("./pages/platform/PlatformDashboard"));
 const PlatformBrands = lazy(() => import("./pages/platform/PlatformBrands"));
+const PlatformObservability = lazy(() => import("./pages/platform/PlatformObservability"));
 const ProtectedRoute = lazy(() => import("./components/auth/ProtectedRoute"));
 
 const RouteLoader = () => (
@@ -94,6 +95,7 @@ const AppRoutes: React.FC = () => {
         >
           <Route index element={withSuspense(<PlatformDashboard />)} />
           <Route path="brands" element={withSuspense(<PlatformBrands />)} />
+          <Route path="observability" element={withSuspense(<PlatformObservability />)} />
         </Route>
         <Route path="*" element={withSuspense(<NotFound />)} />
       </Routes>
@@ -168,6 +170,7 @@ const AppRoutes: React.FC = () => {
       >
         <Route index element={withSuspense(<PlatformDashboard />)} />
         <Route path="brands" element={withSuspense(<PlatformBrands />)} />
+        <Route path="observability" element={withSuspense(<PlatformObservability />)} />
       </Route>
 
       {/* Catch-all */}

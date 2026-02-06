@@ -169,7 +169,6 @@ const AuthPage: React.FC = () => {
               alt=""
               aria-hidden="true"
               loading="eager"
-              fetchPriority="high"
               decoding="async"
               width={1440}
               height={804}
@@ -205,7 +204,6 @@ const AuthPage: React.FC = () => {
                   width={56}
                   height={56}
                   loading="eager"
-                  fetchPriority="high"
                   decoding="async"
                   className="w-14 h-14 rounded-xl shadow-glow object-contain"
                 />
@@ -283,7 +281,6 @@ const AuthPage: React.FC = () => {
                   width={40}
                   height={40}
                   loading="eager"
-                  fetchPriority="high"
                   decoding="async"
                   className="w-10 h-10 rounded-lg object-contain shadow-sm"
                 />

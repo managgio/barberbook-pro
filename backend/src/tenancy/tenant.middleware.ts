@@ -2,7 +2,12 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { runWithTenantContext } from './tenant.context';
 import { TenantResolutionError, TenantService } from './tenant.service';
-import { DEFAULT_BRAND_ID, DEFAULT_LOCAL_ID } from './tenant.constants';
+import {
+  DEFAULT_BRAND_ID,
+  DEFAULT_LOCAL_ID,
+  TENANT_ALLOW_HEADER_OVERRIDES,
+  TENANT_TRUST_X_FORWARDED_HOST,
+} from './tenant.constants';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
@@ -30,13 +35,19 @@ export class TenantMiddleware implements NestMiddleware {
       );
       return;
     }
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const subdomainOverride = typeof req.headers['x-tenant-subdomain'] === 'string'
-      ? req.headers['x-tenant-subdomain']
-      : null;
-    const localIdOverride = typeof req.headers['x-local-id'] === 'string'
-      ? req.headers['x-local-id']
-      : null;
+    const host =
+      (TENANT_TRUST_X_FORWARDED_HOST ? req.headers['x-forwarded-host'] : null) ||
+      req.headers.host;
+    const subdomainOverride =
+      TENANT_ALLOW_HEADER_OVERRIDES &&
+      typeof req.headers['x-tenant-subdomain'] === 'string'
+        ? req.headers['x-tenant-subdomain']
+        : null;
+    const localIdOverride =
+      TENANT_ALLOW_HEADER_OVERRIDES &&
+      typeof req.headers['x-local-id'] === 'string'
+        ? req.headers['x-local-id']
+        : null;
 
     let resolution;
     try {

@@ -32,4 +32,16 @@ export class AuthService {
     }
     return user;
   }
+
+  async requireIdentity(request: any) {
+    const token = this.extractBearerToken(request);
+    if (!token) {
+      throw new UnauthorizedException('Se requiere autenticación.');
+    }
+    const decoded = await this.firebaseAdmin.verifyIdToken(token);
+    if (!decoded?.uid) {
+      throw new UnauthorizedException('Token de autenticación inválido.');
+    }
+    return decoded;
+  }
 }

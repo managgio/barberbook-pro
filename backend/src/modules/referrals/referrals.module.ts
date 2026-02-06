@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../../auth/auth.module';
 import { TenancyModule } from '../../tenancy/tenancy.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ReferralConfigService } from './referral-config.service';
@@ -13,7 +14,7 @@ import { RewardsPublicController } from './rewards.public.controller';
 import { ReferralsSchedulerService } from './referrals.scheduler';
 
 @Module({
-  imports: [TenancyModule, NotificationsModule],
+  imports: [TenancyModule, NotificationsModule, AuthModule],
   controllers: [
     ReferralsPublicController,
     RewardsPublicController,

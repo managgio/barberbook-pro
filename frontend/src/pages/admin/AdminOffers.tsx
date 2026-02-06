@@ -19,7 +19,7 @@ import {
   deleteOffer,
   getOffers,
   updateOffer,
-} from '@/data/api';
+} from '@/data/api/offers';
 import {
   Offer,
   OfferScope,

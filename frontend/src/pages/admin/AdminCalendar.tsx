@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { getAdminCalendarData, getAdminStripeConfig, updateAppointment } from '@/data/api';
+import { getAdminCalendarData, updateAppointment } from '@/data/api/appointments';
+import { getAdminStripeConfig } from '@/data/api/payments';
 import { AdminCalendarResponse, Appointment, Barber, PaymentMethod, Service } from '@/data/types';
 import { 
   ChevronLeft, 

@@ -10,7 +10,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { getBarberWeeklyLoad, getAvailableSlots, getAvailableSlotsBatch, getBarbers, createAppointment, getPrivacyConsentStatus, getLoyaltyPreview, getRewardsWallet, getStripeAvailability, createStripeCheckout } from '@/data/api';
+import {
+  createAppointment,
+  getAvailableSlots,
+  getAvailableSlotsBatch,
+  getBarberWeeklyLoad,
+} from '@/data/api/appointments';
+import { getBarbers } from '@/data/api/barbers';
+import { getPrivacyConsentStatus } from '@/data/api/legal';
+import { getLoyaltyPreview } from '@/data/api/loyalty';
+import { getStripeAvailability, createStripeCheckout } from '@/data/api/payments';
+import { getRewardsWallet } from '@/data/api/referrals';
 import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon, StripeAvailability } from '@/data/types';
 import { 
   Check, 
@@ -45,6 +55,7 @@ import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
+import { isApiRequestError } from '@/lib/networkErrors';
 
 
 interface BookingWizardProps {
@@ -893,9 +904,23 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         }
         setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
       } else {
+        let description = 'No se pudo completar la reserva. Inténtalo de nuevo.';
+        if (isApiRequestError(error)) {
+          if (error.kind === 'OFFLINE') {
+            description = 'No tienes conexión. Revisa tu red y vuelve a intentarlo.';
+          } else if (error.kind === 'TIMEOUT') {
+            description = 'La confirmación tardó demasiado. Verifica tu conexión y reintenta.';
+          } else if (error.status >= 500) {
+            description = 'Estamos teniendo problemas temporales en el servidor. Inténtalo en unos minutos.';
+          } else if (error.status === 429) {
+            description = 'Hiciste demasiados intentos en poco tiempo. Espera unos segundos y vuelve a probar.';
+          } else if (error.kind === 'NETWORK') {
+            description = 'No pudimos conectar con el servidor. Intenta nuevamente en unos segundos.';
+          }
+        }
         toast({
           title: 'Error',
-          description: 'No se pudo completar la reserva. Inténtalo de nuevo.',
+          description,
           variant: 'destructive',
         });
       }

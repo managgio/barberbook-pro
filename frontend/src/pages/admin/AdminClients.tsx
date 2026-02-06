@@ -9,13 +9,17 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   createClientNote,
   deleteClientNote,
-  getAdminStripeConfig,
-  getAppointmentsPage,
   getClientNotes,
-  getUsersPage,
+} from '@/data/api/client-notes';
+import {
+  getAppointmentsPage,
   updateAppointment,
+} from '@/data/api/appointments';
+import { getAdminStripeConfig } from '@/data/api/payments';
+import {
+  getUsersPage,
   updateUserBlockStatus,
-} from '@/data/api';
+} from '@/data/api/users';
 import { Appointment, Barber, ClientNote, PaginatedResponse, PaymentMethod, Service, User } from '@/data/types';
 import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { format, parseISO, subMonths, isAfter } from 'date-fns';

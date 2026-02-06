@@ -29,7 +29,10 @@ import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { CATALOG_STALE_TIME } from '@/lib/catalogQuery';
-import { getBarbers, getProductCategories, getProducts, getServices } from '@/data/api';
+import { getBarbers } from '@/data/api/barbers';
+import { getProductCategories } from '@/data/api/product-categories';
+import { getProducts } from '@/data/api/products';
+import { getServices } from '@/data/api/services';
 import { queryKeys } from '@/lib/queryKeys';
 
 const heroBackgroundFallback = '/placeholder.svg';
@@ -703,7 +706,6 @@ const LandingPage: React.FC = () => {
                         alt={`Experiencia premium en ${settings.branding.name}`}
                         loading="eager"
                         decoding="async"
-                        fetchPriority="high"
                         width={1200}
                         height={900}
                         className={`block h-full w-full object-cover transition-opacity duration-700 ${heroImageFading ? 'opacity-0' : 'opacity-100'}`}

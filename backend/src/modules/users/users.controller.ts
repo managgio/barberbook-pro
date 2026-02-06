@@ -1,14 +1,62 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserBlockDto } from './dto/update-user-block.dto';
 import { AdminEndpoint } from '../../auth/admin.decorator';
+import { AuthService } from '../../auth/auth.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { getCurrentLocalId } from '../../tenancy/tenant.context';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly authService: AuthService,
+    private readonly prisma: PrismaService,
+  ) {}
 
+  private async canManageOtherUsers(request: Request) {
+    const actor = await this.authService.requireUser(request);
+    if (actor.isSuperAdmin || actor.isPlatformAdmin) return true;
+    if (actor.role !== 'admin') return false;
+    const localId = getCurrentLocalId();
+    const staff = await this.prisma.locationStaff.findUnique({
+      where: {
+        localId_userId: {
+          localId,
+          userId: actor.id,
+        },
+      },
+      select: { userId: true },
+    });
+    return Boolean(staff);
+  }
+
+  private async assertSelfOrManager(request: Request, userId: string) {
+    const actor = await this.authService.requireUser(request);
+    if (actor.id === userId) return actor;
+    const isManager = await this.canManageOtherUsers(request);
+    if (!isManager) {
+      throw new ForbiddenException('No tienes permisos para operar sobre este usuario.');
+    }
+    return actor;
+  }
+
+  private sanitizeSelfUpdatePayload(data: UpdateUserDto): UpdateUserDto {
+    return {
+      name: data.name,
+      phone: data.phone,
+      avatar: data.avatar,
+      notificationEmail: data.notificationEmail,
+      notificationWhatsapp: data.notificationWhatsapp,
+      notificationSms: data.notificationSms,
+      prefersBarberSelection: data.prefersBarberSelection,
+    };
+  }
+
+  @AdminEndpoint()
   @Get()
   findAll(
     @Query('page') page?: string,
@@ -38,28 +86,67 @@ export class UsersController {
   }
 
   @Get('by-email')
-  findByEmail(@Query('email') email?: string) {
+  async findByEmail(@Req() req: Request, @Query('email') email?: string) {
     if (!email) return null;
+    const identity = await this.authService.requireIdentity(req);
+    const actor = await this.authService.resolveUserFromRequest(req);
+    const isManager = actor ? await this.canManageOtherUsers(req) : false;
+    const identityEmail = typeof identity.email === 'string' ? identity.email.toLowerCase() : '';
+    if (!isManager && identityEmail !== email.toLowerCase()) {
+      throw new ForbiddenException('No tienes permisos para consultar ese correo.');
+    }
     return this.usersService.findByEmail(email);
   }
 
   @Get('by-firebase/:firebaseUid')
-  findByFirebase(@Param('firebaseUid') firebaseUid: string) {
+  async findByFirebase(@Req() req: Request, @Param('firebaseUid') firebaseUid: string) {
+    const identity = await this.authService.requireIdentity(req);
+    const actor = await this.authService.resolveUserFromRequest(req);
+    const isManager = actor ? await this.canManageOtherUsers(req) : false;
+    if (!isManager && identity.uid !== firebaseUid) {
+      throw new ForbiddenException('No tienes permisos para consultar ese usuario.');
+    }
     return this.usersService.findByFirebaseUid(firebaseUid);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  async findOne(@Req() req: Request, @Param('id') id: string) {
+    await this.assertSelfOrManager(req, id);
     return this.usersService.findOne(id);
   }
 
   @Post()
-  create(@Body() data: CreateUserDto) {
+  async create(@Req() req: Request, @Body() data: CreateUserDto) {
+    const identity = await this.authService.requireIdentity(req);
+    const actor = await this.authService.resolveUserFromRequest(req);
+    const isManager = actor ? await this.canManageOtherUsers(req) : false;
+    if (!isManager) {
+      if (data.firebaseUid !== identity.uid) {
+        throw new ForbiddenException('No puedes crear usuarios para otra sesión.');
+      }
+      const identityEmail = typeof identity.email === 'string' ? identity.email.toLowerCase() : '';
+      if (!identityEmail || data.email.toLowerCase() !== identityEmail) {
+        throw new ForbiddenException('No puedes crear usuarios con otro correo.');
+      }
+      const selfPayload: CreateUserDto = {
+        ...data,
+        role: 'client',
+        adminRoleId: null,
+        isSuperAdmin: false,
+        isPlatformAdmin: false,
+      };
+      return this.usersService.create(selfPayload);
+    }
     return this.usersService.create(data);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() data: UpdateUserDto) {
+  async update(@Req() req: Request, @Param('id') id: string, @Body() data: UpdateUserDto) {
+    const actor = await this.assertSelfOrManager(req, id);
+    const isManager = await this.canManageOtherUsers(req);
+    if (!isManager && actor.id === id) {
+      return this.usersService.update(id, this.sanitizeSelfUpdatePayload(data));
+    }
     return this.usersService.update(id, data);
   }
 
@@ -70,7 +157,8 @@ export class UsersController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  async remove(@Req() req: Request, @Param('id') id: string) {
+    await this.assertSelfOrManager(req, id);
     return this.usersService.remove(id);
   }
 }

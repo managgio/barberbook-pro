@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getActiveAlerts } from '@/data/api';
+import { getActiveAlerts } from '@/data/api/alerts';
 import { Alert } from '@/data/types';
 import { Info, AlertTriangle, CheckCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';

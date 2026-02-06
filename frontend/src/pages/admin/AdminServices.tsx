@@ -9,14 +9,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
-  createService,
-  updateService,
-  deleteService,
   createServiceCategory,
-  updateServiceCategory,
   deleteServiceCategory,
-  updateSiteSettings,
-} from '@/data/api';
+  updateServiceCategory,
+} from '@/data/api/service-categories';
+import { createService, deleteService, updateService } from '@/data/api/services';
+import { updateSiteSettings } from '@/data/api/settings';
 import { Service, ServiceCategory } from '@/data/types';
 import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, CheckCircle2, Sparkles, Percent } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';

@@ -18,11 +18,13 @@ import { Skeleton } from '@/components/common/Skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
-import { getAiAssistantSession, postAiAssistantChat, postAiAssistantTranscribe } from '@/data/api';
+import { getAiAssistantSession, postAiAssistantChat, postAiAssistantTranscribe } from '@/data/api/ai';
 import { AiChatResponse } from '@/data/types';
+import { isApiRequestError } from '@/lib/networkErrors';
 import { cn } from '@/lib/utils';
 import { dispatchAlertsUpdated, dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { useTenant } from '@/context/TenantContext';
 
 interface ChatMessage {
   id: string;
@@ -59,10 +61,12 @@ type BrowserSpeechWindow = Window & {
   webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
 };
 
-const STORAGE_KEY = 'ai-assistant-session-id';
+const LEGACY_STORAGE_KEY = 'ai-assistant-session-id';
+const STORAGE_KEY_PREFIX = 'ai-assistant-session-id';
 const SEND_COMMAND = 'enviar';
 const AdminAiAssistant: React.FC = () => {
   const { user } = useAuth();
+  const { currentLocationId } = useTenant();
   const { toast } = useToast();
   const copy = useBusinessCopy();
   const { canAccessSection } = useAdminPermissions();
@@ -100,6 +104,7 @@ const AdminAiAssistant: React.FC = () => {
   const staffHolidayPlaceholder = copy.staff.isCollective
     ? `miembro del equipo o ${copy.location.singularLower}`
     : `${copy.staff.singularLower} o ${copy.location.singularLower}`;
+  const storageKey = `${STORAGE_KEY_PREFIX}:${currentLocationId || 'default'}`;
 
   const getSupportedMimeType = () => {
     if (typeof MediaRecorder === 'undefined') return '';
@@ -177,12 +182,38 @@ const AdminAiAssistant: React.FC = () => {
     recognition.start();
   };
 
+  const persistSession = useCallback((newSessionId: string) => {
+    setSessionId(newSessionId);
+    localStorage.setItem(storageKey, newSessionId);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }, [storageKey]);
+
+  const clearPersistedSession = useCallback(() => {
+    setSessionId(null);
+    setMessages([]);
+    loadedSessionRef.current = null;
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }, [storageKey]);
+
   useEffect(() => {
-    const initialSessionId = localStorage.getItem(STORAGE_KEY);
-    if (initialSessionId) {
-      setSessionId(initialSessionId);
+    loadedSessionRef.current = null;
+    setMessages([]);
+
+    const scopedSessionId = localStorage.getItem(storageKey);
+    if (scopedSessionId) {
+      setSessionId(scopedSessionId);
+      return;
     }
-  }, []);
+
+    const legacySessionId = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacySessionId) {
+      persistSession(legacySessionId);
+      return;
+    }
+
+    setSessionId(null);
+  }, [persistSession, storageKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -203,18 +234,22 @@ const AdminAiAssistant: React.FC = () => {
           createdAt: message.createdAt,
         })));
       } catch (error) {
+        if (isApiRequestError(error) && error.status === 404) {
+          clearPersistedSession();
+          return;
+        }
+        toast({
+          title: 'Historial no disponible',
+          description: 'No se pudo cargar la sesión anterior del asistente.',
+          variant: 'destructive',
+        });
         loadedSessionRef.current = null;
       } finally {
         setIsLoadingHistory(false);
       }
     };
     loadSession();
-  }, [sessionId, user]);
-
-  const persistSession = (newSessionId: string) => {
-    setSessionId(newSessionId);
-    localStorage.setItem(STORAGE_KEY, newSessionId);
-  };
+  }, [clearPersistedSession, sessionId, toast, user]);
 
   const handleResponse = (response: AiChatResponse) => {
     if (response.sessionId && response.sessionId !== sessionId) {

@@ -412,12 +412,20 @@ export class UsersService {
   }
 
   async update(id: string, data: UpdateUserDto) {
+    const brandId = getCurrentBrandId();
     const payload = await this.applySuperAdminFlag(data);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, brandMemberships: { some: { brandId } } },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
     const shouldSyncLocalRole = this.shouldSyncLocalStaff(payload);
     let updated: User;
     try {
       updated = await this.prisma.user.update({
-        where: { id },
+        where: { id: existing.id },
         data: {
           firebaseUid: payload.firebaseUid,
           name: payload.name,
@@ -434,7 +442,6 @@ export class UsersService {
     } catch (error) {
       throw new NotFoundException('User not found');
     }
-    await this.ensureBrandMembership(updated.id);
     if (shouldSyncLocalRole) {
       await this.syncLocalStaffRole(updated);
     }
@@ -477,10 +484,61 @@ export class UsersService {
   }
 
   async remove(id: string) {
+    const brandId = getCurrentBrandId();
+    const localId = getCurrentLocalId();
+    const membership = await this.prisma.brandUser.findUnique({
+      where: {
+        brandId_userId: {
+          brandId,
+          userId: id,
+        },
+      },
+      select: { brandId: true, userId: true },
+    });
+    if (!membership) throw new NotFoundException('User not found');
+
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('User not found');
 
-    if (existing.firebaseUid) {
+    const locations = await this.prisma.location.findMany({
+      where: { brandId },
+      select: { id: true },
+    });
+    const locationIds = locations.map((location) => location.id);
+    const scopedLocationIds = locationIds.length > 0 ? locationIds : [localId];
+    let removeGlobally = false;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.appointment.deleteMany({
+        where: {
+          userId: id,
+          localId: { in: scopedLocationIds },
+        },
+      });
+      await tx.locationStaff.deleteMany({
+        where: {
+          userId: id,
+          localId: { in: scopedLocationIds },
+        },
+      });
+      await tx.brandUser.delete({
+        where: {
+          brandId_userId: {
+            brandId,
+            userId: id,
+          },
+        },
+      });
+      const remainingMemberships = await tx.brandUser.count({
+        where: { userId: id },
+      });
+      if (remainingMemberships === 0) {
+        removeGlobally = true;
+        await tx.user.delete({ where: { id } });
+      }
+    });
+
+    if (removeGlobally && existing.firebaseUid) {
       try {
         await this.firebaseAdmin.deleteUser(existing.firebaseUid);
       } catch (error) {
@@ -488,11 +546,6 @@ export class UsersService {
       }
     }
 
-    await this.prisma.$transaction([
-      this.prisma.appointment.deleteMany({ where: { userId: id } }),
-      this.prisma.user.delete({ where: { id } }),
-    ]);
-
-    return { success: true };
+    return { success: true, removedGlobally: removeGlobally };
   }
 }

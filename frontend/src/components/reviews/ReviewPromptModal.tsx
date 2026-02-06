@@ -13,7 +13,7 @@ import {
   rateReview,
   sendReviewFeedback,
   snoozeReview,
-} from '@/data/api';
+} from '@/data/api/reviews';
 import { ReviewPendingResponse } from '@/data/types';
 import { cn } from '@/lib/utils';
 

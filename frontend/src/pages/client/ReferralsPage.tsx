@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getReferralSummary, getRewardsWallet } from '@/data/api';
+import { getReferralSummary, getRewardsWallet } from '@/data/api/referrals';
 import { ReferralSummaryResponse, RewardWalletSummary, ReferralAttributionItem } from '@/data/types';
 import { Copy, Share2, QrCode, Gift, Wallet, Ticket } from 'lucide-react';
 import { format, parseISO } from 'date-fns';

@@ -195,4 +195,8 @@ export const queryKeys = {
   platformLocationConfig: (localId: string | null | undefined) =>
     ["platform-location-config", localId || "none"] as const,
   platformMetrics: (windowDays: number) => ["platform-metrics", windowDays] as const,
+  platformObservabilityWebVitals: (windowMinutes: number) =>
+    ["platform-observability-webvitals", windowMinutes] as const,
+  platformObservabilityApi: (windowMinutes: number) =>
+    ["platform-observability-api", windowMinutes] as const,
 };

@@ -1,17 +1,31 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export const useForegroundRefresh = (onRefresh: () => void, enabled = true) => {
+  const onRefreshRef = useRef(onRefresh);
+  const lastRefreshAtRef = useRef(0);
+
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+
   useEffect(() => {
     if (!enabled) return;
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
+    const triggerRefresh = () => {
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < 750) return;
+      lastRefreshAtRef.current = now;
+      onRefreshRef.current();
+    };
+
     const handleFocus = () => {
-      onRefresh();
+      triggerRefresh();
     };
 
     const handleVisibility = () => {
       if (document.hidden) return;
-      onRefresh();
+      triggerRefresh();
     };
 
     window.addEventListener('focus', handleFocus);
@@ -20,5 +34,5 @@ export const useForegroundRefresh = (onRefresh: () => void, enabled = true) => {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [enabled, onRefresh]);
+  }, [enabled]);
 };

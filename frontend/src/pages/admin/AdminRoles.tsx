@@ -13,13 +13,15 @@ import { useToast } from '@/hooks/use-toast';
 import { getAdminSections } from '@/data/adminSections';
 import { AdminRole, AdminSectionKey, User } from '@/data/types';
 import { 
-  getAdminRoles,
   getUsersPage,
-  createAdminRole,
-  updateAdminRole,
-  deleteAdminRole,
   updateUser,
-} from '@/data/api';
+} from '@/data/api/users';
+import {
+  createAdminRole,
+  deleteAdminRole,
+  getAdminRoles,
+  updateAdminRole,
+} from '@/data/api/roles';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2, Shield, Users } from 'lucide-react';
 import EmptyState from '@/components/common/EmptyState';

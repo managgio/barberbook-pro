@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-02-06T18:50:53.046Z",
+  "generatedAt": "2026-02-06T19:52:17.437Z",
   "entry": {
     "js": {
-      "file": "assets/index-qslfZdIi.js",
-      "rawBytes": 43025,
-      "gzipBytes": 14956
+      "file": "assets/index-BrUT-AHe.js",
+      "rawBytes": 44689,
+      "gzipBytes": 15418
     },
     "css": {
-      "file": "assets/index-DUVUEQYD.css",
-      "rawBytes": 95063,
-      "gzipBytes": 16075
+      "file": "assets/index-DyXmxciX.css",
+      "rawBytes": 95246,
+      "gzipBytes": 16096
     }
   },
   "images": {
@@ -45,7 +45,7 @@
   },
   "sourcemap": {
     "sourceMapFound": true,
-    "analyzedChunkCount": 92,
+    "analyzedChunkCount": 103,
     "topNodeModulesBySourceBytes": [
       {
         "name": "recharts",
@@ -99,8 +99,8 @@
       },
       {
         "name": "lucide-react",
-        "bytes": 65806,
-        "kb": 64.26
+        "bytes": 66345,
+        "kb": 64.79
       },
       {
         "name": "react-router",
@@ -126,105 +126,105 @@
     "topSourceFilesBySourceBytes": [
       {
         "name": "pages/platform/PlatformBrands.tsx",
-        "bytes": 209070,
-        "kb": 204.17
+        "bytes": 209079,
+        "kb": 204.18
       },
       {
         "name": "pages/client/BookingWizard.tsx",
-        "bytes": 81403,
-        "kb": 79.5
+        "bytes": 82498,
+        "kb": 80.56
       },
       {
         "name": "pages/admin/AdminSettings.tsx",
-        "bytes": 48964,
-        "kb": 47.82
+        "bytes": 49050,
+        "kb": 47.9
       },
       {
         "name": "pages/admin/AdminCashRegister.tsx",
-        "bytes": 46502,
-        "kb": 45.41
+        "bytes": 46595,
+        "kb": 45.5
       },
       {
         "name": "pages/admin/AdminClients.tsx",
-        "bytes": 46445,
-        "kb": 45.36
+        "bytes": 46573,
+        "kb": 45.48
       },
       {
         "name": "pages/admin/AdminBarbers.tsx",
-        "bytes": 44553,
-        "kb": 43.51
+        "bytes": 44597,
+        "kb": 43.55
       },
       {
         "name": "pages/admin/AdminDashboard.tsx",
-        "bytes": 42130,
-        "kb": 41.14
+        "bytes": 42181,
+        "kb": 41.19
       },
       {
         "name": "pages/admin/AdminStock.tsx",
-        "bytes": 41781,
-        "kb": 40.8
+        "bytes": 41875,
+        "kb": 40.89
       },
       {
         "name": "pages/LandingPage.tsx",
-        "bytes": 38909,
-        "kb": 38
+        "bytes": 39041,
+        "kb": 38.13
       },
       {
         "name": "components/admin/QuickAppointmentButton.tsx",
-        "bytes": 34028,
-        "kb": 33.23
-      },
-      {
-        "name": "data/api.ts",
-        "bytes": 33631,
-        "kb": 32.84
+        "bytes": 34076,
+        "kb": 33.28
       },
       {
         "name": "pages/admin/AdminServices.tsx",
-        "bytes": 32391,
-        "kb": 31.63
+        "bytes": 32478,
+        "kb": 31.72
       },
       {
         "name": "pages/admin/AdminCalendar.tsx",
-        "bytes": 31127,
-        "kb": 30.4
+        "bytes": 31178,
+        "kb": 30.45
       },
       {
         "name": "pages/admin/AdminReferrals.tsx",
-        "bytes": 30645,
-        "kb": 29.93
+        "bytes": 30655,
+        "kb": 29.94
       },
       {
         "name": "pages/platform/PlatformDashboard.tsx",
-        "bytes": 30583,
-        "kb": 29.87
+        "bytes": 30592,
+        "kb": 29.88
+      },
+      {
+        "name": "pages/admin/AdminAiAssistant.tsx",
+        "bytes": 30436,
+        "kb": 29.72
       }
     ],
     "topSourceAreasBySourceBytes": [
       {
         "name": "pages",
-        "bytes": 1008173,
-        "kb": 984.54
+        "bytes": 1020715,
+        "kb": 996.79
       },
       {
         "name": "components",
-        "bytes": 203315,
-        "kb": 198.55
+        "bytes": 206207,
+        "kb": 201.37
       },
       {
         "name": "lib",
-        "bytes": 49206,
-        "kb": 48.05
+        "bytes": 50444,
+        "kb": 49.26
       },
       {
         "name": "data",
-        "bytes": 48537,
-        "kb": 47.4
+        "bytes": 49355,
+        "kb": 48.2
       },
       {
         "name": "context",
-        "bytes": 25112,
-        "kb": 24.52
+        "bytes": 25118,
+        "kb": 24.53
       },
       {
         "name": "assets",
@@ -233,13 +233,13 @@
       },
       {
         "name": "App.tsx",
-        "bytes": 8944,
-        "kb": 8.73
+        "bytes": 9216,
+        "kb": 9
       },
       {
         "name": "hooks",
-        "bytes": 7038,
-        "kb": 6.87
+        "bytes": 7401,
+        "kb": 7.23
       },
       {
         "name": "main.tsx",
@@ -250,22 +250,22 @@
   },
   "budgets": {
     "entryJsRawMaxBytes": {
-      "actualBytes": 43025,
+      "actualBytes": 44689,
       "maxBytes": 120000,
       "pass": true
     },
     "entryJsGzipMaxBytes": {
-      "actualBytes": 14956,
+      "actualBytes": 15418,
       "maxBytes": 35000,
       "pass": true
     },
     "entryCssRawMaxBytes": {
-      "actualBytes": 95063,
+      "actualBytes": 95246,
       "maxBytes": 110000,
       "pass": true
     },
     "entryCssGzipMaxBytes": {
-      "actualBytes": 16075,
+      "actualBytes": 16096,
       "maxBytes": 20000,
       "pass": true
     },

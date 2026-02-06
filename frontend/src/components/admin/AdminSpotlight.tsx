@@ -20,7 +20,7 @@ import {
   sortAdminNavItems,
 } from '@/components/layout/adminNavItems';
 import { useAdminSpotlight } from '@/components/admin/AdminSpotlightContext';
-import { updateSiteSettings } from '@/data/api';
+import { updateSiteSettings } from '@/data/api/settings';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useToast } from '@/hooks/use-toast';
 import { AdminSectionKey } from '@/data/types';
