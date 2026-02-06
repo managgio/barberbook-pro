@@ -9,6 +9,22 @@ import {
   TENANT_TRUST_X_FORWARDED_HOST,
 } from './tenant.constants';
 
+const firstHeaderValue = (value?: string | string[]) => {
+  if (!value) return undefined;
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw.split(',')[0]?.trim() || undefined;
+};
+
+const normalizeHost = (value?: string) => value?.split(':')[0]?.trim().toLowerCase() || '';
+
+const isLikelyInternalHost = (hostname: string) => {
+  if (!hostname) return true;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+  if (!hostname.includes('.')) return true;
+  if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
+  return hostname.startsWith('backend') || hostname.startsWith('api');
+};
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantService: TenantService) {}
@@ -35,9 +51,18 @@ export class TenantMiddleware implements NestMiddleware {
       );
       return;
     }
+    const directHost = firstHeaderValue(req.headers.host);
+    const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
+    const directHostname = normalizeHost(directHost);
+
+    // In production behind reverse proxies, host can be internal (api/backend service name).
+    // Fall back to x-forwarded-host in that scenario to keep tenant resolution stable.
     const host =
-      (TENANT_TRUST_X_FORWARDED_HOST ? req.headers['x-forwarded-host'] : null) ||
-      req.headers.host;
+      (TENANT_TRUST_X_FORWARDED_HOST
+        ? forwardedHost || directHost
+        : isLikelyInternalHost(directHostname) && forwardedHost
+          ? forwardedHost
+          : directHost) || undefined;
     const subdomainOverride =
       TENANT_ALLOW_HEADER_OVERRIDES &&
       typeof req.headers['x-tenant-subdomain'] === 'string'
@@ -65,13 +90,13 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     runWithTenantContext(
-      {
-        brandId: resolution.brandId,
-        localId: resolution.localId,
-        host: typeof host === 'string' ? host : Array.isArray(host) ? host[0] : undefined,
-        subdomain: resolution.subdomain,
-        isPlatform: resolution.isPlatform,
-      },
+        {
+          brandId: resolution.brandId,
+          localId: resolution.localId,
+          host: host,
+          subdomain: resolution.subdomain,
+          isPlatform: resolution.isPlatform,
+        },
       () => {
         (req as any).tenant = resolution;
         next();

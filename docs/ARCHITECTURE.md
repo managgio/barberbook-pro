@@ -43,6 +43,7 @@ Infra/Dev:
   - `TENANT_ALLOW_HEADER_OVERRIDES=true` permite override explícito (recomendado solo en dev/staging controlado).
   - En producción, por defecto quedan desactivados para evitar forzado de tenant desde cliente.
 - `x-forwarded-host` también queda gobernado por entorno (`TENANT_TRUST_X_FORWARDED_HOST`) para evitar spoofing cuando no hay proxy confiable.
+- Hardening proxy-aware en middleware: si `host` llega con valor interno (ej. `api`, `backend`, `localhost`, `*.local`) y existe `x-forwarded-host`, se usa este último como fallback para evitar `TENANT_SUBDOMAIN_REQUIRED` por reescritura de host en proxies.
 - Generación de URLs absolutas sensibles (ej. pagos Stripe) reutiliza la misma política de confianza sobre `x-forwarded-*`.
 - Soporta `customDomain` por marca.
 - `PLATFORM_SUBDOMAIN` redirige al panel de plataforma.
