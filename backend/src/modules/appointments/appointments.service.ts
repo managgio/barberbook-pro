@@ -5,10 +5,10 @@ import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { mapAppointment } from './appointments.mapper';
-import { isDateInRange, minutesToTime, normalizeRange, timeToMinutes } from '../schedules/schedule.utils';
+import { isDateInRange, minutesToTime, normalizeRange, normalizeSchedule, timeToMinutes } from '../schedules/schedule.utils';
 import { HolidaysService } from '../holidays/holidays.service';
 import { SchedulesService } from '../schedules/schedules.service';
-import { DEFAULT_SHOP_SCHEDULE } from '../schedules/schedule.types';
+import { DEFAULT_SHOP_SCHEDULE, ShopSchedule } from '../schedules/schedule.types';
 import { NotificationsService } from '../notifications/notifications.service';
 import { computeServicePricing, isOfferActiveNow } from '../services/services.pricing';
 import { LegalService } from '../legal/legal.service';
@@ -26,6 +26,7 @@ import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
   getWeekdayKey,
+  makeDateInTimeZone,
   startOfDayInTimeZone,
 } from '../../utils/timezone';
 
@@ -34,12 +35,69 @@ const SLOT_INTERVAL_MINUTES = 15;
 const CONFIRMATION_GRACE_MS = 60 * 1000;
 const DEFAULT_CURRENCY = (process.env.STRIPE_CURRENCY || 'eur').toLowerCase();
 const ANONYMIZED_NAME = 'Invitado anonimizado';
+const DASHBOARD_DEFAULT_WINDOW_DAYS = 30;
+const DASHBOARD_MIN_WINDOW_DAYS = 7;
+const DASHBOARD_MAX_WINDOW_DAYS = 60;
+const DASHBOARD_LOSS_WINDOW_DAYS = 30;
+const DASHBOARD_TICKET_WINDOW_DAYS = 14;
+const DASHBOARD_OCCUPANCY_START_HOUR = 9;
+const DASHBOARD_OCCUPANCY_END_HOUR = 20;
+const WEEKDAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+const WEEKDAY_INDEX: Record<(typeof WEEKDAY_ORDER)[number], number> = {
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+  sunday: 7,
+};
 
 const buildAnonymizedContact = (id: string) => `anonimo+${id.slice(0, 8)}@example.invalid`;
 
 type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
   include: { user: true; barber: true; service: true; products: { include: { product: true } } };
 }>;
+type AppointmentListFilters = {
+  userId?: string;
+  barberId?: string;
+  date?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: Prisma.SortOrder;
+};
+
+type DashboardSummaryParams = {
+  windowDays?: number;
+  barberId?: string;
+};
+
+type DashboardSummaryTodayAppointment = {
+  id: string;
+  startDateTime: string;
+  serviceName: string;
+  barberName: string;
+  clientName: string;
+};
+
+type AdminSearchClient = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+};
+
+type AdminCalendarClient = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+};
+
+type AppointmentSlotRecord = {
+  startDateTime: Date;
+  service?: { duration?: number | null } | null;
+};
 
 @Injectable()
 export class AppointmentsService {
@@ -202,9 +260,9 @@ export class AppointmentsService {
     return { items: itemsDetailed, total };
   }
 
-  async findAll(filters?: { userId?: string; barberId?: string; date?: string }) {
+  private buildListWhere(filters?: AppointmentListFilters): Prisma.AppointmentWhereInput {
     const localId = getCurrentLocalId();
-    const where: any = { localId };
+    const where: Prisma.AppointmentWhereInput = { localId };
     if (filters?.userId) where.userId = filters.userId;
     if (filters?.barberId) where.barberId = filters.barberId;
     if (filters?.date) {
@@ -212,14 +270,384 @@ export class AppointmentsService {
         gte: startOfDayInTimeZone(filters.date, APP_TIMEZONE),
         lte: endOfDayInTimeZone(filters.date, APP_TIMEZONE),
       };
+    } else if (filters?.dateFrom || filters?.dateTo) {
+      where.startDateTime = {
+        ...(filters.dateFrom ? { gte: startOfDayInTimeZone(filters.dateFrom, APP_TIMEZONE) } : {}),
+        ...(filters.dateTo ? { lte: endOfDayInTimeZone(filters.dateTo, APP_TIMEZONE) } : {}),
+      };
     }
+    return where;
+  }
+
+  private buildListOrder(filters?: AppointmentListFilters): Prisma.AppointmentOrderByWithRelationInput {
+    return { startDateTime: filters?.sort === 'desc' ? 'desc' : 'asc' };
+  }
+
+  private shiftDateInTimeZone(dateOnly: string, days: number) {
+    const reference = makeDateInTimeZone(dateOnly, { hour: 12, minute: 0 }, APP_TIMEZONE);
+    if (Number.isNaN(reference.getTime())) return dateOnly;
+    reference.setUTCDate(reference.getUTCDate() + days);
+    return formatDateInTimeZone(reference, APP_TIMEZONE);
+  }
+
+  private isDateWithinRange(dateOnly: string, startDate: string, endDate: string) {
+    return dateOnly >= startDate && dateOnly <= endDate;
+  }
+
+  async getDashboardSummary(params?: DashboardSummaryParams) {
+    const localId = getCurrentLocalId();
+    const windowDays = Math.min(
+      DASHBOARD_MAX_WINDOW_DAYS,
+      Math.max(
+        DASHBOARD_MIN_WINDOW_DAYS,
+        Math.floor(params?.windowDays ?? DASHBOARD_DEFAULT_WINDOW_DAYS),
+      ),
+    );
+
+    const selectedBarberId = params?.barberId?.trim() || null;
+    const now = new Date();
+    const todayDate = formatDateInTimeZone(now, APP_TIMEZONE);
+    const rangeStartDate = this.shiftDateInTimeZone(todayDate, -(windowDays - 1));
+    const queryWindowDays = Math.max(
+      windowDays,
+      DASHBOARD_LOSS_WINDOW_DAYS,
+      DASHBOARD_TICKET_WINDOW_DAYS,
+    );
+    const queryRangeStartDate = this.shiftDateInTimeZone(todayDate, -(queryWindowDays - 1));
+    const lossRangeStart = this.shiftDateInTimeZone(todayDate, -(DASHBOARD_LOSS_WINDOW_DAYS - 1));
+    const ticketRangeStart = this.shiftDateInTimeZone(todayDate, -(DASHBOARD_TICKET_WINDOW_DAYS - 1));
+    const todayWeekdayIndex = WEEKDAY_INDEX[getWeekdayKey(todayDate, APP_TIMEZONE)];
+    const weekStartDate = this.shiftDateInTimeZone(todayDate, -(todayWeekdayIndex - 1));
+    const weekEndDate = this.shiftDateInTimeZone(weekStartDate, 6);
+    const occupancyHours = Array.from(
+      { length: DASHBOARD_OCCUPANCY_END_HOUR - DASHBOARD_OCCUPANCY_START_HOUR + 1 },
+      (_, index) => DASHBOARD_OCCUPANCY_START_HOUR + index,
+    );
+
+    const [barbers, appointments] = await Promise.all([
+      this.prisma.barber.findMany({
+        where: { localId },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      }),
+      this.prisma.appointment.findMany({
+        where: {
+          localId,
+          ...(selectedBarberId ? { barberId: selectedBarberId } : {}),
+          startDateTime: {
+            gte: startOfDayInTimeZone(queryRangeStartDate, APP_TIMEZONE),
+            lte: endOfDayInTimeZone(todayDate, APP_TIMEZONE),
+          },
+        },
+        orderBy: { startDateTime: 'asc' },
+        select: {
+          id: true,
+          startDateTime: true,
+          status: true,
+          price: true,
+          guestName: true,
+          serviceNameSnapshot: true,
+          barberNameSnapshot: true,
+          user: { select: { name: true } },
+          service: { select: { name: true } },
+          barber: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    const todayAppointments: DashboardSummaryTodayAppointment[] = [];
+    const revenueByDate = new Map<string, number>();
+    const serviceMixByName = new Map<string, number>();
+    const ticketByDate = new Map<string, { total: number; count: number }>();
+    const lossByWeekday = WEEKDAY_ORDER.map((_, index) => ({
+      day: index + 1,
+      noShow: 0,
+      cancelled: 0,
+    }));
+    const occupancyMatrix = occupancyHours.map(() => Array.from({ length: 7 }, () => 0));
+    let maxOccupancy = 1;
+    let todayRevenue = 0;
+    let weekCancelled = 0;
+    let weekNoShow = 0;
+
+    for (const appointment of appointments) {
+      const dateOnly = formatDateInTimeZone(appointment.startDateTime, APP_TIMEZONE);
+      const status = appointment.status;
+      const isActive =
+        status !== AppointmentStatus.cancelled && status !== AppointmentStatus.no_show;
+      const isRevenue = status === AppointmentStatus.completed;
+      const weekdayIndex = WEEKDAY_INDEX[getWeekdayKey(dateOnly, APP_TIMEZONE)];
+      const serviceName =
+        appointment.service?.name ||
+        appointment.serviceNameSnapshot ||
+        'Servicio eliminado';
+      const barberName =
+        appointment.barber?.name ||
+        appointment.barberNameSnapshot ||
+        'Profesional eliminado';
+      const clientName =
+        appointment.guestName?.trim() ||
+        appointment.user?.name?.trim() ||
+        'Sin nombre';
+      const price = Number(appointment.price || 0);
+
+      if (dateOnly === todayDate && isActive) {
+        todayAppointments.push({
+          id: appointment.id,
+          startDateTime: appointment.startDateTime.toISOString(),
+          serviceName,
+          barberName,
+          clientName,
+        });
+      }
+
+      if (dateOnly === todayDate && isRevenue) {
+        todayRevenue += price;
+      }
+
+      if (
+        this.isDateWithinRange(dateOnly, weekStartDate, weekEndDate) &&
+        status === AppointmentStatus.cancelled
+      ) {
+        weekCancelled += 1;
+      }
+      if (
+        this.isDateWithinRange(dateOnly, weekStartDate, weekEndDate) &&
+        status === AppointmentStatus.no_show
+      ) {
+        weekNoShow += 1;
+      }
+
+      if (isRevenue) {
+        revenueByDate.set(dateOnly, (revenueByDate.get(dateOnly) || 0) + price);
+      }
+
+      if (isRevenue && this.isDateWithinRange(dateOnly, lossRangeStart, todayDate)) {
+        serviceMixByName.set(serviceName, (serviceMixByName.get(serviceName) || 0) + 1);
+      }
+
+      if (isRevenue && this.isDateWithinRange(dateOnly, ticketRangeStart, todayDate)) {
+        const current = ticketByDate.get(dateOnly) || { total: 0, count: 0 };
+        current.total += price;
+        current.count += 1;
+        ticketByDate.set(dateOnly, current);
+      }
+
+      if (
+        this.isDateWithinRange(dateOnly, lossRangeStart, todayDate) &&
+        (status === AppointmentStatus.no_show || status === AppointmentStatus.cancelled)
+      ) {
+        const entry = lossByWeekday[weekdayIndex - 1];
+        if (status === AppointmentStatus.no_show) {
+          entry.noShow += 1;
+        } else {
+          entry.cancelled += 1;
+        }
+      }
+
+      if (isActive && this.isDateWithinRange(dateOnly, lossRangeStart, todayDate)) {
+        const hour = Number(formatTimeInTimeZone(appointment.startDateTime, APP_TIMEZONE).slice(0, 2));
+        const hourIndex = occupancyHours.indexOf(hour);
+        if (hourIndex !== -1) {
+          occupancyMatrix[hourIndex][weekdayIndex - 1] += 1;
+          maxOccupancy = Math.max(maxOccupancy, occupancyMatrix[hourIndex][weekdayIndex - 1]);
+        }
+      }
+    }
+
+    const revenueDaily: Array<{ date: string; value: number }> = [];
+    for (let offset = 0; offset < windowDays; offset += 1) {
+      const date = this.shiftDateInTimeZone(rangeStartDate, offset);
+      revenueDaily.push({ date, value: Number((revenueByDate.get(date) || 0).toFixed(2)) });
+    }
+
+    const serviceMixEntries = Array.from(serviceMixByName.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+    const serviceMixTop = serviceMixEntries.slice(0, 5);
+    const serviceMixOthers = serviceMixEntries
+      .slice(5)
+      .reduce((sum, item) => sum + item.value, 0);
+    const serviceMix =
+      serviceMixOthers > 0
+        ? [...serviceMixTop, { name: 'Otros', value: serviceMixOthers }]
+        : serviceMixTop;
+
+    const ticketDaily: Array<{ date: string; value: number }> = [];
+    let ticketAverageAccumulator = 0;
+    for (let offset = 0; offset < DASHBOARD_TICKET_WINDOW_DAYS; offset += 1) {
+      const date = this.shiftDateInTimeZone(ticketRangeStart, offset);
+      const entry = ticketByDate.get(date);
+      const value = entry && entry.count > 0 ? Number((entry.total / entry.count).toFixed(2)) : 0;
+      ticketAverageAccumulator += value;
+      ticketDaily.push({ date, value });
+    }
+    const ticketAverage = Number(
+      (ticketAverageAccumulator / (ticketDaily.length || 1)).toFixed(2),
+    );
+
+    return {
+      windowDays,
+      generatedAt: now.toISOString(),
+      barbers,
+      stats: {
+        todayAppointments: todayAppointments.length,
+        revenueToday: Number(todayRevenue.toFixed(2)),
+        weekCancelled,
+        weekNoShow,
+      },
+      todayAppointments,
+      revenueDaily,
+      serviceMix,
+      ticketDaily,
+      ticketAverage,
+      lossByWeekday,
+      occupancy: {
+        hours: occupancyHours,
+        matrix: occupancyMatrix,
+        max: maxOccupancy,
+      },
+    };
+  }
+
+  async getWeeklyLoad(dateFrom?: string, dateTo?: string, barberIds?: string[]) {
+    if (!dateFrom || !dateTo) {
+      throw new BadRequestException('dateFrom y dateTo son obligatorios.');
+    }
+    const localId = getCurrentLocalId();
+    const normalizedBarberIds = Array.from(new Set((barberIds || []).filter(Boolean)));
+    const where: Prisma.AppointmentWhereInput = {
+      localId,
+      status: { not: 'cancelled' },
+      startDateTime: {
+        gte: startOfDayInTimeZone(dateFrom, APP_TIMEZONE),
+        lte: endOfDayInTimeZone(dateTo, APP_TIMEZONE),
+      },
+      ...(normalizedBarberIds.length > 0 ? { barberId: { in: normalizedBarberIds } } : {}),
+    };
+
+    const grouped = await this.prisma.appointment.groupBy({
+      by: ['barberId'],
+      where,
+      _count: { _all: true },
+    });
+
+    const counts: Record<string, number> = {};
+    if (normalizedBarberIds.length > 0) {
+      normalizedBarberIds.forEach((barberId) => {
+        counts[barberId] = 0;
+      });
+    }
+    grouped.forEach((item) => {
+      counts[item.barberId] = item._count._all;
+    });
+
+    return { counts };
+  }
+
+  async findPage(params: AppointmentListFilters & { page: number; pageSize: number }) {
+    const where = this.buildListWhere(params);
+    const [total, appointments] = await this.prisma.$transaction([
+      this.prisma.appointment.count({ where }),
+      this.prisma.appointment.findMany({
+        where,
+        orderBy: this.buildListOrder(params),
+        include: { service: true, products: { include: { product: true } } },
+        skip: (params.page - 1) * params.pageSize,
+        take: params.pageSize,
+      }),
+    ]);
+
+    return {
+      total,
+      page: params.page,
+      pageSize: params.pageSize,
+      hasMore: params.page * params.pageSize < total,
+      items: appointments.map(mapAppointment),
+    };
+  }
+
+  async findPageWithClients(params: AppointmentListFilters & { page: number; pageSize: number }) {
+    const where = this.buildListWhere(params);
+    const [total, appointments] = await this.prisma.$transaction([
+      this.prisma.appointment.count({ where }),
+      this.prisma.appointment.findMany({
+        where,
+        orderBy: this.buildListOrder(params),
+        include: {
+          service: true,
+          products: { include: { product: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+        skip: (params.page - 1) * params.pageSize,
+        take: params.pageSize,
+      }),
+    ]);
+
+    const clientMap = new Map<string, AdminSearchClient>();
+    appointments.forEach((appointment) => {
+      const user = appointment.user;
+      if (!user) return;
+      clientMap.set(user.id, {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+      });
+    });
+
+    return {
+      total,
+      page: params.page,
+      pageSize: params.pageSize,
+      hasMore: params.page * params.pageSize < total,
+      items: appointments.map(mapAppointment),
+      clients: Array.from(clientMap.values()),
+    };
+  }
+
+  async findRangeWithClients(params: AppointmentListFilters) {
+    const where = this.buildListWhere(params);
     const appointments = await this.prisma.appointment.findMany({
       where,
-      orderBy: { startDateTime: 'asc' },
-      include: { service: true, products: { include: { product: true } } },
+      orderBy: this.buildListOrder(params),
+      include: {
+        service: true,
+        products: { include: { product: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+      },
     });
-    await this.syncAppointmentStatuses(appointments);
-    return appointments.map(mapAppointment);
+
+    const clientMap = new Map<string, AdminCalendarClient>();
+    appointments.forEach((appointment) => {
+      const user = appointment.user;
+      if (!user) return;
+      clientMap.set(user.id, {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+      });
+    });
+
+    return {
+      items: appointments.map(mapAppointment),
+      clients: Array.from(clientMap.values()),
+    };
   }
 
   async findOne(id: string) {
@@ -923,46 +1351,20 @@ export class AppointmentsService {
     return this.syncAppointmentStatuses(appointments);
   }
 
-  async getAvailableSlots(
-    barberId: string,
-    date: string,
-    options?: { serviceId?: string; appointmentIdToIgnore?: string },
-  ): Promise<string[]> {
-    const localId = getCurrentLocalId();
-    const barber = await this.prisma.barber.findFirst({
-      where: { id: barberId, localId },
-    });
-    const dateOnly = date.split('T')[0];
-    if (!barber || barber.isActive === false) return [];
-
-    if (options?.serviceId) {
-      const canProvideService = await this.barbersService.isBarberAllowedForService(
-        barberId,
-        options.serviceId,
-      );
-      if (!canProvideService) return [];
-    }
-
-    const startDate = barber.startDate ? barber.startDate.toISOString().split('T')[0] : null;
-    const endDate = barber.endDate ? barber.endDate.toISOString().split('T')[0] : null;
-    if (startDate && dateOnly < startDate) return [];
-    if (endDate && dateOnly > endDate) return [];
-
-    const schedule = await this.schedulesService.getBarberSchedule(barberId);
-    const shopSchedule = await this.schedulesService.getShopSchedule();
+  private computeAvailableSlotsForBarber(params: {
+    dateOnly: string;
+    schedule: ShopSchedule;
+    shopSchedule: ShopSchedule;
+    appointments: AppointmentSlotRecord[];
+    targetDuration: number;
+  }): string[] {
+    const { dateOnly, schedule, shopSchedule, appointments, targetDuration } = params;
     const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
     const endOverflowMinutes = schedule.endOverflowMinutes ?? shopSchedule.endOverflowMinutes ?? 0;
     const dayKey = getWeekdayKey(dateOnly, APP_TIMEZONE);
     const daySchedule = (schedule || DEFAULT_SHOP_SCHEDULE)[dayKey];
     if (!daySchedule || daySchedule.closed) return [];
     const dayBreaks = shopSchedule.breaks?.[dayKey] ?? [];
-
-    const generalHolidays = await this.holidaysService.getGeneralHolidays();
-    if (generalHolidays.some((range) => isDateInRange(dateOnly, normalizeRange(range)))) return [];
-    const barberHolidays = await this.holidaysService.getBarberHolidays(barberId);
-    if (barberHolidays.some((range) => isDateInRange(dateOnly, normalizeRange(range)))) return [];
-
-    const targetDuration = await this.getServiceDuration(options?.serviceId);
     const targetDurationWithBuffer = targetDuration + Math.max(0, bufferMinutes);
     const normalizedEndOverflow = Math.max(0, Math.floor(endOverflowMinutes));
 
@@ -1002,20 +1404,6 @@ export class AppointmentsService {
     ];
     if (rawSlots.length === 0) return [];
     const uniqueSlots = Array.from(new Set(rawSlots));
-
-    const appointments = await this.prisma.appointment.findMany({
-      where: {
-        localId,
-        barberId,
-        status: { not: 'cancelled' },
-        startDateTime: {
-          gte: startOfDayInTimeZone(dateOnly, APP_TIMEZONE),
-          lte: endOfDayInTimeZone(dateOnly, APP_TIMEZONE),
-        },
-        NOT: options?.appointmentIdToIgnore ? { id: options.appointmentIdToIgnore } : undefined,
-      },
-      include: { service: true },
-    });
 
     const bookedRanges = appointments.map((appointment) => {
       const start = appointment.startDateTime;
@@ -1108,6 +1496,204 @@ export class AppointmentsService {
     return Array.from(slotSet).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
   }
 
+  async getAvailableSlots(
+    barberId: string,
+    date: string,
+    options?: { serviceId?: string; appointmentIdToIgnore?: string },
+  ): Promise<string[]> {
+    const localId = getCurrentLocalId();
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, localId },
+    });
+    const dateOnly = date.split('T')[0];
+    if (!barber || barber.isActive === false) return [];
+
+    if (options?.serviceId) {
+      const canProvideService = await this.barbersService.isBarberAllowedForService(
+        barberId,
+        options.serviceId,
+      );
+      if (!canProvideService) return [];
+    }
+
+    const startDate = barber.startDate ? barber.startDate.toISOString().split('T')[0] : null;
+    const endDate = barber.endDate ? barber.endDate.toISOString().split('T')[0] : null;
+    if (startDate && dateOnly < startDate) return [];
+    if (endDate && dateOnly > endDate) return [];
+
+    const [schedule, shopSchedule, generalHolidays, barberHolidays, targetDuration] = await Promise.all([
+      this.schedulesService.getBarberSchedule(barberId),
+      this.schedulesService.getShopSchedule(),
+      this.holidaysService.getGeneralHolidays(),
+      this.holidaysService.getBarberHolidays(barberId),
+      this.getServiceDuration(options?.serviceId),
+    ]);
+
+    if (generalHolidays.some((range) => isDateInRange(dateOnly, normalizeRange(range)))) return [];
+    if (barberHolidays.some((range) => isDateInRange(dateOnly, normalizeRange(range)))) return [];
+
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        localId,
+        barberId,
+        status: { not: 'cancelled' },
+        startDateTime: {
+          gte: startOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+          lte: endOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+        },
+        NOT: options?.appointmentIdToIgnore ? { id: options.appointmentIdToIgnore } : undefined,
+      },
+      include: { service: true },
+    });
+
+    return this.computeAvailableSlotsForBarber({
+      dateOnly,
+      schedule,
+      shopSchedule,
+      appointments,
+      targetDuration,
+    });
+  }
+
+  async getAvailableSlotsBatch(
+    date?: string,
+    barberIds?: string[],
+    options?: { serviceId?: string; appointmentIdToIgnore?: string },
+  ): Promise<Record<string, string[]>> {
+    if (!date) {
+      throw new BadRequestException('date es obligatorio.');
+    }
+    const normalizedBarberIds = Array.from(new Set((barberIds || []).filter(Boolean)));
+    if (normalizedBarberIds.length === 0) {
+      return {};
+    }
+    if (normalizedBarberIds.length > 30) {
+      throw new BadRequestException('Maximo 30 barberIds por solicitud.');
+    }
+
+    const localId = getCurrentLocalId();
+    const dateOnly = date.split('T')[0];
+    const emptyResponse = Object.fromEntries(
+      normalizedBarberIds.map((barberId) => [barberId, [] as string[]]),
+    );
+
+    const [
+      targetDuration,
+      shopSchedule,
+      generalHolidays,
+      barbers,
+      barberSchedules,
+      barberHolidaysRaw,
+      appointments,
+      eligibleBarberIds,
+    ] = await Promise.all([
+      this.getServiceDuration(options?.serviceId),
+      this.schedulesService.getShopSchedule(),
+      this.holidaysService.getGeneralHolidays(),
+      this.prisma.barber.findMany({
+        where: { localId, id: { in: normalizedBarberIds } },
+        select: { id: true, isActive: true, startDate: true, endDate: true },
+      }),
+      this.prisma.barberSchedule.findMany({
+        where: { localId, barberId: { in: normalizedBarberIds } },
+        select: { barberId: true, data: true },
+      }),
+      this.prisma.barberHoliday.findMany({
+        where: { localId, barberId: { in: normalizedBarberIds } },
+        select: { barberId: true, start: true, end: true },
+      }),
+      this.prisma.appointment.findMany({
+        where: {
+          localId,
+          barberId: { in: normalizedBarberIds },
+          status: { not: 'cancelled' },
+          startDateTime: {
+            gte: startOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+            lte: endOfDayInTimeZone(dateOnly, APP_TIMEZONE),
+          },
+          NOT: options?.appointmentIdToIgnore ? { id: options.appointmentIdToIgnore } : undefined,
+        },
+        include: { service: { select: { duration: true } } },
+      }),
+      options?.serviceId
+        ? this.barbersService.getEligibleBarberIdsForService(options.serviceId, normalizedBarberIds)
+        : Promise.resolve(normalizedBarberIds),
+    ]);
+
+    if (generalHolidays.some((range) => isDateInRange(dateOnly, normalizeRange(range)))) {
+      return emptyResponse;
+    }
+
+    const barberById = new Map(barbers.map((barber) => [barber.id, barber]));
+    const fallbackSchedule = normalizeSchedule(shopSchedule, { preserveEndOverflowUndefined: true });
+    const scheduleByBarberId = new Map(
+      barberSchedules.map((record) => [
+        record.barberId,
+        normalizeSchedule(record.data as Partial<ShopSchedule>, { preserveEndOverflowUndefined: true }),
+      ]),
+    );
+    const barberHolidaysByBarberId = new Map<string, Array<{ start: string; end: string }>>();
+    barberHolidaysRaw.forEach((holiday) => {
+      const existing = barberHolidaysByBarberId.get(holiday.barberId) || [];
+      existing.push(
+        normalizeRange({
+          start: holiday.start.toISOString().split('T')[0],
+          end: holiday.end.toISOString().split('T')[0],
+        }),
+      );
+      barberHolidaysByBarberId.set(holiday.barberId, existing);
+    });
+    const appointmentsByBarberId = new Map<string, AppointmentSlotRecord[]>();
+    appointments.forEach((appointment) => {
+      const existing = appointmentsByBarberId.get(appointment.barberId) || [];
+      existing.push({
+        startDateTime: appointment.startDateTime,
+        service: appointment.service,
+      });
+      appointmentsByBarberId.set(appointment.barberId, existing);
+    });
+    const eligibleSet = new Set(eligibleBarberIds);
+
+    const response: Record<string, string[]> = {};
+    normalizedBarberIds.forEach((barberId) => {
+      const barber = barberById.get(barberId);
+      if (!barber || barber.isActive === false) {
+        response[barberId] = [];
+        return;
+      }
+
+      if (options?.serviceId && !eligibleSet.has(barberId)) {
+        response[barberId] = [];
+        return;
+      }
+
+      const startDate = barber.startDate ? barber.startDate.toISOString().split('T')[0] : null;
+      const endDate = barber.endDate ? barber.endDate.toISOString().split('T')[0] : null;
+      if ((startDate && dateOnly < startDate) || (endDate && dateOnly > endDate)) {
+        response[barberId] = [];
+        return;
+      }
+
+      const barberHolidays = barberHolidaysByBarberId.get(barberId) || [];
+      if (barberHolidays.some((range) => isDateInRange(dateOnly, range))) {
+        response[barberId] = [];
+        return;
+      }
+
+      const schedule = scheduleByBarberId.get(barberId) || fallbackSchedule;
+      const barberAppointments = appointmentsByBarberId.get(barberId) || [];
+      response[barberId] = this.computeAvailableSlotsForBarber({
+        dateOnly,
+        schedule,
+        shopSchedule,
+        appointments: barberAppointments,
+        targetDuration,
+      });
+    });
+
+    return response;
+  }
+
   private async notifyAppointment(appointment: any, action: 'creada' | 'actualizada' | 'cancelada') {
     const contact = this.getContact(appointment.user, appointment.guestName, appointment.guestContact);
     const allowEmail = appointment.user ? appointment.user.notificationEmail !== false : true;
@@ -1170,11 +1756,19 @@ export class AppointmentsService {
     if (updates.length > 0) {
       await Promise.all(updates);
     }
-    for (const id of completedIds) {
-      await this.rewardsService.confirmWalletHold(id);
-      await this.rewardsService.confirmCouponUsage(id);
-      await this.referralAttributionService.handleAppointmentCompleted(id);
-      await this.reviewRequestService.handleAppointmentCompleted(id);
+    const BATCH_SIZE = 20;
+    for (let index = 0; index < completedIds.length; index += BATCH_SIZE) {
+      const batch = completedIds.slice(index, index + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (id) => {
+          await Promise.all([
+            this.rewardsService.confirmWalletHold(id),
+            this.rewardsService.confirmCouponUsage(id),
+            this.referralAttributionService.handleAppointmentCompleted(id),
+            this.reviewRequestService.handleAppointmentCompleted(id),
+          ]);
+        }),
+      );
     }
     return updatedCount;
   }

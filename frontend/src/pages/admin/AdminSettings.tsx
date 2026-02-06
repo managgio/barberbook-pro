@@ -6,13 +6,16 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
-import { BreakRange, DayKey, ShopSchedule, SiteSettings } from '@/data/types';
-import { getShopSchedule, getSiteSettings, updateShopSchedule, updateSiteSettings, getAdminStripeConfig, updateAdminStripeConfig, createAdminStripeConnect } from '@/data/api';
+import { AdminStripeConfig, BreakRange, DayKey, ShopSchedule, SiteSettings } from '@/data/types';
+import { getShopSchedule, updateShopSchedule, updateSiteSettings, getAdminStripeConfig, updateAdminStripeConfig, createAdminStripeConnect } from '@/data/api';
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
-import { dispatchSchedulesUpdated } from '@/lib/adminEvents';
+import { dispatchSchedulesUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   Loader2,
   MapPin,
@@ -50,19 +53,6 @@ type ShiftKey = (typeof SHIFT_KEYS)[number];
 const cloneSettings = (data: SiteSettings): SiteSettings => JSON.parse(JSON.stringify(data));
 const DEFAULT_BREAK_RANGE: BreakRange = { start: '13:30', end: '14:00' };
 
-type AdminStripeConfig = {
-  mode: 'brand' | 'location';
-  brandEnabled: boolean;
-  platformEnabled: boolean;
-  localEnabled: boolean;
-  accountIdExists: boolean;
-  status?: {
-    chargesEnabled: boolean;
-    payoutsEnabled: boolean;
-    detailsSubmitted: boolean;
-  } | null;
-};
-
 const AdminSettings: React.FC = () => {
   const XBrandIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg
@@ -77,78 +67,76 @@ const AdminSettings: React.FC = () => {
   );
 
   const { toast } = useToast();
-  const { tenant } = useTenant();
+  const { tenant, currentLocationId } = useTenant();
   const copy = useBusinessCopy();
   const productsModuleEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('stock');
   const [settings, setSettings] = useState<SiteSettings>(() => cloneSettings(DEFAULT_SITE_SETTINGS));
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [shopSchedule, setShopSchedule] = useState<ShopSchedule | null>(null);
-  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
-  const [stripeConfig, setStripeConfig] = useState<AdminStripeConfig | null>(null);
-  const [isStripeLoading, setIsStripeLoading] = useState(false);
   const [isStripeSaving, setIsStripeSaving] = useState(false);
   const [isStripeConnecting, setIsStripeConnecting] = useState(false);
   const [{ prefix: phonePrefix, number: phoneNumber }, setPhoneParts] = useState(() =>
     normalizePhoneParts(DEFAULT_SITE_SETTINGS.contact.phone)
   );
-
-  const loadSettings = async () => {
-    setIsLoading(true);
-    try {
-      const data = await getSiteSettings();
-      setSettings(data);
-      setPhoneParts(normalizePhoneParts(data.contact.phone));
-    } catch (error) {
-      toast({
-        title: 'No se pudo cargar la configuración',
-        description: 'Intenta de nuevo en unos segundos.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadShopSchedule = async () => {
-    setIsScheduleLoading(true);
-    try {
-      const schedule = await getShopSchedule();
-      setShopSchedule(schedule);
-    } catch (error) {
-      toast({
-        title: 'No se pudo cargar la disponibilidad',
-        description: 'Intenta de nuevo en unos segundos.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsScheduleLoading(false);
-    }
-  };
-
-  const loadStripeConfig = async () => {
-    setIsStripeLoading(true);
-    try {
-      const data = await getAdminStripeConfig();
-      setStripeConfig(data);
-    } catch (error) {
-      toast({
-        title: 'No se pudo cargar Stripe',
-        description: 'Revisa la conexión e intenta de nuevo.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsStripeLoading(false);
-    }
-  };
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.siteSettings(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: () => fetchSiteSettingsCached(currentLocationId),
+  });
+  const scheduleQuery = useQuery({
+    queryKey: queryKeys.shopSchedule(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: getShopSchedule,
+  });
+  const stripeConfigQuery = useQuery<AdminStripeConfig>({
+    queryKey: queryKeys.adminStripeConfig(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: getAdminStripeConfig,
+  });
+  const isLoading = settingsQuery.isLoading;
+  const isScheduleLoading = scheduleQuery.isLoading;
+  const isStripeLoading = stripeConfigQuery.isLoading;
+  const stripeConfig = stripeConfigQuery.data ?? null;
 
   useEffect(() => {
-    loadSettings();
-    loadShopSchedule();
-    loadStripeConfig();
-  }, []);
+    if (!settingsQuery.data) return;
+    setSettings(cloneSettings(settingsQuery.data));
+    setPhoneParts(normalizePhoneParts(settingsQuery.data.contact.phone));
+  }, [settingsQuery.data]);
+
+  useEffect(() => {
+    if (!scheduleQuery.data) return;
+    setShopSchedule(scheduleQuery.data);
+  }, [scheduleQuery.data]);
+
+  useEffect(() => {
+    if (!settingsQuery.error) return;
+    toast({
+      title: 'No se pudo cargar la configuración',
+      description: 'Intenta de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [settingsQuery.error, toast]);
+
+  useEffect(() => {
+    if (!scheduleQuery.error) return;
+    toast({
+      title: 'No se pudo cargar la disponibilidad',
+      description: 'Intenta de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [scheduleQuery.error, toast]);
+
+  useEffect(() => {
+    if (!stripeConfigQuery.error) return;
+    toast({
+      title: 'No se pudo cargar Stripe',
+      description: 'Revisa la conexión e intenta de nuevo.',
+      variant: 'destructive',
+    });
+  }, [stripeConfigQuery.error, toast]);
 
   const buildSettingsPayload = (nextSettings: SiteSettings) => {
     const phone = composePhone(phonePrefix, phoneNumber);
@@ -164,13 +152,17 @@ const AdminSettings: React.FC = () => {
   };
 
   const handleSave = async (fromSchedule = false) => {
-    fromSchedule ? setIsSavingSchedule(true) : setIsSaving(true);
+    if (fromSchedule) {
+      setIsSavingSchedule(true);
+    } else {
+      setIsSaving(true);
+    }
     try {
       const payload = buildSettingsPayload(settings);
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
       setPhoneParts(normalizePhoneParts(updated.contact.phone));
-      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      dispatchSiteSettingsUpdated(updated);
       toast({
         title: 'Configuración actualizada',
         description: fromSchedule ? 'Horario guardado.' : 'Los cambios se han guardado correctamente.',
@@ -183,7 +175,11 @@ const AdminSettings: React.FC = () => {
         variant: 'destructive',
       });
     } finally {
-      fromSchedule ? setIsSavingSchedule(false) : setIsSaving(false);
+      if (fromSchedule) {
+        setIsSavingSchedule(false);
+      } else {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -197,7 +193,7 @@ const AdminSettings: React.FC = () => {
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
       setPhoneParts(normalizePhoneParts(updated.contact.phone));
-      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      dispatchSiteSettingsUpdated(updated);
       toast({
         title: 'Preferencias actualizadas',
         description: 'Los cambios se han guardado correctamente.',
@@ -219,7 +215,7 @@ const AdminSettings: React.FC = () => {
     setIsStripeSaving(true);
     try {
       await updateAdminStripeConfig(enabled);
-      setStripeConfig((prev) => (prev ? { ...prev, localEnabled: enabled } : prev));
+      await stripeConfigQuery.refetch();
       toast({
         title: 'Preferencias de pago actualizadas',
         description: enabled
@@ -245,7 +241,7 @@ const AdminSettings: React.FC = () => {
       if (data?.url) {
         window.open(data.url, '_blank', 'noopener');
       }
-      await loadStripeConfig();
+      await stripeConfigQuery.refetch();
     } catch (error) {
       toast({
         title: 'No se pudo iniciar Stripe',
@@ -364,6 +360,7 @@ const AdminSettings: React.FC = () => {
     try {
       const updated = await updateShopSchedule(shopSchedule);
       setShopSchedule(updated);
+      await scheduleQuery.refetch();
       dispatchSchedulesUpdated({ source: 'admin-settings' });
       toast({
         title: 'Disponibilidad actualizada',

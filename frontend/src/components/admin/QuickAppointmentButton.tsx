@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getUsers, getBarbers, getServices, getAvailableSlots, createAppointment, getServiceCategories, getSiteSettings, getAdminProducts, getProductCategories } from '@/data/api';
+import { getAvailableSlots, createAppointment, getUsersPage } from '@/data/api';
 import { Barber, Product, ProductCategory, Service, ServiceCategory, User } from '@/data/types';
 import { Plus, Search, Loader2, UserCircle2, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,14 @@ import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
 import { isBarberEligibleForService } from '@/lib/barberServiceAssignment';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import {
+  fetchAdminProductsCached,
+  fetchBarbersCached,
+  fetchProductCategoriesCached,
+  fetchServiceCategoriesCached,
+  fetchServicesCached,
+} from '@/lib/catalogQuery';
 
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
@@ -21,8 +29,8 @@ const QuickAppointmentButton: React.FC = () => {
     ? `${copy.staff.singularLower} compatible`
     : `${copy.staff.pluralLower} compatibles`;
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(true);
-  const [clients, setClients] = useState<User[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
@@ -35,7 +43,10 @@ const QuickAppointmentButton: React.FC = () => {
   const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
 
   const [clientSearch, setClientSearch] = useState('');
+  const [clientSearchResults, setClientSearchResults] = useState<User[]>([]);
+  const [isClientSearchLoading, setIsClientSearchLoading] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedClient, setSelectedClient] = useState<User | null>(null);
   const [useGuest, setUseGuest] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestContact, setGuestContact] = useState('');
@@ -55,16 +66,14 @@ const QuickAppointmentButton: React.FC = () => {
       setIsLoadingData(true);
     }
     try {
-      const [usersData, barbersData, servicesData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
-        getUsers(),
-        getBarbers(),
-        getServices(),
-        getServiceCategories(true),
-        getSiteSettings(),
-        getAdminProducts(),
-        getProductCategories(true),
+      const [barbersData, servicesData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
+        fetchBarbersCached(),
+        fetchServicesCached(),
+        fetchServiceCategoriesCached(),
+        fetchSiteSettingsCached(),
+        fetchAdminProductsCached(),
+        fetchProductCategoriesCached(),
       ]);
-      setClients(usersData.filter((user) => user.role === 'client'));
       setBarbers(barbersData);
       setServices(servicesData);
       setServiceCategories(categoriesData);
@@ -73,6 +82,7 @@ const QuickAppointmentButton: React.FC = () => {
       setProductsEnabled(settingsData.products.enabled);
       setProducts(productsData);
       setProductCategories(productCategoriesData);
+      setHasLoadedData(true);
     } catch (error) {
       console.error(error);
       toast({
@@ -88,26 +98,64 @@ const QuickAppointmentButton: React.FC = () => {
   }, [toast]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
+    if (!isOpen) return;
     const handleRefresh = () => {
-      fetchData(false);
+      void fetchData(false);
     };
     window.addEventListener(ADMIN_EVENTS.servicesUpdated, handleRefresh);
     window.addEventListener(ADMIN_EVENTS.barbersUpdated, handleRefresh);
+    window.addEventListener(ADMIN_EVENTS.productsUpdated, handleRefresh);
+    window.addEventListener(ADMIN_EVENTS.usersUpdated, handleRefresh);
     return () => {
       window.removeEventListener(ADMIN_EVENTS.servicesUpdated, handleRefresh);
       window.removeEventListener(ADMIN_EVENTS.barbersUpdated, handleRefresh);
+      window.removeEventListener(ADMIN_EVENTS.productsUpdated, handleRefresh);
+      window.removeEventListener(ADMIN_EVENTS.usersUpdated, handleRefresh);
     };
-  }, [fetchData]);
+  }, [isOpen, fetchData]);
 
   useEffect(() => {
-    if (isOpen) {
-      fetchData(false);
+    if (!isOpen || useGuest) {
+      setClientSearchResults([]);
+      setIsClientSearchLoading(false);
+      return;
     }
-  }, [isOpen, fetchData]);
+    const query = clientSearch.trim();
+    if (query.length < 2) {
+      setClientSearchResults([]);
+      setIsClientSearchLoading(false);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setIsClientSearchLoading(true);
+      try {
+        const page = await getUsersPage({
+          page: 1,
+          pageSize: 25,
+          role: 'client',
+          q: query,
+        });
+        if (!active) return;
+        setClientSearchResults(page.items);
+      } catch (error) {
+        if (!active) return;
+        setClientSearchResults([]);
+      } finally {
+        if (active) setIsClientSearchLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [clientSearch, isOpen, useGuest]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void fetchData(!hasLoadedData);
+  }, [isOpen, hasLoadedData, fetchData]);
 
   const refreshSlots = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -142,8 +190,9 @@ const QuickAppointmentButton: React.FC = () => {
   );
 
   useEffect(() => {
+    if (!isOpen) return;
     refreshSlots();
-  }, [refreshSlots, services, barbers]);
+  }, [isOpen, refreshSlots, services, barbers]);
 
   const selectedService = useMemo(
     () => services.find((service) => service.id === selectedServiceId) ?? null,
@@ -171,6 +220,7 @@ const QuickAppointmentButton: React.FC = () => {
   }, [eligibleBarbers, selectedBarberId]);
 
   useEffect(() => {
+    if (!isOpen) return;
     const handleScheduleRefresh = () => {
       void refreshSlots({ silent: true });
     };
@@ -178,17 +228,7 @@ const QuickAppointmentButton: React.FC = () => {
     return () => {
       window.removeEventListener(ADMIN_EVENTS.schedulesUpdated, handleScheduleRefresh);
     };
-  }, [refreshSlots]);
-
-  const filteredClients = useMemo(() => {
-    const query = clientSearch.trim().toLowerCase();
-    if (!query) return [];
-    return clients.filter((client) =>
-      `${client.name} ${client.email} ${client.phone || ''}`
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [clients, clientSearch]);
+  }, [isOpen, refreshSlots]);
 
   const slotGroups = useMemo(() => {
     const morning: string[] = [];
@@ -253,7 +293,10 @@ const QuickAppointmentButton: React.FC = () => {
 
   const resetForm = () => {
     setClientSearch('');
+    setClientSearchResults([]);
+    setIsClientSearchLoading(false);
     setSelectedClientId(null);
+    setSelectedClient(null);
     setUseGuest(false);
     setGuestName('');
     setGuestContact('');
@@ -273,10 +316,12 @@ const QuickAppointmentButton: React.FC = () => {
     }
   };
 
-  const handleSelectClient = (clientId: string) => {
-    setSelectedClientId(clientId);
+  const handleSelectClient = (client: User) => {
+    setSelectedClientId(client.id);
+    setSelectedClient(client);
     setUseGuest(false);
     setClientSearch('');
+    setClientSearchResults([]);
   };
 
   const canCreate = useMemo(() => {
@@ -423,16 +468,20 @@ const QuickAppointmentButton: React.FC = () => {
                     </div>
                     {clientSearch.trim().length > 0 ? (
                       <div className="max-h-48 overflow-y-auto rounded-2xl border border-border divide-y divide-border/60">
-                        {filteredClients.length === 0 ? (
+                        {isClientSearchLoading ? (
+                          <p className="text-sm text-muted-foreground px-4 py-3">
+                            Buscando clientes...
+                          </p>
+                        ) : clientSearchResults.length === 0 ? (
                           <p className="text-sm text-muted-foreground px-4 py-3">
                             No se encontraron clientes
                           </p>
                         ) : (
-                          filteredClients.map((client) => (
+                          clientSearchResults.map((client) => (
                             <button
                               key={client.id}
                               type="button"
-                              onClick={() => handleSelectClient(client.id)}
+                              onClick={() => handleSelectClient(client)}
                               className="w-full text-left px-4 py-3 hover:bg-secondary/40 transition-colors"
                             >
                               <p className="font-medium">{client.name}</p>
@@ -447,7 +496,7 @@ const QuickAppointmentButton: React.FC = () => {
                       <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3">
                         <p className="text-xs text-muted-foreground mb-1">Cliente seleccionado</p>
                         <p className="font-medium text-foreground">
-                          {clients.find((client) => client.id === selectedClientId)?.name}
+                          {selectedClient?.name || 'Cliente seleccionado'}
                         </p>
                       </div>
                     ) : null}
@@ -594,7 +643,15 @@ const QuickAppointmentButton: React.FC = () => {
                             <div className="flex items-center gap-3">
                               <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
                                 {item.imageUrl ? (
-                                  <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                  <img
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    loading="lazy"
+                                    decoding="async"
+                                    width={40}
+                                    height={40}
+                                    className="h-full w-full object-cover"
+                                  />
                                 ) : (
                                   <span className="text-[11px] text-muted-foreground">Sin foto</span>
                                 )}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { getAppointments, getBarbers, getServices, getUsers, updateSiteSettings } from '@/data/api';
-import { Appointment, Barber, Service, User } from '@/data/types';
+import { getAdminDashboardSummary, updateSiteSettings } from '@/data/api';
+import { AdminDashboardSummary } from '@/data/types';
 import {
   Calendar,
   ArrowRight,
@@ -35,15 +35,10 @@ import {
 } from 'lucide-react';
 import {
   format,
-  isToday,
   parseISO,
   startOfWeek,
   endOfWeek,
-  isWithinInterval,
-  subDays,
-  isSameDay,
   eachDayOfInterval,
-  getISODay,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
@@ -51,8 +46,12 @@ import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import { useToast } from '@/hooks/use-toast';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
-import { isAppointmentActive, isAppointmentRevenueStatus } from '@/lib/appointmentStatus';
 import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
+import { ADMIN_EVENTS, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
+import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
+import { useTenant } from '@/context/TenantContext';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   ResponsiveContainer,
   LineChart,
@@ -74,9 +73,11 @@ const rangeOptions = [
   { label: '14 días', value: 14 },
   { label: '30 días', value: 30 },
 ];
+const DASHBOARD_WINDOW_DAYS = 30;
 
 const QR_SIZE = 768;
 const SERVICE_MIX_COLORS = ['#22c55e', '#0ea5e9', '#f97316', '#eab308', '#14b8a6', '#94a3b8'];
+const DEFAULT_OCCUPANCY_HOURS = Array.from({ length: 12 }).map((_, index) => 9 + index);
 
 const InfoDialog: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <Dialog>
@@ -98,11 +99,6 @@ const InfoDialog: React.FC<{ title: string; children: React.ReactNode }> = ({ ti
 );
 
 const AdminDashboard: React.FC = () => {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [revenueRange, setRevenueRange] = useState(7);
   const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
@@ -110,137 +106,94 @@ const AdminDashboard: React.FC = () => {
   const [qrAction, setQrAction] = useState<'share' | 'download' | null>(null);
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
   const { canAccessSection } = useAdminPermissions();
+  const { currentLocationId } = useTenant();
   const { toast } = useToast();
   const { settings, isLoading: isSettingsLoading } = useSiteSettings();
   const copy = useBusinessCopy();
   const qrSticker = settings.qrSticker;
+  const dashboardQuery = useQuery<AdminDashboardSummary>({
+    queryKey: queryKeys.adminDashboard(
+      currentLocationId,
+      DASHBOARD_WINDOW_DAYS,
+      selectedBarberId === 'all' ? null : selectedBarberId,
+    ),
+    enabled: Boolean(currentLocationId),
+    staleTime: 30_000,
+    queryFn: () =>
+      getAdminDashboardSummary({
+        windowDays: DASHBOARD_WINDOW_DAYS,
+        barberId: selectedBarberId === 'all' ? null : selectedBarberId,
+      }),
+  });
+  const refreshDashboard = useCallback(() => {
+    void dashboardQuery.refetch();
+  }, [dashboardQuery]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const [appts, barbersData, servicesData, usersData] = await Promise.all([
-        getAppointments(),
-        getBarbers(),
-        getServices({ includeArchived: true }),
-        getUsers(),
-      ]);
-      setAppointments(appts);
-      setBarbers(barbersData);
-      setServices(servicesData);
-      setUsers(usersData);
-      setIsLoading(false);
+    window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, refreshDashboard);
+    window.addEventListener(ADMIN_EVENTS.usersUpdated, refreshDashboard);
+    window.addEventListener(ADMIN_EVENTS.servicesUpdated, refreshDashboard);
+    window.addEventListener(ADMIN_EVENTS.barbersUpdated, refreshDashboard);
+    return () => {
+      window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, refreshDashboard);
+      window.removeEventListener(ADMIN_EVENTS.usersUpdated, refreshDashboard);
+      window.removeEventListener(ADMIN_EVENTS.servicesUpdated, refreshDashboard);
+      window.removeEventListener(ADMIN_EVENTS.barbersUpdated, refreshDashboard);
     };
-    fetchData();
-  }, []);
+  }, [refreshDashboard]);
 
-  const filteredAppointments =
-    selectedBarberId === 'all'
-      ? appointments
-      : appointments.filter((appointment) => appointment.barberId === selectedBarberId);
+  useForegroundRefresh(refreshDashboard);
 
-  const todayAppointments = filteredAppointments.filter(
-    (appointment) =>
-      isToday(parseISO(appointment.startDateTime)) && isAppointmentActive(appointment.status),
-  );
+  const isLoading = dashboardQuery.isLoading;
+  const dashboardSummary = dashboardQuery.data ?? null;
+  const barbers = dashboardSummary?.barbers ?? [];
+  const stats = dashboardSummary?.stats;
+  const todayAppointments = dashboardSummary?.todayAppointments ?? [];
+  const revenueToday = stats?.revenueToday ?? 0;
+  const weekCancelled = stats?.weekCancelled ?? 0;
+  const weekNoShow = stats?.weekNoShow ?? 0;
 
   const weekStart = startOfWeek(new Date(), { locale: es });
-  const weekEnd = endOfWeek(new Date(), { locale: es });
-  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(weekStart, { locale: es }) });
   const weekdayLabels = weekDays.map((day) => format(day, 'EEE', { locale: es }));
 
-  const getBarber = (id: string) => barbers.find((barber) => barber.id === id);
-  const getService = (id: string) => services.find((service) => service.id === id);
-  const getClient = (id: string | null) => users.find((user) => user.id === id);
-  const revenueToday = filteredAppointments
-    .filter(
-      (appointment) =>
-        isToday(parseISO(appointment.startDateTime)) && isAppointmentRevenueStatus(appointment.status),
-    )
-    .reduce((total, appointment) => total + (appointment.price || 0), 0);
-
-  const weekCancelled = filteredAppointments.filter(
-    (appointment) =>
-      appointment.status === 'cancelled' &&
-      isWithinInterval(parseISO(appointment.startDateTime), { start: weekStart, end: weekEnd }),
-  ).length;
-  const weekNoShow = filteredAppointments.filter(
-    (appointment) =>
-      appointment.status === 'no_show' &&
-      isWithinInterval(parseISO(appointment.startDateTime), { start: weekStart, end: weekEnd }),
-  ).length;
-
-  const occupancyRangeDays = 30;
-  const occupancyStart = subDays(new Date(), occupancyRangeDays - 1);
-  const occupancyEnd = new Date();
-  const occupancyHours = Array.from({ length: 12 }).map((_, index) => 9 + index);
-  const occupancyMatrix = occupancyHours.map(() => weekDays.map(() => 0));
-  filteredAppointments.forEach((appointment) => {
-    if (!isAppointmentActive(appointment.status)) return;
-    const startDate = parseISO(appointment.startDateTime);
-    if (!isWithinInterval(startDate, { start: occupancyStart, end: occupancyEnd })) return;
-    const dayIndex = getISODay(startDate) - 1;
-    if (dayIndex < 0 || dayIndex >= weekDays.length) return;
-    const hourIndex = occupancyHours.indexOf(startDate.getHours());
-    if (hourIndex === -1) return;
-    occupancyMatrix[hourIndex][dayIndex] += 1;
-  });
-  const maxOccupancy = Math.max(1, ...occupancyMatrix.flat());
-
-  const serviceMixRangeDays = 30;
-  const serviceMixStart = subDays(new Date(), serviceMixRangeDays - 1);
-  const serviceMixAppointments = filteredAppointments.filter(
-    (appointment) =>
-      isAppointmentRevenueStatus(appointment.status) &&
-      isWithinInterval(parseISO(appointment.startDateTime), { start: serviceMixStart, end: new Date() }),
-  );
-  const serviceMixCounts = serviceMixAppointments.reduce<Record<string, number>>((acc, appointment) => {
-    const serviceName = getService(appointment.serviceId)?.name || 'Servicio eliminado';
-    acc[serviceName] = (acc[serviceName] || 0) + 1;
-    return acc;
-  }, {});
-  const serviceMixEntries = Object.entries(serviceMixCounts)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-  const topServiceMix = serviceMixEntries.slice(0, 5);
-  const otherServiceCount = serviceMixEntries.slice(5).reduce((sum, item) => sum + item.value, 0);
-  const serviceMixData = otherServiceCount > 0 ? [...topServiceMix, { name: 'Otros', value: otherServiceCount }] : topServiceMix;
+  const revenueData = useMemo(() => {
+    const points = dashboardSummary?.revenueDaily ?? [];
+    return points.slice(-revenueRange).map((entry) => ({
+      label: format(parseISO(entry.date), 'dd MMM', { locale: es }),
+      value: entry.value,
+    }));
+  }, [dashboardSummary?.revenueDaily, revenueRange]);
+  const serviceMixData = dashboardSummary?.serviceMix ?? [];
   const serviceMixTotal = serviceMixData.reduce((sum, item) => sum + item.value, 0);
-
-  const ticketRangeDays = 14;
-  const ticketDays = Array.from({ length: ticketRangeDays }).map((_, index) =>
-    subDays(new Date(), ticketRangeDays - 1 - index),
+  const ticketData = useMemo(
+    () =>
+      (dashboardSummary?.ticketDaily ?? []).map((entry) => ({
+        label: format(parseISO(entry.date), 'dd MMM', { locale: es }),
+        value: entry.value,
+      })),
+    [dashboardSummary?.ticketDaily],
   );
-  const ticketData = ticketDays.map((day) => {
-    const dayAppointments = serviceMixAppointments.filter((appointment) =>
-      isSameDay(parseISO(appointment.startDateTime), day),
+  const ticketAverage = dashboardSummary?.ticketAverage ?? 0;
+  const lossWeekdayData = useMemo(() => {
+    const byDay = new Map(
+      (dashboardSummary?.lossByWeekday ?? []).map((entry) => [entry.day, entry]),
     );
-    const total = dayAppointments.reduce((sum, appointment) => sum + (appointment.price || 0), 0);
-    const average = dayAppointments.length > 0 ? total / dayAppointments.length : 0;
-    return {
-      label: format(day, 'dd MMM', { locale: es }),
-      value: Number(average.toFixed(2)),
-    };
-  });
-  const ticketAverage = ticketData.reduce((sum, item) => sum + item.value, 0) / (ticketData.length || 1);
-
-  const lossRangeDays = 30;
-  const lossStart = subDays(new Date(), lossRangeDays - 1);
-  const lossWeekdayData = weekdayLabels.map((label) => ({
-    label,
-    no_show: 0,
-    cancelled: 0,
-  }));
-  filteredAppointments.forEach((appointment) => {
-    if (appointment.status !== 'no_show' && appointment.status !== 'cancelled') return;
-    const startDate = parseISO(appointment.startDateTime);
-    if (!isWithinInterval(startDate, { start: lossStart, end: new Date() })) return;
-    const dayIndex = Number(format(startDate, 'i')) - 1;
-    if (dayIndex < 0 || dayIndex > 6) return;
-    if (appointment.status === 'no_show') {
-      lossWeekdayData[dayIndex].no_show += 1;
-    } else {
-      lossWeekdayData[dayIndex].cancelled += 1;
-    }
-  });
+    return weekdayLabels.map((label, index) => {
+      const entry = byDay.get(index + 1);
+      return {
+        label,
+        no_show: entry?.noShow ?? 0,
+        cancelled: entry?.cancelled ?? 0,
+      };
+    });
+  }, [dashboardSummary?.lossByWeekday, weekdayLabels]);
+  const occupancyHours = dashboardSummary?.occupancy.hours ?? DEFAULT_OCCUPANCY_HOURS;
+  const occupancyMatrix =
+    dashboardSummary?.occupancy.matrix && dashboardSummary.occupancy.matrix.length > 0
+      ? dashboardSummary.occupancy.matrix
+      : occupancyHours.map(() => weekDays.map(() => 0));
+  const maxOccupancy = dashboardSummary?.occupancy.max ?? 1;
 
   const currencyFormatter = new Intl.NumberFormat('es-ES', {
     style: 'currency',
@@ -297,7 +250,7 @@ const AdminDashboard: React.FC = () => {
           createdAt: new Date().toISOString(),
         },
       });
-      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      dispatchSiteSettingsUpdated(updated);
 
       if (mode === 'regenerate' && previousQr?.imageFileId && previousQr.imageFileId !== fileId) {
         try {
@@ -445,21 +398,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const selectedDays = Array.from({ length: revenueRange }).map((_, index) =>
-    subDays(new Date(), revenueRange - 1 - index)
-  );
-  const revenueData = selectedDays.map((day) => {
-    const dayAppointments = filteredAppointments.filter(
-      (appointment) =>
-        isAppointmentRevenueStatus(appointment.status) && isSameDay(parseISO(appointment.startDateTime), day),
-    );
-    const total = dayAppointments.reduce((sum, appointment) => sum + (appointment.price || 0), 0);
-    return {
-      label: format(day, 'dd MMM', { locale: es }),
-      value: total,
-    };
-  });
-
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
@@ -522,6 +460,10 @@ const AdminDashboard: React.FC = () => {
                         <img
                           src={qrSticker.imageUrl}
                           alt="QR del negocio"
+                          loading="lazy"
+                          decoding="async"
+                          width={224}
+                          height={224}
                           className="h-56 w-56 rounded-lg object-contain"
                         />
                       </div>
@@ -701,12 +643,7 @@ const AdminDashboard: React.FC = () => {
             ) : todayAppointments.length > 0 ? (
               <div className="h-full overflow-y-auto pr-1 space-y-3">
                 {todayAppointments.map((appointment) => {
-                  const barber = getBarber(appointment.barberId);
-                  const service = getService(appointment.serviceId);
                   const time = format(parseISO(appointment.startDateTime), 'HH:mm');
-                  const clientName =
-                    appointment.guestName ||
-                    (appointment.userId ? getClient(appointment.userId)?.name : undefined);
                   
                   return (
                     <div 
@@ -717,11 +654,11 @@ const AdminDashboard: React.FC = () => {
                         <Clock className="w-5 h-5 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground truncate">{service?.name}</p>
+                        <p className="font-medium text-foreground truncate">{appointment.serviceName}</p>
                         <p className="text-sm text-muted-foreground truncate">
-                          Cliente: {clientName || 'Sin nombre'}
+                          Cliente: {appointment.clientName}
                         </p>
-                        <p className="text-sm text-muted-foreground">con {barber?.name}</p>
+                        <p className="text-sm text-muted-foreground">con {appointment.barberName}</p>
                       </div>
                       <span className="text-lg font-semibold text-primary">{time}</span>
                     </div>

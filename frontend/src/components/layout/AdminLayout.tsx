@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import AdminSidebar from './AdminSidebar';
 import { cn } from '@/lib/utils';
-import AiAssistantFloatingButton from '@/components/admin/AiAssistantFloatingButton';
-import QuickAppointmentButton from '@/components/admin/QuickAppointmentButton';
 import AdminSpotlight from '@/components/admin/AdminSpotlight';
 import AdminSpotlightTrigger from '@/components/admin/AdminSpotlightTrigger';
 import { AdminPermissionsProvider, useAdminPermissions } from '@/context/AdminPermissionsContext';
 import { Button } from '@/components/ui/button';
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { AdminSpotlightProvider } from '@/components/admin/AdminSpotlightContext';
+
+const AiAssistantFloatingButton = lazy(() => import('@/components/admin/AiAssistantFloatingButton'));
+const QuickAppointmentButton = lazy(() => import('@/components/admin/QuickAppointmentButton'));
 
 const AdminLayoutContent: React.FC = () => {
   const [collapsed, setCollapsed] = useState(() => {
@@ -69,8 +70,10 @@ const AdminLayoutContent: React.FC = () => {
       {showFloatingActions && (
         <>
           <AdminSpotlightTrigger />
-          <AiAssistantFloatingButton />
-          <QuickAppointmentButton />
+          <Suspense fallback={null}>
+            <AiAssistantFloatingButton />
+            <QuickAppointmentButton />
+          </Suspense>
         </>
       )}
     </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Bot,
   Send,
@@ -31,6 +31,34 @@ interface ChatMessage {
   createdAt?: string;
 }
 
+type SpeechRecognitionAlternativeLike = {
+  transcript?: string;
+};
+
+type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternativeLike>;
+
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+
+type BrowserSpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+type BrowserSpeechWindow = Window & {
+  SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+};
+
 const STORAGE_KEY = 'ai-assistant-session-id';
 const SEND_COMMAND = 'enviar';
 const AdminAiAssistant: React.FC = () => {
@@ -53,7 +81,7 @@ const AdminAiAssistant: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const loadedSessionRef = useRef<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const autoSendRef = useRef(false);
   const stopInProgressRef = useRef(false);
   const chunksRef = useRef<Blob[]>([]);
@@ -64,7 +92,7 @@ const AdminAiAssistant: React.FC = () => {
     && typeof navigator.mediaDevices?.getUserMedia === 'function';
   const supportsSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const supportsVoiceCommand = typeof window !== 'undefined'
-    && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+    && Boolean((window as BrowserSpeechWindow).SpeechRecognition || (window as BrowserSpeechWindow).webkitSpeechRecognition);
   const staffSingularLabel = copy.staff.isCollective ? 'miembro del equipo' : copy.staff.singularLower;
   const staffPluralLabel = copy.staff.isCollective ? 'miembros del equipo' : copy.staff.pluralLower;
   const staffNameExample = copy.staff.isCollective ? 'con Juan.' : `con ${copy.staff.singularLower} Juan.`;
@@ -103,7 +131,7 @@ const AdminAiAssistant: React.FC = () => {
   const stripSendCommand = (text: string) =>
     text.replace(new RegExp(`(?:\\s|^)${SEND_COMMAND}[\\s.,!?;:]*$`, 'i'), '').trim();
 
-  const stopVoiceCommandListener = () => {
+  const stopVoiceCommandListener = useCallback(() => {
     const recognition = recognitionRef.current;
     if (!recognition) return;
     recognition.onresult = null;
@@ -115,19 +143,20 @@ const AdminAiAssistant: React.FC = () => {
       // Ignore stop errors for unsupported implementations.
     }
     recognitionRef.current = null;
-  };
+  }, []);
 
   const startVoiceCommandListener = () => {
     if (!supportsVoiceCommand) return;
     stopVoiceCommandListener();
+    const speechWindow = window as BrowserSpeechWindow;
     const SpeechRecognitionConstructor =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognitionConstructor) return;
     const recognition = new SpeechRecognitionConstructor();
     recognition.lang = 'es-ES';
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event) => {
       const results = event.results;
       if (!results || results.length === 0) return;
       const lastResult = results[results.length - 1];
@@ -258,11 +287,11 @@ const AdminAiAssistant: React.FC = () => {
     }
   };
 
-  const stopSpeaking = () => {
+  const stopSpeaking = useCallback(() => {
     if (!supportsSpeech) return;
     window.speechSynthesis.cancel();
     setSpeakingMessageId(null);
-  };
+  }, [supportsSpeech]);
 
   const speakMessage = (text: string, messageId: string) => {
     if (!supportsSpeech) return;
@@ -284,7 +313,7 @@ const AdminAiAssistant: React.FC = () => {
       stopSpeaking();
       stopVoiceCommandListener();
     };
-  }, []);
+  }, [stopSpeaking, stopVoiceCommandListener]);
 
   const stopRecording = async () => {
     const recorder = recorderRef.current;

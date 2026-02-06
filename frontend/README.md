@@ -31,3 +31,16 @@ El asistente crea citas nuevas y añade festivos/vacaciones. Si falta informaci�
 ## Nota
 
 El asistente solo usa herramientas autorizadas. Si falta información, lo pedirá antes de crear.
+
+## Performance Baseline y Presupuestos
+
+- `npm run build:perf`: build de produccion con sourcemap.
+- `npm run perf:report`: genera reporte de bundle en `../docs/perf/`.
+- `npm run perf:check`: valida presupuestos definidos en `perf-budgets.json`.
+- `npm run perf:baseline`: ejecuta build + reporte + validacion.
+
+## UX y Fiabilidad
+
+- La app instrumenta Web Vitals (`LCP`, `CLS`, `INP`, `FCP`, `TTFB`) en `src/lib/webVitals.ts`.
+- Se emite el evento `window` `web-vital` para integrar telemetria sin bloquear el render.
+- La capa API aplica timeout y clasificacion de errores de red para mejorar feedback al usuario.

@@ -8,11 +8,21 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { UpdateConfigDto } from './dto/update-config.dto';
 import { AssignBrandAdminDto } from './dto/assign-brand-admin.dto';
 import { RemoveBrandAdminDto } from './dto/remove-brand-admin.dto';
+import { ObservabilityService } from '../observability/observability.service';
 
 @Controller('platform')
 @UseGuards(PlatformAdminGuard)
 export class PlatformAdminController {
-  constructor(private readonly platformService: PlatformAdminService) {}
+  constructor(
+    private readonly platformService: PlatformAdminService,
+    private readonly observability: ObservabilityService,
+  ) {}
+
+  private parseWindowMinutes(raw?: string) {
+    const parsed = raw ? Number(raw) : 60;
+    if (!Number.isFinite(parsed)) return 60;
+    return Math.min(24 * 60, Math.max(5, Math.floor(parsed)));
+  }
 
   @Get('brands')
   listBrands() {
@@ -29,6 +39,16 @@ export class PlatformAdminController {
   refreshUsageMetrics(@Query('window') window?: string) {
     const parsed = window ? Number(window) : 7;
     return this.platformService.refreshUsageMetrics(Number.isFinite(parsed) ? parsed : 7);
+  }
+
+  @Get('observability/web-vitals')
+  getWebVitalsSummary(@Query('minutes') minutes?: string) {
+    return this.observability.getWebVitalsSummary(this.parseWindowMinutes(minutes));
+  }
+
+  @Get('observability/api')
+  getApiMetricsSummary(@Query('minutes') minutes?: string) {
+    return this.observability.getApiMetricsSummary(this.parseWindowMinutes(minutes));
   }
 
   @Get('brands/:id')

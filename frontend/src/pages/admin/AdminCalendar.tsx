@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { getAdminStripeConfig, getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
-import { Appointment, Barber, PaymentMethod, Service, User } from '@/data/types';
+import { getAdminCalendarData, getAdminStripeConfig, updateAppointment } from '@/data/api';
+import { AdminCalendarResponse, Appointment, Barber, PaymentMethod, Service } from '@/data/types';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -37,8 +37,13 @@ import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicat
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
-import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
+import { fetchBarbersCached, fetchServicesCached } from '@/lib/catalogQuery';
+import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { useTenant } from '@/context/TenantContext';
 
 const START_HOUR = 9;
 const END_HOUR = 20;
@@ -51,15 +56,19 @@ const currencyFormatter = new Intl.NumberFormat('es-ES', {
   minimumFractionDigits: 2,
 });
 const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
+const EMPTY_APPOINTMENTS: Appointment[] = [];
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_CALENDAR_RESPONSE: AdminCalendarResponse = {
+  items: EMPTY_APPOINTMENTS,
+  clients: [],
+};
 
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [clients, setClients] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { currentLocationId } = useTenant();
+  const queryClient = useQueryClient();
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -72,65 +81,82 @@ const AdminCalendar: React.FC = () => {
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
-  const [stripeEnabled, setStripeEnabled] = useState(false);
+  const dateFrom = useMemo(
+    () => format(currentWeekStart, 'yyyy-MM-dd'),
+    [currentWeekStart],
+  );
+  const dateTo = useMemo(
+    () => format(addDays(currentWeekStart, 6), 'yyyy-MM-dd'),
+    [currentWeekStart],
+  );
+  const appointmentsQueryKey = queryKeys.adminCalendar(currentLocationId, dateFrom, dateTo);
 
   const getProductsTotal = (appointment: Appointment) =>
     appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0;
 
-  const loadData = useCallback(async (withLoading = true) => {
-    if (withLoading) setIsLoading(true);
-    try {
-      const [appts, barbersData, servicesData, usersData] = await Promise.all([
-        getAppointments(),
-        getBarbers(),
-        getServices({ includeArchived: true }),
-        getUsers(),
-      ]);
-      setAppointments(appts);
-      setBarbers(barbersData);
-      setServices(servicesData);
-      setClients(usersData.filter((user) => user.role === 'client'));
-    } finally {
-      if (withLoading) setIsLoading(false);
-    }
-  }, []);
+  const appointmentsQuery = useQuery({
+    queryKey: appointmentsQueryKey,
+    queryFn: () =>
+      getAdminCalendarData({
+        dateFrom,
+        dateTo,
+        sort: 'asc',
+      }),
+  });
+  const barbersQuery = useQuery({
+    queryKey: queryKeys.barbers(currentLocationId),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+  });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId, true),
+    queryFn: () => fetchServicesCached({ includeArchived: true, localId: currentLocationId }),
+  });
+  const stripeConfigQuery = useQuery({
+    queryKey: queryKeys.adminStripeConfig(currentLocationId),
+    queryFn: getAdminStripeConfig,
+  });
+
+  const calendarData = appointmentsQuery.data ?? EMPTY_CALENDAR_RESPONSE;
+  const appointments = calendarData.items ?? EMPTY_APPOINTMENTS;
+  const barbers = barbersQuery.data ?? EMPTY_BARBERS;
+  const services = servicesQuery.data ?? EMPTY_SERVICES;
+  const clients = calendarData.clients ?? [];
+  const stripeEnabled = Boolean(
+    stripeConfigQuery.data?.brandEnabled &&
+      stripeConfigQuery.data?.platformEnabled &&
+      stripeConfigQuery.data?.localEnabled,
+  );
+  const isLoading =
+    appointmentsQuery.isLoading ||
+    barbersQuery.isLoading ||
+    servicesQuery.isLoading;
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!appointmentsQuery.error) return;
+    toast({
+      title: 'No se pudo cargar el calendario',
+      description: 'Inténtalo de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [appointmentsQuery.error, toast]);
 
   useEffect(() => {
-    let active = true;
-    const loadStripeConfig = async () => {
-      try {
-        const data = await getAdminStripeConfig();
-        if (active) {
-          setStripeEnabled(Boolean(data?.brandEnabled && data?.platformEnabled && data?.localEnabled));
-        }
-      } catch {
-        if (active) setStripeEnabled(false);
-      }
-    };
-    loadStripeConfig();
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (!barbersQuery.error && !servicesQuery.error && !stripeConfigQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudieron cargar algunos datos de soporte.',
+      variant: 'destructive',
+    });
+  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, toast]);
 
-  useEffect(() => {
-    const handleRefresh = () => {
-      void loadData(false);
-    };
-    window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
-    return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
-  }, [loadData]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void loadData(false);
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [loadData]);
+  useForegroundRefresh(() => {
+    void Promise.all([
+      appointmentsQuery.refetch(),
+      barbersQuery.refetch(),
+      servicesQuery.refetch(),
+      stripeConfigQuery.refetch(),
+    ]);
+  });
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
@@ -148,12 +174,30 @@ const AdminCalendar: React.FC = () => {
   const hasSelectedProducts = selectedProductsTotal > 0;
 
   const applyAppointmentUpdate = useCallback((updated: Appointment) => {
-    setAppointments((prev) =>
-      prev.map((appointment) => (appointment.id === updated.id ? updated : appointment)),
-    );
+    queryClient.setQueryData<AdminCalendarResponse>(appointmentsQueryKey, (previous) => {
+      const base = previous ?? EMPTY_CALENDAR_RESPONSE;
+      return {
+        ...base,
+        items: (base.items ?? EMPTY_APPOINTMENTS).map((appointment) =>
+          appointment.id === updated.id ? updated : appointment,
+        ),
+      };
+    });
     setSelectedAppointment(updated);
     dispatchAppointmentsUpdated({ source: 'admin-calendar' });
-  }, []);
+  }, [appointmentsQueryKey, queryClient]);
+
+  useEffect(() => {
+    if (!selectedAppointment) return;
+    const nextSelected = appointments.find((appointment) => appointment.id === selectedAppointment.id);
+    if (!nextSelected) {
+      setSelectedAppointment(null);
+      return;
+    }
+    if (nextSelected !== selectedAppointment) {
+      setSelectedAppointment(nextSelected);
+    }
+  }, [appointments, selectedAppointment]);
 
   useEffect(() => {
     if (!selectedAppointment) {
@@ -525,6 +569,10 @@ const AdminCalendar: React.FC = () => {
                 <img 
                   src={getBarber(selectedAppointment.barberId)?.photo || defaultAvatar}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
+                  width={40}
+                  height={40}
                   className="w-10 h-10 rounded-full object-cover"
                 />
                 <div>
@@ -655,7 +703,7 @@ const AdminCalendar: React.FC = () => {
           setEditingAppointment(null);
         }}
         onSaved={async () => {
-          await loadData();
+          await appointmentsQuery.refetch();
           setIsEditorOpen(false);
           setEditingAppointment(null);
           setSelectedAppointment(null);
@@ -683,7 +731,7 @@ const AdminCalendar: React.FC = () => {
                   setDeleteTarget(null);
                   setSelectedAppointment(null);
                   dispatchAppointmentsUpdated({ source: 'admin-calendar' });
-                  await loadData();
+                  await appointmentsQuery.refetch();
                 } catch (error) {
                   toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {

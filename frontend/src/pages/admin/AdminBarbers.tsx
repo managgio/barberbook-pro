@@ -10,22 +10,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import {
-  getBarbers,
   createBarber,
   updateBarber,
   deleteBarber,
   getBarberSchedule,
   updateBarberSchedule,
-  getServices,
-  getServiceCategories,
-  getSiteSettings,
   updateSiteSettings,
   updateBarberServiceAssignment,
 } from '@/data/api';
-import { Barber, DayKey, Service, ServiceCategory, ShopSchedule, SiteSettings } from '@/data/types';
+import { Barber, DayKey, Service, ServiceCategory, ShopSchedule } from '@/data/types';
 import { Plus, Pencil, Trash2, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste, WandSparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { dispatchBarbersUpdated, dispatchSchedulesUpdated } from '@/lib/adminEvents';
+import { dispatchBarbersUpdated, dispatchSchedulesUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { useTenant } from '@/context/TenantContext';
@@ -33,6 +29,10 @@ import { BarberPhotoUploader, PhotoChangePayload, cropAndCompress } from '@/comp
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import { fetchBarbersCached, fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalogQuery';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 
 const DAY_LABELS: { key: DayKey; label: string; short: string }[] = [
   { key: 'monday', label: 'Lunes', short: 'Lun' },
@@ -61,10 +61,13 @@ const SHIFT_LABELS: Record<ShiftKey, { label: string; hint: string }> = {
 const cloneSchedule = (schedule: ShopSchedule) => JSON.parse(JSON.stringify(schedule)) as ShopSchedule;
 const normalizeIds = (ids?: string[]) =>
   Array.from(new Set((ids || []).filter((id): id is string => Boolean(id))));
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_CATEGORIES: ServiceCategory[] = [];
 
 const AdminBarbers: React.FC = () => {
   const { toast } = useToast();
-  const { tenant } = useTenant();
+  const { tenant, currentLocationId } = useTenant();
   const copy = useBusinessCopy();
   const staffCompatibleLabel = copy.staff.isCollective
     ? `${copy.staff.singularLower} compatible`
@@ -75,12 +78,6 @@ const AdminBarbers: React.FC = () => {
   const emptyStaffDescription = copy.staff.isCollective
     ? 'Añade miembros del equipo para gestionar la agenda.'
     : `Añade ${copy.staff.pluralLower} para gestionar el equipo.`;
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isMetaLoading, setIsMetaLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -117,42 +114,55 @@ const AdminBarbers: React.FC = () => {
     endDate: '',
     isActive: true,
   });
+  const barbersQuery = useQuery({
+    queryKey: queryKeys.barbers(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+  });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: () => fetchServicesCached({ localId: currentLocationId }),
+  });
+  const categoriesQuery = useQuery({
+    queryKey: queryKeys.serviceCategories(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: () => fetchServiceCategoriesCached({ localId: currentLocationId }),
+  });
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.siteSettings(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: () => fetchSiteSettingsCached(currentLocationId),
+  });
+  const barbers = useMemo(
+    () => barbersQuery.data ?? EMPTY_BARBERS,
+    [barbersQuery.data],
+  );
+  const services = useMemo(
+    () => servicesQuery.data ?? EMPTY_SERVICES,
+    [servicesQuery.data],
+  );
+  const categories = useMemo(
+    () => categoriesQuery.data ?? EMPTY_CATEGORIES,
+    [categoriesQuery.data],
+  );
+  const settings = settingsQuery.data ?? null;
+  const isLoading = barbersQuery.isLoading;
+  const isMetaLoading = servicesQuery.isLoading || categoriesQuery.isLoading || settingsQuery.isLoading;
 
   useEffect(() => {
-    void Promise.all([fetchBarbers(), fetchMeta()]);
-  }, []);
+    if (!barbersQuery.error) return;
+    toast({ title: 'Error', description: 'No se pudo cargar el equipo.', variant: 'destructive' });
+  }, [barbersQuery.error, toast]);
 
-  const fetchBarbers = async () => {
-    try {
-      const data = await getBarbers();
-      setBarbers(data);
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo cargar el equipo.', variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchMeta = async () => {
-    try {
-      const [servicesData, categoriesData, settingsData] = await Promise.all([
-        getServices(),
-        getServiceCategories(true),
-        getSiteSettings(),
-      ]);
-      setServices(servicesData);
-      setCategories(categoriesData);
-      setSettings(settingsData);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo cargar la configuración de asignaciones.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsMetaLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (!servicesQuery.error && !categoriesQuery.error && !settingsQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudo cargar la configuración de asignaciones.',
+      variant: 'destructive',
+    });
+  }, [categoriesQuery.error, servicesQuery.error, settingsQuery.error, toast]);
 
   const openCreateDialog = () => {
     setEditingBarber(null);
@@ -303,17 +313,17 @@ const AdminBarbers: React.FC = () => {
         serviceIds: normalizeIds(assignmentForm.serviceIds),
         categoryIds: normalizeIds(assignmentForm.categoryIds),
       });
-      await fetchBarbers();
+      await barbersQuery.refetch();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
       toast({
         title: 'Asignaciones guardadas',
         description: `La configuración ${copy.staff.fromWithDefinite} se ha actualizado.`,
       });
       closeAssignmentDialog();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'No se pudo guardar',
-        description: error?.message || 'Revisa los servicios y categorías seleccionados.',
+        description: error instanceof Error ? error.message : 'Revisa los servicios y categorías seleccionados.',
         variant: 'destructive',
       });
       setIsAssignmentSaving(false);
@@ -331,18 +341,18 @@ const AdminBarbers: React.FC = () => {
           barberServiceAssignmentEnabled: enabled,
         },
       });
-      setSettings(updated);
-      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      await settingsQuery.refetch();
+      dispatchSiteSettingsUpdated(updated);
       toast({
         title: enabled ? 'Asignación activada' : 'Asignación desactivada',
         description: enabled
           ? `Los clientes verán solo ${staffCompatibleLabel} con el servicio elegido.`
           : staffResetAvailabilityLabel,
       });
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'No se pudo actualizar',
-        description: error?.message || 'Inténtalo de nuevo en unos segundos.',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
         variant: 'destructive',
       });
     } finally {
@@ -539,7 +549,7 @@ const AdminBarbers: React.FC = () => {
         toast({ title: `${copy.staff.singular} añadido`, description: `El nuevo ${copy.staff.singularLower} ha sido añadido.` });
       }
       
-      await fetchBarbers();
+      await barbersQuery.refetch();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
       setIsDialogOpen(false);
     } catch (error) {
@@ -555,7 +565,7 @@ const AdminBarbers: React.FC = () => {
     try {
       await deleteBarber(deletingBarberId);
       toast({ title: `${copy.staff.singular} eliminado`, description: `${copy.staff.definiteSingular} ha sido eliminado.` });
-      await fetchBarbers();
+      await barbersQuery.refetch();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
     } catch (error) {
       toast({ title: 'Error', description: `No se pudo eliminar ${copy.staff.definiteSingular}.`, variant: 'destructive' });
@@ -621,6 +631,10 @@ const AdminBarbers: React.FC = () => {
                   <img 
                     src={barber.photo || defaultAvatar} 
                     alt={barber.name}
+                    loading="lazy"
+                    decoding="async"
+                    width={96}
+                    height={96}
                     className="w-24 h-24 rounded-xl object-cover"
                   />
                   <div className="flex-1 min-w-0">

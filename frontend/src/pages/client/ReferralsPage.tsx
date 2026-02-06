@@ -160,7 +160,15 @@ const ReferralsPage: React.FC = () => {
                   <QrCode className="w-4 h-4" />
                   Escanea este QR para reservar con tu recompensa.
                 </div>
-                <img src={qrUrl} alt="QR de referido" className="w-40 h-40" />
+                <img
+                  src={qrUrl}
+                  alt="QR de referido"
+                  loading="lazy"
+                  decoding="async"
+                  width={160}
+                  height={160}
+                  className="w-40 h-40"
+                />
               </div>
             )}
           </CardContent>

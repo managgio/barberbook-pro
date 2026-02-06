@@ -1,58 +1,62 @@
-import { useCallback, useEffect, useState } from 'react';
-import { getSiteSettings } from '@/data/api';
+import { useCallback, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getSiteSettings } from '@/data/api/settings';
 import { SiteSettings } from '@/data/types';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
 import { useTenant } from '@/context/TenantContext';
+import { queryKeys } from '@/lib/queryKeys';
+import { SITE_SETTINGS_STALE_TIME } from '@/lib/siteSettingsQuery';
+import { SITE_SETTINGS_UPDATED_EVENT } from '@/lib/adminEvents';
 
 export const useSiteSettings = () => {
   const { tenant, currentLocationId } = useTenant();
-  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(() => queryKeys.siteSettings(currentLocationId), [currentLocationId]);
+  const brandFallback = tenant?.config?.branding;
 
   const applyBrandFallback = useCallback((next: SiteSettings) => {
-    const fallback = tenant?.config?.branding;
-    if (!fallback) return next;
+    if (!brandFallback) return next;
     const branding = { ...next.branding };
-    if (!branding.name && fallback.name) {
-      branding.name = fallback.name;
+    if (!branding.name && brandFallback.name) {
+      branding.name = brandFallback.name;
     }
-    if (!branding.shortName && fallback.shortName) {
-      branding.shortName = fallback.shortName;
+    if (!branding.shortName && brandFallback.shortName) {
+      branding.shortName = brandFallback.shortName;
     }
     return { ...next, branding };
-  }, [tenant?.config?.branding?.name, tenant?.config?.branding?.shortName]);
+  }, [brandFallback]);
+
+  const settingsQuery = useQuery({
+    queryKey,
+    queryFn: getSiteSettings,
+    staleTime: SITE_SETTINGS_STALE_TIME,
+  });
+
+  const settings = useMemo(
+    () => applyBrandFallback(settingsQuery.data || DEFAULT_SITE_SETTINGS),
+    [applyBrandFallback, settingsQuery.data],
+  );
 
   const refresh = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const data = await getSiteSettings();
-      setSettings(applyBrandFallback(data));
-    } catch (error) {
-      console.error('Error loading site settings', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [applyBrandFallback]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh, currentLocationId]);
+    await queryClient.invalidateQueries({ queryKey });
+    return queryClient.refetchQueries({ queryKey, type: 'active' });
+  }, [queryClient, queryKey]);
 
   useEffect(() => {
     const handleUpdate = (event: Event) => {
       const customEvent = event as CustomEvent<SiteSettings>;
       if (customEvent.detail) {
-        setSettings(applyBrandFallback(customEvent.detail));
+        queryClient.setQueryData(queryKey, customEvent.detail);
       }
     };
 
-    window.addEventListener('site-settings-updated', handleUpdate);
-    return () => window.removeEventListener('site-settings-updated', handleUpdate);
-  }, [applyBrandFallback]);
+    window.addEventListener(SITE_SETTINGS_UPDATED_EVENT, handleUpdate);
+    return () => window.removeEventListener(SITE_SETTINGS_UPDATED_EVENT, handleUpdate);
+  }, [queryClient, queryKey]);
 
-  useEffect(() => {
-    setSettings((prev) => applyBrandFallback(prev));
-  }, [applyBrandFallback]);
-
-  return { settings, isLoading, refresh };
+  return {
+    settings,
+    isLoading: settingsQuery.isLoading && !settingsQuery.data,
+    refresh,
+  };
 };

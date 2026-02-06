@@ -31,6 +31,7 @@ import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { ObservabilityModule } from './modules/observability/observability.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     ReferralsModule,
     ReviewsModule,
     PaymentsModule,
+    ObservabilityModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
 })

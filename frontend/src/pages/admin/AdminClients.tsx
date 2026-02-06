@@ -6,8 +6,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { createClientNote, deleteClientNote, getAdminStripeConfig, getAppointments, getBarbers, getClientNotes, getServices, getUsers, updateAppointment, updateUserBlockStatus } from '@/data/api';
-import { Appointment, Barber, ClientNote, PaymentMethod, Service, User } from '@/data/types';
+import {
+  createClientNote,
+  deleteClientNote,
+  getAdminStripeConfig,
+  getAppointmentsPage,
+  getClientNotes,
+  getUsersPage,
+  updateAppointment,
+  updateUserBlockStatus,
+} from '@/data/api';
+import { Appointment, Barber, ClientNote, PaginatedResponse, PaymentMethod, Service, User } from '@/data/types';
 import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { format, parseISO, subMonths, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -19,27 +28,38 @@ import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import { dispatchAppointmentsUpdated, dispatchUsersUpdated } from '@/lib/adminEvents';
+import { fetchBarbersCached, fetchServicesCached } from '@/lib/catalogQuery';
+import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { useTenant } from '@/context/TenantContext';
 
 const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
+const CLIENTS_PAGE_SIZE = 25;
+const APPOINTMENTS_PAGE_SIZE = 10;
+const SEARCH_DEBOUNCE_MS = 250;
+const EMPTY_APPOINTMENTS: Appointment[] = [];
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_CLIENTS: User[] = [];
+const EMPTY_NOTES: ClientNote[] = [];
 
 const AdminClients: React.FC = () => {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [clients, setClients] = useState<User[]>([]);
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
+  const { currentLocationId } = useTenant();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [clientsPage, setClientsPage] = useState(1);
+  const [appointmentsPage, setAppointmentsPage] = useState(1);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
-  const [isNotesLoading, setIsNotesLoading] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false);
@@ -49,92 +69,169 @@ const AdminClients: React.FC = () => {
   const [savingPayment, setSavingPayment] = useState<Record<string, boolean>>({});
   const [savingPrice, setSavingPrice] = useState<Record<string, boolean>>({});
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
-  const [stripeEnabled, setStripeEnabled] = useState(false);
-
-  const loadData = useCallback(async (withLoading = true) => {
-    if (withLoading) setIsLoading(true);
-    try {
-      const [appts, barbersData, servicesData, usersData] = await Promise.all([
-        getAppointments(),
-        getBarbers(),
-        getServices({ includeArchived: true }),
-        getUsers(),
-      ]);
-      setAppointments(appts);
-      setBarbers(barbersData);
-      setServices(servicesData);
-      setClients(usersData.filter((user) => user.role === 'client'));
-    } finally {
-      if (withLoading) setIsLoading(false);
-    }
-  }, []);
+  const clientsQueryKey = queryKeys.adminClients(
+    currentLocationId,
+    clientsPage,
+    CLIENTS_PAGE_SIZE,
+    debouncedSearchTerm,
+  );
+  const appointmentsQueryKey = queryKeys.adminClientAppointments(
+    currentLocationId,
+    selectedClientId,
+    appointmentsPage,
+    APPOINTMENTS_PAGE_SIZE,
+  );
+  const clientNotesQueryKey = queryKeys.adminClientNotes(currentLocationId, selectedClientId);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
+  const clientsQuery = useQuery({
+    queryKey: clientsQueryKey,
+    queryFn: () =>
+      getUsersPage({
+        page: clientsPage,
+        pageSize: CLIENTS_PAGE_SIZE,
+        role: 'client',
+        q: debouncedSearchTerm || undefined,
+      }),
+  });
+  const barbersQuery = useQuery({
+    queryKey: queryKeys.barbers(currentLocationId),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+  });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId, true),
+    queryFn: () => fetchServicesCached({ includeArchived: true, localId: currentLocationId }),
+  });
+  const appointmentsQuery = useQuery({
+    queryKey: appointmentsQueryKey,
+    queryFn: () =>
+      getAppointmentsPage({
+        userId: selectedClientId || undefined,
+        page: appointmentsPage,
+        pageSize: APPOINTMENTS_PAGE_SIZE,
+        sort: 'desc',
+      }),
+    enabled: Boolean(selectedClientId),
+  });
+  const notesQuery = useQuery({
+    queryKey: clientNotesQueryKey,
+    queryFn: () => getClientNotes(selectedClientId as string),
+    enabled: Boolean(selectedClientId),
+  });
+  const stripeConfigQuery = useQuery({
+    queryKey: queryKeys.adminStripeConfig(currentLocationId),
+    queryFn: getAdminStripeConfig,
+  });
+
+  const barbers = barbersQuery.data ?? EMPTY_BARBERS;
+  const services = servicesQuery.data ?? EMPTY_SERVICES;
+  const clients = clientsQuery.data?.items ?? EMPTY_CLIENTS;
+  const clientsTotal = clientsQuery.data?.total ?? 0;
+  const appointments = appointmentsQuery.data?.items ?? EMPTY_APPOINTMENTS;
+  const appointmentsTotal = appointmentsQuery.data?.total ?? 0;
+  const clientNotes = notesQuery.data ?? EMPTY_NOTES;
+  const stripeEnabled = Boolean(
+    stripeConfigQuery.data?.brandEnabled &&
+      stripeConfigQuery.data?.platformEnabled &&
+      stripeConfigQuery.data?.localEnabled,
+  );
+  const isLoading = clientsQuery.isLoading || barbersQuery.isLoading || servicesQuery.isLoading;
+  const isAppointmentsLoading = Boolean(selectedClientId) && appointmentsQuery.isLoading;
+  const isNotesLoading = Boolean(selectedClientId) && notesQuery.isLoading;
 
   useEffect(() => {
-    let active = true;
-    const loadStripeConfig = async () => {
-      try {
-        const data = await getAdminStripeConfig();
-        if (active) {
-          setStripeEnabled(Boolean(data?.brandEnabled && data?.platformEnabled && data?.localEnabled));
-        }
-      } catch {
-        if (active) setStripeEnabled(false);
+    if (!clientsQuery.error) return;
+    toast({
+      title: 'No se pudieron cargar los clientes',
+      description: 'Inténtalo de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [clientsQuery.error, toast]);
+
+  useEffect(() => {
+    if (!appointmentsQuery.error) return;
+    toast({
+      title: 'No se pudieron cargar las citas',
+      description: 'Inténtalo de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [appointmentsQuery.error, toast]);
+
+  useEffect(() => {
+    if (!notesQuery.error) return;
+    toast({
+      title: 'No se pudieron cargar las notas',
+      description: 'Inténtalo de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [notesQuery.error, toast]);
+
+  useEffect(() => {
+    if (!barbersQuery.error && !servicesQuery.error && !stripeConfigQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudieron cargar algunos datos de soporte.',
+      variant: 'destructive',
+    });
+  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, toast]);
+
+  useEffect(() => {
+    const pageData = clientsQuery.data;
+    if (!pageData) return;
+    if (pageData.items.length === 0 && pageData.total > 0 && clientsPage > 1) {
+      const fallbackPage = Math.max(1, Math.ceil(pageData.total / CLIENTS_PAGE_SIZE));
+      if (fallbackPage !== clientsPage) {
+        setClientsPage(fallbackPage);
       }
-    };
-    loadStripeConfig();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleRefresh = () => {
-      void loadData(false);
-    };
-    window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
-    return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
-  }, [loadData]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void loadData(false);
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [loadData]);
-
-  const loadClientNotes = useCallback(async (clientId: string) => {
-    setIsNotesLoading(true);
-    try {
-      const notes = await getClientNotes(clientId);
-      setClientNotes(notes);
-    } catch (error) {
-      toast({
-        title: 'No se pudieron cargar las notas',
-        description: 'Inténtalo de nuevo en unos segundos.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsNotesLoading(false);
     }
-  }, [toast]);
+  }, [clientsPage, clientsQuery.data]);
 
   useEffect(() => {
-    setClientNotes([]);
+    const pageData = appointmentsQuery.data;
+    if (!pageData) return;
+    if (pageData.items.length === 0 && pageData.total > 0 && appointmentsPage > 1) {
+      const fallbackPage = Math.max(1, Math.ceil(pageData.total / APPOINTMENTS_PAGE_SIZE));
+      if (fallbackPage !== appointmentsPage) {
+        setAppointmentsPage(fallbackPage);
+      }
+    }
+  }, [appointmentsPage, appointmentsQuery.data]);
+
+  useForegroundRefresh(() => {
+    void Promise.all([
+      clientsQuery.refetch(),
+      barbersQuery.refetch(),
+      servicesQuery.refetch(),
+      stripeConfigQuery.refetch(),
+      selectedClientId ? appointmentsQuery.refetch() : Promise.resolve(),
+      selectedClientId ? notesQuery.refetch() : Promise.resolve(),
+    ]);
+  });
+
+  useEffect(() => {
+    if (clients.length === 0) {
+      setSelectedClientId(null);
+      return;
+    }
+    if (!selectedClientId || !clients.some((client) => client.id === selectedClientId)) {
+      setSelectedClientId(clients[0].id);
+    }
+  }, [clients, selectedClientId]);
+
+  useEffect(() => {
+    setAppointmentsPage(1);
+  }, [selectedClientId]);
+
+  useEffect(() => {
     setNoteDraft('');
     setIsNotesOpen(false);
-    if (selectedClientId) {
-      void loadClientNotes(selectedClientId);
-    }
-  }, [selectedClientId, loadClientNotes]);
-
-  const filteredClients = clients.filter(client => {
-    const haystack = `${client.name} ${client.email || ''} ${client.phone || ''}`.toLowerCase();
-    return haystack.includes(searchTerm.toLowerCase());
-  });
+  }, [selectedClientId]);
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === selectedClientId) || null,
@@ -142,18 +239,7 @@ const AdminClients: React.FC = () => {
   );
   const isClientBlocked = selectedClient?.isBlocked ?? false;
 
-  const getClientAppointments = useCallback(
-    (clientId: string) =>
-      appointments
-        .filter((appointment) => appointment.userId === clientId)
-        .sort((a, b) => new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime()),
-    [appointments]
-  );
-
-  const selectedClientAppointments = useMemo(
-    () => (selectedClient ? getClientAppointments(selectedClient.id) : []),
-    [selectedClient, getClientAppointments]
-  );
+  const selectedClientAppointments = appointments;
   const recentNoShows = useMemo(() => {
     if (!selectedClient) return 0;
     const twoMonthsAgo = subMonths(new Date(), 2);
@@ -171,9 +257,15 @@ const AdminClients: React.FC = () => {
   const getService = (id: string) => services.find(s => s.id === id);
 
   const applyAppointmentUpdate = useCallback((updated: Appointment) => {
-    setAppointments((prev) =>
-      prev.map((appointment) => (appointment.id === updated.id ? updated : appointment)),
-    );
+    queryClient.setQueryData<PaginatedResponse<Appointment>>(appointmentsQueryKey, (previous) => {
+      if (!previous) return previous;
+      return {
+        ...previous,
+        items: previous.items.map((appointment) =>
+          appointment.id === updated.id ? updated : appointment,
+        ),
+      };
+    });
     setPaymentMethodDrafts((prev) => ({
       ...prev,
       [updated.id]: updated.paymentMethod ?? 'none',
@@ -183,7 +275,7 @@ const AdminClients: React.FC = () => {
       [updated.id]: formatPriceInput(updated.price ?? 0),
     }));
     dispatchAppointmentsUpdated({ source: 'admin-clients' });
-  }, []);
+  }, [appointmentsQueryKey, queryClient]);
 
   useEffect(() => {
     if (appointments.length === 0) return;
@@ -283,8 +375,8 @@ const AdminClients: React.FC = () => {
 
   useEffect(() => {
     if (!isNotesOpen || !selectedClient) return;
-    void loadClientNotes(selectedClient.id);
-  }, [isNotesOpen, loadClientNotes, selectedClient]);
+    void notesQuery.refetch();
+  }, [isNotesOpen, notesQuery, selectedClient]);
 
   const handleCreateNote = async () => {
     if (!selectedClient || isSavingNote) return;
@@ -316,7 +408,7 @@ const AdminClients: React.FC = () => {
     setIsSavingNote(true);
     try {
       const created = await createClientNote({ userId: selectedClient.id, content: trimmed });
-      setClientNotes((prev) => [created, ...prev]);
+      queryClient.setQueryData<ClientNote[]>(clientNotesQueryKey, (previous) => [created, ...(previous ?? EMPTY_NOTES)]);
       setNoteDraft('');
       toast({
         title: 'Nota guardada',
@@ -338,7 +430,9 @@ const AdminClients: React.FC = () => {
     setDeletingNoteId(noteId);
     try {
       await deleteClientNote(noteId);
-      setClientNotes((prev) => prev.filter((note) => note.id !== noteId));
+      queryClient.setQueryData<ClientNote[]>(clientNotesQueryKey, (previous) =>
+        (previous ?? EMPTY_NOTES).filter((note) => note.id !== noteId),
+      );
       toast({
         title: 'Nota eliminada',
         description: 'La nota interna se eliminó.',
@@ -359,7 +453,14 @@ const AdminClients: React.FC = () => {
     setIsBlocking(true);
     try {
       const updated = await updateUserBlockStatus(selectedClient.id, !isClientBlocked);
-      setClients((prev) => prev.map((client) => (client.id === updated.id ? updated : client)));
+      queryClient.setQueryData<PaginatedResponse<User>>(clientsQueryKey, (previous) => {
+        if (!previous) return previous;
+        return {
+          ...previous,
+          items: previous.items.map((client) => (client.id === updated.id ? updated : client)),
+        };
+      });
+      dispatchUsersUpdated({ source: 'admin-clients' });
       toast({
         title: updated.isBlocked ? 'Cliente bloqueado' : 'Cliente desbloqueado',
         description: updated.isBlocked
@@ -377,6 +478,11 @@ const AdminClients: React.FC = () => {
       setIsBlockDialogOpen(false);
     }
   };
+
+  const clientsTotalPages = Math.max(1, Math.ceil(clientsTotal / CLIENTS_PAGE_SIZE));
+  const appointmentsTotalPages = Math.max(1, Math.ceil(appointmentsTotal / APPOINTMENTS_PAGE_SIZE));
+  const appointmentsFirstIndex = appointmentsTotal === 0 ? 0 : (appointmentsPage - 1) * APPOINTMENTS_PAGE_SIZE + 1;
+  const appointmentsLastIndex = Math.min(appointmentsTotal, appointmentsPage * APPOINTMENTS_PAGE_SIZE);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -407,7 +513,10 @@ const AdminClients: React.FC = () => {
                 <Input
                   placeholder="Buscar por nombre, email o teléfono..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setClientsPage(1);
+                  }}
                   className="pl-10"
                 />
               </div>
@@ -416,9 +525,10 @@ const AdminClients: React.FC = () => {
                 <div className="flex-1 overflow-y-auto pr-1">
                   <ListSkeleton count={5} />
                 </div>
-              ) : filteredClients.length > 0 ? (
-                <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                  {filteredClients.map((client) => (
+              ) : clients.length > 0 ? (
+                <>
+                  <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+                  {clients.map((client) => (
                     <button
                       key={client.id}
                       onClick={() => setSelectedClientId(client.id)}
@@ -439,7 +549,31 @@ const AdminClients: React.FC = () => {
                       )}
                     </button>
                   ))}
-                </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Página {clientsPage} de {clientsTotalPages}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setClientsPage((page) => Math.max(1, page - 1))}
+                        disabled={clientsPage <= 1}
+                      >
+                        Anterior
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setClientsPage((page) => Math.min(clientsTotalPages, page + 1))}
+                        disabled={clientsPage >= clientsTotalPages}
+                      >
+                        Siguiente
+                      </Button>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
                   No se encontraron clientes
@@ -491,7 +625,7 @@ const AdminClients: React.FC = () => {
                               </button>
                             </TooltipTrigger>
                             <TooltipContent side="left" className="text-xs">
-                              Datos de los últimos 2 meses.
+                              Cálculo basado en las citas visibles en esta página.
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -665,10 +799,14 @@ const AdminClients: React.FC = () => {
                     <div className="sticky top-0 z-10 bg-card border-b border-border/60 pb-2">
                       <h4 className="font-medium text-foreground flex items-center gap-2 pt-1">
                         <Calendar className="w-4 h-4 text-primary" />
-                        Historial de citas ({selectedClientAppointments.length})
+                        Historial de citas ({appointmentsTotal})
                       </h4>
                     </div>
-                    {selectedClientAppointments.length > 0 ? (
+                    {isAppointmentsLoading ? (
+                      <div className="pt-3">
+                        <ListSkeleton count={4} />
+                      </div>
+                    ) : selectedClientAppointments.length > 0 ? (
                       <div className="space-y-2 pt-3">
                         {selectedClientAppointments.map((apt) => (
                           <div 
@@ -770,6 +908,36 @@ const AdminClients: React.FC = () => {
                             </div>
                           </div>
                         ))}
+                        <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-xs text-muted-foreground">
+                            Mostrando {appointmentsFirstIndex}-{appointmentsLastIndex} de {appointmentsTotal}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setAppointmentsPage((page) => Math.max(1, page - 1))}
+                              disabled={appointmentsPage <= 1}
+                            >
+                              Anterior
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                              Página {appointmentsPage} de {appointmentsTotalPages}
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setAppointmentsPage((page) => Math.min(appointmentsTotalPages, page + 1))
+                              }
+                              disabled={appointmentsPage >= appointmentsTotalPages}
+                            >
+                              Siguiente
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center py-6 text-muted-foreground">
@@ -798,7 +966,7 @@ const AdminClients: React.FC = () => {
           setEditingAppointment(null);
         }}
         onSaved={async () => {
-          await loadData();
+          await appointmentsQuery.refetch();
           setIsEditorOpen(false);
           setEditingAppointment(null);
         }}
@@ -824,7 +992,7 @@ const AdminClients: React.FC = () => {
                   toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
                   dispatchAppointmentsUpdated({ source: 'admin-clients' });
-                  await loadData();
+                  await appointmentsQuery.refetch();
                 } catch (error) {
                   toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {

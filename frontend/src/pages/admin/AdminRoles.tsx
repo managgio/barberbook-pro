@@ -14,10 +14,10 @@ import { getAdminSections } from '@/data/adminSections';
 import { AdminRole, AdminSectionKey, User } from '@/data/types';
 import { 
   getAdminRoles,
+  getUsersPage,
   createAdminRole,
   updateAdminRole,
   deleteAdminRole,
-  getUsers,
   updateUser,
 } from '@/data/api';
 import { useAuth } from '@/context/AuthContext';
@@ -25,24 +25,30 @@ import { Loader2, Shield, Users } from 'lucide-react';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { dispatchUsersUpdated } from '@/lib/adminEvents';
+import { useQuery } from '@tanstack/react-query';
+import { useTenant } from '@/context/TenantContext';
+import { queryKeys } from '@/lib/queryKeys';
 
 const isSuperAdminUser = (candidate: User) => Boolean(candidate.isSuperAdmin || candidate.isPlatformAdmin);
+const USER_SEARCH_DEBOUNCE_MS = 250;
+const EMPTY_ROLES: AdminRole[] = [];
+const EMPTY_USERS: User[] = [];
 
 const AdminRoles: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const { currentLocationId } = useTenant();
   const adminSections = useMemo(() => getAdminSections(copy), [copy]);
 
-  const [roles, setRoles] = useState<AdminRole[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<AdminRole | null>(null);
   const [isDeletingRole, setIsDeletingRole] = useState<AdminRole | null>(null);
   const [isSavingRole, setIsSavingRole] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
+  const [debouncedUserSearch, setDebouncedUserSearch] = useState('');
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -54,29 +60,77 @@ const AdminRoles: React.FC = () => {
     permissions: ['dashboard'],
   });
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [rolesData, usersData] = await Promise.all([
-        getAdminRoles(),
-        getUsers(),
-      ]);
-      setRoles(rolesData);
-      setUsers(usersData);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo cargar la información de roles.',
-        variant: 'destructive',
+  const loadAdminUsers = useCallback(async () => {
+    const collected: User[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore && page <= 20) {
+      const response = await getUsersPage({
+        page,
+        pageSize: 100,
+        role: 'admin',
       });
-    } finally {
-      setIsLoading(false);
+      collected.push(...response.items);
+      hasMore = response.hasMore;
+      page += 1;
     }
-  }, [toast]);
+
+    return collected;
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const trimmed = userSearch.trim();
+    const timer = window.setTimeout(() => {
+      setDebouncedUserSearch(trimmed);
+    }, USER_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [userSearch]);
+
+  const rolesQuery = useQuery({
+    queryKey: queryKeys.adminRoles(currentLocationId),
+    queryFn: getAdminRoles,
+  });
+  const adminUsersQuery = useQuery({
+    queryKey: queryKeys.adminRoleUsers(currentLocationId),
+    queryFn: loadAdminUsers,
+  });
+  const searchUsersQuery = useQuery({
+    queryKey: queryKeys.adminRoleSearch(currentLocationId, debouncedUserSearch),
+    queryFn: () =>
+      getUsersPage({
+        page: 1,
+        pageSize: 25,
+        q: debouncedUserSearch,
+      }),
+    enabled: debouncedUserSearch.length > 0,
+  });
+  const roles = rolesQuery.data ?? EMPTY_ROLES;
+  const adminUsers = adminUsersQuery.data ?? EMPTY_USERS;
+  const searchResults = useMemo(
+    () => (searchUsersQuery.data?.items ?? EMPTY_USERS).filter((candidate) => !isSuperAdminUser(candidate)),
+    [searchUsersQuery.data?.items],
+  );
+  const isLoading = rolesQuery.isLoading || adminUsersQuery.isLoading;
+  const isSearchingUsers = debouncedUserSearch.length > 0 && searchUsersQuery.isFetching;
+
+  useEffect(() => {
+    if (!rolesQuery.error && !adminUsersQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudo cargar la información de roles.',
+      variant: 'destructive',
+    });
+  }, [adminUsersQuery.error, rolesQuery.error, toast]);
+
+  useEffect(() => {
+    if (!searchUsersQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudo completar la búsqueda de usuarios.',
+      variant: 'destructive',
+    });
+  }, [searchUsersQuery.error, toast]);
 
   const openCreateDialog = () => {
     setEditingRole(null);
@@ -130,7 +184,7 @@ const AdminRoles: React.FC = () => {
         toast({ title: 'Rol creado', description: 'El nuevo rol ya está disponible.' });
       }
       setIsDialogOpen(false);
-      await loadData();
+      await Promise.all([rolesQuery.refetch(), adminUsersQuery.refetch()]);
     } catch (error) {
       toast({
         title: 'Error',
@@ -146,9 +200,10 @@ const AdminRoles: React.FC = () => {
     if (!isDeletingRole) return;
     try {
       await deleteAdminRole(isDeletingRole.id);
+      dispatchUsersUpdated({ source: 'admin-roles' });
       toast({ title: 'Rol eliminado', description: 'Los usuarios asignados han quedado sin rol.' });
       setIsDeletingRole(null);
-      await loadData();
+      await Promise.all([rolesQuery.refetch(), adminUsersQuery.refetch()]);
     } catch (error) {
       toast({
         title: 'Error',
@@ -165,11 +220,15 @@ const AdminRoles: React.FC = () => {
         role: isAdmin ? 'admin' : 'client',
         adminRoleId: isAdmin ? targetUser.adminRoleId || roles[0]?.id || null : null,
       });
+      dispatchUsersUpdated({ source: 'admin-roles' });
       toast({
         title: isAdmin ? 'Usuario ascendido' : 'Usuario actualizado',
         description: isAdmin ? 'Ahora tiene acceso al panel admin.' : 'Se ha revocado el acceso admin.',
       });
-      await loadData();
+      await Promise.all([
+        adminUsersQuery.refetch(),
+        debouncedUserSearch.length > 0 ? searchUsersQuery.refetch() : Promise.resolve(),
+      ]);
     } catch (error) {
       toast({
         title: 'Error',
@@ -185,8 +244,12 @@ const AdminRoles: React.FC = () => {
     setUpdatingUserId(userId);
     try {
       await updateUser(userId, { adminRoleId: roleId });
+      dispatchUsersUpdated({ source: 'admin-roles' });
       toast({ title: 'Rol asignado', description: 'El usuario ya tiene permisos actualizados.' });
-      await loadData();
+      await Promise.all([
+        adminUsersQuery.refetch(),
+        debouncedUserSearch.length > 0 ? searchUsersQuery.refetch() : Promise.resolve(),
+      ]);
     } catch (error) {
       toast({
         title: 'Error',
@@ -198,15 +261,10 @@ const AdminRoles: React.FC = () => {
     }
   };
 
-  const adminUsers = useMemo(() => users.filter((u) => u.role === 'admin' && !isSuperAdminUser(u)), [users]);
-  const searchResults = useMemo(() => {
-    const query = userSearch.trim().toLowerCase();
-    if (!query) return [];
-    return users.filter((candidate) => 
-      !isSuperAdminUser(candidate) &&
-      `${candidate.name} ${candidate.email} ${candidate.phone || ''}`.toLowerCase().includes(query)
-    );
-  }, [userSearch, users]);
+  const activeAdminUsers = useMemo(
+    () => adminUsers.filter((candidate) => candidate.role === 'admin' && !isSuperAdminUser(candidate)),
+    [adminUsers],
+  );
   const renderUserCard = (currentUser: User, highlight?: boolean) => {
     const isAdmin = currentUser.role === 'admin';
     const isSuperAdminUser = currentUser.isSuperAdmin || currentUser.isPlatformAdmin;
@@ -366,7 +424,7 @@ const AdminRoles: React.FC = () => {
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Asignado a {users.filter((u) => u.adminRoleId === role.id).length} administradores.
+                    Asignado a {adminUsers.filter((u) => u.adminRoleId === role.id).length} administradores.
                   </p>
                 </div>
               ))
@@ -389,12 +447,6 @@ const AdminRoles: React.FC = () => {
               <div className="flex items-center justify-center py-10">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
-            ) : users.length === 0 ? (
-              <EmptyState
-                icon={Users}
-                title="No hay usuarios"
-                description="Crea usuarios antes de asignar roles."
-              />
             ) : (
               <>
                 <div className="space-y-2">
@@ -413,7 +465,12 @@ const AdminRoles: React.FC = () => {
                 {userSearch.trim().length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs uppercase text-muted-foreground tracking-wide">Resultados</p>
-                    {searchResults.length > 0 ? (
+                    {isSearchingUsers ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Buscando usuarios...
+                      </div>
+                    ) : searchResults.length > 0 ? (
                       searchResults.map((result) => renderUserCard(result, true))
                     ) : (
                       <p className="text-sm text-muted-foreground">
@@ -425,8 +482,8 @@ const AdminRoles: React.FC = () => {
 
                 <div className="border-t border-border pt-4 space-y-3">
                   <p className="text-xs uppercase text-muted-foreground tracking-wide">Administradores activos</p>
-                  {adminUsers.length > 0 ? (
-                    adminUsers.map((admin) => renderUserCard(admin))
+                  {activeAdminUsers.length > 0 ? (
+                    activeAdminUsers.map((admin) => renderUserCard(admin))
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       Aún no hay administradores asignados. Activa alguno con el buscador.

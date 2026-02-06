@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAdminStripeConfig, getAppointments, getBarbers, getServices, getUsers, updateAppointment } from '@/data/api';
-import { Appointment, Barber, PaymentMethod, Service, User } from '@/data/types';
+import { getAdminSearchAppointments, getAdminStripeConfig, updateAppointment } from '@/data/api';
+import { AdminSearchAppointmentsResponse, Appointment, Barber, PaymentMethod, Service } from '@/data/types';
 import { Search, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -17,27 +17,32 @@ import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
-import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
+import { fetchBarbersCached, fetchServicesCached } from '@/lib/catalogQuery';
+import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { useTenant } from '@/context/TenantContext';
 
 const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
+const PAGE_SIZE = 25;
+const EMPTY_APPOINTMENTS: Appointment[] = [];
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_SERVICES: Service[] = [];
 
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const { currentLocationId } = useTenant();
+  const queryClient = useQueryClient();
   const DATE_STORAGE_KEY = 'managgio.adminSearchDate';
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [clients, setClients] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem(DATE_STORAGE_KEY) ?? '';
   });
-  const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
@@ -47,77 +52,88 @@ const AdminSearch: React.FC = () => {
   const [savingPayment, setSavingPayment] = useState<Record<string, boolean>>({});
   const [savingPrice, setSavingPrice] = useState<Record<string, boolean>>({});
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
-  const [stripeEnabled, setStripeEnabled] = useState(false);
-
-  const loadData = useCallback(async (withLoading = true) => {
-    if (withLoading) setIsLoading(true);
-    try {
-      const [appts, barbersData, servicesData, usersData] = await Promise.all([
-        getAppointments(),
-        getBarbers(),
-        getServices({ includeArchived: true }),
-        getUsers(),
-      ]);
-      setAppointments(appts);
-      setBarbers(barbersData);
-      setServices(servicesData);
-      setClients(usersData.filter((user) => user.role === 'client'));
-    } finally {
-      if (withLoading) setIsLoading(false);
-    }
-  }, []);
+  const appointmentsQueryKey = queryKeys.adminSearchAppointments(
+    currentLocationId,
+    currentPage,
+    PAGE_SIZE,
+    selectedBarberId === 'all' ? null : selectedBarberId,
+    selectedDate || null,
+  );
+  const appointmentsQuery = useQuery({
+    queryKey: appointmentsQueryKey,
+    queryFn: () =>
+      getAdminSearchAppointments({
+        page: currentPage,
+        pageSize: PAGE_SIZE,
+        barberId: selectedBarberId !== 'all' ? selectedBarberId : undefined,
+        date: selectedDate || undefined,
+        sort: 'desc',
+      }),
+  });
+  const barbersQuery = useQuery({
+    queryKey: queryKeys.barbers(currentLocationId),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+  });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId, true),
+    queryFn: () => fetchServicesCached({ includeArchived: true, localId: currentLocationId }),
+  });
+  const stripeConfigQuery = useQuery({
+    queryKey: queryKeys.adminStripeConfig(currentLocationId),
+    queryFn: getAdminStripeConfig,
+  });
+  const appointments = appointmentsQuery.data?.items ?? EMPTY_APPOINTMENTS;
+  const totalAppointments = appointmentsQuery.data?.total ?? 0;
+  const barbers = barbersQuery.data ?? EMPTY_BARBERS;
+  const services = servicesQuery.data ?? EMPTY_SERVICES;
+  const clients = appointmentsQuery.data?.clients ?? [];
+  const stripeEnabled = Boolean(
+    stripeConfigQuery.data?.brandEnabled &&
+      stripeConfigQuery.data?.platformEnabled &&
+      stripeConfigQuery.data?.localEnabled,
+  );
+  const isLoading =
+    appointmentsQuery.isLoading ||
+    barbersQuery.isLoading ||
+    servicesQuery.isLoading;
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!appointmentsQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudieron cargar las citas. Inténtalo de nuevo.',
+      variant: 'destructive',
+    });
+  }, [appointmentsQuery.error, toast]);
 
   useEffect(() => {
-    let active = true;
-    const loadStripeConfig = async () => {
-      try {
-        const data = await getAdminStripeConfig();
-        if (active) {
-          setStripeEnabled(Boolean(data?.brandEnabled && data?.platformEnabled && data?.localEnabled));
-        }
-      } catch {
-        if (active) setStripeEnabled(false);
+    if (!barbersQuery.error && !servicesQuery.error && !stripeConfigQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudieron cargar algunos datos de soporte.',
+      variant: 'destructive',
+    });
+  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, toast]);
+
+  useEffect(() => {
+    const pageData = appointmentsQuery.data;
+    if (!pageData) return;
+    if (pageData.items.length === 0 && pageData.total > 0 && currentPage > 1) {
+      const fallbackPage = Math.max(1, Math.ceil(pageData.total / PAGE_SIZE));
+      if (fallbackPage !== currentPage) {
+        setCurrentPage(fallbackPage);
       }
-    };
-    loadStripeConfig();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleRefresh = () => {
-      void loadData(false);
-    };
-    window.addEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
-    return () => window.removeEventListener(ADMIN_EVENTS.appointmentsUpdated, handleRefresh);
-  }, [loadData]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void loadData(false);
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [loadData]);
-
-  useEffect(() => {
-    let filtered = [...appointments];
-
-    if (selectedBarberId !== 'all') {
-      filtered = filtered.filter(a => a.barberId === selectedBarberId);
     }
+  }, [appointmentsQuery.data, currentPage]);
 
-    if (selectedDate) {
-      filtered = filtered.filter(a => a.startDateTime.startsWith(selectedDate));
-    }
-
-    filtered.sort((a, b) => new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime());
-    setFilteredAppointments(filtered);
-  }, [appointments, selectedBarberId, selectedDate]);
+  useForegroundRefresh(() => {
+    void Promise.all([
+      appointmentsQuery.refetch(),
+      barbersQuery.refetch(),
+      servicesQuery.refetch(),
+      stripeConfigQuery.refetch(),
+    ]);
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -172,12 +188,19 @@ const AdminSearch: React.FC = () => {
   const clearFilters = () => {
     setSelectedBarberId('all');
     setSelectedDate('');
+    setCurrentPage(1);
   };
 
   const applyAppointmentUpdate = useCallback((updated: Appointment) => {
-    setAppointments((prev) =>
-      prev.map((appointment) => (appointment.id === updated.id ? updated : appointment)),
-    );
+    queryClient.setQueryData<AdminSearchAppointmentsResponse>(appointmentsQueryKey, (previous) => {
+      if (!previous) return previous;
+      return {
+        ...previous,
+        items: previous.items.map((appointment) =>
+          appointment.id === updated.id ? updated : appointment,
+        ),
+      };
+    });
     setPaymentMethodDrafts((prev) => ({
       ...prev,
       [updated.id]: updated.paymentMethod ?? 'none',
@@ -187,7 +210,7 @@ const AdminSearch: React.FC = () => {
       [updated.id]: formatPriceInput(updated.price ?? 0),
     }));
     dispatchAppointmentsUpdated({ source: 'admin-search' });
-  }, []);
+  }, [appointmentsQueryKey, queryClient]);
 
   const handlePaymentMethodChange = async (appointment: Appointment, value: string) => {
     if (savingPayment[appointment.id]) return;
@@ -255,6 +278,10 @@ const AdminSearch: React.FC = () => {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(totalAppointments / PAGE_SIZE));
+  const firstResultIndex = totalAppointments === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const lastResultIndex = Math.min(totalAppointments, currentPage * PAGE_SIZE);
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -271,7 +298,13 @@ const AdminSearch: React.FC = () => {
           <div className="grid md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>{copy.staff.singular}</Label>
-              <Select value={selectedBarberId} onValueChange={setSelectedBarberId}>
+              <Select
+                value={selectedBarberId}
+                onValueChange={(value) => {
+                  setSelectedBarberId(value);
+                  setCurrentPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder={`Seleccionar ${copy.staff.singularLower}`} />
                 </SelectTrigger>
@@ -289,7 +322,10 @@ const AdminSearch: React.FC = () => {
               <Input
                 type="date"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(e) => {
+                  setSelectedDate(e.target.value);
+                  setCurrentPage(1);
+                }}
               />
             </div>
 
@@ -307,14 +343,15 @@ const AdminSearch: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="w-5 h-5 text-primary" />
-            Resultados ({filteredAppointments.length})
+            Resultados ({totalAppointments})
           </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <ListSkeleton count={5} />
-          ) : filteredAppointments.length > 0 ? (
-            <div className="overflow-x-auto">
+          ) : appointments.length > 0 ? (
+            <div className="space-y-4">
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
@@ -332,7 +369,7 @@ const AdminSearch: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAppointments.map((apt) => {
+                  {appointments.map((apt) => {
                     const clientInfo = getClientInfo(apt);
                     return (
                       <tr key={apt.id} className="border-b border-border hover:bg-secondary/30 transition-colors">
@@ -366,6 +403,10 @@ const AdminSearch: React.FC = () => {
                           <img 
                             src={getBarber(apt.barberId)?.photo || defaultAvatar} 
                             alt=""
+                            loading="lazy"
+                            decoding="async"
+                            width={32}
+                            height={32}
                             className="w-8 h-8 rounded-full object-cover"
                           />
                           <span className="text-foreground">{getBarber(apt.barberId)?.name}</span>
@@ -470,6 +511,37 @@ const AdminSearch: React.FC = () => {
                   })}
                 </tbody>
               </table>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Mostrando {firstResultIndex}-{lastResultIndex} de {totalAppointments}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((previousPage) => Math.max(1, previousPage - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Página {currentPage} de {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((previousPage) => Math.min(totalPages, previousPage + 1))
+                    }
+                    disabled={currentPage >= totalPages}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
             </div>
           ) : (
             <EmptyState
@@ -489,7 +561,7 @@ const AdminSearch: React.FC = () => {
           setEditingAppointment(null);
         }}
         onSaved={async () => {
-          await loadData();
+          await appointmentsQuery.refetch();
           setIsEditorOpen(false);
           setEditingAppointment(null);
         }}
@@ -515,7 +587,7 @@ const AdminSearch: React.FC = () => {
                   toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
                   setDeleteTarget(null);
                   dispatchAppointmentsUpdated({ source: 'admin-search' });
-                  await loadData();
+                  await appointmentsQuery.refetch();
                 } catch (error) {
                   toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {

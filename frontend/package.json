@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:perf": "vite build --sourcemap",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "perf:report": "node scripts/perf-report.mjs",
+    "perf:check": "node scripts/perf-check.mjs",
+    "perf:baseline": "npm run build:perf && npm run perf:report && npm run perf:check"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

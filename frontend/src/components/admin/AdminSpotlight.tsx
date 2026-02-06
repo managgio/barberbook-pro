@@ -26,6 +26,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AdminSectionKey } from '@/data/types';
 import { GripVertical, Loader2, RotateCcw } from 'lucide-react';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
 
 const isHotkey = (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
@@ -105,7 +106,7 @@ const AdminSpotlight: React.FC = () => {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open]);
+  }, [open, setOpen]);
 
   useEffect(() => {
     if (!open) {
@@ -150,7 +151,7 @@ const AdminSpotlight: React.FC = () => {
             order: nextOrder,
           },
         });
-        window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+        dispatchSiteSettingsUpdated(updated);
       } catch (error) {
         setSidebarOrder(resolvedStoredOrder);
         toast({

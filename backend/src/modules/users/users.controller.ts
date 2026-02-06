@@ -10,8 +10,31 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  findAll() {
-    return this.usersService.findAll();
+  findAll(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('ids') ids?: string,
+    @Query('role') role?: string,
+    @Query('q') q?: string,
+  ) {
+    const normalizedRole = role === 'admin' || role === 'client' ? role : undefined;
+    const normalizedQuery = q?.trim() || undefined;
+    const parsedIds = ids
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    if (parsedIds && parsedIds.length > 0) {
+      return this.usersService.findByIds(parsedIds);
+    }
+
+    const pageNumber = Math.max(1, parseInt(page ?? '1', 10) || 1);
+    const limit = Math.min(200, Math.max(10, parseInt(pageSize ?? '50', 10) || 50));
+    return this.usersService.findPage({
+      page: pageNumber,
+      pageSize: limit,
+      role: normalizedRole,
+      query: normalizedQuery,
+    });
   }
 
   @Get('by-email')

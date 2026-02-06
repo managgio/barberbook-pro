@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import {
-  getBarbers,
   getHolidaysGeneral,
   addGeneralHolidayRange,
   removeGeneralHolidayRange,
@@ -16,48 +15,67 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
-import { ADMIN_EVENTS, dispatchHolidaysUpdated } from '@/lib/adminEvents';
+import { dispatchHolidaysUpdated } from '@/lib/adminEvents';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { fetchBarbersCached } from '@/lib/catalogQuery';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { useTenant } from '@/context/TenantContext';
+import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
+import { useToast } from '@/hooks/use-toast';
+
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_HOLIDAYS: HolidayRange[] = [];
 
 const AdminHolidays: React.FC = () => {
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [generalHolidays, setGeneralHolidays] = useState<HolidayRange[]>([]);
-  const [barberHolidays, setBarberHolidays] = useState<HolidayRange[]>([]);
+  const { currentLocationId } = useTenant();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const copy = useBusinessCopy();
   const [generalRange, setGeneralRange] = useState<DateRange | undefined>();
   const [barberRange, setBarberRange] = useState<DateRange | undefined>();
   const [monthsToShow, setMonthsToShow] = useState(2);
   const [selectedBarber, setSelectedBarber] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
-  const copy = useBusinessCopy();
 
-  const loadInitialData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [holidays, barbersData] = await Promise.all([
-        getHolidaysGeneral(),
-        getBarbers(),
-      ]);
-      setGeneralHolidays(holidays);
-      setBarbers(barbersData);
-      setSelectedBarber((prev) => prev || barbersData[0]?.id || '');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const refreshGeneralHolidays = useCallback(async () => {
-    const holidays = await getHolidaysGeneral();
-    setGeneralHolidays(holidays);
-  }, []);
-
-  const refreshBarberHolidays = useCallback(async (barberId: string) => {
-    const holidays = await getHolidaysByBarber(barberId);
-    setBarberHolidays(holidays);
-  }, []);
+  const barbersQuery = useQuery({
+    queryKey: queryKeys.barbers(currentLocationId),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+  });
+  const generalHolidaysQuery = useQuery({
+    queryKey: queryKeys.adminGeneralHolidays(currentLocationId),
+    queryFn: getHolidaysGeneral,
+  });
+  const barberHolidaysQuery = useQuery({
+    queryKey: queryKeys.adminBarberHolidays(currentLocationId, selectedBarber),
+    queryFn: () => getHolidaysByBarber(selectedBarber),
+    enabled: Boolean(selectedBarber),
+  });
+  const barbers = barbersQuery.data ?? EMPTY_BARBERS;
+  const generalHolidays = generalHolidaysQuery.data ?? EMPTY_HOLIDAYS;
+  const barberHolidays = barberHolidaysQuery.data ?? EMPTY_HOLIDAYS;
+  const isLoading =
+    barbersQuery.isLoading ||
+    generalHolidaysQuery.isLoading ||
+    (Boolean(selectedBarber) && barberHolidaysQuery.isLoading);
 
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    if (!selectedBarber) {
+      setSelectedBarber(barbers[0]?.id ?? '');
+      return;
+    }
+    if (!barbers.some((barber) => barber.id === selectedBarber)) {
+      setSelectedBarber(barbers[0]?.id ?? '');
+    }
+  }, [barbers, selectedBarber]);
+
+  useEffect(() => {
+    if (!barbersQuery.error && !generalHolidaysQuery.error && !barberHolidaysQuery.error) return;
+    toast({
+      title: 'No se pudieron cargar festivos',
+      description: 'Inténtalo de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [barberHolidaysQuery.error, barbersQuery.error, generalHolidaysQuery.error, toast]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -70,24 +88,13 @@ const AdminHolidays: React.FC = () => {
     return () => window.removeEventListener('resize', handleChange);
   }, []);
 
-  useEffect(() => {
-    if (!selectedBarber) {
-      setBarberHolidays([]);
-      return;
-    }
-    void refreshBarberHolidays(selectedBarber);
-  }, [selectedBarber, refreshBarberHolidays]);
-
-  useEffect(() => {
-    const handleRefresh = () => {
-      void refreshGeneralHolidays();
-      if (selectedBarber) {
-        void refreshBarberHolidays(selectedBarber);
-      }
-    };
-    window.addEventListener(ADMIN_EVENTS.holidaysUpdated, handleRefresh);
-    return () => window.removeEventListener(ADMIN_EVENTS.holidaysUpdated, handleRefresh);
-  }, [refreshGeneralHolidays, refreshBarberHolidays, selectedBarber]);
+  useForegroundRefresh(() => {
+    void Promise.all([
+      barbersQuery.refetch(),
+      generalHolidaysQuery.refetch(),
+      selectedBarber ? barberHolidaysQuery.refetch() : Promise.resolve(),
+    ]);
+  });
 
   const rangeToPayload = (range?: DateRange): HolidayRange | null => {
     if (!range?.from) return null;
@@ -103,14 +110,14 @@ const AdminHolidays: React.FC = () => {
     const payload = rangeToPayload(generalRange);
     if (!payload) return;
     const updated = await addGeneralHolidayRange(payload);
-    setGeneralHolidays(updated);
+    queryClient.setQueryData(queryKeys.adminGeneralHolidays(currentLocationId), updated);
     setGeneralRange(undefined);
     dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
 
   const handleRemoveGeneralHoliday = async (range: HolidayRange) => {
     const updated = await removeGeneralHolidayRange(range);
-    setGeneralHolidays(updated);
+    queryClient.setQueryData(queryKeys.adminGeneralHolidays(currentLocationId), updated);
     dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
 
@@ -118,7 +125,7 @@ const AdminHolidays: React.FC = () => {
     const payload = rangeToPayload(barberRange);
     if (!payload || !selectedBarber) return;
     const updated = await addBarberHolidayRange(selectedBarber, payload);
-    setBarberHolidays(updated);
+    queryClient.setQueryData(queryKeys.adminBarberHolidays(currentLocationId, selectedBarber), updated);
     setBarberRange(undefined);
     dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
@@ -126,7 +133,7 @@ const AdminHolidays: React.FC = () => {
   const handleRemoveBarberHoliday = async (range: HolidayRange) => {
     if (!selectedBarber) return;
     const updated = await removeBarberHolidayRange(selectedBarber, range);
-    setBarberHolidays(updated);
+    queryClient.setQueryData(queryKeys.adminBarberHolidays(currentLocationId, selectedBarber), updated);
     dispatchHolidaysUpdated({ source: 'admin-holidays' });
   };
 

@@ -456,6 +456,10 @@ model Appointment {
   updatedAt     DateTime           @updatedAt
 
   @@index([localId])
+  @@index([localId, startDateTime])
+  @@index([localId, barberId, startDateTime])
+  @@index([localId, userId, startDateTime])
+  @@index([localId, status, startDateTime])
   @@index([referralAttributionId])
 }
 

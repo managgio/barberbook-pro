@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Location, SiteSettings, TenantBootstrap } from '@/data/types';
-import { getSiteSettings, getTenantBootstrap } from '@/data/api';
+import { getTenantBootstrap } from '@/data/api/tenant';
 import { getStoredLocalId, setStoredLocalId } from '@/lib/tenant';
-import { initFirebase } from '@/lib/firebaseConfig';
 import { applyTheme, applyThemeMode, MANAGGIO_PRIMARY } from '@/lib/theme';
-import managgioLogo from '@/assets/img/managgio/logo.png';
+import managgioLogo from '@/assets/img/managgio/logo.webp';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import { SITE_SETTINGS_UPDATED_EVENT } from '@/lib/adminEvents';
 
 interface TenantContextValue {
   tenant: TenantBootstrap | null;
@@ -37,16 +38,6 @@ const resolveLocalId = (bootstrap: TenantBootstrap) => {
   }
   return bootstrap.locations[0]?.id || bootstrap.currentLocalId;
 };
-
-const getFirebaseFallback = () => ({
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-});
 
 const resolveTenantError = (error: unknown): TenantError => {
   const message = error instanceof Error ? error.message : '';
@@ -119,6 +110,7 @@ const resolveIconType = (source: string) => {
   const clean = source.toLowerCase();
   if (clean.endsWith('.svg')) return 'image/svg+xml';
   if (clean.endsWith('.png')) return 'image/png';
+  if (clean.endsWith('.webp')) return 'image/webp';
   if (clean.endsWith('.jpg') || clean.endsWith('.jpeg')) return 'image/jpeg';
   if (clean.endsWith('.ico')) return 'image/x-icon';
   return undefined;
@@ -203,7 +195,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isReady, setIsReady] = useState(false);
   const [tenantError, setTenantError] = useState<TenantError | null>(null);
 
-  const refreshTenant = async () => {
+  const refreshTenant = useCallback(async () => {
     setTenantError(null);
     try {
       const bootstrap = await getTenantBootstrap();
@@ -222,15 +214,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         root.style.setProperty('--accent-foreground', '0 0% 10%');
         root.style.setProperty('--sidebar-primary-foreground', '0 0% 10%');
       }
-      const fallback = getFirebaseFallback();
-      if (fallback?.apiKey) {
-        initFirebase(fallback);
-      }
       setIsReady(true);
       if (!bootstrap.isPlatform) {
         void (async () => {
           try {
-            const settings = await getSiteSettings();
+            const settings = await fetchSiteSettingsCached(resolvedLocalId);
             applyMeta(buildTenantMeta(bootstrap, settings));
           } catch (error) {
             console.error('Error cargando metadatos del cliente', error);
@@ -242,11 +230,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTenantError(resolveTenantError(error));
       setIsReady(true);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    refreshTenant();
-  }, []);
+    void refreshTenant();
+  }, [refreshTenant]);
 
   useEffect(() => {
     if (!tenant || tenant.isPlatform || typeof window === 'undefined') return;
@@ -255,16 +243,16 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (!customEvent.detail) return;
       applyMeta(buildTenantMeta(tenant, customEvent.detail));
     };
-    window.addEventListener('site-settings-updated', handleSettingsUpdate as EventListener);
-    return () => window.removeEventListener('site-settings-updated', handleSettingsUpdate as EventListener);
+    window.addEventListener(SITE_SETTINGS_UPDATED_EVENT, handleSettingsUpdate as EventListener);
+    return () => window.removeEventListener(SITE_SETTINGS_UPDATED_EVENT, handleSettingsUpdate as EventListener);
   }, [tenant]);
 
-  const selectLocation = (localId: string) => {
+  const selectLocation = useCallback((localId: string) => {
     if (!tenant) return;
     setStoredLocalId(localId);
     setCurrentLocationId(localId);
-    refreshTenant();
-  };
+    void refreshTenant();
+  }, [tenant, refreshTenant]);
 
   const value = useMemo(
     () => ({
@@ -276,7 +264,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       selectLocation,
       refreshTenant,
     }),
-    [tenant, currentLocationId, isReady, tenantError],
+    [tenant, currentLocationId, isReady, tenantError, selectLocation, refreshTenant],
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;

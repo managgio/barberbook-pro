@@ -4,13 +4,13 @@ import {
   createPlatformLocation,
   deletePlatformBrand,
   deletePlatformLocation,
-  getPlatformBrandAdmins,
   getPlatformBrand,
+  getPlatformBrandAdmins,
   getPlatformBrandConfig,
+  getPlatformBrandDpa,
+  getPlatformBrandLegalSettings,
   getPlatformBrands,
   getPlatformLocationConfig,
-  getPlatformBrandLegalSettings,
-  getPlatformBrandDpa,
   assignPlatformBrandAdmin,
   removePlatformBrandAdmin,
   updatePlatformBrand,
@@ -37,6 +37,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Building2, ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  fetchPlatformBrandDpaCached,
+  fetchPlatformLocationConfigCached,
+} from '@/lib/platformQuery';
+import { queryClient } from '@/lib/queryClient';
+import { queryKeys } from '@/lib/queryKeys';
 import { BUSINESS_TYPE_OPTIONS, getBusinessCopy } from '@/lib/businessCopy';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS, getAdminSections } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
@@ -46,6 +53,130 @@ const PLATFORM_BRAND_STORAGE_KEY = 'platform:brands:selected';
 const PLATFORM_TAB_STORAGE_KEY = 'platform:brands:tab';
 const PLATFORM_BRAND_TABS = ['datos', 'locales', 'admins', 'sidebar', 'landing', 'config', 'legal'] as const;
 type PlatformBrandTab = (typeof PLATFORM_BRAND_TABS)[number];
+type JsonRecord = Record<string, unknown>;
+
+interface PlatformAdmin {
+  userId: string;
+  email?: string;
+  name?: string;
+  adminRoleName?: string | null;
+  isPlatformAdmin?: boolean;
+  isSuperAdmin?: boolean;
+}
+
+interface PlatformLocation {
+  id: string;
+  name: string;
+  slug?: string | null;
+  isActive?: boolean;
+  admins?: PlatformAdmin[];
+}
+
+interface PlatformBrand {
+  id: string;
+  name: string;
+  subdomain: string;
+  customDomain?: string | null;
+  isActive?: boolean;
+  defaultLocationId?: string | null;
+  locations?: PlatformLocation[];
+}
+
+interface PlatformBranding {
+  [key: string]: unknown;
+  name?: string;
+  shortName?: string;
+  logoUrl?: string;
+  logoFileId?: string;
+  logoLightUrl?: string;
+  logoLightFileId?: string;
+  logoDarkUrl?: string;
+  logoDarkFileId?: string;
+  heroBackgroundUrl?: string;
+  heroBackgroundFileId?: string;
+  heroImageUrl?: string;
+  heroImageFileId?: string;
+  heroImage2Url?: string;
+  heroImage2FileId?: string;
+  heroImage3Url?: string;
+  heroImage3FileId?: string;
+  heroImage4Url?: string;
+  heroImage4FileId?: string;
+  heroImage5Url?: string;
+  heroImage5FileId?: string;
+  signImageUrl?: string;
+  signImageFileId?: string;
+  heroBackgroundDimmed?: boolean;
+  heroBackgroundOpacity?: number;
+  heroBadgeEnabled?: boolean;
+  heroImageEnabled?: boolean;
+  heroTextColor?: HeroTextColorOption;
+  heroLocationCardEnabled?: boolean;
+  heroImagePosition?: HeroImagePositionOption;
+  heroNoImageAlign?: HeroNoImageAlignOption;
+}
+
+interface PlatformPresentationSection {
+  enabled: boolean;
+  title: string;
+  body: string;
+  imageUrl: string;
+  imageFileId: string;
+  imagePosition: PresentationImagePosition;
+}
+
+interface PlatformConfig {
+  [key: string]: unknown;
+  theme?: {
+    [key: string]: unknown;
+    primary?: string;
+    mode?: string;
+  };
+  branding?: PlatformBranding;
+  adminSidebar?: {
+    hiddenSections?: AdminSectionKey[] | string[];
+  };
+  landing?: {
+    order?: string[];
+    hiddenSections?: string[];
+    presentation?: {
+      sections?: PlatformPresentationSection[];
+    };
+  };
+  notificationPrefs?: {
+    email?: boolean;
+    whatsapp?: boolean;
+    sms?: boolean;
+  };
+  features?: {
+    barberServiceAssignmentEnabled?: boolean;
+  };
+  imagekit?: {
+    folder?: string;
+  };
+  business?: {
+    type?: string;
+  };
+  payments?: {
+    stripe?: {
+      [key: string]: unknown;
+      enabled?: boolean;
+      platformEnabled?: boolean;
+      mode?: string;
+      accountId?: string;
+      chargesEnabled?: boolean;
+      detailsSubmitted?: boolean;
+    };
+  };
+  twilio?: {
+    smsSenderId?: string;
+  };
+  email?: JsonRecord;
+}
+
+interface PlatformAdminOverview {
+  locations?: PlatformLocation[];
+}
 
 const readStorageValue = (key: string) => {
   if (typeof window === 'undefined') return null;
@@ -69,18 +200,23 @@ const writeStorageValue = (key: string, value: string | null) => {
   }
 };
 
-const updateNestedValue = (source: Record<string, any>, path: string[], value: any) => {
-  const result = { ...source };
-  let cursor: Record<string, any> = result;
+const updateNestedValue = <T extends JsonRecord>(source: T, path: string[], value: unknown): T => {
+  const result: JsonRecord = { ...source };
+  let cursor: JsonRecord = result;
   path.forEach((key, index) => {
     if (index === path.length - 1) {
       cursor[key] = value;
       return;
     }
-    cursor[key] = cursor[key] && typeof cursor[key] === 'object' ? { ...cursor[key] } : {};
-    cursor = cursor[key];
+    const nested = cursor[key];
+    const next =
+      nested && typeof nested === 'object' && !Array.isArray(nested)
+        ? { ...(nested as JsonRecord) }
+        : {};
+    cursor[key] = next;
+    cursor = next;
   });
-  return result;
+  return result as T;
 };
 
 const normalizeHexInput = (value: string) => {
@@ -89,7 +225,7 @@ const normalizeHexInput = (value: string) => {
   return raw.startsWith('#') ? raw : `#${raw}`;
 };
 
-const stripEmptyTheme = <T extends { theme?: Record<string, any> }>(config: T): T => {
+const stripEmptyTheme = <T extends { theme?: JsonRecord }>(config: T): T => {
   if (!config || typeof config !== 'object') return config;
   const theme = config.theme;
   if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return config;
@@ -318,7 +454,7 @@ const PRESENTATION_POSITION_OPTIONS: Array<{ value: PresentationImagePosition; l
   { value: 'right', label: 'Imagen a la derecha' },
 ];
 
-const DEFAULT_PRESENTATION_SECTIONS = [
+const DEFAULT_PRESENTATION_SECTIONS: PlatformPresentationSection[] = [
   {
     enabled: true,
     title: '',
@@ -337,9 +473,9 @@ const DEFAULT_PRESENTATION_SECTIONS = [
   },
 ];
 
-const normalizePresentationSections = (sections?: Array<Record<string, any>>) => {
+const normalizePresentationSections = (sections?: PlatformPresentationSection[]) => {
   return DEFAULT_PRESENTATION_SECTIONS.map((fallback, index) => {
-    const current = sections?.[index] || {};
+    const current = sections?.[index] || ({} as PlatformPresentationSection);
     const imagePosition = current.imagePosition === 'right' ? 'right' : current.imagePosition === 'left' ? 'left' : fallback.imagePosition;
     return {
       ...fallback,
@@ -399,7 +535,7 @@ const normalizeLandingOrder = (order?: string[]): LandingSectionKey[] => {
   });
 };
 
-const buildLandingItems = (config: Record<string, any>) => {
+const buildLandingItems = (config: PlatformConfig) => {
   const landing = config?.landing || {};
   const hidden = new Set<string>((landing.hiddenSections || []) as string[]);
   const configuredOrder = normalizeLandingOrder(landing.order);
@@ -424,7 +560,7 @@ const reorderLandingItems = (
   return next;
 };
 
-const getAdminSidebarHiddenSections = (config: Record<string, any>): AdminSectionKey[] => {
+const getAdminSidebarHiddenSections = (config: PlatformConfig): AdminSectionKey[] => {
   const hidden = config?.adminSidebar?.hiddenSections;
   if (!Array.isArray(hidden)) return [];
   return hidden.filter((section): section is AdminSectionKey => {
@@ -435,7 +571,7 @@ const getAdminSidebarHiddenSections = (config: Record<string, any>): AdminSectio
 
 const isAdminSectionRequired = (section: AdminSectionKey) => ADMIN_REQUIRED_SECTIONS.includes(section);
 
-const isAdminSectionVisible = (config: Record<string, any>, section: AdminSectionKey) => {
+const isAdminSectionVisible = (config: PlatformConfig, section: AdminSectionKey) => {
   if (isAdminSectionRequired(section)) return true;
   return !getAdminSidebarHiddenSections(config).includes(section);
 };
@@ -444,21 +580,19 @@ const PlatformBrands: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const imagekitPrefix = import.meta.env.VITE_IMAGEKIT_FOLDER_PREFIX || 'IMAGEKIT_FOLDER';
-  const [brands, setBrands] = useState<any[]>([]);
+  const [brands, setBrands] = useState<PlatformBrand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(() => readStorageValue(PLATFORM_BRAND_STORAGE_KEY));
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [brandQuery, setBrandQuery] = useState('');
   const [brandForm, setBrandForm] = useState({ name: '', subdomain: '', customDomain: '', isActive: true });
-  const [brandConfig, setBrandConfig] = useState<Record<string, any>>({});
-  const [persistedBrandConfig, setPersistedBrandConfig] = useState<Record<string, any>>({});
-  const [locationConfig, setLocationConfig] = useState<Record<string, any>>({});
+  const [brandConfig, setBrandConfig] = useState<PlatformConfig>({});
+  const [persistedBrandConfig, setPersistedBrandConfig] = useState<PlatformConfig>({});
+  const [locationConfig, setLocationConfig] = useState<PlatformConfig>({});
   const [legalSettings, setLegalSettings] = useState<LegalSettings | null>(null);
   const [dpaContent, setDpaContent] = useState<LegalPolicyResponse | null>(null);
-  const [isLegalLoading, setIsLegalLoading] = useState(false);
-  const [isLegalSaving, setIsLegalSaving] = useState(false);
   const [aiProvidersInput, setAiProvidersInput] = useState('');
   const [bumpTarget, setBumpTarget] = useState<'privacy' | 'cookies' | 'notice' | null>(null);
-  const [adminOverview, setAdminOverview] = useState<any | null>(null);
+  const [adminOverview, setAdminOverview] = useState<PlatformAdminOverview | null>(null);
   const [adminForm, setAdminForm] = useState({
     email: '',
     localId: '',
@@ -489,9 +623,6 @@ const PlatformBrands: React.FC = () => {
     heroImage5FileId: null,
     signImageFileId: null,
   });
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isAdminSaving, setIsAdminSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<PlatformBrandTab>(() => {
     const stored = readStorageValue(PLATFORM_TAB_STORAGE_KEY);
     if (stored && (PLATFORM_BRAND_TABS as readonly string[]).includes(stored)) {
@@ -547,8 +678,8 @@ const PlatformBrands: React.FC = () => {
   const adminLocations = useMemo(() => adminOverview?.locations || [], [adminOverview]);
   const adminCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    adminLocations.forEach((location: any) => {
-      location.admins?.forEach((admin: any) => {
+    adminLocations.forEach((location) => {
+      location.admins?.forEach((admin) => {
         if (admin.isPlatformAdmin) return;
         counts.set(admin.userId, (counts.get(admin.userId) || 0) + 1);
       });
@@ -556,26 +687,72 @@ const PlatformBrands: React.FC = () => {
     return counts;
   }, [adminLocations]);
 
-  const loadBrands = async () => {
-    if (!user?.id) return;
-    setIsLoading(true);
-    try {
-      const data = await getPlatformBrands();
-      setBrands(data);
-      if (!data.length) {
-        setSelectedBrandId(null);
-        return;
-      }
-      const hasSelected = selectedBrandId && data.some((brand) => brand.id === selectedBrandId);
-      if (!hasSelected) {
-        setSelectedBrandId(data[0].id);
-      }
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudieron cargar las marcas.', variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const brandsQuery = useQuery<PlatformBrand[]>({
+    queryKey: queryKeys.platformBrands(),
+    queryFn: getPlatformBrands,
+    enabled: Boolean(user?.id),
+    staleTime: 60_000,
+  });
+
+  const brandDataQuery = useQuery<PlatformBrand>({
+    queryKey: queryKeys.platformBrand(selectedBrandId),
+    queryFn: () => getPlatformBrand(selectedBrandId as string),
+    enabled: Boolean(user?.id && selectedBrandId),
+    staleTime: 60_000,
+  });
+
+  const brandConfigQuery = useQuery<PlatformConfig>({
+    queryKey: queryKeys.platformBrandConfig(selectedBrandId),
+    queryFn: () => getPlatformBrandConfig(selectedBrandId as string),
+    enabled: Boolean(user?.id && selectedBrandId),
+    staleTime: 60_000,
+  });
+
+  const brandAdminsQuery = useQuery<PlatformAdminOverview>({
+    queryKey: queryKeys.platformBrandAdmins(selectedBrandId),
+    queryFn: () => getPlatformBrandAdmins(selectedBrandId as string),
+    enabled: Boolean(user?.id && selectedBrandId),
+    staleTime: 60_000,
+  });
+
+  const legalSettingsQuery = useQuery<LegalSettings | null>({
+    queryKey: queryKeys.platformBrandLegal(selectedBrandId),
+    queryFn: () => getPlatformBrandLegalSettings(selectedBrandId as string),
+    enabled: Boolean(user?.id && selectedBrandId),
+    staleTime: 60_000,
+  });
+
+  const brandDpaQuery = useQuery<LegalPolicyResponse | null>({
+    queryKey: queryKeys.platformBrandDpa(selectedBrandId),
+    queryFn: () => getPlatformBrandDpa(selectedBrandId as string),
+    enabled: Boolean(user?.id && selectedBrandId),
+    staleTime: 60_000,
+  });
+
+  const locationConfigQuery = useQuery<PlatformConfig>({
+    queryKey: queryKeys.platformLocationConfig(selectedLocationId),
+    queryFn: () => getPlatformLocationConfig(selectedLocationId as string),
+    enabled: Boolean(user?.id && selectedLocationId),
+    staleTime: 60_000,
+  });
+
+  const isLoading = brandsQuery.isLoading;
+  const isLegalLoading =
+    legalSettingsQuery.isLoading ||
+    legalSettingsQuery.isFetching ||
+    brandDpaQuery.isLoading ||
+    brandDpaQuery.isFetching;
+
+  useEffect(() => {
+    if (!brandsQuery.data) return;
+    const data = brandsQuery.data;
+    setBrands(data);
+    setSelectedBrandId((prevSelected) => {
+      if (!data.length) return null;
+      const hasSelected = prevSelected && data.some((brand) => brand.id === prevSelected);
+      return hasSelected ? prevSelected : data[0].id;
+    });
+  }, [brandsQuery.data]);
 
   useEffect(() => {
     writeStorageValue(PLATFORM_BRAND_STORAGE_KEY, selectedBrandId);
@@ -585,148 +762,181 @@ const PlatformBrands: React.FC = () => {
     writeStorageValue(PLATFORM_TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
 
-  const loadBrandDetails = async (brandId: string) => {
-    if (!user?.id) return;
-    try {
-      const [brand, config, admins] = await Promise.all([
-        getPlatformBrand(brandId),
-        getPlatformBrandConfig(brandId),
-        getPlatformBrandAdmins(brandId),
-      ]);
-      setBrandForm({
-        name: brand.name,
-        subdomain: brand.subdomain,
-        customDomain: brand.customDomain || '',
-        isActive: brand.isActive,
-      });
-      const normalizedBrandConfig = stripEmptyTheme(config || {});
-      if (normalizedBrandConfig.imagekit?.folder) {
-        normalizedBrandConfig.imagekit = {
-          ...normalizedBrandConfig.imagekit,
-          folder: normalizeImagekitFolder(normalizedBrandConfig.imagekit.folder as string, brand.subdomain),
-        };
-      }
-      setBrandConfig(normalizedBrandConfig);
-      setPersistedBrandConfig(JSON.parse(JSON.stringify(normalizedBrandConfig)));
-      setPersistedBrandFileIds({
-        logoFileId: config?.branding?.logoFileId || null,
-        logoLightFileId: config?.branding?.logoLightFileId || null,
-        logoDarkFileId: config?.branding?.logoDarkFileId || null,
-        heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
-        heroImageFileId: config?.branding?.heroImageFileId || null,
-        heroImage2FileId: config?.branding?.heroImage2FileId || null,
-        heroImage3FileId: config?.branding?.heroImage3FileId || null,
-        heroImage4FileId: config?.branding?.heroImage4FileId || null,
-        heroImage5FileId: config?.branding?.heroImage5FileId || null,
-        signImageFileId: config?.branding?.signImageFileId || null,
-      });
-      setAdminOverview(admins || null);
-      const defaultLocation = brand.defaultLocationId || brand.locations?.[0]?.id || null;
-      setSelectedLocationId(defaultLocation);
-      setAdminForm((prev) => ({
-        ...prev,
-        localId: defaultLocation || brand.locations?.[0]?.id || '',
-        applyToAll: false,
-      }));
-      if (defaultLocation) {
-        const locationCfg = await getPlatformLocationConfig(defaultLocation);
-        const normalizedLocationCfg = stripEmptyTheme(locationCfg || {});
-        if (normalizedLocationCfg.imagekit?.folder) {
-          normalizedLocationCfg.imagekit = {
-            ...normalizedLocationCfg.imagekit,
-            folder: normalizeImagekitFolder(normalizedLocationCfg.imagekit.folder as string, brand.subdomain),
-          };
-        }
-        setLocationConfig(normalizedLocationCfg);
-        setPersistedLocationFileIds({
-          heroBackgroundFileId: locationCfg?.branding?.heroBackgroundFileId || null,
-          heroImageFileId: locationCfg?.branding?.heroImageFileId || null,
-          heroImage2FileId: locationCfg?.branding?.heroImage2FileId || null,
-          heroImage3FileId: locationCfg?.branding?.heroImage3FileId || null,
-          heroImage4FileId: locationCfg?.branding?.heroImage4FileId || null,
-          heroImage5FileId: locationCfg?.branding?.heroImage5FileId || null,
-          signImageFileId: locationCfg?.branding?.signImageFileId || null,
-        });
-      } else {
-        setLocationConfig({});
-        setPersistedLocationFileIds({
-          heroBackgroundFileId: null,
-          heroImageFileId: null,
-          heroImage2FileId: null,
-          heroImage3FileId: null,
-          heroImage4FileId: null,
-          heroImage5FileId: null,
-          signImageFileId: null,
-        });
-      }
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo cargar la marca.', variant: 'destructive' });
-    }
-  };
-
-  const loadLegalInfo = async (brandId: string) => {
-    if (!user?.id) return;
-    setIsLegalLoading(true);
-    try {
-      const [legal, dpa] = await Promise.all([
-        getPlatformBrandLegalSettings(brandId),
-        getPlatformBrandDpa(brandId),
-      ]);
-      if (legal) {
-        setLegalSettings({
-          ...legal,
-          optionalCustomSections: normalizeCustomSections(legal.optionalCustomSections),
-        });
-        setAiProvidersInput(legal.aiProviderNames?.join(', ') || '');
-      } else {
-        setLegalSettings(null);
-        setAiProvidersInput('');
-      }
-      setDpaContent(dpa || null);
-    } catch (error) {
-      setLegalSettings(null);
-      setDpaContent(null);
-      toast({ title: 'Aviso', description: 'No se pudo cargar el contenido legal.', variant: 'destructive' });
-    } finally {
-      setIsLegalLoading(false);
-    }
-  };
+  useEffect(() => {
+    const brand = brandDataQuery.data;
+    if (!brand) return;
+    setBrandForm({
+      name: brand.name,
+      subdomain: brand.subdomain,
+      customDomain: brand.customDomain || '',
+      isActive: brand.isActive,
+    });
+    const defaultLocation = brand.defaultLocationId || brand.locations?.[0]?.id || null;
+    setSelectedLocationId((prev) => {
+      if (prev && brand.locations?.some((location) => location.id === prev)) return prev;
+      return defaultLocation;
+    });
+    setAdminForm((prev) => ({
+      ...prev,
+      localId: defaultLocation || brand.locations?.[0]?.id || '',
+      applyToAll: false,
+    }));
+    setLocationConfig({});
+    setPersistedLocationFileIds({
+      heroBackgroundFileId: null,
+      heroImageFileId: null,
+      heroImage2FileId: null,
+      heroImage3FileId: null,
+      heroImage4FileId: null,
+      heroImage5FileId: null,
+      signImageFileId: null,
+    });
+  }, [brandDataQuery.data]);
 
   useEffect(() => {
-    loadBrands();
-  }, [user?.id]);
+    if (typeof brandConfigQuery.data === 'undefined') return;
+    const config = brandConfigQuery.data || {};
+    const normalizedBrandConfig = stripEmptyTheme(config);
+    const subdomain = brandDataQuery.data?.subdomain || null;
+    if (normalizedBrandConfig.imagekit?.folder) {
+      normalizedBrandConfig.imagekit = {
+        ...normalizedBrandConfig.imagekit,
+        folder: normalizeImagekitFolder(normalizedBrandConfig.imagekit.folder as string, subdomain),
+      };
+    }
+    setBrandConfig(normalizedBrandConfig);
+    setPersistedBrandConfig(JSON.parse(JSON.stringify(normalizedBrandConfig)));
+    setPersistedBrandFileIds({
+      logoFileId: config?.branding?.logoFileId || null,
+      logoLightFileId: config?.branding?.logoLightFileId || null,
+      logoDarkFileId: config?.branding?.logoDarkFileId || null,
+      heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
+      heroImageFileId: config?.branding?.heroImageFileId || null,
+      heroImage2FileId: config?.branding?.heroImage2FileId || null,
+      heroImage3FileId: config?.branding?.heroImage3FileId || null,
+      heroImage4FileId: config?.branding?.heroImage4FileId || null,
+      heroImage5FileId: config?.branding?.heroImage5FileId || null,
+      signImageFileId: config?.branding?.signImageFileId || null,
+    });
+  }, [brandConfigQuery.data, brandDataQuery.data?.subdomain]);
 
   useEffect(() => {
-    if (selectedBrandId) {
-      loadBrandDetails(selectedBrandId);
-      loadLegalInfo(selectedBrandId);
+    if (typeof brandAdminsQuery.data === 'undefined') return;
+    setAdminOverview(brandAdminsQuery.data || null);
+  }, [brandAdminsQuery.data]);
+
+  useEffect(() => {
+    if (typeof legalSettingsQuery.data === 'undefined') return;
+    if (legalSettingsQuery.data) {
+      const normalized = {
+        ...legalSettingsQuery.data,
+        optionalCustomSections: normalizeCustomSections(legalSettingsQuery.data.optionalCustomSections),
+      };
+      setLegalSettings(normalized);
+      setAiProvidersInput(normalized.aiProviderNames?.join(', ') || '');
+      return;
     }
+    setLegalSettings(null);
+    setAiProvidersInput('');
+  }, [legalSettingsQuery.data]);
+
+  useEffect(() => {
+    if (typeof brandDpaQuery.data === 'undefined') return;
+    setDpaContent(brandDpaQuery.data || null);
+  }, [brandDpaQuery.data]);
+
+  useEffect(() => {
+    if (!selectedLocationId) {
+      setLocationConfig({});
+      setPersistedLocationFileIds({
+        heroBackgroundFileId: null,
+        heroImageFileId: null,
+        heroImage2FileId: null,
+        heroImage3FileId: null,
+        heroImage4FileId: null,
+        heroImage5FileId: null,
+        signImageFileId: null,
+      });
+      return;
+    }
+    if (typeof locationConfigQuery.data === 'undefined') return;
+    const config = locationConfigQuery.data || {};
+    const normalizedConfig = stripEmptyTheme(config);
+    const subdomain = brandDataQuery.data?.subdomain || selectedBrand?.subdomain || null;
+    if (normalizedConfig.imagekit?.folder) {
+      normalizedConfig.imagekit = {
+        ...normalizedConfig.imagekit,
+        folder: normalizeImagekitFolder(normalizedConfig.imagekit.folder as string, subdomain),
+      };
+    }
+    setLocationConfig(normalizedConfig);
+    setPersistedLocationFileIds({
+      heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
+      heroImageFileId: config?.branding?.heroImageFileId || null,
+      heroImage2FileId: config?.branding?.heroImage2FileId || null,
+      heroImage3FileId: config?.branding?.heroImage3FileId || null,
+      heroImage4FileId: config?.branding?.heroImage4FileId || null,
+      heroImage5FileId: config?.branding?.heroImage5FileId || null,
+      signImageFileId: config?.branding?.signImageFileId || null,
+    });
+  }, [locationConfigQuery.data, selectedLocationId, brandDataQuery.data?.subdomain, selectedBrand?.subdomain]);
+
+  useEffect(() => {
+    if (selectedBrandId) return;
+    setBrandForm({ name: '', subdomain: '', customDomain: '', isActive: true });
+    setBrandConfig({});
+    setPersistedBrandConfig({});
+    setLegalSettings(null);
+    setDpaContent(null);
+    setAdminOverview(null);
+    setSelectedLocationId(null);
   }, [selectedBrandId]);
 
   useEffect(() => {
-    const loadLocationConfig = async () => {
-      if (!user?.id || !selectedLocationId || !selectedBrand) return;
-      const config = await getPlatformLocationConfig(selectedLocationId);
-      const normalizedConfig = config || {};
-      if (normalizedConfig.imagekit?.folder) {
-        normalizedConfig.imagekit = {
-          ...normalizedConfig.imagekit,
-          folder: normalizeImagekitFolder(normalizedConfig.imagekit.folder as string, selectedBrand.subdomain),
-        };
-      }
-      setLocationConfig(normalizedConfig);
-      setPersistedLocationFileIds({
-        heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
-        heroImageFileId: config?.branding?.heroImageFileId || null,
-        heroImage2FileId: config?.branding?.heroImage2FileId || null,
-        heroImage3FileId: config?.branding?.heroImage3FileId || null,
-        heroImage4FileId: config?.branding?.heroImage4FileId || null,
-        heroImage5FileId: config?.branding?.heroImage5FileId || null,
-        signImageFileId: config?.branding?.signImageFileId || null,
-      });
-    };
-    loadLocationConfig();
-  }, [selectedLocationId, selectedBrand, user?.id]);
+    if (!brandsQuery.isError) return;
+    toast({ title: 'Error', description: 'No se pudieron cargar las marcas.', variant: 'destructive' });
+  }, [brandsQuery.isError, brandsQuery.errorUpdatedAt, toast]);
+
+  useEffect(() => {
+    if (!brandDataQuery.isError && !brandConfigQuery.isError && !brandAdminsQuery.isError) return;
+    toast({ title: 'Error', description: 'No se pudo cargar la marca.', variant: 'destructive' });
+  }, [
+    brandDataQuery.isError,
+    brandDataQuery.errorUpdatedAt,
+    brandConfigQuery.isError,
+    brandConfigQuery.errorUpdatedAt,
+    brandAdminsQuery.isError,
+    brandAdminsQuery.errorUpdatedAt,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (!legalSettingsQuery.isError && !brandDpaQuery.isError) return;
+    setLegalSettings(null);
+    setDpaContent(null);
+    toast({ title: 'Aviso', description: 'No se pudo cargar el contenido legal.', variant: 'destructive' });
+  }, [
+    legalSettingsQuery.isError,
+    legalSettingsQuery.errorUpdatedAt,
+    brandDpaQuery.isError,
+    brandDpaQuery.errorUpdatedAt,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (!locationConfigQuery.isError) return;
+    setLocationConfig({});
+    setPersistedLocationFileIds({
+      heroBackgroundFileId: null,
+      heroImageFileId: null,
+      heroImage2FileId: null,
+      heroImage3FileId: null,
+      heroImage4FileId: null,
+      heroImage5FileId: null,
+      signImageFileId: null,
+    });
+    toast({ title: 'Error', description: 'No se pudo cargar la configuración del local.', variant: 'destructive' });
+  }, [locationConfigQuery.isError, locationConfigQuery.errorUpdatedAt, toast]);
 
   useEffect(() => {
     if (adminForm.applyToAll || adminForm.localId) return;
@@ -735,6 +945,322 @@ const PlatformBrands: React.FC = () => {
       setAdminForm((prev) => ({ ...prev, localId: fallback }));
     }
   }, [adminForm.applyToAll, adminForm.localId, adminLocations, selectedLocationId]);
+
+  const refetchBrands = async () => {
+    await brandsQuery.refetch();
+  };
+
+  const refetchSelectedBrandCore = async () => {
+    if (!selectedBrandId) return;
+    await Promise.all([
+      brandDataQuery.refetch(),
+      brandConfigQuery.refetch(),
+      brandAdminsQuery.refetch(),
+    ]);
+  };
+
+  const refetchSelectedLocationConfig = async () => {
+    if (!selectedLocationId) return;
+    await locationConfigQuery.refetch();
+  };
+
+  const saveBrandMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id || !selectedBrand) throw new Error('missing-context');
+
+      const previousPrimary = normalizeHexInput(persistedBrandConfig?.theme?.primary || '');
+      const nextPrimary = normalizeHexInput(brandConfig.theme?.primary || '');
+      const sanitizedBrandConfig = stripEmptyTheme(brandConfig);
+      const sanitizedTwilioSender = typeof sanitizedBrandConfig.twilio?.smsSenderId === 'string'
+        ? sanitizedBrandConfig.twilio.smsSenderId.trim()
+        : '';
+      const cleanedBrandConfig: PlatformConfig = { ...sanitizedBrandConfig };
+      if (sanitizedTwilioSender) {
+        cleanedBrandConfig.twilio = { smsSenderId: sanitizedTwilioSender };
+      } else {
+        delete cleanedBrandConfig.twilio;
+      }
+      const sanitizedLocationConfig = stripEmptyTheme(locationConfig);
+      await updatePlatformBrand(selectedBrand.id, {
+        name: brandForm.name,
+        subdomain: brandForm.subdomain,
+        customDomain: brandForm.customDomain || null,
+        isActive: brandForm.isActive,
+        defaultLocationId: selectedLocationId,
+      });
+      await updatePlatformBrandConfig(selectedBrand.id, cleanedBrandConfig);
+      if (selectedLocationId) {
+        await updatePlatformLocationConfig(selectedLocationId, sanitizedLocationConfig);
+      }
+      const shouldSyncBrandTheme =
+        !applyThemeToAll && previousPrimary && nextPrimary && previousPrimary !== nextPrimary;
+      if (applyThemeToAll && selectedBrand.locations?.length) {
+        const targetColor = locationConfig?.theme?.primary;
+        if (targetColor) {
+          await Promise.all(
+            selectedBrand.locations.map(async (location) => {
+              const existing = await fetchPlatformLocationConfigCached(location.id, { force: true });
+              const next = updateNestedValue(existing || {}, ['theme', 'primary'], targetColor);
+              await updatePlatformLocationConfig(location.id, next);
+            }),
+          );
+        }
+      } else if (shouldSyncBrandTheme && selectedBrand.locations?.length) {
+        await Promise.all(
+          selectedBrand.locations.map(async (location) => {
+            const existing = await fetchPlatformLocationConfigCached(location.id, { force: true });
+            const existingPrimary = normalizeHexInput(existing?.theme?.primary || '');
+            if (!existingPrimary || existingPrimary !== previousPrimary) return;
+            const next: PlatformConfig = { ...(existing || {}) };
+            const theme = { ...(next.theme || {}) };
+            delete theme.primary;
+            if (Object.keys(theme).length === 0) {
+              delete next.theme;
+            } else {
+              next.theme = theme;
+            }
+            await updatePlatformLocationConfig(location.id, next);
+          }),
+        );
+      }
+      const currentFileIds = BRAND_FILE_ID_FIELDS.reduce((acc, field) => {
+        acc[field] = (sanitizedBrandConfig?.branding?.[field] as string | undefined) || null;
+        return acc;
+      }, {} as Record<BrandFileIdField, string | null>);
+
+      await Promise.all(
+        BRAND_FILE_ID_FIELDS.map(async (field) => {
+          const previous = persistedBrandFileIds[field];
+          const next = currentFileIds[field];
+          if (!previous || previous === next) return;
+          try {
+            await deleteFromImageKit(previous, { subdomainOverride: selectedBrand.subdomain });
+          } catch (cleanupError) {
+            console.error(cleanupError);
+            toast({
+              title: 'Aviso',
+              description: 'No se pudo borrar una imagen anterior en storage.',
+              variant: 'destructive',
+            });
+          }
+        }),
+      );
+      setPersistedBrandFileIds(currentFileIds);
+      if (selectedLocationId) {
+        const currentLocationFileIds = {
+          heroBackgroundFileId: locationConfig?.branding?.heroBackgroundFileId || null,
+          heroImageFileId: locationConfig?.branding?.heroImageFileId || null,
+          heroImage2FileId: locationConfig?.branding?.heroImage2FileId || null,
+          heroImage3FileId: locationConfig?.branding?.heroImage3FileId || null,
+          heroImage4FileId: locationConfig?.branding?.heroImage4FileId || null,
+          heroImage5FileId: locationConfig?.branding?.heroImage5FileId || null,
+          signImageFileId: locationConfig?.branding?.signImageFileId || null,
+        };
+        await Promise.all(
+          LOCATION_LANDING_FILE_ID_FIELDS.map(async (field) => {
+            const previous = persistedLocationFileIds[field];
+            const next = currentLocationFileIds[field];
+            if (!previous || previous === next) return;
+            try {
+              await deleteFromImageKit(previous, { subdomainOverride: selectedBrand.subdomain });
+            } catch (cleanupError) {
+              console.error(cleanupError);
+              toast({
+                title: 'Aviso',
+                description: 'No se pudo borrar una imagen anterior del local.',
+                variant: 'destructive',
+              });
+            }
+          }),
+        );
+        setPersistedLocationFileIds(currentLocationFileIds);
+      }
+      setPersistedBrandConfig(JSON.parse(JSON.stringify(sanitizedBrandConfig)));
+      setBrandConfig(sanitizedBrandConfig);
+      setLocationConfig(sanitizedLocationConfig);
+      await refetchBrands();
+      await refetchSelectedBrandCore();
+      await refetchSelectedLocationConfig();
+    },
+    onSuccess: () => {
+      toast({ title: 'Actualizado', description: 'Marca y configuración guardadas.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo guardar la marca.', variant: 'destructive' });
+    },
+  });
+
+  const saveLegalMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id || !selectedBrand || !legalSettings) throw new Error('missing-context');
+      const aiProviderNames = aiProvidersInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const payload: Partial<LegalSettings> = {
+        ...legalSettings,
+        aiProviderNames,
+        legalOwnerName: legalSettings.legalOwnerName?.trim() || null,
+        legalOwnerTaxId: legalSettings.legalOwnerTaxId?.trim() || null,
+        legalOwnerAddress: legalSettings.legalOwnerAddress?.trim() || null,
+        legalContactEmail: legalSettings.legalContactEmail?.trim() || null,
+        legalContactPhone: legalSettings.legalContactPhone?.trim() || null,
+        optionalCustomSections: normalizeCustomSections(legalSettings.optionalCustomSections),
+        retentionDays: legalSettings.retentionDays ? Number(legalSettings.retentionDays) : null,
+      };
+      const updated = await updatePlatformBrandLegalSettings(selectedBrand.id, payload);
+      const normalizedUpdated = {
+        ...updated,
+        optionalCustomSections: normalizeCustomSections(updated.optionalCustomSections),
+      };
+      setLegalSettings(normalizedUpdated);
+      queryClient.setQueryData(queryKeys.platformBrandLegal(selectedBrand.id), normalizedUpdated);
+      setAiProvidersInput(normalizedUpdated.aiProviderNames?.join(', ') || '');
+      const dpa = await fetchPlatformBrandDpaCached(selectedBrand.id, { force: true });
+      setDpaContent(dpa);
+      queryClient.setQueryData(queryKeys.platformBrandDpa(selectedBrand.id), dpa);
+    },
+    onSuccess: () => {
+      toast({ title: 'Legal actualizado', description: 'Cambios guardados en la marca.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo guardar el legal.', variant: 'destructive' });
+    },
+  });
+
+  const createBrandMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error('missing-context');
+      return createPlatformBrand({
+        name: newBrandForm.name,
+        subdomain: newBrandForm.subdomain,
+        customDomain: newBrandForm.customDomain || null,
+        isActive: newBrandForm.isActive,
+      });
+    },
+    onSuccess: async (created) => {
+      setCreateBrandOpen(false);
+      setNewBrandForm({ name: '', subdomain: '', customDomain: '', isActive: true });
+      await refetchBrands();
+      setSelectedBrandId(created.id);
+      toast({ title: 'Marca creada', description: 'Ya puedes configurar sus locales y credenciales.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo crear la marca.', variant: 'destructive' });
+    },
+  });
+
+  const deleteBrandMutation = useMutation({
+    mutationFn: async (brandId: string) => {
+      if (!user?.id) throw new Error('missing-context');
+      await deletePlatformBrand(brandId);
+    },
+    onSuccess: async () => {
+      setSelectedBrandId(null);
+      await refetchBrands();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo eliminar la marca.', variant: 'destructive' });
+    },
+  });
+
+  const createLocationMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id || !selectedBrand) throw new Error('missing-context');
+      return createPlatformLocation(selectedBrand.id, {
+        name: newLocationForm.name,
+        slug: newLocationForm.slug || null,
+        isActive: newLocationForm.isActive,
+      });
+    },
+    onSuccess: async (location) => {
+      setCreateLocationOpen(false);
+      setNewLocationForm({ name: '', slug: '', isActive: true });
+      await refetchBrands();
+      setSelectedLocationId(location.id);
+      await refetchSelectedBrandCore();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo crear el local.', variant: 'destructive' });
+    },
+  });
+
+  const updateLocationMutation = useMutation({
+    mutationFn: async (payload: { localId: string; data: { name?: string; slug?: string | null; isActive?: boolean } }) => {
+      if (!user?.id) throw new Error('missing-context');
+      await updatePlatformLocation(payload.localId, payload.data);
+    },
+    onSuccess: async () => {
+      await refetchBrands();
+      if (selectedBrand) {
+        await refetchSelectedBrandCore();
+      }
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo actualizar el local.', variant: 'destructive' });
+    },
+  });
+
+  const deleteLocationMutation = useMutation({
+    mutationFn: async (localId: string) => {
+      if (!user?.id) throw new Error('missing-context');
+      await deletePlatformLocation(localId);
+    },
+    onSuccess: async () => {
+      await refetchBrands();
+      if (selectedBrand) {
+        await refetchSelectedBrandCore();
+      }
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo eliminar el local.', variant: 'destructive' });
+    },
+  });
+
+  const assignAdminMutation = useMutation({
+    mutationFn: async (payload: { email: string; applyToAll: boolean; localId?: string }) => {
+      if (!user?.id || !selectedBrand) throw new Error('missing-context');
+      await assignPlatformBrandAdmin(selectedBrand.id, {
+        email: payload.email,
+        applyToAll: payload.applyToAll,
+        localId: payload.localId,
+        adminRoleId: null,
+      });
+    },
+    onSuccess: async () => {
+      toast({ title: 'Admin asignado', description: 'El acceso se ha actualizado.' });
+      setAdminForm((prev) => ({
+        ...prev,
+        email: '',
+      }));
+      await refetchSelectedBrandCore();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo asignar el admin.', variant: 'destructive' });
+    },
+  });
+
+  const removeAdminMutation = useMutation({
+    mutationFn: async (payload: { userId: string; localId?: string; removeFromAll?: boolean }) => {
+      if (!user?.id || !selectedBrand) throw new Error('missing-context');
+      await removePlatformBrandAdmin(selectedBrand.id, payload);
+    },
+    onSuccess: async () => {
+      toast({ title: 'Admin eliminado', description: 'El acceso se ha revocado.' });
+      await refetchSelectedBrandCore();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'No se pudo eliminar el admin.', variant: 'destructive' });
+    },
+  });
+
+  const isSaving = saveBrandMutation.isPending || createBrandMutation.isPending;
+  const isLegalSaving = saveLegalMutation.isPending;
+  const isAdminSaving = assignAdminMutation.isPending || removeAdminMutation.isPending;
+  const isLocationSaving =
+    createLocationMutation.isPending ||
+    updateLocationMutation.isPending ||
+    deleteLocationMutation.isPending;
 
   const isLocationSidebarOverride = Array.isArray(locationConfig?.adminSidebar?.hiddenSections);
   const locationSidebarConfig = isLocationSidebarOverride ? locationConfig : brandConfig;
@@ -862,7 +1388,7 @@ const PlatformBrands: React.FC = () => {
   };
 
   const updateSidebarVisibility = (
-    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
     section: AdminSectionKey,
     visible: boolean,
   ) => {
@@ -911,11 +1437,11 @@ const PlatformBrands: React.FC = () => {
       return;
     }
     setLocationConfig((prev) => {
-      const next = { ...prev } as Record<string, any>;
+      const next: PlatformConfig = { ...prev };
       if (!next.features || typeof next.features !== 'object' || Array.isArray(next.features)) {
         return next;
       }
-      const features = { ...(next.features as Record<string, any>) };
+      const features = { ...(next.features as JsonRecord) };
       delete features.barberServiceAssignmentEnabled;
       if (Object.keys(features).length === 0) {
         delete next.features;
@@ -927,7 +1453,7 @@ const PlatformBrands: React.FC = () => {
   };
 
   const updateLandingConfig = (
-    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
     items: Array<{ key: LandingSectionKey; enabled: boolean }>,
   ) => {
     setConfig((prev) => {
@@ -955,7 +1481,7 @@ const PlatformBrands: React.FC = () => {
   };
 
   const handleLandingDrop = (
-    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
     items: Array<{ key: LandingSectionKey; enabled: boolean }>,
     event: React.DragEvent<HTMLDivElement>,
     index: number,
@@ -983,7 +1509,7 @@ const PlatformBrands: React.FC = () => {
   };
 
   const handleLandingToggle = (
-    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+    setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
     items: Array<{ key: LandingSectionKey; enabled: boolean }>,
     key: LandingSectionKey,
     enabled: boolean,
@@ -1000,12 +1526,12 @@ const PlatformBrands: React.FC = () => {
     setDraggingLandingScope(null);
   };
 
-  const getPresentationSections = (config: Record<string, any>) =>
+  const getPresentationSections = (config: PlatformConfig) =>
     normalizePresentationSections(config?.landing?.presentation?.sections);
 
   const updatePresentationSections = (
-    setConfig: React.Dispatch<React.SetStateAction<Record<string, any>>>,
-    sections: Array<Record<string, any>>,
+    setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
+    sections: PlatformPresentationSection[],
   ) => {
     setConfig((prev) => updateNestedValue(prev, ['landing', 'presentation', 'sections'], sections));
   };
@@ -1093,7 +1619,7 @@ const PlatformBrands: React.FC = () => {
     const config = isLocationScope ? locationConfig : brandConfig;
     const displayConfig = isLocationScope && disabled ? brandConfig : config;
     const sections = getPresentationSections(displayConfig);
-    const updateSection = (index: number, updates: Record<string, any>) => {
+    const updateSection = (index: number, updates: Partial<PlatformPresentationSection>) => {
       const next = sections.map((section, idx) => (idx === index ? { ...section, ...updates } : section));
       if (isLocationScope) {
         updatePresentationSections(setLocationConfig, next);
@@ -1173,7 +1699,13 @@ const PlatformBrands: React.FC = () => {
                   <div className="flex flex-col sm:flex-row gap-4">
                     <div className="h-28 w-40 rounded-xl border border-border/60 bg-muted/40 flex items-center justify-center overflow-hidden">
                       {section.imageUrl ? (
-                        <img src={section.imageUrl} alt="Presentación" className="h-full w-full object-cover" />
+                        <img
+                          src={section.imageUrl}
+                          alt="Presentación"
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <ImageIcon className="h-6 w-6 text-muted-foreground" />
                       )}
@@ -1270,125 +1802,7 @@ const PlatformBrands: React.FC = () => {
 
   const handleSaveBrand = async () => {
     if (!user?.id || !selectedBrand) return;
-    setIsSaving(true);
-    try {
-      const previousPrimary = normalizeHexInput(persistedBrandConfig?.theme?.primary || '');
-      const nextPrimary = normalizeHexInput(brandConfig.theme?.primary || '');
-      const sanitizedBrandConfig = stripEmptyTheme(brandConfig);
-      const sanitizedTwilioSender = typeof sanitizedBrandConfig.twilio?.smsSenderId === 'string'
-        ? sanitizedBrandConfig.twilio.smsSenderId.trim()
-        : '';
-      const cleanedBrandConfig = { ...sanitizedBrandConfig } as Record<string, any>;
-      if (sanitizedTwilioSender) {
-        cleanedBrandConfig.twilio = { smsSenderId: sanitizedTwilioSender };
-      } else {
-        delete cleanedBrandConfig.twilio;
-      }
-      const sanitizedLocationConfig = stripEmptyTheme(locationConfig);
-      await updatePlatformBrand(selectedBrand.id, {
-        name: brandForm.name,
-        subdomain: brandForm.subdomain,
-        customDomain: brandForm.customDomain || null,
-        isActive: brandForm.isActive,
-        defaultLocationId: selectedLocationId,
-      });
-      await updatePlatformBrandConfig(selectedBrand.id, cleanedBrandConfig);
-      if (selectedLocationId) {
-        await updatePlatformLocationConfig(selectedLocationId, sanitizedLocationConfig);
-      }
-      const shouldSyncBrandTheme =
-        !applyThemeToAll && previousPrimary && nextPrimary && previousPrimary !== nextPrimary;
-      if (applyThemeToAll && selectedBrand.locations?.length) {
-        const targetColor = locationConfig?.theme?.primary;
-        if (targetColor) {
-          await Promise.all(
-            selectedBrand.locations.map(async (location: any) => {
-              const existing = await getPlatformLocationConfig(location.id);
-              const next = updateNestedValue(existing || {}, ['theme', 'primary'], targetColor);
-              await updatePlatformLocationConfig(location.id, next);
-            }),
-          );
-        }
-      } else if (shouldSyncBrandTheme && selectedBrand.locations?.length) {
-        await Promise.all(
-          selectedBrand.locations.map(async (location: any) => {
-            const existing = await getPlatformLocationConfig(location.id);
-            const existingPrimary = normalizeHexInput(existing?.theme?.primary || '');
-            if (!existingPrimary || existingPrimary !== previousPrimary) return;
-            const next = { ...(existing || {}) } as Record<string, any>;
-            const theme = { ...(next.theme || {}) };
-            delete theme.primary;
-            if (Object.keys(theme).length === 0) {
-              delete next.theme;
-            } else {
-              next.theme = theme;
-            }
-            await updatePlatformLocationConfig(location.id, next);
-          }),
-        );
-      }
-      const currentFileIds = BRAND_FILE_ID_FIELDS.reduce((acc, field) => {
-        acc[field] = (sanitizedBrandConfig?.branding?.[field] as string | undefined) || null;
-        return acc;
-      }, {} as Record<BrandFileIdField, string | null>);
-
-      await Promise.all(
-        BRAND_FILE_ID_FIELDS.map(async (field) => {
-          const previous = persistedBrandFileIds[field];
-          const next = currentFileIds[field];
-          if (!previous || previous === next) return;
-          try {
-            await deleteFromImageKit(previous, { subdomainOverride: selectedBrand.subdomain });
-          } catch (cleanupError) {
-            console.error(cleanupError);
-            toast({
-              title: 'Aviso',
-              description: 'No se pudo borrar una imagen anterior en storage.',
-              variant: 'destructive',
-            });
-          }
-        }),
-      );
-      setPersistedBrandFileIds(currentFileIds);
-      if (selectedLocationId) {
-        const currentLocationFileIds = {
-          heroBackgroundFileId: locationConfig?.branding?.heroBackgroundFileId || null,
-          heroImageFileId: locationConfig?.branding?.heroImageFileId || null,
-          heroImage2FileId: locationConfig?.branding?.heroImage2FileId || null,
-          heroImage3FileId: locationConfig?.branding?.heroImage3FileId || null,
-          heroImage4FileId: locationConfig?.branding?.heroImage4FileId || null,
-          heroImage5FileId: locationConfig?.branding?.heroImage5FileId || null,
-          signImageFileId: locationConfig?.branding?.signImageFileId || null,
-        };
-        await Promise.all(
-          LOCATION_LANDING_FILE_ID_FIELDS.map(async (field) => {
-            const previous = persistedLocationFileIds[field];
-            const next = currentLocationFileIds[field];
-            if (!previous || previous === next) return;
-            try {
-              await deleteFromImageKit(previous, { subdomainOverride: selectedBrand.subdomain });
-            } catch (cleanupError) {
-              console.error(cleanupError);
-              toast({
-                title: 'Aviso',
-                description: 'No se pudo borrar una imagen anterior del local.',
-                variant: 'destructive',
-              });
-            }
-          }),
-        );
-        setPersistedLocationFileIds(currentLocationFileIds);
-      }
-      setPersistedBrandConfig(JSON.parse(JSON.stringify(sanitizedBrandConfig)));
-      setBrandConfig(sanitizedBrandConfig);
-      setLocationConfig(sanitizedLocationConfig);
-      await loadBrands();
-      toast({ title: 'Actualizado', description: 'Marca y configuración guardadas.' });
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar la marca.', variant: 'destructive' });
-    } finally {
-      setIsSaving(false);
-    }
+    await saveBrandMutation.mutateAsync();
   };
 
   const updateLegalField = <K extends keyof LegalSettings>(field: K, value: LegalSettings[K]) => {
@@ -1481,59 +1895,12 @@ const PlatformBrands: React.FC = () => {
 
   const handleSaveLegal = async () => {
     if (!user?.id || !selectedBrand || !legalSettings) return;
-    setIsLegalSaving(true);
-    try {
-      const aiProviderNames = aiProvidersInput
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean);
-      const payload: Partial<LegalSettings> = {
-        ...legalSettings,
-        aiProviderNames,
-        legalOwnerName: legalSettings.legalOwnerName?.trim() || null,
-        legalOwnerTaxId: legalSettings.legalOwnerTaxId?.trim() || null,
-        legalOwnerAddress: legalSettings.legalOwnerAddress?.trim() || null,
-        legalContactEmail: legalSettings.legalContactEmail?.trim() || null,
-        legalContactPhone: legalSettings.legalContactPhone?.trim() || null,
-        optionalCustomSections: normalizeCustomSections(legalSettings.optionalCustomSections),
-        retentionDays: legalSettings.retentionDays ? Number(legalSettings.retentionDays) : null,
-      };
-      const updated = await updatePlatformBrandLegalSettings(selectedBrand.id, payload);
-      setLegalSettings({
-        ...updated,
-        optionalCustomSections: normalizeCustomSections(updated.optionalCustomSections),
-      });
-      setAiProvidersInput(updated.aiProviderNames?.join(', ') || '');
-      const dpa = await getPlatformBrandDpa(selectedBrand.id);
-      setDpaContent(dpa);
-      toast({ title: 'Legal actualizado', description: 'Cambios guardados en la marca.' });
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar el legal.', variant: 'destructive' });
-    } finally {
-      setIsLegalSaving(false);
-    }
+    await saveLegalMutation.mutateAsync();
   };
 
   const handleCreateBrand = async () => {
     if (!user?.id) return;
-    setIsSaving(true);
-    try {
-      const created = await createPlatformBrand({
-        name: newBrandForm.name,
-        subdomain: newBrandForm.subdomain,
-        customDomain: newBrandForm.customDomain || null,
-        isActive: newBrandForm.isActive,
-      });
-      setCreateBrandOpen(false);
-      setNewBrandForm({ name: '', subdomain: '', customDomain: '', isActive: true });
-      await loadBrands();
-      setSelectedBrandId(created.id);
-      toast({ title: 'Marca creada', description: 'Ya puedes configurar sus locales y credenciales.' });
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo crear la marca.', variant: 'destructive' });
-    } finally {
-      setIsSaving(false);
-    }
+    await createBrandMutation.mutateAsync();
   };
 
   const updateBrandingFields = (updates: Record<string, string | boolean | number>) => {
@@ -1556,8 +1923,8 @@ const PlatformBrands: React.FC = () => {
     });
   };
 
-  function readStripeConfig(config: Record<string, any>) {
-    const stripe = (config?.payments?.stripe || {}) as Record<string, any>;
+  function readStripeConfig(config: PlatformConfig) {
+    const stripe = config?.payments?.stripe || {};
     return {
       enabled: stripe.enabled === true,
       platformEnabled: stripe.platformEnabled !== false,
@@ -1569,11 +1936,11 @@ const PlatformBrands: React.FC = () => {
   }
 
   function updateStripeConfig(
-    setter: React.Dispatch<React.SetStateAction<Record<string, any>>>,
-    updates: Record<string, any>,
+    setter: React.Dispatch<React.SetStateAction<PlatformConfig>>,
+    updates: JsonRecord,
   ) {
     setter((prev) => {
-      const current = (prev?.payments?.stripe || {}) as Record<string, any>;
+      const current = prev?.payments?.stripe || {};
       return updateNestedValue(prev, ['payments', 'stripe'], { ...current, ...updates });
     });
   }
@@ -1691,58 +2058,23 @@ const PlatformBrands: React.FC = () => {
   const handleDeleteBrand = async () => {
     if (!user?.id || !selectedBrand) return;
     if (!window.confirm('¿Seguro que quieres eliminar esta marca?')) return;
-    try {
-      await deletePlatformBrand(selectedBrand.id);
-      setSelectedBrandId(null);
-      await loadBrands();
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar la marca.', variant: 'destructive' });
-    }
+    await deleteBrandMutation.mutateAsync(selectedBrand.id);
   };
 
   const handleCreateLocation = async () => {
     if (!user?.id || !selectedBrand) return;
-    try {
-      const location = await createPlatformLocation(selectedBrand.id, {
-        name: newLocationForm.name,
-        slug: newLocationForm.slug || null,
-        isActive: newLocationForm.isActive,
-      });
-      setCreateLocationOpen(false);
-      setNewLocationForm({ name: '', slug: '', isActive: true });
-      await loadBrands();
-      setSelectedLocationId(location.id);
-      await loadBrandDetails(selectedBrand.id);
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo crear el local.', variant: 'destructive' });
-    }
+    await createLocationMutation.mutateAsync();
   };
 
   const handleUpdateLocation = async (localId: string, payload: { name?: string; slug?: string | null; isActive?: boolean }) => {
     if (!user?.id) return;
-    try {
-      await updatePlatformLocation(localId, payload);
-      await loadBrands();
-      if (selectedBrand) {
-        await loadBrandDetails(selectedBrand.id);
-      }
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo actualizar el local.', variant: 'destructive' });
-    }
+    await updateLocationMutation.mutateAsync({ localId, data: payload });
   };
 
   const handleDeleteLocation = async (localId: string) => {
     if (!user?.id) return;
     if (!window.confirm('¿Seguro que quieres eliminar este local?')) return;
-    try {
-      await deletePlatformLocation(localId);
-      await loadBrands();
-      if (selectedBrand) {
-        await loadBrandDetails(selectedBrand.id);
-      }
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar el local.', variant: 'destructive' });
-    }
+    await deleteLocationMutation.mutateAsync(localId);
   };
 
   const handleAssignAdmin = async () => {
@@ -1759,39 +2091,16 @@ const PlatformBrands: React.FC = () => {
       return;
     }
 
-    setIsAdminSaving(true);
-    try {
-      await assignPlatformBrandAdmin(selectedBrand.id, {
-        email,
-        applyToAll,
-        localId,
-        adminRoleId: null,
-      });
-      toast({ title: 'Admin asignado', description: 'El acceso se ha actualizado.' });
-      setAdminForm((prev) => ({
-        ...prev,
-        email: '',
-      }));
-      await loadBrandDetails(selectedBrand.id);
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo asignar el admin.', variant: 'destructive' });
-    } finally {
-      setIsAdminSaving(false);
-    }
+    await assignAdminMutation.mutateAsync({
+      email,
+      applyToAll,
+      localId,
+    });
   };
 
   const handleRemoveAdmin = async (payload: { userId: string; localId?: string; removeFromAll?: boolean }) => {
     if (!user?.id || !selectedBrand) return;
-    setIsAdminSaving(true);
-    try {
-      await removePlatformBrandAdmin(selectedBrand.id, payload);
-      toast({ title: 'Admin eliminado', description: 'El acceso se ha revocado.' });
-      await loadBrandDetails(selectedBrand.id);
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar el admin.', variant: 'destructive' });
-    } finally {
-      setIsAdminSaving(false);
-    }
+    await removeAdminMutation.mutateAsync(payload);
   };
 
   const renderBrandAssetInput = (
@@ -1815,6 +2124,8 @@ const PlatformBrands: React.FC = () => {
               <img
                 src={urlValue}
                 alt={asset.label}
+                loading="lazy"
+                decoding="async"
                 className={`h-full w-full ${asset.imageClass}`}
               />
             ) : (
@@ -1882,6 +2193,8 @@ const PlatformBrands: React.FC = () => {
               <img
                 src={urlValue}
                 alt={asset.label}
+                loading="lazy"
+                decoding="async"
                 className={`h-full w-full ${asset.imageClass}`}
               />
             ) : (
@@ -2096,7 +2409,7 @@ const PlatformBrands: React.FC = () => {
                 <Building2 className="h-5 w-5 text-primary" />
                 {selectedBrand.name}
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={handleDeleteBrand}>
+              <Button variant="ghost" size="sm" onClick={handleDeleteBrand} disabled={deleteBrandMutation.isPending}>
                 <Trash2 className="h-4 w-4 mr-1" />
                 Eliminar
               </Button>
@@ -2150,7 +2463,7 @@ const PlatformBrands: React.FC = () => {
                         <SelectValue placeholder="Selecciona local" />
                       </SelectTrigger>
                       <SelectContent>
-                        {selectedBrand.locations?.map((location: any) => (
+                        {selectedBrand.locations?.map((location) => (
                           <SelectItem key={location.id} value={location.id}>
                             {location.name}
                           </SelectItem>
@@ -2204,13 +2517,13 @@ const PlatformBrands: React.FC = () => {
                     <h3 className="text-base font-semibold">Locales</h3>
                     <p className="text-sm text-muted-foreground">Añade o ajusta locales por marca.</p>
                   </div>
-                  <Button size="sm" onClick={() => setCreateLocationOpen(true)}>
+                  <Button size="sm" onClick={() => setCreateLocationOpen(true)} disabled={isLocationSaving}>
                     <Plus className="h-4 w-4 mr-1" />
                     Nuevo local
                   </Button>
                 </div>
                 <div className="space-y-3">
-                  {selectedBrand.locations?.map((location: any) => (
+                  {selectedBrand.locations?.map((location) => (
                     <div key={location.id} className="border border-border/60 rounded-xl p-4 flex flex-col gap-3">
                       <div className="flex items-center justify-between">
                         <div>
@@ -2221,6 +2534,7 @@ const PlatformBrands: React.FC = () => {
                           <Button
                             variant="ghost"
                             size="sm"
+                            disabled={isLocationSaving}
                             onClick={() => {
                               setSelectedLocationId(location.id);
                               setEditingLocationId(location.id);
@@ -2234,7 +2548,12 @@ const PlatformBrands: React.FC = () => {
                           >
                             Editar
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDeleteLocation(location.id)}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isLocationSaving}
+                            onClick={() => handleDeleteLocation(location.id)}
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -2302,7 +2621,7 @@ const PlatformBrands: React.FC = () => {
                                 <SelectValue placeholder="Selecciona local" />
                               </SelectTrigger>
                               <SelectContent>
-                                {adminLocations.map((location: any) => (
+                                {adminLocations.map((location) => (
                                   <SelectItem key={location.id} value={location.id}>
                                     {location.name}
                                   </SelectItem>
@@ -2331,7 +2650,7 @@ const PlatformBrands: React.FC = () => {
                         </CardContent>
                       </Card>
                     ) : (
-                      adminLocations.map((location: any) => (
+                      adminLocations.map((location) => (
                         <Card key={location.id} className="border border-border/60 bg-card/70">
                           <CardHeader className="flex flex-row items-center justify-between">
                             <div>
@@ -2343,10 +2662,10 @@ const PlatformBrands: React.FC = () => {
                             </div>
                           </CardHeader>
                           <CardContent className="space-y-3">
-                            {location.admins?.filter((admin: any) => !admin.isPlatformAdmin).length ? (
+                            {location.admins?.filter((admin) => !admin.isPlatformAdmin).length ? (
                               location.admins
-                                .filter((admin: any) => !admin.isPlatformAdmin)
-                                .map((admin: any) => (
+                                .filter((admin) => !admin.isPlatformAdmin)
+                                .map((admin) => (
                                 <div key={admin.userId} className="flex items-center justify-between gap-4 border border-border/50 rounded-xl px-3 py-2">
                                   <div>
                                     <div className="text-sm font-semibold text-foreground">{admin.name}</div>
@@ -2452,7 +2771,7 @@ const PlatformBrands: React.FC = () => {
                                         <SelectValue placeholder={`Selecciona ${selectedBusinessCopy.location.indefiniteSingular}`} />
                                       </SelectTrigger>
                                 <SelectContent>
-                                  {selectedBrand.locations?.map((location: any) => (
+                                  {selectedBrand.locations?.map((location) => (
                                     <SelectItem key={location.id} value={location.id}>
                                       {location.name}
                                     </SelectItem>
@@ -2736,7 +3055,7 @@ const PlatformBrands: React.FC = () => {
                                   <SelectValue placeholder="Selecciona local" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {selectedBrand.locations?.map((location: any) => (
+                                  {selectedBrand.locations?.map((location) => (
                                     <SelectItem key={location.id} value={location.id}>
                                       {location.name}
                                     </SelectItem>
@@ -3339,7 +3658,7 @@ const PlatformBrands: React.FC = () => {
                               <SelectValue placeholder="Selecciona local" />
                             </SelectTrigger>
                             <SelectContent>
-                              {selectedBrand?.locations?.map((location: any) => (
+                              {selectedBrand?.locations?.map((location) => (
                                 <SelectItem key={location.id} value={location.id}>
                                   {location.name}
                                 </SelectItem>
@@ -3537,9 +3856,9 @@ const PlatformBrands: React.FC = () => {
                             onValueChange={(value) => {
                               if (value === 'inherit') {
                                 setLocationConfig((prev) => {
-                                  const next = { ...prev } as Record<string, any>;
+                                  const next: PlatformConfig = { ...prev };
                                   if (!next.theme) return next;
-                                  const theme = { ...(next.theme as Record<string, any>) };
+                                  const theme = { ...(next.theme as JsonRecord) };
                                   delete theme.mode;
                                   if (Object.keys(theme).length === 0) {
                                     delete next.theme;
@@ -3999,7 +4318,7 @@ const PlatformBrands: React.FC = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleCreateLocation}>Crear local</Button>
+            <Button onClick={handleCreateLocation} disabled={isLocationSaving}>Crear local</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -4034,6 +4353,7 @@ const PlatformBrands: React.FC = () => {
           </div>
           <DialogFooter>
             <Button
+              disabled={isLocationSaving}
               onClick={() => {
                 if (!editingLocationId) return;
                 handleUpdateLocation(editingLocationId, {

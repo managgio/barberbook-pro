@@ -15,26 +15,28 @@ import {
   createLoyaltyProgram,
   deleteLoyaltyProgram,
   getLoyaltyPrograms,
-  getServiceCategories,
-  getServices,
   updateLoyaltyProgram,
 } from '@/data/api';
 import { LoyaltyProgram, LoyaltyScope, Service, ServiceCategory } from '@/data/types';
 import { Award, Pencil, Plus, Trash2 } from 'lucide-react';
+import { fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalogQuery';
+import { useTenant } from '@/context/TenantContext';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 
 const scopeLabels: Record<LoyaltyScope, string> = {
   global: 'Global',
   service: 'Por servicio',
   category: 'Por categoría',
 };
+const EMPTY_PROGRAMS: LoyaltyProgram[] = [];
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
 
 const AdminLoyalty: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
-  const [programs, setPrograms] = useState<LoyaltyProgram[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { currentLocationId } = useTenant();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingProgram, setEditingProgram] = useState<LoyaltyProgram | null>(null);
@@ -51,32 +53,40 @@ const AdminLoyalty: React.FC = () => {
     serviceId: 'none',
     categoryId: 'none',
   });
-
-  const loadData = async (withLoader = true) => {
-    if (withLoader) setIsLoading(true);
-    try {
-      const [programsData, servicesData, categoriesData] = await Promise.all([
-        getLoyaltyPrograms(),
-        getServices(),
-        getServiceCategories(true),
-      ]);
-      setPrograms(programsData);
-      setServices(servicesData);
-      setCategories(categoriesData);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo cargar la fidelización. Revisa si está habilitada en la plataforma.',
-        variant: 'destructive',
-      });
-    } finally {
-      if (withLoader) setIsLoading(false);
-    }
-  };
+  const programsQuery = useQuery({
+    queryKey: queryKeys.loyaltyPrograms(currentLocationId),
+    queryFn: getLoyaltyPrograms,
+  });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId),
+    queryFn: () => fetchServicesCached({ localId: currentLocationId }),
+  });
+  const categoriesQuery = useQuery({
+    queryKey: queryKeys.serviceCategories(currentLocationId),
+    queryFn: () => fetchServiceCategoriesCached({ localId: currentLocationId }),
+  });
+  const programs = useMemo(
+    () => programsQuery.data ?? EMPTY_PROGRAMS,
+    [programsQuery.data],
+  );
+  const services = useMemo(
+    () => servicesQuery.data ?? EMPTY_SERVICES,
+    [servicesQuery.data],
+  );
+  const categories = useMemo(
+    () => categoriesQuery.data ?? EMPTY_SERVICE_CATEGORIES,
+    [categoriesQuery.data],
+  );
+  const isLoading = programsQuery.isLoading || servicesQuery.isLoading || categoriesQuery.isLoading;
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!programsQuery.error && !servicesQuery.error && !categoriesQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudo cargar la fidelización. Revisa si está habilitada en la plataforma.',
+      variant: 'destructive',
+    });
+  }, [categoriesQuery.error, programsQuery.error, servicesQuery.error, toast]);
 
   const openDialog = (program?: LoyaltyProgram) => {
     setEditingProgram(program || null);
@@ -154,12 +164,11 @@ const AdminLoyalty: React.FC = () => {
       };
 
       if (editingProgram) {
-        const updated = await updateLoyaltyProgram(editingProgram.id, payload);
-        setPrograms((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+        await updateLoyaltyProgram(editingProgram.id, payload);
       } else {
-        const created = await createLoyaltyProgram(payload);
-        setPrograms((prev) => [created, ...prev]);
+        await createLoyaltyProgram(payload);
       }
+      await programsQuery.refetch();
 
       toast({
         title: 'Tarjeta guardada',
@@ -177,7 +186,7 @@ const AdminLoyalty: React.FC = () => {
     if (!deletingProgramId) return;
     try {
       await deleteLoyaltyProgram(deletingProgramId);
-      setPrograms((prev) => prev.filter((item) => item.id !== deletingProgramId));
+      await programsQuery.refetch();
       toast({ title: 'Tarjeta eliminada' });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo eliminar la tarjeta.', variant: 'destructive' });
@@ -234,10 +243,8 @@ const AdminLoyalty: React.FC = () => {
                     checked={program.isActive}
                     onCheckedChange={async (checked) => {
                       try {
-                        const updated = await updateLoyaltyProgram(program.id, { isActive: checked });
-                        setPrograms((prev) =>
-                          prev.map((item) => (item.id === updated.id ? updated : item)),
-                        );
+                        await updateLoyaltyProgram(program.id, { isActive: checked });
+                        await programsQuery.refetch();
                       } catch (error) {
                         toast({ title: 'Error', description: 'No se pudo actualizar el estado.', variant: 'destructive' });
                       }

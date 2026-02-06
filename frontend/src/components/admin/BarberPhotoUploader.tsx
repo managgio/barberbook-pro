@@ -113,6 +113,10 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
             <img
               src={previewUrl}
               alt="Previsualización"
+              loading="lazy"
+              decoding="async"
+              width={64}
+              height={64}
               className="h-full w-full object-cover"
             />
           </div>
@@ -169,6 +173,10 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
               <img
                 src={selectedDataUrl}
                 alt="Recorte"
+                loading="lazy"
+                decoding="async"
+                width={220}
+                height={220}
                 className="h-full w-full object-cover transition-transform"
                 style={{ transform: `scale(${zoom})` }}
               />

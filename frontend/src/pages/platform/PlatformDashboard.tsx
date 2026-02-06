@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import { PlatformUsageMetrics, PlatformUsageSeriesPoint } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   Area,
   AreaChart,
@@ -98,54 +100,66 @@ const summarizeSeries = (
   return { total, avg, peakValue, peakDate, anomalies };
 };
 
+type PlatformBrandSummary = {
+  id: string;
+  isActive?: boolean;
+  createdAt?: string;
+  locations?: Array<{ id: string }>;
+};
+const EMPTY_BRANDS: PlatformBrandSummary[] = [];
+const EMPTY_USAGE_SERIES: PlatformUsageSeriesPoint[] = [];
 
 const PlatformDashboard: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [brands, setBrands] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [usageRange, setUsageRange] = useState(7);
-  const [usageMetrics, setUsageMetrics] = useState<PlatformUsageMetrics | null>(null);
-  const [isUsageLoading, setIsUsageLoading] = useState(false);
+  const [isRefreshingUsage, setIsRefreshingUsage] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const queryClient = useQueryClient();
+
+  const brandsQuery = useQuery<PlatformBrandSummary[]>({
+    queryKey: queryKeys.platformBrands(),
+    queryFn: getPlatformBrands,
+    enabled: Boolean(user?.id),
+    staleTime: 60_000,
+  });
+  const usageMetricsQuery = useQuery<PlatformUsageMetrics>({
+    queryKey: queryKeys.platformMetrics(usageRange),
+    queryFn: () => getPlatformMetrics(usageRange),
+    enabled: Boolean(user?.id),
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
-    if (!user?.id) return;
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const data = await getPlatformBrands();
-        setBrands(data);
-      } catch (error) {
-        toast({ title: 'Error', description: 'No se pudo cargar el resumen de plataforma.', variant: 'destructive' });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-  }, [user?.id, toast]);
+    if (!brandsQuery.isError) return;
+    toast({ title: 'Error', description: 'No se pudo cargar el resumen de plataforma.', variant: 'destructive' });
+  }, [brandsQuery.isError, brandsQuery.errorUpdatedAt, toast]);
 
-  const loadUsage = useCallback(
-    async (forceRefresh = false) => {
-      if (!user?.id) return;
-      setIsUsageLoading(true);
-      try {
-        const data = forceRefresh
-          ? await refreshPlatformMetrics(usageRange)
-          : await getPlatformMetrics(usageRange);
-        setUsageMetrics(data);
-      } catch (error) {
-        toast({ title: 'Error', description: 'No se pudieron cargar las métricas de consumo.', variant: 'destructive' });
-      } finally {
-        setIsUsageLoading(false);
-      }
-    },
-    [user?.id, usageRange, toast],
+  useEffect(() => {
+    if (!usageMetricsQuery.isError) return;
+    toast({ title: 'Error', description: 'No se pudieron cargar las métricas de consumo.', variant: 'destructive' });
+  }, [usageMetricsQuery.isError, usageMetricsQuery.errorUpdatedAt, toast]);
+
+  const brands = useMemo(
+    () => brandsQuery.data ?? EMPTY_BRANDS,
+    [brandsQuery.data],
   );
+  const usageMetrics = usageMetricsQuery.data ?? null;
+  const isLoading = brandsQuery.isLoading;
+  const isUsageLoading = usageMetricsQuery.isLoading || usageMetricsQuery.isFetching || isRefreshingUsage;
 
-  useEffect(() => {
-    void loadUsage();
-  }, [loadUsage]);
+  const handleUsageRefresh = async () => {
+    if (!user?.id) return;
+    setIsRefreshingUsage(true);
+    try {
+      const data = await refreshPlatformMetrics(usageRange);
+      queryClient.setQueryData(queryKeys.platformMetrics(usageRange), data);
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudieron cargar las métricas de consumo.', variant: 'destructive' });
+    } finally {
+      setIsRefreshingUsage(false);
+    }
+  };
 
   const stats = useMemo(() => {
     const totalBrands = brands.length;
@@ -219,9 +233,18 @@ const PlatformDashboard: React.FC = () => {
     return { total, avg, peak };
   }, [monthlyBrandData]);
 
-  const openaiSeries = usageMetrics?.openai.series ?? [];
-  const twilioSeries = usageMetrics?.twilio.series ?? [];
-  const imagekitSeries = usageMetrics?.imagekit.series ?? [];
+  const openaiSeries = useMemo(
+    () => usageMetrics?.openai.series ?? EMPTY_USAGE_SERIES,
+    [usageMetrics?.openai.series],
+  );
+  const twilioSeries = useMemo(
+    () => usageMetrics?.twilio.series ?? EMPTY_USAGE_SERIES,
+    [usageMetrics?.twilio.series],
+  );
+  const imagekitSeries = useMemo(
+    () => usageMetrics?.imagekit.series ?? EMPTY_USAGE_SERIES,
+    [usageMetrics?.imagekit.series],
+  );
   const thresholds = usageMetrics?.thresholds;
   const openaiThreshold = thresholds?.openaiDailyCostUsd ? toDisplayCurrency(thresholds.openaiDailyCostUsd) : null;
   const twilioThreshold = thresholds?.twilioDailyCostUsd ? toDisplayCurrency(thresholds.twilioDailyCostUsd) : null;
@@ -353,7 +376,7 @@ const PlatformDashboard: React.FC = () => {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => loadUsage(true)}
+              onClick={handleUsageRefresh}
               disabled={isUsageLoading}
             >
               <RefreshCcw className="h-4 w-4 mr-2" />

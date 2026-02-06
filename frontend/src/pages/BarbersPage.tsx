@@ -4,13 +4,13 @@ import Navbar from '@/components/layout/Navbar';
 import LegalFooter from '@/components/layout/LegalFooter';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { getBarbers } from '@/data/api';
 import { Barber } from '@/data/types';
 import { useAuth } from '@/context/AuthContext';
 import { Calendar } from 'lucide-react';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { fetchBarbersCached } from '@/lib/catalogQuery';
 
 const BarbersPage: React.FC = () => {
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -20,7 +20,7 @@ const BarbersPage: React.FC = () => {
 
   useEffect(() => {
     const fetchBarbers = async () => {
-      const data = await getBarbers();
+      const data = await fetchBarbersCached();
       setBarbers(data);
       setIsLoading(false);
     };
@@ -64,6 +64,10 @@ const BarbersPage: React.FC = () => {
                     <img 
                       src={barber.photo || defaultAvatar} 
                       alt={barber.name}
+                      loading="lazy"
+                      decoding="async"
+                      width={600}
+                      height={600}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

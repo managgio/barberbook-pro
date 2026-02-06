@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
-import { getAdminProducts, getProducts, getProductCategories, getServices, getBarbers, getAvailableSlots, updateAppointment, getServiceCategories, getSiteSettings, anonymizeAppointment } from '@/data/api';
+import { getAvailableSlots, updateAppointment, anonymizeAppointment } from '@/data/api';
 import { Appointment, AppointmentStatus, Barber, Product, ProductCategory, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,15 @@ import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
 import { isBarberEligibleForService } from '@/lib/barberServiceAssignment';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import {
+  fetchBarbersCached,
+  fetchAdminProductsCached,
+  fetchProductCategoriesCached,
+  fetchProductsCached,
+  fetchServiceCategoriesCached,
+  fetchServicesCached,
+} from '@/lib/catalogQuery';
 
 interface AppointmentEditorDialogProps {
   open: boolean;
@@ -67,12 +76,12 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     setIsLoading(true);
     try {
       const [servicesData, barbersData, categoriesData, settingsData, productsData, productCategoriesData] = await Promise.all([
-        getServices({ includeArchived: isAdminContext }),
-        getBarbers(),
-        getServiceCategories(true),
-        getSiteSettings(),
-        isAdminContext ? getAdminProducts() : getProducts('booking'),
-        getProductCategories(true),
+        fetchServicesCached({ includeArchived: isAdminContext }),
+        fetchBarbersCached(),
+        fetchServiceCategoriesCached(),
+        fetchSiteSettingsCached(),
+        isAdminContext ? fetchAdminProductsCached() : fetchProductsCached({ context: 'booking' }),
+        fetchProductCategoriesCached(),
       ]);
       setServices(servicesData);
       setBarbers(barbersData);
@@ -533,7 +542,15 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                           <div className="flex items-center gap-3">
                             <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
                               {item.imageUrl ? (
-                                <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  loading="lazy"
+                                  decoding="async"
+                                  width={40}
+                                  height={40}
+                                  className="h-full w-full object-cover"
+                                />
                               ) : (
                                 <span className="text-[11px] text-muted-foreground">Sin foto</span>
                               )}

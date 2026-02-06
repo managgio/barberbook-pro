@@ -110,7 +110,15 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({
               <div className="flex items-center gap-3">
                 <div className="h-14 w-14 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
                   {product.imageUrl ? (
-                    <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                    <img
+                      src={product.imageUrl}
+                      alt={product.name}
+                      loading="lazy"
+                      decoding="async"
+                      width={56}
+                      height={56}
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     <span className="text-xs text-muted-foreground">Sin foto</span>
                   )}

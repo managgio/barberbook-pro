@@ -114,6 +114,27 @@ export class BarbersService {
     return count > 0;
   }
 
+  async getEligibleBarberIdsForService(serviceId: string, barberIds: string[]) {
+    const normalizedBarberIds = Array.from(new Set((barberIds || []).filter(Boolean)));
+    if (normalizedBarberIds.length === 0) return [] as string[];
+
+    const localId = getCurrentLocalId();
+    const eligibilityFilter = await this.getServiceEligibilityFilter(localId, serviceId);
+    if (eligibilityFilter === null) return [] as string[];
+
+    const eligible = await this.prisma.barber.findMany({
+      where: {
+        id: { in: normalizedBarberIds },
+        localId,
+        isArchived: false,
+        ...eligibilityFilter,
+      },
+      select: { id: true },
+    });
+
+    return eligible.map((barber) => barber.id);
+  }
+
   async assertBarberCanProvideService(barberId: string, serviceId: string) {
     const allowed = await this.isBarberAllowedForService(barberId, serviceId);
     if (!allowed) {

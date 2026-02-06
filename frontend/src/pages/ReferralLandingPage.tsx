@@ -8,17 +8,15 @@ import { useToast } from '@/hooks/use-toast';
 import { storeReferralAttribution, getStoredReferralAttribution } from '@/lib/referrals';
 import { Gift, UserPlus, ArrowRight } from 'lucide-react';
 
+type ReferralLandingPayload = Awaited<ReturnType<typeof resolveReferralCode>>;
+
 const ReferralLandingPage: React.FC = () => {
   const { code } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
-  const [payload, setPayload] = useState<{
-    referrerDisplayName: string;
-    programEnabled: boolean;
-    rewardSummary: { referrer: { text: string }; referred: { text: string } };
-  } | null>(null);
+  const [payload, setPayload] = useState<ReferralLandingPayload | null>(null);
 
   const stored = useMemo(() => getStoredReferralAttribution(), []);
 
@@ -29,7 +27,7 @@ const ReferralLandingPage: React.FC = () => {
     resolveReferralCode(code)
       .then((data) => {
         if (!active) return;
-        setPayload(data as any);
+        setPayload(data);
       })
       .catch(() => {
         if (!active) return;
@@ -46,7 +44,7 @@ const ReferralLandingPage: React.FC = () => {
   useEffect(() => {
     if (!code) return;
     if (stored?.code === code) return;
-    if (payload && !payload.programEnabled) return;
+    if (payload?.programEnabled === false) return;
     attributeReferral({
       code,
       channel: 'link',

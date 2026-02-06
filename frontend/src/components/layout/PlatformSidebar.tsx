@@ -5,7 +5,10 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/context/AuthContext';
-import managgioLogo from '@/assets/img/managgio/logo-app.png';
+import managgioLogo80Avif from '@/assets/img/managgio/logo-app-80.avif';
+import managgioLogo160Avif from '@/assets/img/managgio/logo-app-160.avif';
+import managgioLogo80Webp from '@/assets/img/managgio/logo-app-80.webp';
+import managgioLogo160Webp from '@/assets/img/managgio/logo-app-160.webp';
 
 const navItems = [
   { href: '/platform', label: 'Resumen', icon: LayoutDashboard },
@@ -35,6 +38,9 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
     if (path === '/platform') return location.pathname === '/platform';
     return location.pathname.startsWith(path);
   };
+  const logoAvifSrcSet = `${managgioLogo80Avif} 80w, ${managgioLogo160Avif} 160w`;
+  const logoWebpSrcSet = `${managgioLogo80Webp} 80w, ${managgioLogo160Webp} 160w`;
+  const logoFallback = managgioLogo160Webp;
 
   return (
     <aside
@@ -50,7 +56,19 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
           className={cn('flex items-center gap-3', collapsed && 'justify-center')}
         >
           <div className="w-11 h-11 rounded-xl flex items-center justify-center">
-            <img src={managgioLogo} alt="Managgio logo" className="w-10 h-10 object-contain" />
+            <picture>
+              <source type="image/avif" srcSet={logoAvifSrcSet} sizes="40px" />
+              <source type="image/webp" srcSet={logoWebpSrcSet} sizes="40px" />
+              <img
+                src={logoFallback}
+                alt="Managgio logo"
+                loading="eager"
+                decoding="async"
+                width={40}
+                height={40}
+                className="w-10 h-10 object-contain"
+              />
+            </picture>
           </div>
           {!collapsed && (
             <div>

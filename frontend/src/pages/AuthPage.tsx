@@ -6,8 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import managgioLogo from '@/assets/img/managgio/logo-app.png';
-import managgioHero from '@/assets/img/managgio/fondo-managgio.png';
+import managgioLogo80Avif from '@/assets/img/managgio/logo-app-80.avif';
+import managgioLogo160Avif from '@/assets/img/managgio/logo-app-160.avif';
+import managgioLogo80Webp from '@/assets/img/managgio/logo-app-80.webp';
+import managgioLogo160Webp from '@/assets/img/managgio/logo-app-160.webp';
+import managgioHero960Avif from '@/assets/img/managgio/fondo-managgio-960.avif';
+import managgioHero1440Avif from '@/assets/img/managgio/fondo-managgio-1440.avif';
+import managgioHero960Webp from '@/assets/img/managgio/fondo-managgio-960.webp';
+import managgioHero1440Webp from '@/assets/img/managgio/fondo-managgio-1440.webp';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useTenant } from '@/context/TenantContext';
 import LegalFooter from '@/components/layout/LegalFooter';
@@ -40,11 +46,15 @@ const AuthPage: React.FC = () => {
       || window.location.hostname.endsWith('.localhost'));
   const leBlondLogo = '/leBlondLogo.png';
   const heroImageFallback = '/placeholder.svg';
-  const heroImage = isPlatform
-    ? managgioHero
-    : tenant?.config?.branding?.heroBackgroundUrl || heroImageFallback;
+  const heroImage = tenant?.config?.branding?.heroBackgroundUrl || heroImageFallback;
   const brandLogo = resolveBrandLogo(tenant, leBlondLogo);
   const heroBackgroundDimmed = tenant?.config?.branding?.heroBackgroundDimmed !== false;
+  const platformHeroAvifSrcSet = `${managgioHero960Avif} 960w, ${managgioHero1440Avif} 1440w`;
+  const platformHeroWebpSrcSet = `${managgioHero960Webp} 960w, ${managgioHero1440Webp} 1440w`;
+  const platformLogoAvifSrcSet = `${managgioLogo80Avif} 80w, ${managgioLogo160Avif} 160w`;
+  const platformLogoWebpSrcSet = `${managgioLogo80Webp} 80w, ${managgioLogo160Webp} 160w`;
+  const platformHeroFallback = managgioHero1440Webp;
+  const platformLogoFallback = managgioLogo160Webp;
   const experienceYears = Math.max(0, new Date().getFullYear() - settings.stats.experienceStartYear);
   const formatYearlyBookings = (value: number) => {
     if (value >= 10000) return `${(value / 1000).toFixed(0)}K`;
@@ -142,14 +152,40 @@ const AuthPage: React.FC = () => {
       <div className="flex flex-1">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-card relative overflow-hidden">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `url(${heroImage})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        />
+        {isPlatform ? (
+          <picture className="absolute inset-0">
+            <source
+              type="image/avif"
+              srcSet={platformHeroAvifSrcSet}
+              sizes="(min-width: 1024px) 50vw, 100vw"
+            />
+            <source
+              type="image/webp"
+              srcSet={platformHeroWebpSrcSet}
+              sizes="(min-width: 1024px) 50vw, 100vw"
+            />
+            <img
+              src={platformHeroFallback}
+              alt=""
+              aria-hidden="true"
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+              width={1440}
+              height={804}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          </picture>
+        ) : (
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `url(${heroImage})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          />
+        )}
         {heroBackgroundDimmed && <div className="absolute inset-0 bg-background/85" />}
         {heroBackgroundDimmed && (
           <div className="absolute inset-0 bg-gradient-to-br from-background/70 via-transparent to-transparent" />
@@ -159,11 +195,32 @@ const AuthPage: React.FC = () => {
         
         <div className="relative z-10 flex flex-col justify-center px-12">
           <Link to="/" className="flex items-center gap-3 mb-8">
-            <img
-              src={isPlatform ? managgioLogo : brandLogo}
-              alt={isPlatform ? 'Managgio logo' : `${settings.branding.shortName} logo`}
-              className="w-14 h-14 rounded-xl shadow-glow object-contain"
-            />
+            {isPlatform ? (
+              <picture>
+                <source type="image/avif" srcSet={platformLogoAvifSrcSet} sizes="56px" />
+                <source type="image/webp" srcSet={platformLogoWebpSrcSet} sizes="56px" />
+                <img
+                  src={platformLogoFallback}
+                  alt="Managgio logo"
+                  width={56}
+                  height={56}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  className="w-14 h-14 rounded-xl shadow-glow object-contain"
+                />
+              </picture>
+            ) : (
+              <img
+                src={brandLogo}
+                alt={`${settings.branding.shortName} logo`}
+                width={56}
+                height={56}
+                loading="eager"
+                decoding="async"
+                className="w-14 h-14 rounded-xl shadow-glow object-contain"
+              />
+            )}
             <span className="text-3xl font-bold text-foreground">
               {isPlatform ? 'Managgio' : settings.branding.shortName}
             </span>
@@ -216,11 +273,32 @@ const AuthPage: React.FC = () => {
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <Link to="/" className="lg:hidden flex items-center gap-2 justify-center mb-8">
-            <img
-              src={isPlatform ? managgioLogo : brandLogo}
-              alt={isPlatform ? 'Managgio logo' : `${settings.branding.shortName} logo`}
-              className="w-10 h-10 rounded-lg object-contain shadow-sm"
-            />
+            {isPlatform ? (
+              <picture>
+                <source type="image/avif" srcSet={platformLogoAvifSrcSet} sizes="40px" />
+                <source type="image/webp" srcSet={platformLogoWebpSrcSet} sizes="40px" />
+                <img
+                  src={platformLogoFallback}
+                  alt="Managgio logo"
+                  width={40}
+                  height={40}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  className="w-10 h-10 rounded-lg object-contain shadow-sm"
+                />
+              </picture>
+            ) : (
+              <img
+                src={brandLogo}
+                alt={`${settings.branding.shortName} logo`}
+                width={40}
+                height={40}
+                loading="eager"
+                decoding="async"
+                className="w-10 h-10 rounded-lg object-contain shadow-sm"
+              />
+            )}
             <span className="text-xl font-bold text-foreground">
               {isPlatform ? 'Managgio' : settings.branding.shortName}
             </span>

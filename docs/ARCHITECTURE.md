@@ -27,7 +27,7 @@ Frontend:
 - Otros: lucide-react, date-fns, recharts, sonner.
 
 Backend:
-- NestJS (REST) con validacion global (`ValidationPipe`).
+- NestJS (REST) con validacion global (`ValidationPipe`: `whitelist` + `forbidNonWhitelisted` + `transform`).
 - Prisma ORM sobre MySQL 8.
 - Integraciones: ImageKit, Twilio, Firebase Admin, OpenAI, Nodemailer (SMTP).
 - node-cron para jobs (recordatorios y sync de estados).
@@ -57,7 +57,7 @@ Infra/Dev:
 ## Arquitectura backend (NestJS)
 Patrones globales:
 - Prefijo global `/api`.
-- ValidationPipe con `whitelist` y `transform`.
+- ValidationPipe con `whitelist`, `forbidNonWhitelisted` y `transform`.
 - `AdminGuard` global: solo protege endpoints marcados con `@AdminEndpoint`.
 
 Modulos principales:
@@ -94,6 +94,7 @@ Seguridad actual (importante):
 ## Arquitectura frontend
 Entradas y layouts:
 - Router por tenant: plataforma vs cliente.
+- Code splitting por rutas con `React.lazy` + `Suspense` para separar carga publica, cliente, admin y plataforma.
 - Layouts: `ClientLayout`, `AdminLayout`, `PlatformLayout`.
 - Protecciones: `ProtectedRoute` por rol y plataforma.
 
@@ -101,6 +102,52 @@ Contextos principales:
 - **AuthContext**: autentica con Firebase y sincroniza usuario con backend.
 - **TenantContext**: carga tenant y configura theme.
 - **AdminPermissionsContext**: permisos por rol (AdminRole + adminSidebar oculto por config).
+- **NetworkStatusMonitor**: monitor global de conectividad (`online/offline`) con feedback inmediato al usuario.
+- **AppErrorBoundary**: captura errores no controlados del arbol React y muestra fallback consistente con accion de recarga.
+- **AuthSessionMonitor**: escucha expiracion de sesion (401/403 global) y fuerza logout + redireccion a `/auth`.
+- **Carga diferida de Firebase SDK**: `frontend/src/lib/firebaseConfig.tsx` usa imports dinamicos (`firebase/app`, `firebase/auth`) y `AuthContext` inicializa Firebase bajo demanda al estar listo el tenant; evita incluir Firebase como dependencia estatica del `entry`.
+
+Caching y sincronizacion frontend:
+- **React Query como cache de dominio**: catalogos y settings usan claves por dominio y por `localId` (evita mezcla de datos entre locales).
+- **API de arranque desacoplada**: `TenantContext` y `AuthContext` consumen modulos ligeros (`frontend/src/data/api/{tenant,settings,users}.ts`) sobre `frontend/src/data/api/request.ts`, evitando arrastrar `data/api.ts` completo al bundle inicial.
+- **CatalogQuery** (`frontend/src/lib/catalogQuery.ts`): acceso cacheado para servicios, barberos, categorias y productos (publico/admin), con `staleTime` corto para UX fluida.
+- **OperationalQuery** (`frontend/src/lib/operationalQuery.ts`): cache compartida para consultas operativas acotadas (`appointments` por rango y `users` por `ids`) en vistas admin de alta frecuencia (dashboard, calendar, search, clients, quick appointment).
+- **API paginada en frontend**: `frontend/src/data/api.ts` expone `getUsersPage` y `getAppointmentsPage` (respuesta `PaginatedResponse<T>`) como contrato principal para vistas admin masivas.
+- **Retiro de helpers legacy en frontend**: se eliminan `getUsers()` y `getAppointments()` (lista completa) para evitar usos accidentales fuera de paginacion.
+- **Cliente React Query real**: `ClientDashboard` y `AppointmentsPage` usan `useQuery` con claves por usuario/local (`client-appointments`, `client-loyalty-summary`, `client-referral-summary`) para deduplicar peticiones y reducir cargas manuales por `useEffect`.
+- **Dashboards con React Query real**: `AdminDashboard` consume `GET /api/appointments/dashboard-summary` (ventana operativa de 30 dias y filtro opcional por barbero) y `PlatformDashboard` usa `platform-brands` + `platform-metrics(windowDays)`; ambos eliminan `useEffect + useState` para carga principal y refrescan via `refetch`/cache.
+- **Landing query-driven**: `LandingPage` consume `useQuery` para `barbers`, `services`, `products(landing)` y `product-categories`, eliminando `loadData` imperativo y compartiendo cache de catalogo por `localId`.
+- **Booking cacheado por dominio**: `BookingWizard` usa `useQuery` para bootstrap de reserva (`booking-bootstrap`), staff por servicio (`barbers(localId, serviceId)`), disponibilidad por fecha (`booking-slots`, single/batch), carga semanal (`booking-weekly-load`), preview de fidelizacion (`booking-loyalty-preview`), wallet (`rewards-wallet`) y estado de consentimiento (`privacy-consent-status`), reduciendo `useEffect + fetch` repetitivos.
+- **Admin catalogos con React Query real**: `AdminServices`, `AdminOffers`, `AdminLoyalty` y `AdminStock` eliminan `loadData` manual y cargan con `useQuery` por `localId`/`target` (`services`, `service-categories`, `offers`, `loyalty-programs`, `products-admin`, `product-categories`, `site-settings`); tras mutaciones refrescan via `refetch` selectivo e invalidacion por dominio (`dispatchServicesUpdated` / `dispatchProductsUpdated`) para mantener coherencia de precios y catalogos.
+- **Equipo admin query-driven**: `AdminBarbers` carga equipo y metadatos (`barbers`, `services`, `service-categories`, `site-settings`) con `useQuery`; tras CRUD/asignaciones refuerza consistencia con `refetch` del catálogo de barberos + eventos de dominio. La edición de horarios individuales mantiene carga on-demand por `barberId`.
+- **Buscador de citas query-driven**: `AdminSearch` consume `useQuery` para citas paginadas agregadas (`GET /api/appointments/admin-search`, incluye `items + clients`), catálogo (`barbers`, `services`) y configuración Stripe (`admin-stripe-config`); elimina `loadData` manual y se sincroniza por invalidación de dominio + `refetch` en foco.
+- **Clientes admin query-driven**: `AdminClients` consume `useQuery` para lista paginada de clientes (`admin-clients`), historial paginado por cliente (`admin-client-appointments`), notas internas (`admin-client-notes`), catálogo (`barbers`, `services`) y Stripe (`admin-stripe-config`), eliminando `loadData/loadClientAppointments` manuales y listeners globales.
+- **Calendario admin query-driven**: `AdminCalendar` consume `useQuery` para `admin-calendar` (`GET /api/appointments/admin-calendar` con `items + clients`), catálogo (`barbers`, `services`) y Stripe (`admin-stripe-config`); mantiene la semana visible en cache y elimina `loadData` manual/listeners de `window`.
+- **Referidos admin query-driven**: `AdminReferrals` consume `useQuery` para configuración (`adminReferralConfig`), analítica (`adminReferralOverview`), listado filtrable (`adminReferralList`) y catálogo de servicios (`services`), eliminando cargas manuales en `useEffect` y manteniendo sincronía por cache tras guardar/copiar.
+- **Reseñas admin query-driven**: `AdminReviews` consume `useQuery` para configuración (`adminReviewConfig`), métricas por rango (`adminReviewMetrics`) y feedback paginado por estado (`adminReviewFeedback`), eliminando cargas manuales por efecto y actualizando cache al resolver feedback.
+- **Alertas admin query-driven**: `AdminAlerts` consume `useQuery` (`adminAlerts`) para listado de avisos y elimina listeners manuales de `window`; las mutaciones (crear/editar/borrar/activar) refrescan por invalidación de dominio.
+- **Festivos admin query-driven**: `AdminHolidays` consume `useQuery` para festivos generales (`adminGeneralHolidays`), festivos por staff (`adminBarberHolidays`) y catálogo de barberos (`barbers`), eliminando carga manual inicial y refrescando por `focus/visibility`.
+- **PlatformBrands query-driven**: `PlatformBrands` consume `useQuery` con claves dedicadas (`platform-brands`, `platform-brand*`, `platform-location-config`) y `useMutation` para escrituras críticas (guardar marca/legal, CRUD de marca/local, asignación de admins), eliminando `load*` imperativos y centralizando refresco con `refetch` + `setQueryData`.
+- **Tipado fuerte en PlatformBrands**: se retiraron `any` explícitos en `PlatformBrands.tsx` para estado/config/modelos de marca/local/admin, reduciendo riesgo de errores silenciosos y mejorando mantenibilidad del flujo de plataforma.
+- **Higiene de tipado en vistas clave**: se retiraron `any` explícitos en `AdminAiAssistant` (speech recognition tipado), `LandingPage` (secciones de presentacion) y `ReferralLandingPage` (payload de referidos), consolidando contratos fuertes en superficies de alto trafico.
+- **Contratos API sin `any` (platform/referrals/payments)**: `frontend/src/data/api.ts` consume tipos explicitos de `frontend/src/data/types.ts` para marcas/locales/config/admins, codigos de referidos y respuestas Stripe (checkout/sesion/config/onboarding), reduciendo deuda tecnica y errores por contratos ambiguos.
+- **Stripe tipado de extremo a extremo**: `AdminSettings` y `AdminCashRegister` consumen `AdminStripeConfig` compartido (sin casts locales), alineando backend/frontend con un contrato unico.
+- **Caja registradora query-driven**: `AdminCashRegister` carga agenda/movimientos/catalogo y neto multi-local con `useQuery` (`cash-register`) y resuelve Stripe por `admin-stripe-config`; los movimientos de caja refrescan por `refetch` y propagan invalidacion de productos cuando hay operaciones sobre stock.
+- **Configuracion admin query-driven**: `AdminSettings` carga `site-settings`, `shop-schedule` y `admin-stripe-config` con `useQuery`, manteniendo estado local solo para edicion de formulario y guardados explicitos; los refrescos de Stripe/disponibilidad pasan por `refetch`.
+- **Referencias estables en vistas calientes**: dashboards y flujos cliente usan fallbacks memoizados para datos de query (evita recrear `[]/{}` en cada render y reduce renders derivados en `useMemo`/selectores).
+- **Higiene de hooks en vistas criticas**: paginas admin/platform (`AdminSettings`, `AdminBarbers`, `AdminLoyalty`, `AdminOffers`, `AdminServices`, `AdminStock`, `AdminAiAssistant`, `AdminCashRegister`, `PlatformBrands`) y superficies publicas clave (`LandingPage`, `ReferralLandingPage`, `AdminSpotlight`) usan callbacks memoizados y dependencias exhaustivas para evitar closures obsoletos, efectos duplicados y renders evitables.
+- **Invalidacion centralizada por eventos** (`frontend/src/lib/adminEvents.ts`): los `dispatch*Updated` invalidan automaticamente las query keys afectadas (`appointments/users/services/barbers/products`) antes de notificar por `window`.
+- **Site settings coherentes**: `dispatchSiteSettingsUpdated` actualiza cache (`setQueryData`) + invalida prefijo `site-settings` y emite un unico evento tipado (`SITE_SETTINGS_UPDATED_EVENT`) consumido por `useSiteSettings` y `TenantContext`.
+- **Refresco en primer plano**: `useForegroundRefresh` (`frontend/src/hooks/useForegroundRefresh.ts`) dispara recarga en `focus` y al volver la pestaña a visible, evitando polling constante en background.
+- **Politica actual**: para refrescos periodicos/event-driven se prioriza cache + invalidacion de dominio; `force` queda solo para casos de conflicto o forzado explicito.
+
+Observabilidad UX:
+- Instrumentacion de Web Vitals en cliente (`LCP`, `CLS`, `INP`, `FCP`, `TTFB`) via `frontend/src/lib/webVitals.ts`.
+- Envio de Web Vitals a backend (`POST /api/observability/web-vitals`) con `keepalive` para no bloquear navegacion.
+- Emision de evento `window` `web-vital` para extensiones de analitica no acopladas.
+- Interceptor global de API (`ApiMetricsInterceptor`) registra latencia/estado por ruta en backend.
+- Resumen operativo solo plataforma: `GET /api/platform/observability/web-vitals?minutes=<n>` y `GET /api/platform/observability/api?minutes=<n>`.
+- Alertas operativas por email (event-driven, no periodicas): cuando llega un Web Vital en estado `poor` o cuando una ruta API entra en degradacion (5xx/p95 en ventana), backend envia correo con contexto (metrica, ruta, severidad, tenant, umbral y distribucion de estados). Incluye cooldown por clave para evitar spam.
 
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
@@ -179,8 +226,10 @@ Flujos:
 
 2) **Login y sincronizacion**
    - Firebase Auth maneja login/registro.
+   - Inicializacion Firebase en frontend es lazy (dynamic import) cuando `AuthContext` entra en funcionamiento.
    - Front crea/actualiza User en backend.
    - El frontend usa `Authorization: Bearer <Firebase ID Token>` para endpoints admin.
+   - Si API responde 401/403, se emite evento global de sesion y el frontend aplica logout/redirect consistente.
    - Si `BrandUser.isBlocked` esta activo, se bloquea el acceso del cliente a la app.
 
 3) **Disponibilidad de citas**
@@ -195,9 +244,11 @@ Flujos:
    - Todas las comparaciones de dia/hora usan `APP_TIMEZONE` y helpers `startOfDayInTimeZone/endOfDayInTimeZone` para evitar errores de zona horaria.
    - En creacion/edicion de cita se valida disponibilidad dos veces: pre-check y verificacion final dentro de una transaccion serializable (si hay conflicto: “Horario no disponible”).
    - En frontend (cliente y admin), si el backend responde “Horario no disponible”, se muestra un mensaje explicito y se refrescan automaticamente los slots.
+   - Para UI de booking sin seleccion fija de barbero, el frontend usa `GET /api/appointments/availability-batch?date=...&barberIds=...&serviceId=...` para resolver disponibilidad de multiples barberos en una sola llamada.
+   - `availability-batch` resuelve datos compartidos en bloque (agenda de tienda, festivos, elegibilidad por servicio, citas del dia y horarios por barbero) para evitar patron N+1 en backend bajo carga.
    - La asignacion servicio-barbero solo aplica cuando **ambas** capas estan activas:
-     - Toggle operativo local en `SiteSettings.services.barberServiceAssignmentEnabled`.
-     - Toggle de plataforma en Tenant Config (`features.barberServiceAssignmentEnabled`), configurable por marca y override por local.
+      - Toggle operativo local en `SiteSettings.services.barberServiceAssignmentEnabled`.
+      - Toggle de plataforma en Tenant Config (`features.barberServiceAssignmentEnabled`), configurable por marca y override por local.
    - Si ambas estan activas, al elegir servicio solo se consideran barberos compatibles:
      - Coincidencia directa por servicio.
      - Coincidencia por categoria del servicio.
@@ -221,6 +272,7 @@ Flujos:
 
 6) **Sincronizacion de estados**
    - Job cron cada 5 min marca citas completadas cuando pasa el fin + grace.
+   - `GET /api/appointments` ya no sincroniza estados de forma masiva en lectura (evita side-effects y latencia en listados grandes); la sincronizacion queda centralizada en el cron.
    - Job cron de recordatorios envia SMS y marca `reminderSent`.
 
 7) **Asistente IA**
@@ -272,6 +324,30 @@ Flujos:
    - Recompensas: wallet y/o cupon personal (%/fijo/servicio gratis).
    - Wallet usa HOLD/RELEASE/DEBIT para preparar pago real.
 
+13) **Sincronizacion de cache UI (React Query + eventos admin)**
+   - Cambios de citas disparan `dispatchAppointmentsUpdated` e invalidan `appointments` para refresco coherente en dashboard/calendar/search/clients.
+   - Cambios de usuarios (bloqueos/rol admin/asignacion de rol) disparan `dispatchUsersUpdated` e invalidan `users` para sincronizar selectores y listados admin.
+   - Cambios de servicios/categorias disparan `dispatchServicesUpdated` y se invalidan claves `services` + `service-categories`.
+   - Cambios de barberos/horarios/festivos disparan `dispatchBarbersUpdated`/`dispatchSchedulesUpdated`/`dispatchHolidaysUpdated` e invalidan `barbers`.
+   - Cambios de festivos invalidan también `holidays` (general + por staff) para sincronizar la vista de festivos sin recarga manual.
+   - Cambios de alertas disparan `dispatchAlertsUpdated` e invalidan `alerts` para mantener coherencia en la gestión de banners.
+   - Cambios de productos/categorias/imports y operaciones de caja con stock disparan `dispatchProductsUpdated` e invalidan `products` + `products-admin` + `product-categories`.
+   - Cambios de `SiteSettings` usan `dispatchSiteSettingsUpdated` para actualizar al instante los consumidores activos (`useSiteSettings`, `TenantContext`) sin depender de recarga completa.
+   - Las pantallas admin de alta frecuencia (dashboard/calendar/search/clients/quick appointment) recargan datos con cache compartida y sin forzar bypass en cada evento.
+   - Calendar/search/clients/dashboard usan refresco por eventos + `focus/visibility` (sin polling periódico), reduciendo overfetch en segundo plano.
+   - `AdminSearch` consume `GET /api/appointments/admin-search` (`page/pageSize` + filtros + `clients` visibles en la misma respuesta), eliminando la segunda llamada a usuarios por lote en cada paginado.
+   - `AdminClients` ya no carga todas las citas del local al entrar; consume historial paginado por cliente (`GET /api/appointments?userId=...&page=...&pageSize=...&sort=desc`) y lista de clientes paginada (`GET /api/users?page=...&pageSize=...&role=client&q=...`) bajo `useQuery`, con notas internas cacheadas por cliente y refresco por invalidación de dominio.
+   - `AdminCalendar` consume `GET /api/appointments/admin-calendar?dateFrom=...&dateTo=...&sort=asc` y recibe `items + clients` en la misma respuesta, eliminando la segunda llamada a usuarios por lote y manteniendo carga acotada a la semana visible.
+   - `AdminReferrals` carga configuración/analítica/listado con `useQuery` (`adminReferralConfig`, `adminReferralOverview`, `adminReferralList`) y aplica filtros (`status`, `q`) con debounce en el listado, evitando fetch manual por efecto en cada render.
+   - `AdminReviews` carga configuración/métricas/feedback con `useQuery` (`adminReviewConfig`, `adminReviewMetrics`, `adminReviewFeedback`) y el cierre de feedback actualiza cache de la lista activa sin recargar toda la pantalla.
+   - `AdminDashboard` usa un endpoint agregado (`GET /api/appointments/dashboard-summary?window=30[&barberId=...]`) que devuelve KPIs/series/listado diario ya procesados, evitando descargar citas + usuarios + servicios completos para construir gráficas en cliente.
+   - `BookingWizard` inicializa catalogo/configuracion de reserva via `useQuery` (`booking-bootstrap`), resuelve disponibilidad de slots (single/batch) y carga semanal por barbero con claves dedicadas (`booking-slots`, `booking-weekly-load`), y mantiene fidelizacion/wallet/consentimiento bajo cache (`booking-loyalty-preview`, `rewards-wallet`, `privacy-consent-status`), evitando sobrecarga de `useEffect` manual.
+   - `AdminRoles` opera con `useQuery` (`admin-roles`, `admin-role-users`, `admin-role-search`) y deja de cargar todos los usuarios del local en cada cambio: carga administradores por paginacion (`GET /api/users?page=...&pageSize=...&role=admin`) y el buscador usa consulta paginada (`q`) bajo demanda con debounce.
+   - `QuickAppointmentButton` deja de precargar clientes completos: el selector de cliente hace busqueda server-side paginada (`GET /api/users?page=1&pageSize=25&role=client&q=...`) con debounce.
+   - `PlatformDashboard` consume `useQuery` para marcas y consumo (`platform-brands`, `platform-metrics`) y la accion "Recargar" actualiza cache con `setQueryData` tras `POST /api/platform/metrics/refresh`.
+   - `PlatformBrands` centraliza lecturas de plataforma en `useQuery` y escrituras en `useMutation` (sin `loadBrands/loadBrandDetails/loadLegalInfo`); la sincronización post-mutación se resuelve por `refetch` de dominio + `setQueryData` en legal, y evita doble carga de config de local al cambiar de marca.
+   - Al confirmar una reserva en cliente, `BookingWizard` invalida caches relacionadas (`client-appointments`, `client-loyalty-summary`, `client-referral-summary`, `rewards-wallet`, `booking-loyalty-preview`) y emite `dispatchAppointmentsUpdated` para coherencia inmediata entre vistas cliente/admin.
+
 ## Integraciones externas
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local; al reemplazar activos se elimina el archivo anterior.
 - **Twilio**: SMS y WhatsApp (templates) 24h antes de la cita.
@@ -288,6 +364,7 @@ Backend (`backend/.env`):
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`, `IMAGEKIT_FOLDER`.
 - Twilio: `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_SID`, `TWILIO_ACCOUNT_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_WHATSAPP_FROM`, `TWILIO_WHATSAPP_TEMPLATE_SID`, `TWILIO_SMS_COST_USD` (opcional).
 - Email: `EMAIL`, `PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_FROM_NAME`.
+- Observability alerts: `OBSERVABILITY_ALERT_EMAILS` (comma-separated, default `executive.managgio@gmail.com`), `OBSERVABILITY_ALERT_COOLDOWN_MINUTES`, `OBSERVABILITY_ALERT_API_WINDOW_MINUTES`, `OBSERVABILITY_ALERT_API_MIN_SAMPLES`, `OBSERVABILITY_ALERT_API_ERROR_RATE_PERCENT`, `OBSERVABILITY_ALERT_API_ERROR_MIN_COUNT`, `OBSERVABILITY_ALERT_API_P95_MS`.
 - AI: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`, `AI_TRANSCRIPTION_MODEL`.
 - Firebase Admin: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`.
 - Legal: `IP_HASH_SALT` (hash IP para consentimientos).
@@ -305,17 +382,59 @@ Frontend (`frontend/.env*`):
 - Frontend: `npm install`, `npm run dev`.
 - Scripts DB: `scripts/db_dump.sh` y `scripts/db_restore.sh`.
 
+### Guardrails de performance (frontend)
+- Baseline reproducible: `cd frontend && npm run perf:baseline`.
+- Build con sourcemap para analisis: `npm run build:perf`.
+- Reporte de bundle e impacto por modulos: `npm run perf:report`.
+- Validacion automatica de presupuestos (exit code 1 si falla): `npm run perf:check`.
+- Presupuestos actuales en: `frontend/perf-budgets.json`.
+- Reportes generados en: `docs/perf/PERF_BASELINE.md` y `docs/perf/bundle-report.json`.
+- CI de budgets: workflow `/.github/workflows/frontend-perf-budget.yml` ejecuta `npm run perf:baseline` en PR/push y falla si se exceden umbrales.
+- Capa de red robusta: `apiRequest` usa timeout explicito, retry con backoff para `GET` idempotentes (errores de red/timeout y HTTP transitorios), clasifica errores (`HTTP`, `TIMEOUT`, `OFFLINE`, `NETWORK`, `ABORTED`) y emite evento global de sesion para 401/403.
+- Carga de fuentes optimizada en `frontend/index.html` con `preconnect` + `preload`/`stylesheet` (sin `@import` bloqueante en CSS).
+- Higiene de imagenes en rutas criticas: logos/avatares/QR y miniaturas usan `loading`, `decoding` y dimensiones explicitas para reducir CLS y trabajo de render en navegacion.
+- Branding estático responsive en puntos críticos (`AuthPage`, `PlatformSidebar`) con `<picture>` + `AVIF/WebP` + `srcSet/sizes`:
+  - Hero plataforma: `fondo-managgio-960/1440.(avif|webp)`.
+  - Logo plataforma: `logo-app-80/160.(avif|webp)`.
+  - Fallback en `<img>` sobre variantes WebP (`-160` / `-1440`) para compatibilidad sin arrastrar PNG pesados al build.
+- Política de carga de imágenes: todas las etiquetas `<img>` declaran `loading` explícito; `eager` queda reservado a assets críticos above-the-fold (hero/logos de cabecera), y el resto usa `lazy`.
+- React Query aplica retry inteligente segun tipo de error para evitar reintentos inutiles (ej. 401/403/404 u offline).
+- Invalida cache por eventos de dominio en lugar de forzar refetch global, reduciendo overfetch y manteniendo consistencia multi-pantalla.
+- Higiene de compatibilidad de navegadores: mantener `caniuse-lite/browserslist` actualizado (`npx update-browserslist-db@latest`) para evitar warnings y asegurar targets vigentes de build.
+- Verificacion operativa de hooks/renders: ejecutar `npx eslint src --rule '@typescript-eslint/no-explicit-any: off'` y mantener en `0` los warnings de `react-hooks/exhaustive-deps` (solo persisten advertencias de Fast Refresh en dev).
+
+### Guardrails de performance (backend)
+- Endpoints masivos con contrato paginado:
+  - `GET /api/users?page=<n>&pageSize=<m>[&role=client|admin][&q=texto]` devuelve `{ total, page, pageSize, hasMore, items }`.
+  - `GET /api/appointments?page=<n>&pageSize=<m>[&userId=&barberId=&date=][&dateFrom=&dateTo=][&sort=asc|desc]` devuelve `{ total, page, pageSize, hasMore, items }`.
+- Endpoint agregado para carga operativa semanal: `GET /api/appointments/weekly-load?dateFrom=...&dateTo=...[&barberIds=id1,id2]` devuelve conteos por barbero sin payload de citas.
+- Endpoint agregado para dashboard admin: `GET /api/appointments/dashboard-summary?window=<n>[&barberId=<id>]` devuelve KPIs, series de ingresos/ticket, mix de servicios, ocupacion y citas de hoy ya agregadas.
+- Endpoint agregado para búsqueda admin: `GET /api/appointments/admin-search?page=<n>&pageSize=<m>[&barberId=<id>][&date=<yyyy-mm-dd>]` devuelve `{ total, page, pageSize, hasMore, items, clients }`.
+- Endpoint agregado para calendario admin: `GET /api/appointments/admin-calendar?dateFrom=...&dateTo=...[&barberId=<id>][&sort=asc|desc]` devuelve `{ items, clients }` (sin segunda consulta a `/users`).
+- Resolucion puntual de usuarios para listados paginados: `GET /api/users?ids=<id1,id2,...>` devuelve solo los usuarios solicitados (acotado al tenant actual).
+- El formato legacy de lista completa para `/users` y `/appointments` queda retirado del contrato backend.
+- `syncAppointmentStatuses` procesa efectos de cierre en lotes (`BATCH_SIZE=20`) para evitar secuencias largas por cita en ciclos de sincronizacion con volumen alto.
+- Observabilidad backend:
+  - `POST /api/observability/web-vitals` recibe métricas UX de cliente.
+  - `GET /api/platform/observability/web-vitals` y `GET /api/platform/observability/api` exponen resumen de Web Vitals y latencia/errores por ruta para plataforma.
+  - Alertas email automáticas (sin cron): disparo por evento degradado con cooldown configurable para evitar ruido.
+- Indices de consultas calientes en `Appointment`:
+  - `(localId, startDateTime)`
+  - `(localId, barberId, startDateTime)`
+  - `(localId, userId, startDateTime)`
+  - `(localId, status, startDateTime)`
+
 ## Seguridad, riesgos y casuisticas (checklist rapido)
 - **Auth admin por JWT**: `Authorization: Bearer <Firebase ID Token>` verificado en backend.
 - **Expiración JWT**: los ID tokens expiran y se renuevan en el cliente; manejar 401/403 y reintentos si aplica.
-- **CORS**: habilitado global; revisar origenes en produccion.
+- **CORS**: habilitado global; mantener allowlist estricta en despliegue.
 - **Multi-tenant**: validar siempre `localId` en queries (ya se usa `getCurrentLocalId`).
 - **Jobs cron**: iteran por marca/local para evitar usar `DEFAULT_LOCAL_ID` en multi-tenant.
 - **Datos incompletos**: flows permiten `guestName`/`guestContact` sin userId.
 - **Email/SMS**: si faltan credenciales, notificaciones se deshabilitan (log warn).
 - **IA**: si no hay API key, el endpoint falla; manejar fallback.
 - **ImageKit**: folder y credenciales deben estar presentes o falla firma/borrado.
-- **Validaciones**: DTOs con class-validator, pero revisar payloads de admins.
+- **Validaciones**: DTOs reforzados (plataforma: marcas/locales/admins/config) + `forbidNonWhitelisted` global para rechazar campos inesperados.
 
 ## Puntos de fallo comunes (para debug rapido)
 - Subdominio invalido: `TENANT_SUBDOMAIN_REQUIRED` o `TENANT_NOT_FOUND`.
@@ -330,3 +449,43 @@ Frontend (`frontend/.env*`):
 - Documentar cambios en flujos criticos (citas, pricing, multi-tenant).
 - Cualquier cambio con impacto arquitectonico o en flujos base debe reflejarse en este `ARCHITECTURE.md` en el mismo PR/cambio.
 - Tests minimos para logica de scheduling, pricing y permisos.
+
+## Contrato de ingenieria (obligatorio para todo desarrollo nuevo)
+Este contrato define el estandar minimo de calidad tecnica de Managgio. Cualquier PR nuevo debe cumplirlo para considerarse terminado.
+
+### 1) Reglas de arquitectura y rendimiento (no negociables)
+- No introducir imports eager que rompan el code splitting por dominio (public/client/admin/platform/legal).
+- Toda pantalla o modulo pesado nuevo debe cargarse con `React.lazy` cuando no sea critico de `entry`.
+- No romper budgets de frontend definidos en `frontend/perf-budgets.json`.
+- No reintroducir fetch manual duplicado si ya existe contrato equivalente en React Query.
+- No reintroducir endpoints de lista completa para recursos masivos (`users`, `appointments`): siempre paginacion o endpoint agregado.
+- Mantener invalidacion de cache por dominio/evento; evitar `refetch` global indiscriminado.
+- Mantener contratos tipados end-to-end; evitar `any` salvo excepcion justificada y documentada.
+
+### 2) Reglas de robustez y seguridad
+- Toda llamada de red debe usar la capa comun de request (`timeout`, `retry` idempotente, errores tipados, 401/403 global).
+- Toda nueva superficie admin/plataforma debe validar payload con DTO y respetar `forbidNonWhitelisted`.
+- No exponer secretos ni logica sensible en frontend.
+- Cualquier cambio multi-tenant debe validar aislamiento por `localId`/`brandId`.
+- Errores de UX deben tener fallback consistente (sin pantallas rotas o estados silenciosos).
+
+### 3) Regla documental (obligatoria)
+- Si cambia arquitectura, contratos API, flujos clave, indices, observabilidad o guardrails:
+  - Actualizar `docs/ARCHITECTURE.md` en el mismo PR.
+  - Actualizar `docs/perf/PERF_BASELINE.md` si hay impacto de performance medible.
+  - No dejar secciones en contradiccion (si se reemplaza un flujo, retirar el flujo anterior del documento).
+
+### 4) Definition of Done por PR (checklist minimo)
+- Build frontend y backend en verde.
+- Lint en verde (sin nuevos warnings criticos).
+- Budgets de performance en verde (`npm run perf:baseline`).
+- Sin regresion de lazy loading (el dominio publico no debe arrastrar codigo admin/platform innecesario).
+- Sin regresion de contratos paginados/agregados en endpoints masivos.
+- `ARCHITECTURE.md` actualizado si aplica.
+
+### 5) Politica de excepciones
+- Solo se permite romper una regla de este contrato con:
+  - motivo tecnico concreto,
+  - impacto explicitado (perf/seguridad/UX),
+  - plan de remediacion con fecha,
+  - y registro en este `ARCHITECTURE.md` o en el PR correspondiente.

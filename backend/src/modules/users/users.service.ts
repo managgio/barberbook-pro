@@ -11,6 +11,10 @@ import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.conte
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
 
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
+type UserWithAccessRelations = User & {
+  brandMemberships: Array<{ isBlocked: boolean }>;
+  localStaffRoles: Array<{ adminRoleId: string | null }>;
+};
 
 @Injectable()
 export class UsersService {
@@ -142,25 +146,22 @@ export class UsersService {
     });
   }
 
-  async findAll() {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
-    const users = await this.prisma.user.findMany({
-      where: { brandMemberships: { some: { brandId } } },
-      include: {
-        brandMemberships: {
-          where: { brandId },
-          select: { isBlocked: true },
-          take: 1,
-        },
-        localStaffRoles: {
-          where: { localId },
-          select: { adminRoleId: true },
-          take: 1,
-        },
+  private buildUserAccessInclude(brandId: string, localId: string) {
+    return {
+      brandMemberships: {
+        where: { brandId },
+        select: { isBlocked: true },
+        take: 1,
       },
-    });
+      localStaffRoles: {
+        where: { localId },
+        select: { adminRoleId: true },
+        take: 1,
+      },
+    } as const;
+  }
+
+  private mapUsersWithAccess(users: UserWithAccessRelations[], brandSuperAdminEmail: string) {
     return users.map((user) =>
       this.mapUserWithAccess(
         user,
@@ -172,6 +173,63 @@ export class UsersService {
         brandSuperAdminEmail,
       ),
     );
+  }
+
+  private buildUsersWhere(options?: { ids?: string[]; role?: User['role']; query?: string }): Prisma.UserWhereInput {
+    const brandId = getCurrentBrandId();
+    const where: Prisma.UserWhereInput = { brandMemberships: { some: { brandId } } };
+    if (options?.ids && options.ids.length > 0) {
+      where.id = { in: options.ids };
+    }
+    if (options?.role) {
+      where.role = options.role;
+    }
+    const query = options?.query?.trim();
+    if (query) {
+      where.OR = [
+        { name: { contains: query } },
+        { email: { contains: query } },
+        { phone: { contains: query } },
+      ];
+    }
+    return where;
+  }
+
+  async findByIds(ids: string[]) {
+    const brandId = getCurrentBrandId();
+    const localId = getCurrentLocalId();
+    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
+    const users = await this.prisma.user.findMany({
+      where: this.buildUsersWhere({ ids }),
+      include: this.buildUserAccessInclude(brandId, localId),
+      orderBy: { createdAt: 'desc' },
+    });
+    return this.mapUsersWithAccess(users as UserWithAccessRelations[], brandSuperAdminEmail);
+  }
+
+  async findPage(params: { page: number; pageSize: number; role?: User['role']; query?: string }) {
+    const brandId = getCurrentBrandId();
+    const localId = getCurrentLocalId();
+    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
+    const where = this.buildUsersWhere({ role: params.role, query: params.query });
+    const [total, users] = await this.prisma.$transaction([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        include: this.buildUserAccessInclude(brandId, localId),
+        orderBy: { createdAt: 'desc' },
+        skip: (params.page - 1) * params.pageSize,
+        take: params.pageSize,
+      }),
+    ]);
+
+    return {
+      total,
+      page: params.page,
+      pageSize: params.pageSize,
+      hasMore: params.page * params.pageSize < total,
+      items: this.mapUsersWithAccess(users as UserWithAccessRelations[], brandSuperAdminEmail),
+    };
   }
 
   async findOne(id: string) {

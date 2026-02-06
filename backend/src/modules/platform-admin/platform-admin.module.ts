@@ -6,9 +6,10 @@ import { PlatformAdminGuard } from './platform-admin.guard';
 import { PlatformAdminService } from './platform-admin.service';
 import { UsageMetricsModule } from '../usage-metrics/usage-metrics.module';
 import { AuthModule } from '../../auth/auth.module';
+import { ObservabilityModule } from '../observability/observability.module';
 
 @Module({
-  imports: [PrismaModule, UsageMetricsModule, ImageKitModule, AuthModule],
+  imports: [PrismaModule, UsageMetricsModule, ImageKitModule, AuthModule, ObservabilityModule],
   controllers: [PlatformAdminController],
   providers: [PlatformAdminService, PlatformAdminGuard],
 })

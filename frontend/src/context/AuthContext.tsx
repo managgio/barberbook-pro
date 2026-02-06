@@ -1,16 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import { User, UserRole } from '@/data/types';
-import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api';
 import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updateProfile as updateFirebaseProfile,
-  User as FirebaseUser,
-} from 'firebase/auth';
-import { getFirebaseAuth, googleProvider } from '@/lib/firebaseConfig';
+  createFirebaseUserWithEmailAndPassword,
+  getFirebaseAuth,
+  initFirebase,
+  onFirebaseAuthStateChanged,
+  signInFirebaseWithEmailAndPassword,
+  signInFirebaseWithGooglePopup,
+  signOutFirebase,
+  updateFirebaseUserProfile,
+  FirebaseUser,
+} from '@/lib/firebaseConfig';
+import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api/users';
 import { useTenant } from './TenantContext';
 
 interface AuthContextType {
@@ -27,6 +28,16 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const defaultNotificationPrefs = { email: true, whatsapp: true, sms: true };
+
+const getFirebaseFallback = () => ({
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+});
 
 const getDisplayName = (firebaseUser: FirebaseUser, providedName?: string) => {
   const email = firebaseUser.email || '';
@@ -111,6 +122,9 @@ const getFriendlyError = (error: unknown) => {
     case 'auth/too-many-requests':
       return 'Demasiados intentos. Inténtalo más tarde.';
     default:
+      if (error instanceof Error && error.message === 'FIREBASE_CONFIG_MISSING') {
+        return 'Falta la configuración de Firebase. Revisa las variables VITE_FIREBASE_*.';
+      }
       return 'No se pudo completar la autenticación. Inténtalo de nuevo.';
   }
 };
@@ -125,7 +139,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
   const lastSyncKeyRef = useRef<string | null>(null);
 
-  const syncFirebaseProfile = async (firebaseUser: FirebaseUser): Promise<User | null> => {
+  const syncFirebaseProfile = useCallback(async (firebaseUser: FirebaseUser): Promise<User | null> => {
     const key = `${firebaseUser.uid}:${currentLocationId || 'none'}`;
     if (lastSyncKeyRef.current === key && user?.firebaseUid === firebaseUser.uid) {
       return user;
@@ -157,90 +171,124 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         syncRef.current = { key: null, promise: null };
       }
     }
-  };
+  }, [currentLocationId, user]);
+
+  const ensureFirebaseReady = useCallback(async () => {
+    const fallback = getFirebaseFallback();
+    if (!fallback?.apiKey) {
+      throw new Error('FIREBASE_CONFIG_MISSING');
+    }
+    await initFirebase(fallback);
+    return getFirebaseAuth();
+  }, []);
 
   useEffect(() => {
     if (!tenantReady) {
       setIsLoading(true);
       return;
     }
-    const auth = getFirebaseAuth();
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setIsLoading(true);
-      if (!firebaseUser) {
-        setUser(null);
-        setIsLoading(false);
-        return;
-      }
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
 
+    void (async () => {
       try {
-        await syncFirebaseProfile(firebaseUser);
-      } catch (error) {
-        console.error('Error al sincronizar el usuario de Firebase', error);
-        setUser(null);
-      } finally {
-        setIsLoading(false);
-      }
-    });
+        await ensureFirebaseReady();
+        unsubscribe = await onFirebaseAuthStateChanged(async (firebaseUser) => {
+          if (cancelled) return;
+          setIsLoading(true);
+          if (!firebaseUser) {
+            setUser(null);
+            setIsLoading(false);
+            return;
+          }
 
-    return () => unsubscribe();
-  }, [tenantReady]);
+          try {
+            await syncFirebaseProfile(firebaseUser);
+          } catch (error) {
+            console.error('Error al sincronizar el usuario de Firebase', error);
+            setUser(null);
+          } finally {
+            setIsLoading(false);
+          }
+        });
+      } catch (error) {
+        console.error('Error inicializando Firebase Auth', error);
+        if (!cancelled) {
+          setUser(null);
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [tenantReady, ensureFirebaseReady, syncFirebaseProfile]);
 
   useEffect(() => {
     if (!tenantReady) return;
-    const auth = getFirebaseAuth();
-    if (!auth.currentUser) return;
-    setIsLoading(true);
-    syncFirebaseProfile(auth.currentUser)
-      .catch((error) => {
+    void (async () => {
+      try {
+        const auth = await ensureFirebaseReady();
+        if (!auth.currentUser) return;
+        setIsLoading(true);
+        await syncFirebaseProfile(auth.currentUser);
+      } catch (error) {
         console.error('Error al refrescar el usuario por local', error);
-      })
-      .finally(() => setIsLoading(false));
-  }, [tenantReady, currentLocationId]);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [tenantReady, currentLocationId, ensureFirebaseReady, syncFirebaseProfile]);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const auth = getFirebaseAuth();
-      await signInWithEmailAndPassword(auth, email, password);
+      await ensureFirebaseReady();
+      await signInFirebaseWithEmailAndPassword(email, password);
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
     }
-  };
+  }, [ensureFirebaseReady]);
 
-  const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+  const loginWithGoogle = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      const auth = getFirebaseAuth();
-      await signInWithPopup(auth, googleProvider);
+      await ensureFirebaseReady();
+      await signInFirebaseWithGooglePopup();
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
     }
-  };
+  }, [ensureFirebaseReady]);
 
-  const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const signup = useCallback(async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const auth = getFirebaseAuth();
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      const auth = await ensureFirebaseReady();
+      await createFirebaseUserWithEmailAndPassword(email, password);
       if (auth.currentUser) {
-        await updateFirebaseProfile(auth.currentUser, { displayName: name });
+        await updateFirebaseUserProfile(auth.currentUser, { displayName: name });
       }
       return { success: true };
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
     }
-  };
+  }, [ensureFirebaseReady]);
 
-  const logout = async () => {
-    const auth = getFirebaseAuth();
-    await signOut(auth);
+  const logout = useCallback(async () => {
+    await ensureFirebaseReady();
+    await signOutFirebase();
     setUser(null);
-  };
+  }, [ensureFirebaseReady]);
 
-  const updateProfile = async (data: Partial<User>) => {
+  const updateProfile = useCallback(async (data: Partial<User>) => {
     if (!user) return;
 
-    const payload: any = {
+    const payload: Partial<User> & {
+      notificationEmail?: boolean;
+      notificationWhatsapp?: boolean;
+      notificationSms?: boolean;
+    } = {
       name: data.name,
       email: data.email,
       phone: data.phone,
@@ -257,14 +305,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const updated = await updateUser(user.id, payload);
     setUser(updated);
-    const auth = getFirebaseAuth();
+    const auth = await ensureFirebaseReady();
     if (auth.currentUser && data.name) {
-      await updateFirebaseProfile(auth.currentUser, { displayName: data.name });
+      await updateFirebaseUserProfile(auth.currentUser, { displayName: data.name });
     }
-  };
+  }, [ensureFirebaseReady, user]);
 
-  return (
-    <AuthContext.Provider value={{
+  const contextValue = useMemo(
+    () => ({
       user,
       isAuthenticated: !!user,
       isLoading,
@@ -273,7 +321,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       signup,
       logout,
       updateProfile,
-    }}>
+    }),
+    [user, isLoading, login, loginWithGoogle, signup, logout, updateProfile],
+  );
+
+  return (
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,6 @@
 import { 
   User,
+  PaginatedResponse,
   Barber,
   Service,
   Offer,
@@ -38,80 +39,51 @@ import {
   ReviewPendingResponse,
   ReviewFeedbackItem,
   StripeAvailability,
+  PlatformBrandSummary,
+  PlatformLocationSummary,
+  PlatformConfigData,
+  PlatformBrandConfigRecord,
+  PlatformLocationConfigRecord,
+  PlatformBrandAdminsOverview,
+  OperationSuccessResponse,
+  ReferralCodeResponse,
+  ReferralCodeResolution,
+  StripeCheckoutResponse,
+  StripeSessionResponse,
+  AdminStripeConfig,
+  AdminStripeToggleResponse,
+  StripeOnboardingResponse,
+  AdminDashboardSummary,
+  AdminCalendarResponse,
+  AdminSearchAppointmentsResponse,
 } from './types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
 import { buildAuthHeaders } from '@/lib/authToken';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
-
-type QueryParams = Record<string, string | number | undefined | null>;
-
-type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
-  body?: unknown;
-  query?: QueryParams;
-  skip404?: boolean;
-  headers?: Record<string, string>;
-};
-
-const buildUrl = (path: string, query?: QueryParams) => {
-  const url = new URL(path, API_BASE.startsWith('http') ? API_BASE : window.location.origin);
-  if (query) {
-    Object.entries(query).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        url.searchParams.set(key, String(value));
-      }
-    });
-  }
-  return url.toString();
-};
-
-const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
-  const { method = 'GET', body, query, skip404, headers } = options;
-  const url = buildUrl(path.startsWith('http') ? path : `${API_BASE}${path}`, query);
-  const localId = getStoredLocalId();
-  const tenantOverride = getTenantSubdomainOverride();
-  const authHeaders = await buildAuthHeaders();
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders,
-      ...(localId ? { 'x-local-id': localId } : {}),
-      ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
-      ...(headers || {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!response.ok) {
-    if (skip404 && response.status === 404) {
-      return undefined as T;
-    }
-    let message = await response.text();
-    try {
-      const parsed = JSON.parse(message) as { message?: string; error?: string };
-      message = parsed.message || parsed.error || message;
-    } catch {
-      // Keep raw message when it's not JSON.
-    }
-    throw new Error(message || `API request failed (${response.status})`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return response.json() as Promise<T>;
-  }
-
-  return undefined as T;
-};
+import { ApiRequestError } from '@/lib/networkErrors';
+import {
+  API_BASE,
+  AUTH_SESSION_ERROR_EVENT,
+  DEFAULT_API_TIMEOUT_MS,
+  apiRequest,
+  buildApiUrl,
+} from './api/request';
 
 // Users API
-export const getUsers = async (): Promise<User[]> => apiRequest('/users');
+export const getUsersByIds = async (ids: string[]): Promise<User[]> => {
+  if (ids.length === 0) return [];
+  return apiRequest('/users', { query: { ids: ids.join(',') } });
+};
+export const getUsersPage = async (
+  params?: { page?: number; pageSize?: number; role?: 'client' | 'admin'; q?: string },
+): Promise<PaginatedResponse<User>> =>
+  apiRequest('/users', {
+    query: {
+      page: params?.page,
+      pageSize: params?.pageSize,
+      role: params?.role,
+      q: params?.q,
+    },
+  });
 export const getUserById = async (id: string): Promise<User | undefined> => apiRequest(`/users/${id}`);
 export const getUserByEmail = async (email: string): Promise<User | undefined> =>
   apiRequest(`/users/by-email`, { query: { email }, skip404: true });
@@ -249,16 +221,134 @@ export const importProducts = async (data: { sourceLocalId: string; targetLocalI
   apiRequest('/products/import', { method: 'POST', body: data });
 
 // Appointments API
-export const getAppointments = async (): Promise<Appointment[]> => apiRequest('/appointments');
+export const getAppointmentsByDateRange = async (dateFrom: string, dateTo: string): Promise<Appointment[]> =>
+  collectAppointmentPages((page, pageSize) =>
+    getAppointmentsPage({ dateFrom, dateTo, page, pageSize, sort: 'asc' }),
+  );
+export const getAdminCalendarData = async (
+  params: { dateFrom?: string; dateTo?: string; date?: string; barberId?: string; sort?: 'asc' | 'desc' },
+): Promise<AdminCalendarResponse> =>
+  apiRequest('/appointments/admin-calendar', {
+    query: {
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      date: params.date,
+      barberId: params.barberId,
+      sort: params.sort,
+    },
+  });
+export const getAdminDashboardSummary = async (
+  params?: { windowDays?: number; barberId?: string | null },
+): Promise<AdminDashboardSummary> =>
+  apiRequest('/appointments/dashboard-summary', {
+    query: {
+      window: params?.windowDays,
+      barberId: params?.barberId || undefined,
+    },
+  });
+export const getBarberWeeklyLoad = async (
+  dateFrom: string,
+  dateTo: string,
+  barberIds?: string[],
+): Promise<Record<string, number>> => {
+  const response = await apiRequest<{ counts: Record<string, number> }>('/appointments/weekly-load', {
+    query: {
+      dateFrom,
+      dateTo,
+      barberIds: barberIds && barberIds.length > 0 ? barberIds.join(',') : undefined,
+    },
+  });
+  return response.counts;
+};
+export const getAppointmentsPage = async (
+  params?: {
+    page?: number;
+    pageSize?: number;
+    userId?: string;
+    barberId?: string;
+    date?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sort?: 'asc' | 'desc';
+  },
+): Promise<PaginatedResponse<Appointment>> =>
+  apiRequest('/appointments', {
+    query: {
+      page: params?.page,
+      pageSize: params?.pageSize,
+      userId: params?.userId,
+      barberId: params?.barberId,
+      date: params?.date,
+      dateFrom: params?.dateFrom,
+      dateTo: params?.dateTo,
+      sort: params?.sort,
+    },
+  });
+export const getAdminSearchAppointments = async (
+  params?: {
+    page?: number;
+    pageSize?: number;
+    barberId?: string;
+    date?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sort?: 'asc' | 'desc';
+  },
+): Promise<AdminSearchAppointmentsResponse> =>
+  apiRequest('/appointments/admin-search', {
+    query: {
+      page: params?.page,
+      pageSize: params?.pageSize,
+      barberId: params?.barberId,
+      date: params?.date,
+      dateFrom: params?.dateFrom,
+      dateTo: params?.dateTo,
+      sort: params?.sort,
+    },
+  });
+
+const MAX_APPOINTMENTS_PAGE_REQUESTS = 50;
+
+const collectAppointmentPages = async (
+  fetchPage: (page: number, pageSize: number) => Promise<PaginatedResponse<Appointment>>,
+  pageSize = 200,
+): Promise<Appointment[]> => {
+  const items: Appointment[] = [];
+  let page = 1;
+  let hasMore = true;
+  let requests = 0;
+
+  while (hasMore && requests < MAX_APPOINTMENTS_PAGE_REQUESTS) {
+    const response = await fetchPage(page, pageSize);
+    items.push(...response.items);
+    hasMore = response.hasMore;
+    page += 1;
+    requests += 1;
+  }
+
+  return items;
+};
+
 export const getAppointmentById = async (id: string): Promise<Appointment | undefined> => apiRequest(`/appointments/${id}`);
 export const getAppointmentsByUser = async (userId: string): Promise<Appointment[]> =>
-  apiRequest('/appointments', { query: { userId } });
+  collectAppointmentPages((page, pageSize) =>
+    getAppointmentsPage({ userId, page, pageSize, sort: 'asc' }),
+  );
 export const getAppointmentsByBarber = async (barberId: string): Promise<Appointment[]> =>
-  apiRequest('/appointments', { query: { barberId } });
+  collectAppointmentPages((page, pageSize) =>
+    getAppointmentsPage({ barberId, page, pageSize, sort: 'asc' }),
+  );
 export const getAppointmentsByDate = async (date: string): Promise<Appointment[]> =>
-  apiRequest('/appointments', { query: { date } });
+  collectAppointmentPages((page, pageSize) =>
+    getAppointmentsPage({ date, page, pageSize, sort: 'asc' }),
+  );
 export const getAppointmentsByDateForLocal = async (date: string, localId: string): Promise<Appointment[]> =>
-  apiRequest('/appointments', { query: { date }, headers: { 'x-local-id': localId } });
+  collectAppointmentPages((page, pageSize) =>
+    apiRequest('/appointments', {
+      query: { date, page, pageSize, sort: 'asc' },
+      headers: { 'x-local-id': localId },
+    }),
+  );
 export const createAppointment = async (data: CreateAppointmentPayload): Promise<Appointment> =>
   apiRequest('/appointments', { method: 'POST', body: data });
 export const updateAppointment = async (
@@ -308,6 +398,22 @@ export const getAvailableSlots = async (
       appointmentIdToIgnore: options?.appointmentIdToIgnore,
     },
   });
+export const getAvailableSlotsBatch = async (
+  date: string,
+  barberIds: string[],
+  options?: { serviceId?: string; appointmentIdToIgnore?: string },
+): Promise<Record<string, string[]>> => {
+  const normalizedBarberIds = Array.from(new Set(barberIds)).filter(Boolean);
+  if (normalizedBarberIds.length === 0) return {};
+  return apiRequest('/appointments/availability-batch', {
+    query: {
+      date,
+      barberIds: normalizedBarberIds.join(','),
+      serviceId: options?.serviceId,
+      appointmentIdToIgnore: options?.appointmentIdToIgnore,
+    },
+  });
+};
 
 // Admin Roles API
 export const getAdminRoles = async (): Promise<AdminRole[]> => apiRequest('/roles');
@@ -377,19 +483,54 @@ export const postAiAssistantTranscribe = async (payload: {
 }): Promise<{ text: string }> => {
   const formData = new FormData();
   formData.append('file', payload.file);
-  const url = buildUrl(`${API_BASE}/admin/ai-assistant/transcribe`);
+  const url = buildApiUrl(`${API_BASE}/admin/ai-assistant/transcribe`);
   const authHeaders = await buildAuthHeaders();
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      ...authHeaders,
-      ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
-      ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
-    },
-    body: formData,
-  });
+  const controller = new AbortController();
+  let timeoutTriggered = false;
+  const timeoutId = window.setTimeout(() => {
+    timeoutTriggered = true;
+    controller.abort();
+  }, DEFAULT_API_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...authHeaders,
+        ...(getStoredLocalId() ? { 'x-local-id': getStoredLocalId() as string } : {}),
+        ...(getTenantSubdomainOverride() ? { 'x-tenant-subdomain': getTenantSubdomainOverride() as string } : {}),
+      },
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timeoutTriggered) {
+      throw new ApiRequestError(
+        'La transcripción tardó demasiado. Intenta con un audio más corto.',
+        408,
+        'TIMEOUT',
+      );
+    }
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiRequestError('La transcripción fue cancelada.', 499, 'ABORTED');
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new ApiRequestError('Sin conexión a internet. Verifica tu red e intenta de nuevo.', 0, 'OFFLINE');
+    }
+    throw new ApiRequestError(
+      'No se pudo enviar el audio para transcripción. Intenta nuevamente.',
+      0,
+      'NETWORK',
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
+    if ((response.status === 401 || response.status === 403) && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(AUTH_SESSION_ERROR_EVENT, { detail: { status: response.status } }));
+    }
     let message = await response.text();
     try {
       const parsed = JSON.parse(message) as { message?: string; error?: string };
@@ -397,7 +538,11 @@ export const postAiAssistantTranscribe = async (payload: {
     } catch {
       // Keep raw message when it's not JSON.
     }
-    throw new Error(message || `API request failed (${response.status})`);
+    throw new ApiRequestError(
+      message || `API request failed (${response.status})`,
+      response.status,
+      'HTTP',
+    );
   }
 
   const contentType = response.headers.get('content-type') || '';
@@ -410,7 +555,7 @@ export const postAiAssistantTranscribe = async (payload: {
 
 // Platform Admin API
 
-export const getPlatformBrands = async (): Promise<any[]> =>
+export const getPlatformBrands = async (): Promise<PlatformBrandSummary[]> =>
   apiRequest('/platform/brands');
 
 export const getPlatformMetrics = async (windowDays = 7): Promise<PlatformUsageMetrics> =>
@@ -421,12 +566,12 @@ export const refreshPlatformMetrics = async (windowDays = 7): Promise<PlatformUs
     method: 'POST',
   });
 
-export const getPlatformBrand = async (brandId: string): Promise<any> =>
+export const getPlatformBrand = async (brandId: string): Promise<PlatformBrandSummary> =>
   apiRequest(`/platform/brands/${brandId}`);
 
 export const createPlatformBrand = async (
   data: { name: string; subdomain: string; customDomain?: string | null; isActive?: boolean },
-): Promise<any> =>
+): Promise<PlatformBrandSummary> =>
   apiRequest('/platform/brands', {
     method: 'POST',
     body: data,
@@ -435,7 +580,7 @@ export const createPlatformBrand = async (
 export const updatePlatformBrand = async (
   brandId: string,
   data: Partial<{ name: string; subdomain: string; customDomain?: string | null; isActive?: boolean; defaultLocationId?: string | null }>,
-): Promise<any> =>
+): Promise<PlatformBrandSummary> =>
   apiRequest(`/platform/brands/${brandId}`, {
     method: 'PATCH',
     body: data,
@@ -446,13 +591,13 @@ export const deletePlatformBrand = async (brandId: string): Promise<void> =>
     method: 'DELETE',
   });
 
-export const getPlatformLocations = async (brandId: string): Promise<any[]> =>
+export const getPlatformLocations = async (brandId: string): Promise<PlatformLocationSummary[]> =>
   apiRequest(`/platform/brands/${brandId}/locations`);
 
 export const createPlatformLocation = async (
   brandId: string,
   data: { name: string; slug?: string | null; isActive?: boolean },
-): Promise<any> =>
+): Promise<PlatformLocationSummary> =>
   apiRequest(`/platform/brands/${brandId}/locations`, {
     method: 'POST',
     body: data,
@@ -461,7 +606,7 @@ export const createPlatformLocation = async (
 export const updatePlatformLocation = async (
   localId: string,
   data: Partial<{ name: string; slug?: string | null; isActive?: boolean }>,
-): Promise<any> =>
+): Promise<PlatformLocationSummary> =>
   apiRequest(`/platform/locations/${localId}`, {
     method: 'PATCH',
     body: data,
@@ -472,36 +617,36 @@ export const deletePlatformLocation = async (localId: string): Promise<void> =>
     method: 'DELETE',
   });
 
-export const getPlatformBrandConfig = async (brandId: string): Promise<any> =>
+export const getPlatformBrandConfig = async (brandId: string): Promise<PlatformConfigData> =>
   apiRequest(`/platform/brands/${brandId}/config`);
 
 export const updatePlatformBrandConfig = async (
   brandId: string,
   data: Record<string, unknown>,
-): Promise<any> =>
+): Promise<PlatformBrandConfigRecord> =>
   apiRequest(`/platform/brands/${brandId}/config`, {
     method: 'PATCH',
     body: { data },
   });
 
-export const getPlatformLocationConfig = async (localId: string): Promise<any> =>
+export const getPlatformLocationConfig = async (localId: string): Promise<PlatformConfigData> =>
   apiRequest(`/platform/locations/${localId}/config`);
 
 export const updatePlatformLocationConfig = async (
   localId: string,
   data: Record<string, unknown>,
-): Promise<any> =>
+): Promise<PlatformLocationConfigRecord> =>
   apiRequest(`/platform/locations/${localId}/config`, {
     method: 'PATCH',
     body: { data },
   });
 
-export const connectPlatformStripeBrand = async (brandId: string): Promise<any> =>
+export const connectPlatformStripeBrand = async (brandId: string): Promise<StripeOnboardingResponse> =>
   apiRequest(`/platform/payments/stripe/brand/${brandId}/connect`, {
     method: 'POST',
   });
 
-export const connectPlatformStripeLocation = async (localId: string): Promise<any> =>
+export const connectPlatformStripeLocation = async (localId: string): Promise<StripeOnboardingResponse> =>
   apiRequest(`/platform/payments/stripe/location/${localId}/connect`, {
     method: 'POST',
   });
@@ -521,13 +666,13 @@ export const updatePlatformBrandLegalSettings = async (
 export const getPlatformBrandDpa = async (brandId: string): Promise<LegalPolicyResponse> =>
   apiRequest(`/platform/brands/${brandId}/legal/dpa`);
 
-export const getPlatformBrandAdmins = async (brandId: string): Promise<any> =>
+export const getPlatformBrandAdmins = async (brandId: string): Promise<PlatformBrandAdminsOverview> =>
   apiRequest(`/platform/brands/${brandId}/admins`);
 
 export const assignPlatformBrandAdmin = async (
   brandId: string,
   data: { email: string; localId?: string; applyToAll?: boolean; adminRoleId?: string | null },
-): Promise<any> =>
+): Promise<OperationSuccessResponse> =>
   apiRequest(`/platform/brands/${brandId}/admins`, {
     method: 'POST',
     body: data,
@@ -536,7 +681,7 @@ export const assignPlatformBrandAdmin = async (
 export const removePlatformBrandAdmin = async (
   brandId: string,
   data: { userId?: string; email?: string; localId?: string; removeFromAll?: boolean },
-): Promise<any> =>
+): Promise<OperationSuccessResponse> =>
   apiRequest(`/platform/brands/${brandId}/admins`, {
     method: 'DELETE',
     body: data,
@@ -546,15 +691,11 @@ export const removePlatformBrandAdmin = async (
 export const getReferralSummary = async (userId: string): Promise<ReferralSummaryResponse> =>
   apiRequest('/referrals/my-summary', { query: { userId } });
 
-export const getReferralCode = async (userId: string): Promise<{ code: string; rewardSummary: any; shareUrl?: string | null; qrUrlPayload?: string | null }> =>
+export const getReferralCode = async (userId: string): Promise<ReferralCodeResponse> =>
   apiRequest('/referrals/my-code', { query: { userId } });
 
-export const resolveReferralCode = async (code: string): Promise<{
-  referrerDisplayName: string;
-  programEnabled: boolean;
-  rewardSummary: any;
-  expiresInDays: number;
-}> => apiRequest(`/referrals/resolve/${code}`);
+export const resolveReferralCode = async (code: string): Promise<ReferralCodeResolution> =>
+  apiRequest(`/referrals/resolve/${code}`);
 
 export const attributeReferral = async (data: {
   code: string;
@@ -647,15 +788,15 @@ export const snoozeReview = async (id: string, actor: { userId?: string; guestEm
 // Stripe Payments (public)
 export const getStripeAvailability = async (): Promise<StripeAvailability> =>
   apiRequest('/payments/stripe/availability');
-export const createStripeCheckout = async (data: CreateAppointmentPayload): Promise<any> =>
+export const createStripeCheckout = async (data: CreateAppointmentPayload): Promise<StripeCheckoutResponse> =>
   apiRequest('/payments/stripe/checkout', { method: 'POST', body: data });
-export const getStripeSession = async (sessionId: string): Promise<any> =>
+export const getStripeSession = async (sessionId: string): Promise<StripeSessionResponse> =>
   apiRequest(`/payments/stripe/session/${sessionId}`);
 
 // Stripe Payments (admin local)
-export const getAdminStripeConfig = async (): Promise<any> =>
+export const getAdminStripeConfig = async (): Promise<AdminStripeConfig> =>
   apiRequest('/admin/payments/stripe/config');
-export const updateAdminStripeConfig = async (enabled: boolean): Promise<any> =>
+export const updateAdminStripeConfig = async (enabled: boolean): Promise<AdminStripeToggleResponse> =>
   apiRequest('/admin/payments/stripe/config', { method: 'PUT', body: { enabled } });
-export const createAdminStripeConnect = async (): Promise<any> =>
+export const createAdminStripeConnect = async (): Promise<StripeOnboardingResponse> =>
   apiRequest('/admin/payments/stripe/connect', { method: 'POST' });

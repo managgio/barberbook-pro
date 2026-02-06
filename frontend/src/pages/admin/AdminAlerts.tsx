@@ -15,12 +15,15 @@ import { useToast } from '@/hooks/use-toast';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
-import { ADMIN_EVENTS } from '@/lib/adminEvents';
+import { dispatchAlertsUpdated } from '@/lib/adminEvents';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { useTenant } from '@/context/TenantContext';
+import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
 
 const AdminAlerts: React.FC = () => {
   const { toast } = useToast();
-  const [alerts, setAlerts] = useState<AlertType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { currentLocationId } = useTenant();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -35,26 +38,25 @@ const AdminAlerts: React.FC = () => {
     startDate: '',
     endDate: '',
   });
-
-  const fetchAlerts = async () => {
-    const data = await getAlerts();
-    setAlerts(data);
-    setIsLoading(false);
-  };
-
-  useEffect(() => {
-    fetchAlerts();
-  }, []);
+  const alertsQuery = useQuery({
+    queryKey: queryKeys.adminAlerts(currentLocationId),
+    queryFn: getAlerts,
+  });
+  const alerts = alertsQuery.data ?? [];
+  const isLoading = alertsQuery.isLoading;
 
   useEffect(() => {
-    const handleRefresh = () => {
-      void fetchAlerts();
-    };
-    window.addEventListener(ADMIN_EVENTS.alertsUpdated, handleRefresh);
-    return () => {
-      window.removeEventListener(ADMIN_EVENTS.alertsUpdated, handleRefresh);
-    };
-  }, []);
+    if (!alertsQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudieron cargar las alertas.',
+      variant: 'destructive',
+    });
+  }, [alertsQuery.error, toast]);
+
+  useForegroundRefresh(() => {
+    void alertsQuery.refetch();
+  });
 
   const openCreateDialog = () => {
     setEditingAlert(null);
@@ -113,8 +115,8 @@ const AdminAlerts: React.FC = () => {
         });
         toast({ title: 'Alerta creada', description: 'La nueva alerta ha sido añadida.' });
       }
-      
-      await fetchAlerts();
+      dispatchAlertsUpdated({ source: 'admin-alerts' });
+      await alertsQuery.refetch();
       setIsDialogOpen(false);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo guardar la alerta.', variant: 'destructive' });
@@ -129,7 +131,8 @@ const AdminAlerts: React.FC = () => {
     try {
       await deleteAlert(deletingAlertId);
       toast({ title: 'Alerta eliminada', description: 'La alerta ha sido eliminada.' });
-      await fetchAlerts();
+      dispatchAlertsUpdated({ source: 'admin-alerts' });
+      await alertsQuery.refetch();
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo eliminar la alerta.', variant: 'destructive' });
     } finally {
@@ -141,7 +144,8 @@ const AdminAlerts: React.FC = () => {
   const toggleActive = async (alert: AlertType) => {
     try {
       await updateAlert(alert.id, { active: !alert.active });
-      await fetchAlerts();
+      dispatchAlertsUpdated({ source: 'admin-alerts' });
+      await alertsQuery.refetch();
       toast({ 
         title: alert.active ? 'Alerta desactivada' : 'Alerta activada',
         description: alert.active ? 'Los usuarios ya no verán esta alerta.' : 'Los usuarios verán esta alerta.'

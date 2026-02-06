@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { getAppointments, getServices, getBarbers, getAvailableSlots, createAppointment, getServiceCategories, getProductCategories, getProducts, getSiteSettings, getPrivacyConsentStatus, getLoyaltyPreview, getRewardsWallet, getStripeAvailability, createStripeCheckout } from '@/data/api';
+import { getBarberWeeklyLoad, getAvailableSlots, getAvailableSlotsBatch, getBarbers, createAppointment, getPrivacyConsentStatus, getLoyaltyPreview, getRewardsWallet, getStripeAvailability, createStripeCheckout } from '@/data/api';
 import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon, StripeAvailability } from '@/data/types';
 import { 
   Check, 
@@ -23,7 +23,7 @@ import {
   CheckCircle,
   CreditCard,
 } from 'lucide-react';
-import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter, isWithinInterval, parseISO } from 'date-fns';
+import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { useToast } from '@/hooks/use-toast';
@@ -34,14 +34,51 @@ import ProductSelector from '@/components/common/ProductSelector';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { getStoredReferralAttribution, clearStoredReferralAttribution } from '@/lib/referrals';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import {
+  fetchProductCategoriesCached,
+  fetchProductsCached,
+  fetchServiceCategoriesCached,
+  fetchServicesCached,
+} from '@/lib/catalogQuery';
+import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { useTenant } from '@/context/TenantContext';
 
 
 interface BookingWizardProps {
   isGuest?: boolean;
 }
 
+type BookingCatalogData = {
+  services: Service[];
+  serviceCategories: ServiceCategory[];
+  categoriesEnabled: boolean;
+  productsEnabled: boolean;
+  clientPurchaseEnabled: boolean;
+  products: Product[];
+  productCategories: ProductCategory[];
+  stripeAvailability: StripeAvailability | null;
+};
+type BookingSlotsData = {
+  availableSlots: string[];
+  slotsByBarber: Record<string, string[]>;
+};
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
+const EMPTY_PRODUCTS: Product[] = [];
+const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_SLOTS: string[] = [];
+const EMPTY_SLOTS_BY_BARBER: Record<string, string[]> = {};
+const EMPTY_WEEKLY_LOAD: Record<string, number> = {};
+const EMPTY_COUPONS: Coupon[] = [];
+
 const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const { user } = useAuth();
+  const { currentLocationId } = useTenant();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -58,30 +95,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     : `${copy.staff.pluralLower} activos disponibles`;
 
   const [currentStep, setCurrentStep] = useState(0);
-  const [services, setServices] = useState<Service[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
-  const [categoriesEnabled, setCategoriesEnabled] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
-  const [productsEnabled, setProductsEnabled] = useState(false);
-  const [clientPurchaseEnabled, setClientPurchaseEnabled] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
   const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [loyaltyPreview, setLoyaltyPreview] = useState<LoyaltyPreview | null>(null);
-  const [isLoyaltyLoading, setIsLoyaltyLoading] = useState(false);
-  const [walletSummary, setWalletSummary] = useState<RewardWalletSummary | null>(null);
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null);
-  const [stripeAvailability, setStripeAvailability] = useState<StripeAvailability | null>(null);
   const [paymentOption, setPaymentOption] = useState<'local' | 'stripe'>('local');
   const [showSuccess, setShowSuccess] = useState(false);
   const [privacyConsent, setPrivacyConsent] = useState(false);
-  const [privacyConsentRequired, setPrivacyConsentRequired] = useState(true);
 
   const [booking, setBooking] = useState<BookingState>({
     serviceId: null,
@@ -92,14 +113,100 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [appointmentNote, setAppointmentNote] = useState('');
   const [selectBarber, setSelectBarber] = useState(true);
   const [preferenceInitialized, setPreferenceInitialized] = useState(false);
-  const [slotsByBarber, setSlotsByBarber] = useState<Record<string, string[]>>({});
-  const [barberWeeklyLoad, setBarberWeeklyLoad] = useState<Record<string, number>>({});
-  const slotsRequestRef = useRef(0);
-  const weeklyLoadRequestRef = useRef(0);
 
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(new Date()));
   const today = startOfDay(new Date());
+  const catalogQuery = useQuery<BookingCatalogData>({
+    queryKey: queryKeys.bookingBootstrap(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const [services, serviceCategories, settings, products, productCategories, stripeAvailability] = await Promise.all([
+        fetchServicesCached(),
+        fetchServiceCategoriesCached(),
+        fetchSiteSettingsCached(),
+        fetchProductsCached({ context: 'booking' }),
+        fetchProductCategoriesCached(),
+        getStripeAvailability().catch(() => null),
+      ]);
+      return {
+        services,
+        serviceCategories,
+        categoriesEnabled: settings.services.categoriesEnabled,
+        productsEnabled: settings.products.enabled,
+        clientPurchaseEnabled: settings.products.clientPurchaseEnabled,
+        products,
+        productCategories,
+        stripeAvailability,
+      };
+    },
+  });
+  const barbersQuery = useQuery<Barber[]>({
+    queryKey: queryKeys.barbers(currentLocationId, booking.serviceId ?? undefined),
+    enabled: Boolean(currentLocationId),
+    staleTime: 60_000,
+    queryFn: () => getBarbers(booking.serviceId ? { serviceId: booking.serviceId } : undefined),
+  });
+  const loyaltyPreviewQuery = useQuery<LoyaltyPreview | null>({
+    queryKey: queryKeys.bookingLoyaltyPreview(currentLocationId, user?.id, booking.serviceId),
+    enabled: !isGuest && Boolean(user?.id && booking.serviceId),
+    staleTime: 30_000,
+    queryFn: async () => {
+      try {
+        return await getLoyaltyPreview(user?.id as string, booking.serviceId as string);
+      } catch {
+        return null;
+      }
+    },
+  });
+  const rewardsWalletQuery = useQuery<RewardWalletSummary | null>({
+    queryKey: queryKeys.rewardsWallet(currentLocationId, user?.id),
+    enabled: !isGuest && Boolean(user?.id),
+    staleTime: 30_000,
+    queryFn: async () => {
+      try {
+        return await getRewardsWallet(user?.id as string);
+      } catch {
+        return null;
+      }
+    },
+  });
+  const privacyConsentStatusQuery = useQuery<{ required: boolean }>({
+    queryKey: queryKeys.privacyConsentStatus(currentLocationId, user?.id),
+    enabled: !isGuest && Boolean(user?.id),
+    staleTime: 60_000,
+    queryFn: () => getPrivacyConsentStatus(user?.id as string),
+  });
+  const services = useMemo(
+    () => catalogQuery.data?.services ?? EMPTY_SERVICES,
+    [catalogQuery.data?.services],
+  );
+  const serviceCategories = useMemo(
+    () => catalogQuery.data?.serviceCategories ?? EMPTY_SERVICE_CATEGORIES,
+    [catalogQuery.data?.serviceCategories],
+  );
+  const categoriesEnabled = catalogQuery.data?.categoriesEnabled ?? false;
+  const productsEnabled = catalogQuery.data?.productsEnabled ?? false;
+  const clientPurchaseEnabled = catalogQuery.data?.clientPurchaseEnabled ?? false;
+  const products = useMemo(
+    () => catalogQuery.data?.products ?? EMPTY_PRODUCTS,
+    [catalogQuery.data?.products],
+  );
+  const productCategories = useMemo(
+    () => catalogQuery.data?.productCategories ?? EMPTY_PRODUCT_CATEGORIES,
+    [catalogQuery.data?.productCategories],
+  );
+  const stripeAvailability = catalogQuery.data?.stripeAvailability ?? null;
+  const barbers = useMemo(
+    () => barbersQuery.data ?? EMPTY_BARBERS,
+    [barbersQuery.data],
+  );
+  const loyaltyPreview = loyaltyPreviewQuery.data ?? null;
+  const isLoyaltyLoading = loyaltyPreviewQuery.isFetching;
+  const walletSummary = rewardsWalletQuery.data ?? null;
+  const privacyConsentRequired = isGuest ? true : (privacyConsentStatusQuery.data?.required ?? true);
+  const isLoading = catalogQuery.isLoading;
   const allowProductSelection = !isGuest && Boolean(user?.id) && productsEnabled && clientPurchaseEnabled;
 
   const selectedProductsTotal = useMemo(() => {
@@ -131,79 +238,23 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   );
 
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const [servicesData, categoriesData, settingsData, productsData, productCategoriesData, stripeData] = await Promise.all([
-          getServices(),
-          getServiceCategories(true),
-          getSiteSettings(),
-          getProducts('booking'),
-          getProductCategories(true),
-          getStripeAvailability().catch(() => null),
-        ]);
-        setServices(servicesData);
-        setServiceCategories(categoriesData);
-        setCategoriesEnabled(settingsData.services.categoriesEnabled);
-        setProductsEnabled(settingsData.products.enabled);
-        setClientPurchaseEnabled(settingsData.products.clientPurchaseEnabled);
-        setProducts(productsData);
-        setProductCategories(productCategoriesData);
-        if (stripeData) {
-          setStripeAvailability(stripeData);
-        } else {
-          setStripeAvailability(null);
-        }
-      } catch (error) {
-        toast({
-          title: 'No pudimos cargar los servicios',
-          description: 'Intenta de nuevo en unos segundos.',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsLoading(false);
-        if (searchParams.get('barber')) {
-          setCurrentStep(0); // Start at service selection
-        }
-      }
-    };
-    fetchData();
-  }, [searchParams, toast]);
+    if (!catalogQuery.isError) return;
+    toast({
+      title: 'No pudimos cargar los servicios',
+      description: 'Intenta de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [catalogQuery.isError, catalogQuery.errorUpdatedAt, toast]);
 
   useEffect(() => {
-    let isMounted = true;
-    const refreshBarbersByService = async () => {
-      try {
-        const nextBarbers = await getBarbers(
-          booking.serviceId ? { serviceId: booking.serviceId } : undefined,
-        );
-        if (!isMounted) return;
-        setBarbers(nextBarbers);
-        setBooking((prev) => {
-          if (!prev.barberId) return prev;
-          const stillAvailable = nextBarbers.some(
-            (barber) => barber.id === prev.barberId && barber.isActive !== false,
-          );
-          if (stillAvailable) return prev;
-          return { ...prev, barberId: null, dateTime: null };
-        });
-      } catch (error) {
-        if (!isMounted) return;
-        setBarbers([]);
-        setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
-        toast({
-          title: `No pudimos cargar ${copy.staff.definitePlural}`,
-          description: 'Intenta de nuevo en unos segundos.',
-          variant: 'destructive',
-        });
-      }
-    };
-
-    refreshBarbersByService();
-    return () => {
-      isMounted = false;
-    };
-  }, [booking.serviceId, toast]);
+    if (!barbersQuery.isError) return;
+    setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
+    toast({
+      title: `No pudimos cargar ${copy.staff.definitePlural}`,
+      description: 'Intenta de nuevo en unos segundos.',
+      variant: 'destructive',
+    });
+  }, [barbersQuery.isError, barbersQuery.errorUpdatedAt, copy.staff.definitePlural, toast]);
 
   useEffect(() => {
     const preselected = searchParams.get('product');
@@ -221,29 +272,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }, [stripeAvailability?.enabled]);
 
   useEffect(() => {
-    if (isGuest || !user?.id || !booking.serviceId) {
-      setLoyaltyPreview(null);
-      setIsLoyaltyLoading(false);
-      return;
-    }
-    let isMounted = true;
-    setIsLoyaltyLoading(true);
-    getLoyaltyPreview(user.id, booking.serviceId)
-      .then((data) => {
-        if (isMounted) setLoyaltyPreview(data);
-      })
-      .catch(() => {
-        if (isMounted) setLoyaltyPreview(null);
-      })
-      .finally(() => {
-        if (isMounted) setIsLoyaltyLoading(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [booking.serviceId, isGuest, user?.id]);
-
-  useEffect(() => {
     if (isGuest) {
       setUseWalletBalance(false);
       setSelectedCouponId(null);
@@ -251,47 +279,17 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }, [isGuest]);
 
   useEffect(() => {
-    if (isGuest || !user?.id) {
-      setWalletSummary(null);
-      return;
-    }
-    let isMounted = true;
-    getRewardsWallet(user.id)
-      .then((data) => {
-        if (isMounted) setWalletSummary(data);
-      })
-      .catch(() => {
-        if (isMounted) setWalletSummary(null);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [isGuest, user?.id]);
-
-  useEffect(() => {
-    if (isGuest || !user?.id) {
-      setPrivacyConsentRequired(true);
+    if (isGuest) {
       setPrivacyConsent(false);
       return;
     }
-    let isMounted = true;
-    const loadStatus = async () => {
-      try {
-        const status = await getPrivacyConsentStatus(user.id);
-        if (!isMounted) return;
-        setPrivacyConsentRequired(status.required);
-        setPrivacyConsent(status.required ? false : true);
-      } catch (error) {
-        if (!isMounted) return;
-        setPrivacyConsentRequired(true);
-        setPrivacyConsent(false);
-      }
-    };
-    loadStatus();
-    return () => {
-      isMounted = false;
-    };
-  }, [isGuest, user?.id]);
+    if (!user?.id) return;
+    if (privacyConsentRequired) {
+      setPrivacyConsent(false);
+      return;
+    }
+    setPrivacyConsent(true);
+  }, [isGuest, privacyConsentRequired, user?.id]);
 
   useEffect(() => {
     if (preferenceInitialized) return;
@@ -337,20 +335,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     return days;
   }, [visibleMonth]);
 
-  const slotGroups = useMemo(() => {
-    const morning: string[] = [];
-    const afternoon: string[] = [];
-    availableSlots.forEach((slot) => {
-      const hour = parseInt(slot.split(':')[0], 10);
-      if (hour < 14) {
-        morning.push(slot);
-      } else {
-        afternoon.push(slot);
-      }
-    });
-    return { morningSlots: morning, afternoonSlots: afternoon };
-  }, [availableSlots]);
-
   const orderedCategories = useMemo(
     () =>
       [...serviceCategories].sort(
@@ -373,113 +357,144 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     [services],
   );
 
-  const getService = () => services.find(s => s.id === booking.serviceId);
+  const selectedService = useMemo(
+    () => services.find((service) => service.id === booking.serviceId) ?? null,
+    [services, booking.serviceId],
+  );
+  const getService = () => selectedService;
   const getBarber = () => barbers.find(b => b.id === booking.barberId);
   const availableBarbers = useMemo(
     () => barbers.filter((barber) => barber.isActive !== false),
     [barbers],
   );
+  const availableBarberIds = useMemo(
+    () => availableBarbers.map((barber) => barber.id).sort(),
+    [availableBarbers],
+  );
+  const availableBarberIdsKey = useMemo(
+    () => availableBarberIds.join(','),
+    [availableBarberIds],
+  );
+  const selectedDateKey = useMemo(
+    () => format(selectedDate, 'yyyy-MM-dd'),
+    [selectedDate],
+  );
+  const slotsQueryEnabled =
+    Boolean(booking.serviceId) &&
+    currentStep === 1 &&
+    (!selectBarber || Boolean(booking.barberId));
+  const slotsQuery = useQuery<BookingSlotsData>({
+    queryKey: queryKeys.bookingSlots(
+      currentLocationId,
+      booking.serviceId,
+      selectedDateKey,
+      selectBarber ? 'single' : 'auto',
+      selectBarber ? booking.barberId : null,
+      availableBarberIdsKey,
+    ),
+    enabled: slotsQueryEnabled,
+    staleTime: 15_000,
+    queryFn: async () => {
+      if (!booking.serviceId) {
+        return { availableSlots: [], slotsByBarber: {} };
+      }
+      try {
+        if (selectBarber) {
+          if (!booking.barberId) {
+            return { availableSlots: [], slotsByBarber: {} };
+          }
+          const slots = await getAvailableSlots(booking.barberId, selectedDateKey, {
+            serviceId: booking.serviceId,
+          });
+          return { availableSlots: slots, slotsByBarber: {} };
+        }
+        if (availableBarberIds.length === 0) {
+          return { availableSlots: [], slotsByBarber: {} };
+        }
+        const slotsMap = await getAvailableSlotsBatch(
+          selectedDateKey,
+          availableBarberIds,
+          { serviceId: booking.serviceId },
+        );
+        const nextMap: Record<string, string[]> = {};
+        availableBarberIds.forEach((barberId) => {
+          nextMap[barberId] = slotsMap[barberId] || [];
+        });
+        const merged = Array.from(new Set(Object.values(nextMap).flat())).sort();
+        return { availableSlots: merged, slotsByBarber: nextMap };
+      } catch {
+        return { availableSlots: [], slotsByBarber: {} };
+      }
+    },
+  });
+  const weekRange = useMemo(() => {
+    const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
+    return {
+      dateFrom: format(weekStart, 'yyyy-MM-dd'),
+      dateTo: format(weekEnd, 'yyyy-MM-dd'),
+    };
+  }, [selectedDate]);
+  const weeklyLoadQuery = useQuery<Record<string, number>>({
+    queryKey: queryKeys.bookingWeeklyLoad(
+      currentLocationId,
+      booking.serviceId,
+      weekRange.dateFrom,
+      weekRange.dateTo,
+      availableBarberIdsKey,
+    ),
+    enabled:
+      currentStep === 1 &&
+      !selectBarber &&
+      Boolean(booking.serviceId) &&
+      availableBarberIds.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      if (!booking.serviceId || availableBarberIds.length === 0) {
+        return {};
+      }
+      try {
+        return await getBarberWeeklyLoad(
+          weekRange.dateFrom,
+          weekRange.dateTo,
+          availableBarberIds,
+        );
+      } catch {
+        return {};
+      }
+    },
+  });
+  const availableSlots = useMemo(
+    () => slotsQuery.data?.availableSlots ?? EMPTY_SLOTS,
+    [slotsQuery.data?.availableSlots],
+  );
+  const slotsByBarber = useMemo(
+    () => slotsQuery.data?.slotsByBarber ?? EMPTY_SLOTS_BY_BARBER,
+    [slotsQuery.data?.slotsByBarber],
+  );
+  const barberWeeklyLoad = useMemo(
+    () => weeklyLoadQuery.data ?? EMPTY_WEEKLY_LOAD,
+    [weeklyLoadQuery.data],
+  );
+  const isSlotsLoading = slotsQuery.isFetching && slotsQueryEnabled;
+  const slotGroups = useMemo(() => {
+    const morning: string[] = [];
+    const afternoon: string[] = [];
+    availableSlots.forEach((slot) => {
+      const hour = parseInt(slot.split(':')[0], 10);
+      if (hour < 14) {
+        morning.push(slot);
+      } else {
+        afternoon.push(slot);
+      }
+    });
+    return { morningSlots: morning, afternoonSlots: afternoon };
+  }, [availableSlots]);
   const canPickSlots = selectBarber ? !!booking.barberId : true;
   const assignedBarber = useMemo(
     () => barbers.find((barber) => barber.id === booking.barberId) || null,
     [barbers, booking.barberId],
   );
-
-  const fetchSlots = useCallback(async () => {
-    if (!booking.serviceId) return;
-    const requestId = ++slotsRequestRef.current;
-    setIsSlotsLoading(true);
-    const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    try {
-      if (selectBarber) {
-        if (!booking.barberId) {
-          if (requestId === slotsRequestRef.current) {
-            setAvailableSlots([]);
-            setSlotsByBarber({});
-          }
-          return;
-        }
-        const slots = await getAvailableSlots(booking.barberId, dateStr, {
-          serviceId: booking.serviceId,
-        });
-        if (requestId !== slotsRequestRef.current) return;
-        setAvailableSlots(slots);
-        setSlotsByBarber({});
-      } else {
-        if (availableBarbers.length === 0) {
-          if (requestId === slotsRequestRef.current) {
-            setAvailableSlots([]);
-            setSlotsByBarber({});
-          }
-          return;
-        }
-        const results = await Promise.all(
-          availableBarbers.map((barber) =>
-            getAvailableSlots(barber.id, dateStr, { serviceId: booking.serviceId }),
-          ),
-        );
-        if (requestId !== slotsRequestRef.current) return;
-        const nextMap: Record<string, string[]> = {};
-        availableBarbers.forEach((barber, index) => {
-          nextMap[barber.id] = results[index] || [];
-        });
-        const merged = Array.from(new Set(results.flat())).sort();
-        setSlotsByBarber(nextMap);
-        setAvailableSlots(merged);
-      }
-    } catch (error) {
-      if (requestId === slotsRequestRef.current) {
-        setAvailableSlots([]);
-        setSlotsByBarber({});
-      }
-    } finally {
-      if (requestId === slotsRequestRef.current) {
-        setIsSlotsLoading(false);
-      }
-    }
-  }, [availableBarbers, booking.barberId, booking.serviceId, selectedDate, selectBarber]);
-
-  const fetchWeeklyLoad = useCallback(async () => {
-    const requestId = ++weeklyLoadRequestRef.current;
-    if (!booking.serviceId || availableBarbers.length === 0) {
-      setBarberWeeklyLoad({});
-      return;
-    }
-    try {
-      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
-      const appts = await getAppointments();
-      const counts = availableBarbers.reduce<Record<string, number>>((acc, barber) => {
-        acc[barber.id] = 0;
-        return acc;
-      }, {});
-      appts.forEach((appointment) => {
-        if (appointment.status === 'cancelled') return;
-        const date = parseISO(appointment.startDateTime);
-        if (!isWithinInterval(date, { start: weekStart, end: weekEnd })) return;
-        if (counts[appointment.barberId] !== undefined) {
-          counts[appointment.barberId] += 1;
-        }
-      });
-      if (requestId !== weeklyLoadRequestRef.current) return;
-      setBarberWeeklyLoad(counts);
-    } catch (error) {
-      if (requestId === weeklyLoadRequestRef.current) {
-        setBarberWeeklyLoad({});
-      }
-    }
-  }, [availableBarbers, booking.serviceId, selectedDate]);
-
-  useEffect(() => {
-    if (!booking.serviceId || currentStep !== 1) return;
-    if (selectBarber && !booking.barberId) return;
-    fetchSlots();
-  }, [booking.barberId, booking.serviceId, selectedDate, currentStep, fetchSlots, selectBarber]);
-
-  useEffect(() => {
-    if (selectBarber || !booking.serviceId || currentStep !== 1) return;
-    fetchWeeklyLoad();
-  }, [selectBarber, booking.serviceId, selectedDate, currentStep, fetchWeeklyLoad]);
 
   const handleSelectService = (serviceId: string) => {
     setBooking({
@@ -490,9 +505,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     setSelectedCouponId(null);
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
-    setAvailableSlots([]);
-    setSlotsByBarber({});
-    setBarberWeeklyLoad({});
     setCurrentStep(1);
   };
 
@@ -567,8 +579,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     }));
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
-    setAvailableSlots([]);
-    setSlotsByBarber({});
   };
 
   const handleBarberSelectionToggle = (checked: boolean) => {
@@ -578,11 +588,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       barberId: checked ? prev.barberId : null,
       dateTime: null,
     }));
-    setAvailableSlots([]);
-    setSlotsByBarber({});
-    if (checked) {
-      setBarberWeeklyLoad({});
-    }
   };
 
   const isOfferActiveOnDate = (offer?: AppliedOffer | null, date?: Date | null) => {
@@ -602,7 +607,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   };
 
   const selectedPricing = useMemo(() => {
-    const service = getService();
+    const service = selectedService;
     if (!service) return null;
     const basePrice = service.price;
     const referenceDate = booking.dateTime ? new Date(booking.dateTime) : selectedDate;
@@ -616,14 +621,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       return { basePrice, finalPrice, appliedOffer: offer, amountOff: basePrice - finalPrice };
     }
     return { basePrice, finalPrice: basePrice, appliedOffer: null, amountOff: 0 };
-  }, [booking.dateTime, selectedDate, services, booking.serviceId]);
+  }, [booking.dateTime, selectedDate, selectedService]);
 
   const loyaltyEligible = Boolean(loyaltyPreview?.enabled && loyaltyPreview.program);
   const loyaltyFree = loyaltyEligible && Boolean(loyaltyPreview?.isFreeNext);
   const walletAvailable = walletSummary?.wallet.availableBalance ?? 0;
 
   const eligibleCoupons = useMemo(() => {
-    if (!walletSummary?.coupons || !booking.serviceId) return [] as Coupon[];
+    if (!walletSummary?.coupons || !booking.serviceId) return EMPTY_COUPONS;
     return walletSummary.coupons.filter((coupon) => {
       if (!coupon.isActive) return false;
       if (coupon.serviceId && coupon.serviceId !== booking.serviceId) return false;
@@ -743,6 +748,30 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     }
   };
 
+  const invalidatePostBookingData = useCallback(async () => {
+    dispatchAppointmentsUpdated({ source: 'booking-wizard' });
+    if (!user?.id) return;
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.clientAppointments(currentLocationId, user.id),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.clientLoyaltySummary(currentLocationId, user.id),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.clientReferralSummary(currentLocationId, user.id),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.rewardsWallet(currentLocationId, user.id),
+      }),
+      booking.serviceId
+        ? queryClient.invalidateQueries({
+            queryKey: queryKeys.bookingLoyaltyPreview(currentLocationId, user.id, booking.serviceId),
+          })
+        : Promise.resolve(),
+    ]);
+  }, [booking.serviceId, currentLocationId, queryClient, user?.id]);
+
   const handleConfirm = async () => {
     if (!booking.serviceId || !booking.barberId || !booking.dateTime) return;
     if (!isGuest && !user) return;
@@ -798,6 +827,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         const checkout = await createStripeCheckout(payload);
         clearStoredReferralAttribution();
         if (checkout?.mode === 'exempt') {
+          await invalidatePostBookingData();
           setShowSuccess(true);
           setTimeout(() => {
             toast({
@@ -825,6 +855,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
       setShowSuccess(true);
       clearStoredReferralAttribution();
+      await invalidatePostBookingData();
 
       setTimeout(() => {
         toast({
@@ -850,7 +881,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           variant: 'destructive',
         });
         setBooking((prev) => ({ ...prev, dateTime: null }));
-        await fetchSlots();
+        await slotsQuery.refetch();
       } else if (isBarberMismatch) {
         toast({
           title: `${copy.staff.singular} no disponible`,
@@ -858,14 +889,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           variant: 'destructive',
         });
         if (booking.serviceId) {
-          const nextBarbers = await getBarbers({ serviceId: booking.serviceId }).catch(() => null);
-          if (nextBarbers) {
-            setBarbers(nextBarbers);
-          }
+          await barbersQuery.refetch();
         }
         setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
-        setAvailableSlots([]);
-        setSlotsByBarber({});
       } else {
         toast({
           title: 'Error',
@@ -1097,6 +1123,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       <img
                         src={assignedBarber.photo || defaultAvatar}
                         alt={assignedBarber.name}
+                        loading="lazy"
+                        decoding="async"
+                        width={48}
+                        height={48}
                         className="w-12 h-12 rounded-xl object-cover"
                       />
                       <div>
@@ -1130,6 +1160,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             <img 
                               src={barber.photo || defaultAvatar} 
                               alt={barber.name}
+                              loading="lazy"
+                              decoding="async"
+                              width={56}
+                              height={56}
                               className="w-14 h-14 rounded-xl object-cover"
                             />
                             <div className="flex-1">
@@ -1204,9 +1238,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                     dateTime: null,
                                     barberId: selectBarber ? prev.barberId : null,
                                   }));
-                                  setAvailableSlots([]);
-                                  setSlotsByBarber({});
-                                  setBarberWeeklyLoad({});
                                 }}
                                 className={cn(
                                   'rounded-lg px-0 py-1.5 text-center text-xs transition-all border flex flex-col items-center justify-center min-h-[52px]',
@@ -1412,7 +1443,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                 <div className="flex items-center gap-3">
                                   <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
                                     {item.imageUrl ? (
-                                      <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                                      <img
+                                        src={item.imageUrl}
+                                        alt={item.name}
+                                        loading="lazy"
+                                        decoding="async"
+                                        width={40}
+                                        height={40}
+                                        className="h-full w-full object-cover"
+                                      />
                                     ) : (
                                       <span className="text-[11px] text-muted-foreground">Sin foto</span>
                                     )}
@@ -1629,6 +1668,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   <img 
                     src={getBarber()?.photo || defaultAvatar} 
                     alt={getBarber()?.name}
+                    loading="lazy"
+                    decoding="async"
+                    width={48}
+                    height={48}
                     className="w-12 h-12 rounded-lg object-cover"
                   />
                   <div>

@@ -1,0 +1,283 @@
+{
+  "generatedAt": "2026-02-06T18:50:53.046Z",
+  "entry": {
+    "js": {
+      "file": "assets/index-qslfZdIi.js",
+      "rawBytes": 43025,
+      "gzipBytes": 14956
+    },
+    "css": {
+      "file": "assets/index-DUVUEQYD.css",
+      "rawBytes": 95063,
+      "gzipBytes": 16075
+    }
+  },
+  "images": {
+    "files": [
+      {
+        "name": "fondo-managgio-1440-O-XZe9xr.webp",
+        "bytes": 60748,
+        "kb": 59.32
+      },
+      {
+        "name": "fondo-managgio-960-D6qjq9-i.webp",
+        "bytes": 38268,
+        "kb": 37.37
+      },
+      {
+        "name": "fondo-managgio-1440-BG9JLvcu.avif",
+        "bytes": 34999,
+        "kb": 34.18
+      },
+      {
+        "name": "fondo-managgio-960-CvcteeF1.avif",
+        "bytes": 23381,
+        "kb": 22.83
+      },
+      {
+        "name": "logo-D2DiSSh1.webp",
+        "bytes": 17344,
+        "kb": 16.94
+      }
+    ],
+    "totalBytes": 174740,
+    "largestFileBytes": 60748
+  },
+  "sourcemap": {
+    "sourceMapFound": true,
+    "analyzedChunkCount": 92,
+    "topNodeModulesBySourceBytes": [
+      {
+        "name": "recharts",
+        "bytes": 650222,
+        "kb": 634.98
+      },
+      {
+        "name": "firebase",
+        "bytes": 457478,
+        "kb": 446.76
+      },
+      {
+        "name": "@remix-run/router",
+        "bytes": 197349,
+        "kb": 192.72
+      },
+      {
+        "name": "date-fns",
+        "bytes": 156352,
+        "kb": 152.69
+      },
+      {
+        "name": "lodash",
+        "bytes": 154608,
+        "kb": 150.98
+      },
+      {
+        "name": "react-dom",
+        "bytes": 133667,
+        "kb": 130.53
+      },
+      {
+        "name": "react-day-picker",
+        "bytes": 97497,
+        "kb": 95.21
+      },
+      {
+        "name": "@firebase/util",
+        "bytes": 80433,
+        "kb": 78.55
+      },
+      {
+        "name": "@tanstack/query-core",
+        "bytes": 74975,
+        "kb": 73.22
+      },
+      {
+        "name": "tailwind-merge",
+        "bytes": 74233,
+        "kb": 72.49
+      },
+      {
+        "name": "lucide-react",
+        "bytes": 65806,
+        "kb": 64.26
+      },
+      {
+        "name": "react-router",
+        "bytes": 60724,
+        "kb": 59.3
+      },
+      {
+        "name": "react-router-dom",
+        "bytes": 56722,
+        "kb": 55.39
+      },
+      {
+        "name": "decimal.js-light",
+        "bytes": 49610,
+        "kb": 48.45
+      },
+      {
+        "name": "@radix-ui/react-select",
+        "bytes": 49584,
+        "kb": 48.42
+      }
+    ],
+    "topSourceFilesBySourceBytes": [
+      {
+        "name": "pages/platform/PlatformBrands.tsx",
+        "bytes": 209070,
+        "kb": 204.17
+      },
+      {
+        "name": "pages/client/BookingWizard.tsx",
+        "bytes": 81403,
+        "kb": 79.5
+      },
+      {
+        "name": "pages/admin/AdminSettings.tsx",
+        "bytes": 48964,
+        "kb": 47.82
+      },
+      {
+        "name": "pages/admin/AdminCashRegister.tsx",
+        "bytes": 46502,
+        "kb": 45.41
+      },
+      {
+        "name": "pages/admin/AdminClients.tsx",
+        "bytes": 46445,
+        "kb": 45.36
+      },
+      {
+        "name": "pages/admin/AdminBarbers.tsx",
+        "bytes": 44553,
+        "kb": 43.51
+      },
+      {
+        "name": "pages/admin/AdminDashboard.tsx",
+        "bytes": 42130,
+        "kb": 41.14
+      },
+      {
+        "name": "pages/admin/AdminStock.tsx",
+        "bytes": 41781,
+        "kb": 40.8
+      },
+      {
+        "name": "pages/LandingPage.tsx",
+        "bytes": 38909,
+        "kb": 38
+      },
+      {
+        "name": "components/admin/QuickAppointmentButton.tsx",
+        "bytes": 34028,
+        "kb": 33.23
+      },
+      {
+        "name": "data/api.ts",
+        "bytes": 33631,
+        "kb": 32.84
+      },
+      {
+        "name": "pages/admin/AdminServices.tsx",
+        "bytes": 32391,
+        "kb": 31.63
+      },
+      {
+        "name": "pages/admin/AdminCalendar.tsx",
+        "bytes": 31127,
+        "kb": 30.4
+      },
+      {
+        "name": "pages/admin/AdminReferrals.tsx",
+        "bytes": 30645,
+        "kb": 29.93
+      },
+      {
+        "name": "pages/platform/PlatformDashboard.tsx",
+        "bytes": 30583,
+        "kb": 29.87
+      }
+    ],
+    "topSourceAreasBySourceBytes": [
+      {
+        "name": "pages",
+        "bytes": 1008173,
+        "kb": 984.54
+      },
+      {
+        "name": "components",
+        "bytes": 203315,
+        "kb": 198.55
+      },
+      {
+        "name": "lib",
+        "bytes": 49206,
+        "kb": 48.05
+      },
+      {
+        "name": "data",
+        "bytes": 48537,
+        "kb": 47.4
+      },
+      {
+        "name": "context",
+        "bytes": 25112,
+        "kb": 24.52
+      },
+      {
+        "name": "assets",
+        "bytes": 12645,
+        "kb": 12.35
+      },
+      {
+        "name": "App.tsx",
+        "bytes": 8944,
+        "kb": 8.73
+      },
+      {
+        "name": "hooks",
+        "bytes": 7038,
+        "kb": 6.87
+      },
+      {
+        "name": "main.tsx",
+        "bytes": 264,
+        "kb": 0.26
+      }
+    ]
+  },
+  "budgets": {
+    "entryJsRawMaxBytes": {
+      "actualBytes": 43025,
+      "maxBytes": 120000,
+      "pass": true
+    },
+    "entryJsGzipMaxBytes": {
+      "actualBytes": 14956,
+      "maxBytes": 35000,
+      "pass": true
+    },
+    "entryCssRawMaxBytes": {
+      "actualBytes": 95063,
+      "maxBytes": 110000,
+      "pass": true
+    },
+    "entryCssGzipMaxBytes": {
+      "actualBytes": 16075,
+      "maxBytes": 20000,
+      "pass": true
+    },
+    "totalImageBytesMaxBytes": {
+      "actualBytes": 174740,
+      "maxBytes": 9000000,
+      "pass": true
+    },
+    "largestImageBytesMaxBytes": {
+      "actualBytes": 60748,
+      "maxBytes": 6500000,
+      "pass": true
+    }
+  }
+}

@@ -45,6 +45,10 @@ const Navbar: React.FC = () => {
             <img
               src={logoUrl}
               alt={`${settings.branding.shortName} logo`}
+              loading="eager"
+              decoding="async"
+              width={40}
+              height={40}
               className="w-10 h-10 object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105 shrink-0"
             />
             <span className={brandNameClass}>{settings.branding.shortName}</span>

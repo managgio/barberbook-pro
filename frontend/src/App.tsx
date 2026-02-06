@@ -1,94 +1,75 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthContext";
 import { TenantProvider, useTenant } from "./context/TenantContext";
-
-// Pages
-import LandingPage from "./pages/LandingPage";
-import AuthPage from "./pages/AuthPage";
-import HoursLocationPage from "./pages/HoursLocationPage";
-import NotFound from "./pages/NotFound";
-import GuestBookingPage from "./pages/GuestBookingPage";
-import TenantError from "./pages/TenantError";
-import PrivacyPolicyPage from "./pages/legal/PrivacyPolicyPage";
-import CookiePolicyPage from "./pages/legal/CookiePolicyPage";
-import LegalNoticePage from "./pages/legal/LegalNoticePage";
-
-// Client Pages
-import ClientLayout from "./components/layout/ClientLayout";
-import ClientDashboard from "./pages/client/ClientDashboard";
-import BookingWizard from "./pages/client/BookingWizard";
-import AppointmentsPage from "./pages/client/AppointmentsPage";
-import ProfilePage from "./pages/client/ProfilePage";
-import ReferralsPage from "./pages/client/ReferralsPage";
-
-// Referral Landing
-import ReferralLandingPage from "./pages/ReferralLandingPage";
-import StripePaymentResultPage from "./pages/StripePaymentResultPage";
-
-// Admin Pages
-import AdminLayout from "./components/layout/AdminLayout";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminCalendar from "./pages/admin/AdminCalendar";
-import AdminSearch from "./pages/admin/AdminSearch";
-import AdminCashRegister from "./pages/admin/AdminCashRegister";
-import AdminClients from "./pages/admin/AdminClients";
-import AdminServices from "./pages/admin/AdminServices";
-import AdminOffers from "./pages/admin/AdminOffers";
-import AdminStock from "./pages/admin/AdminStock";
-import AdminBarbers from "./pages/admin/AdminBarbers";
-import AdminAlerts from "./pages/admin/AdminAlerts";
-import AdminHolidays from "./pages/admin/AdminHolidays";
-import AdminRoles from "./pages/admin/AdminRoles";
-import AdminSettings from "./pages/admin/AdminSettings";
-import AdminLoyalty from "./pages/admin/AdminLoyalty";
-import AdminReferrals from "./pages/admin/AdminReferrals";
-import AdminReviews from "./pages/admin/AdminReviews";
-
-// Platform Admin Pages
-import PlatformLayout from "./components/layout/PlatformLayout";
-import PlatformDashboard from "./pages/platform/PlatformDashboard";
-import PlatformBrands from "./pages/platform/PlatformBrands";
-
-// Protected Route
-import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { Loader2 } from "lucide-react";
+import { queryClient } from "./lib/queryClient";
+import NetworkStatusMonitor from "./components/common/NetworkStatusMonitor";
+import AppErrorBoundary from "./components/common/AppErrorBoundary";
+import AuthSessionMonitor from "./components/common/AuthSessionMonitor";
 
-const queryClient = new QueryClient();
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const HoursLocationPage = lazy(() => import("./pages/HoursLocationPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const GuestBookingPage = lazy(() => import("./pages/GuestBookingPage"));
+const TenantError = lazy(() => import("./pages/TenantError"));
+const PrivacyPolicyPage = lazy(() => import("./pages/legal/PrivacyPolicyPage"));
+const CookiePolicyPage = lazy(() => import("./pages/legal/CookiePolicyPage"));
+const LegalNoticePage = lazy(() => import("./pages/legal/LegalNoticePage"));
+const ClientLayout = lazy(() => import("./components/layout/ClientLayout"));
+const ClientDashboard = lazy(() => import("./pages/client/ClientDashboard"));
+const BookingWizard = lazy(() => import("./pages/client/BookingWizard"));
+const AppointmentsPage = lazy(() => import("./pages/client/AppointmentsPage"));
+const ProfilePage = lazy(() => import("./pages/client/ProfilePage"));
+const ReferralsPage = lazy(() => import("./pages/client/ReferralsPage"));
+const ReferralLandingPage = lazy(() => import("./pages/ReferralLandingPage"));
+const StripePaymentResultPage = lazy(() => import("./pages/StripePaymentResultPage"));
+const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminCalendar = lazy(() => import("./pages/admin/AdminCalendar"));
+const AdminSearch = lazy(() => import("./pages/admin/AdminSearch"));
+const AdminCashRegister = lazy(() => import("./pages/admin/AdminCashRegister"));
+const AdminClients = lazy(() => import("./pages/admin/AdminClients"));
+const AdminServices = lazy(() => import("./pages/admin/AdminServices"));
+const AdminOffers = lazy(() => import("./pages/admin/AdminOffers"));
+const AdminStock = lazy(() => import("./pages/admin/AdminStock"));
+const AdminBarbers = lazy(() => import("./pages/admin/AdminBarbers"));
+const AdminAlerts = lazy(() => import("./pages/admin/AdminAlerts"));
+const AdminHolidays = lazy(() => import("./pages/admin/AdminHolidays"));
+const AdminRoles = lazy(() => import("./pages/admin/AdminRoles"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const AdminLoyalty = lazy(() => import("./pages/admin/AdminLoyalty"));
+const AdminReferrals = lazy(() => import("./pages/admin/AdminReferrals"));
+const AdminReviews = lazy(() => import("./pages/admin/AdminReviews"));
+const PlatformLayout = lazy(() => import("./components/layout/PlatformLayout"));
+const PlatformDashboard = lazy(() => import("./pages/platform/PlatformDashboard"));
+const PlatformBrands = lazy(() => import("./pages/platform/PlatformBrands"));
+const ProtectedRoute = lazy(() => import("./components/auth/ProtectedRoute"));
 
-// Redirect based on auth status
-const AuthRedirect: React.FC = () => {
-  const { isAuthenticated, user, isLoading } = useAuth();
-  
-  if (isLoading) return null;
-  
-  if (isAuthenticated && user) {
-    if (user.isPlatformAdmin) {
-      return <Navigate to="/platform" replace />;
-    }
-    const hasAdminAccess = user.isSuperAdmin || user.isLocalAdmin;
-    return <Navigate to={hasAdminAccess ? '/admin' : '/app'} replace />;
-  }
-  
-  return <Navigate to="/auth" replace />;
-};
+const RouteLoader = () => (
+  <div className="min-h-[40vh] flex items-center justify-center bg-background">
+    <Loader2 className="w-7 h-7 animate-spin text-primary" />
+  </div>
+);
+
+const withSuspense = (element: React.ReactNode) => (
+  <Suspense fallback={<RouteLoader />}>{element}</Suspense>
+);
 
 const TenantGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isReady, tenantError } = useTenant();
 
   if (!isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <RouteLoader />;
   }
 
   if (tenantError) {
-    return <TenantError error={tenantError} />;
+    return withSuspense(<TenantError error={tenantError} />);
   }
 
   return <>{children}</>;
@@ -102,12 +83,19 @@ const AppRoutes: React.FC = () => {
     return (
       <Routes>
         <Route path="/" element={<Navigate to="/auth" replace />} />
-        <Route path="/auth" element={<AuthPage />} />
-        <Route path="/platform" element={<ProtectedRoute requirePlatformAdmin><PlatformLayout /></ProtectedRoute>}>
-          <Route index element={<PlatformDashboard />} />
-          <Route path="brands" element={<PlatformBrands />} />
+        <Route path="/auth" element={withSuspense(<AuthPage />)} />
+        <Route
+          path="/platform"
+          element={withSuspense(
+            <ProtectedRoute requirePlatformAdmin>
+              <PlatformLayout />
+            </ProtectedRoute>,
+          )}
+        >
+          <Route index element={withSuspense(<PlatformDashboard />)} />
+          <Route path="brands" element={withSuspense(<PlatformBrands />)} />
         </Route>
-        <Route path="*" element={<NotFound />} />
+        <Route path="*" element={withSuspense(<NotFound />)} />
       </Routes>
     );
   }
@@ -115,80 +103,104 @@ const AppRoutes: React.FC = () => {
   return (
     <Routes>
       {/* Public Routes */}
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/auth" element={<AuthPage />} />
-      <Route path="/book" element={<GuestBookingPage />} />
-      <Route path="/ref/:code" element={<ReferralLandingPage />} />
-      <Route path="/payment/stripe/:status" element={<StripePaymentResultPage />} />
+      <Route path="/" element={withSuspense(<LandingPage />)} />
+      <Route path="/auth" element={withSuspense(<AuthPage />)} />
+      <Route path="/book" element={withSuspense(<GuestBookingPage />)} />
+      <Route path="/ref/:code" element={withSuspense(<ReferralLandingPage />)} />
+      <Route path="/payment/stripe/:status" element={withSuspense(<StripePaymentResultPage />)} />
       <Route path="/account/referrals" element={<Navigate to="/app/referrals" replace />} />
-      <Route path="/hours-location" element={<HoursLocationPage />} />
-      <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />
-      <Route path="/legal/cookies" element={<CookiePolicyPage />} />
-      <Route path="/legal/notice" element={<LegalNoticePage />} />
+      <Route path="/hours-location" element={withSuspense(<HoursLocationPage />)} />
+      <Route path="/legal/privacy" element={withSuspense(<PrivacyPolicyPage />)} />
+      <Route path="/legal/cookies" element={withSuspense(<CookiePolicyPage />)} />
+      <Route path="/legal/notice" element={withSuspense(<LegalNoticePage />)} />
 
       {/* Client Routes */}
-      <Route path="/app" element={<ProtectedRoute><ClientLayout /></ProtectedRoute>}>
-        <Route index element={<ClientDashboard />} />
-        <Route path="book" element={<BookingWizard />} />
-        <Route path="appointments" element={<AppointmentsPage />} />
-        <Route path="referrals" element={<ReferralsPage />} />
-        <Route path="profile" element={<ProfilePage />} />
+      <Route
+        path="/app"
+        element={withSuspense(
+          <ProtectedRoute>
+            <ClientLayout />
+          </ProtectedRoute>,
+        )}
+      >
+        <Route index element={withSuspense(<ClientDashboard />)} />
+        <Route path="book" element={withSuspense(<BookingWizard />)} />
+        <Route path="appointments" element={withSuspense(<AppointmentsPage />)} />
+        <Route path="referrals" element={withSuspense(<ReferralsPage />)} />
+        <Route path="profile" element={withSuspense(<ProfilePage />)} />
       </Route>
 
       {/* Admin Routes */}
-      <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminLayout /></ProtectedRoute>}>
-        <Route index element={<AdminDashboard />} />
-        <Route path="calendar" element={<AdminCalendar />} />
-        <Route path="search" element={<AdminSearch />} />
-        <Route path="offers" element={<AdminOffers />} />
-        <Route path="cash-register" element={<AdminCashRegister />} />
-        <Route path="stock" element={<AdminStock />} />
-        <Route path="clients" element={<AdminClients />} />
-        <Route path="services" element={<AdminServices />} />
-        <Route path="barbers" element={<AdminBarbers />} />
-        <Route path="loyalty" element={<AdminLoyalty />} />
-        <Route path="referrals" element={<AdminReferrals />} />
-        <Route path="reviews" element={<AdminReviews />} />
-        <Route path="alerts" element={<AdminAlerts />} />
-        <Route path="holidays" element={<AdminHolidays />} />
-        <Route path="settings" element={<AdminSettings />} />
-        <Route path="roles" element={<AdminRoles />} />
+      <Route
+        path="/admin"
+        element={withSuspense(
+          <ProtectedRoute requiredRole="admin">
+            <AdminLayout />
+          </ProtectedRoute>,
+        )}
+      >
+        <Route index element={withSuspense(<AdminDashboard />)} />
+        <Route path="calendar" element={withSuspense(<AdminCalendar />)} />
+        <Route path="search" element={withSuspense(<AdminSearch />)} />
+        <Route path="offers" element={withSuspense(<AdminOffers />)} />
+        <Route path="cash-register" element={withSuspense(<AdminCashRegister />)} />
+        <Route path="stock" element={withSuspense(<AdminStock />)} />
+        <Route path="clients" element={withSuspense(<AdminClients />)} />
+        <Route path="services" element={withSuspense(<AdminServices />)} />
+        <Route path="barbers" element={withSuspense(<AdminBarbers />)} />
+        <Route path="loyalty" element={withSuspense(<AdminLoyalty />)} />
+        <Route path="referrals" element={withSuspense(<AdminReferrals />)} />
+        <Route path="reviews" element={withSuspense(<AdminReviews />)} />
+        <Route path="alerts" element={withSuspense(<AdminAlerts />)} />
+        <Route path="holidays" element={withSuspense(<AdminHolidays />)} />
+        <Route path="settings" element={withSuspense(<AdminSettings />)} />
+        <Route path="roles" element={withSuspense(<AdminRoles />)} />
       </Route>
 
       {/* Platform Admin Routes */}
-      <Route path="/platform" element={<ProtectedRoute requirePlatformAdmin><PlatformLayout /></ProtectedRoute>}>
-        <Route index element={<PlatformDashboard />} />
-        <Route path="brands" element={<PlatformBrands />} />
+      <Route
+        path="/platform"
+        element={withSuspense(
+          <ProtectedRoute requirePlatformAdmin>
+            <PlatformLayout />
+          </ProtectedRoute>,
+        )}
+      >
+        <Route index element={withSuspense(<PlatformDashboard />)} />
+        <Route path="brands" element={withSuspense(<PlatformBrands />)} />
       </Route>
 
       {/* Catch-all */}
-      <Route path="*" element={<NotFound />} />
+      <Route path="*" element={withSuspense(<NotFound />)} />
     </Routes>
   );
 };
 
 const RouterShell: React.FC = () => {
-  const { currentLocationId } = useTenant();
   return (
     <BrowserRouter>
-      <AppRoutes key={currentLocationId || 'default'} />
+      <AuthSessionMonitor />
+      <AppRoutes />
     </BrowserRouter>
   );
 };
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TenantProvider>
-      <TenantGate>
-        <AuthProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <RouterShell />
-          </TooltipProvider>
-        </AuthProvider>
-      </TenantGate>
-    </TenantProvider>
+    <AppErrorBoundary>
+      <TenantProvider>
+        <TenantGate>
+          <AuthProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <NetworkStatusMonitor />
+              <RouterShell />
+            </TooltipProvider>
+          </AuthProvider>
+        </TenantGate>
+      </TenantProvider>
+    </AppErrorBoundary>
   </QueryClientProvider>
 );
 

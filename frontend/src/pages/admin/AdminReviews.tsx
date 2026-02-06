@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { useTenant } from '@/context/TenantContext';
 import {
   getReviewConfig,
   updateReviewConfig,
@@ -20,16 +21,20 @@ import {
 } from '@/data/api';
 import { ReviewProgramConfig, ReviewMetrics, ReviewFeedbackItem } from '@/data/types';
 import { Info } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 
 const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
+const FEEDBACK_PAGE = 1;
+const FEEDBACK_PAGE_SIZE = 20;
+const EMPTY_FEEDBACK: { total: number; items: ReviewFeedbackItem[] } = { total: 0, items: [] };
 
 const AdminReviews: React.FC = () => {
   const { toast } = useToast();
+  const { currentLocationId } = useTenant();
+  const queryClient = useQueryClient();
   const copy = useBusinessCopy();
   const [config, setConfig] = useState<ReviewProgramConfig | null>(null);
-  const [metrics, setMetrics] = useState<ReviewMetrics | null>(null);
-  const [feedback, setFeedback] = useState<{ total: number; items: ReviewFeedbackItem[] }>({ total: 0, items: [] });
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [from, setFrom] = useState(() => {
     const d = new Date();
@@ -85,56 +90,56 @@ const AdminReviews: React.FC = () => {
     setInfoOpen(true);
   };
 
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const [configData, metricsData] = await Promise.all([
-          getReviewConfig(),
-          getReviewMetrics({ from, to }),
-        ]);
-        if (!active) return;
-        setConfig(configData);
-        setMetrics(metricsData);
-      } catch (error) {
-        if (!active) return;
-        toast({
-          title: 'No se pudo cargar reseñas',
-          description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
-          variant: 'destructive',
-        });
-      } finally {
-        if (active) setIsLoading(false);
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, [from, to, toast]);
+  const configQuery = useQuery({
+    queryKey: queryKeys.adminReviewConfig(currentLocationId),
+    queryFn: getReviewConfig,
+  });
+  const metricsQuery = useQuery<ReviewMetrics>({
+    queryKey: queryKeys.adminReviewMetrics(currentLocationId, from, to),
+    queryFn: () => getReviewMetrics({ from, to }),
+  });
+  const feedbackQueryKey = queryKeys.adminReviewFeedback(
+    currentLocationId,
+    feedbackStatus,
+    FEEDBACK_PAGE,
+    FEEDBACK_PAGE_SIZE,
+  );
+  const feedbackQuery = useQuery<{ total: number; items: ReviewFeedbackItem[] }>({
+    queryKey: feedbackQueryKey,
+    queryFn: () =>
+      getReviewFeedback({
+        status: feedbackStatus === 'ALL' ? undefined : feedbackStatus,
+        page: FEEDBACK_PAGE,
+        pageSize: FEEDBACK_PAGE_SIZE,
+      }),
+  });
 
   useEffect(() => {
-    let active = true;
-    const loadFeedback = async () => {
-      try {
-        const data = await getReviewFeedback({
-          status: feedbackStatus === 'ALL' ? undefined : feedbackStatus,
-          page: 1,
-          pageSize: 20,
-        });
-        if (!active) return;
-        setFeedback(data);
-      } catch {
-        if (!active) return;
-        setFeedback({ total: 0, items: [] });
-      }
-    };
-    loadFeedback();
-    return () => {
-      active = false;
-    };
-  }, [feedbackStatus]);
+    if (!configQuery.data) return;
+    setConfig(configQuery.data);
+  }, [configQuery.data]);
+
+  useEffect(() => {
+    if (!configQuery.error && !metricsQuery.error) return;
+    toast({
+      title: 'No se pudo cargar reseñas',
+      description: 'Inténtalo de nuevo.',
+      variant: 'destructive',
+    });
+  }, [configQuery.error, metricsQuery.error, toast]);
+
+  useEffect(() => {
+    if (!feedbackQuery.error) return;
+    toast({
+      title: 'No se pudo cargar feedback',
+      description: 'Inténtalo de nuevo.',
+      variant: 'destructive',
+    });
+  }, [feedbackQuery.error, toast]);
+
+  const metrics = metricsQuery.data ?? null;
+  const feedback = feedbackQuery.data ?? EMPTY_FEEDBACK;
+  const isLoading = configQuery.isLoading || metricsQuery.isLoading || !config;
 
   const updateConfigField = <K extends keyof ReviewProgramConfig>(key: K, value: ReviewProgramConfig[K]) => {
     if (!config) return;
@@ -147,6 +152,7 @@ const AdminReviews: React.FC = () => {
     try {
       const updated = await updateReviewConfig(config);
       setConfig(updated);
+      queryClient.setQueryData(queryKeys.adminReviewConfig(currentLocationId), updated);
       toast({
         title: 'Configuración guardada',
         description: 'Reseñas inteligentes actualizadas.',
@@ -165,9 +171,11 @@ const AdminReviews: React.FC = () => {
   const handleResolve = async (id: string) => {
     try {
       await resolveReviewFeedback(id);
-      setFeedback((prev) => ({
-        total: prev.total,
-        items: prev.items.map((item) => (item.id === id ? { ...item, feedbackStatus: 'RESOLVED' } : item)),
+      queryClient.setQueryData<{ total: number; items: ReviewFeedbackItem[] }>(feedbackQueryKey, (previous) => ({
+        total: previous?.total ?? 0,
+        items: (previous?.items ?? EMPTY_FEEDBACK.items).map((item) =>
+          item.id === id ? { ...item, feedbackStatus: 'RESOLVED' } : item,
+        ),
       }));
       toast({
         title: 'Feedback resuelto',

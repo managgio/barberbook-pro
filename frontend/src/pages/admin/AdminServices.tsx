@@ -9,33 +9,34 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
-  getServices,
   createService,
   updateService,
   deleteService,
-  getServiceCategories,
   createServiceCategory,
   updateServiceCategory,
   deleteServiceCategory,
-  getSiteSettings,
   updateSiteSettings,
 } from '@/data/api';
-import { Service, ServiceCategory, SiteSettings } from '@/data/types';
+import { Service, ServiceCategory } from '@/data/types';
 import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, CheckCircle2, Sparkles, Percent } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { Switch } from '@/components/ui/switch';
-import { dispatchServicesUpdated } from '@/lib/adminEvents';
+import { dispatchServicesUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import { fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalogQuery';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { useTenant } from '@/context/TenantContext';
 
 const UNCATEGORIZED_VALUE = 'none';
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
 
 const AdminServices: React.FC = () => {
   const { toast } = useToast();
-  const [services, setServices] = useState<Service[]>([]);
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { currentLocationId } = useTenant();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -60,29 +61,38 @@ const AdminServices: React.FC = () => {
     description: '',
     position: 0,
   });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId),
+    queryFn: () => fetchServicesCached({ localId: currentLocationId }),
+  });
+  const categoriesQuery = useQuery({
+    queryKey: queryKeys.serviceCategories(currentLocationId),
+    queryFn: () => fetchServiceCategoriesCached({ localId: currentLocationId }),
+  });
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.siteSettings(currentLocationId),
+    queryFn: () => fetchSiteSettingsCached(currentLocationId),
+  });
+  const services = useMemo(
+    () => servicesQuery.data ?? EMPTY_SERVICES,
+    [servicesQuery.data],
+  );
+  const categories = useMemo(
+    () => categoriesQuery.data ?? EMPTY_SERVICE_CATEGORIES,
+    [categoriesQuery.data],
+  );
+  const settings = settingsQuery.data ?? null;
+  const isLoading = servicesQuery.isLoading || categoriesQuery.isLoading || settingsQuery.isLoading;
   const categoriesEnabled = settings?.services.categoriesEnabled ?? false;
 
-  const loadData = async (withLoader = true) => {
-    if (withLoader) setIsLoading(true);
-    try {
-      const [servicesData, categoriesData, settingsData] = await Promise.all([
-        getServices(),
-        getServiceCategories(true),
-        getSiteSettings(),
-      ]);
-      setServices(servicesData);
-      setCategories(categoriesData);
-      setSettings(settingsData);
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo cargar la configuración de servicios.', variant: 'destructive' });
-    } finally {
-      if (withLoader) setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!servicesQuery.error && !categoriesQuery.error && !settingsQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudo cargar la configuración de servicios.',
+      variant: 'destructive',
+    });
+  }, [categoriesQuery.error, servicesQuery.error, settingsQuery.error, toast]);
 
   const orderedCategories = useMemo(
     () =>
@@ -197,7 +207,7 @@ const AdminServices: React.FC = () => {
         toast({ title: 'Servicio creado', description: 'El nuevo servicio ha sido añadido.' });
       }
       
-      await loadData(false);
+      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
       dispatchServicesUpdated({ source: 'admin-services' });
       setIsDialogOpen(false);
     } catch (error) {
@@ -223,7 +233,7 @@ const AdminServices: React.FC = () => {
         await createServiceCategory(payload);
         toast({ title: 'Categoría creada', description: 'Añade servicios dentro de ella.' });
       }
-      await loadData(false);
+      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
       dispatchServicesUpdated({ source: 'admin-services' });
       setIsCategoryDialogOpen(false);
     } catch (error) {
@@ -239,7 +249,7 @@ const AdminServices: React.FC = () => {
     try {
       await deleteService(deletingServiceId);
       toast({ title: 'Servicio eliminado', description: 'El servicio ha sido eliminado.' });
-      await loadData(false);
+      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
       dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo eliminar el servicio.', variant: 'destructive' });
@@ -254,13 +264,15 @@ const AdminServices: React.FC = () => {
     try {
       await deleteServiceCategory(deletingCategoryId);
       toast({ title: 'Categoría eliminada', description: 'Los servicios asociados quedan sin categoría.' });
-      await loadData(false);
+      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
       dispatchServicesUpdated({ source: 'admin-services' });
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'No se pudo eliminar',
         description:
-          error?.message || 'Asegúrate de mover o desactivar la categorización antes de borrar.',
+          error instanceof Error
+            ? error.message
+            : 'Asegúrate de mover o desactivar la categorización antes de borrar.',
         variant: 'destructive',
       });
     } finally {
@@ -284,7 +296,7 @@ const AdminServices: React.FC = () => {
     setUpdatingServiceCategoryId(service.id);
     try {
       await updateService(service.id, { categoryId: normalizedCategoryId });
-      await loadData(false);
+      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
       toast({ title: 'Servicio actualizado', description: 'Categoría asignada correctamente.' });
       dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
@@ -305,7 +317,7 @@ const AdminServices: React.FC = () => {
           categoriesEnabled: enabled,
         },
       });
-      setSettings(updated);
+      dispatchSiteSettingsUpdated(updated);
       dispatchServicesUpdated({ source: 'admin-services' });
       const pendingNotice = enabled && uncategorizedServices.length > 0
         ? `Tienes ${uncategorizedServices.length} servicio(s) sin categoría. Asignalos para completar la vista.`
@@ -322,10 +334,10 @@ const AdminServices: React.FC = () => {
           description: 'Puedes crear categorías y asignarlas a los servicios sin categoría.',
         });
       }
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'No se pudo actualizar',
-        description: error?.message || 'Revisa las categorías antes de continuar.',
+        description: error instanceof Error ? error.message : 'Revisa las categorías antes de continuar.',
         variant: 'destructive',
       });
     } finally {

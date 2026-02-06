@@ -75,6 +75,10 @@ const LoyaltyProgressPanel: React.FC<LoyaltyProgressPanelProps> = ({
               <img
                 src={logoUrl}
                 alt={program.name}
+                loading="lazy"
+                decoding="async"
+                width={24}
+                height={24}
                 className={cn('object-contain', imageClass, isFilled ? 'opacity-40' : 'opacity-70')}
               />
               {isFilled && (

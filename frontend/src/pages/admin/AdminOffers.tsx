@@ -17,12 +17,7 @@ import { CardSkeleton } from '@/components/common/Skeleton';
 import {
   createOffer,
   deleteOffer,
-  getAdminProducts,
   getOffers,
-  getProductCategories,
-  getServiceCategories,
-  getServices,
-  getSiteSettings,
   updateOffer,
 } from '@/data/api';
 import {
@@ -33,7 +28,6 @@ import {
   ProductCategory,
   Service,
   ServiceCategory,
-  SiteSettings,
 } from '@/data/types';
 import {
   BadgePercent,
@@ -46,6 +40,17 @@ import {
   Trash2,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import {
+  fetchAdminProductsCached,
+  fetchProductCategoriesCached,
+  fetchServiceCategoriesCached,
+  fetchServicesCached,
+} from '@/lib/catalogQuery';
+import { dispatchProductsUpdated, dispatchServicesUpdated } from '@/lib/adminEvents';
+import { useQuery } from '@tanstack/react-query';
+import { useTenant } from '@/context/TenantContext';
+import { queryKeys } from '@/lib/queryKeys';
 
 const SERVICE_SCOPES: OfferScope[] = ['all', 'categories', 'services'];
 const PRODUCT_SCOPES: OfferScope[] = ['all', 'categories', 'products'];
@@ -66,17 +71,16 @@ const formatDate = (value?: string | null) => (value ? format(parseISO(value), '
 
 const toggleSelection = (id: string, items: string[]) =>
   items.includes(id) ? items.filter((item) => item !== id) : [...items, id];
+const EMPTY_OFFERS: Offer[] = [];
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
+const EMPTY_PRODUCTS: Product[] = [];
+const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
 
 const AdminOffers: React.FC = () => {
   const { toast } = useToast();
+  const { currentLocationId } = useTenant();
   const [activeTarget, setActiveTarget] = useState<OfferTarget>('service');
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -96,6 +100,60 @@ const AdminOffers: React.FC = () => {
     endDate: '',
     active: true,
   });
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.siteSettings(currentLocationId),
+    queryFn: () => fetchSiteSettingsCached(currentLocationId),
+  });
+  const offersQuery = useQuery({
+    queryKey: queryKeys.offers(currentLocationId, activeTarget),
+    queryFn: () => getOffers(activeTarget),
+  });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId),
+    queryFn: () => fetchServicesCached({ localId: currentLocationId }),
+    enabled: activeTarget === 'service',
+  });
+  const serviceCategoriesQuery = useQuery({
+    queryKey: queryKeys.serviceCategories(currentLocationId),
+    queryFn: () => fetchServiceCategoriesCached({ localId: currentLocationId }),
+    enabled: activeTarget === 'service',
+  });
+  const productsQuery = useQuery({
+    queryKey: queryKeys.adminProducts(currentLocationId),
+    queryFn: () => fetchAdminProductsCached({ localId: currentLocationId }),
+    enabled: activeTarget === 'product',
+  });
+  const productCategoriesQuery = useQuery({
+    queryKey: queryKeys.productCategories(currentLocationId),
+    queryFn: () => fetchProductCategoriesCached({ localId: currentLocationId }),
+    enabled: activeTarget === 'product',
+  });
+  const settings = settingsQuery.data ?? null;
+  const offers = useMemo(
+    () => offersQuery.data ?? EMPTY_OFFERS,
+    [offersQuery.data],
+  );
+  const services = useMemo(
+    () => servicesQuery.data ?? EMPTY_SERVICES,
+    [servicesQuery.data],
+  );
+  const serviceCategories = useMemo(
+    () => serviceCategoriesQuery.data ?? EMPTY_SERVICE_CATEGORIES,
+    [serviceCategoriesQuery.data],
+  );
+  const products = useMemo(
+    () => productsQuery.data ?? EMPTY_PRODUCTS,
+    [productsQuery.data],
+  );
+  const productCategories = useMemo(
+    () => productCategoriesQuery.data ?? EMPTY_PRODUCT_CATEGORIES,
+    [productCategoriesQuery.data],
+  );
+  const isLoading = settingsQuery.isLoading
+    || offersQuery.isLoading
+    || (activeTarget === 'service'
+      ? servicesQuery.isLoading || serviceCategoriesQuery.isLoading
+      : productsQuery.isLoading || productCategoriesQuery.isLoading);
 
   const categoriesEnabled = activeTarget === 'service'
     ? settings?.services.categoriesEnabled ?? false
@@ -104,42 +162,35 @@ const AdminOffers: React.FC = () => {
   const showProductTab = productsEnabled;
 
   const scopeOptions = activeTarget === 'service' ? SERVICE_SCOPES : PRODUCT_SCOPES;
-
-  const loadData = async (withLoader = true) => {
-    if (withLoader) setIsLoading(true);
-    try {
-      const [settingsData, offersData] = await Promise.all([
-        getSiteSettings(),
-        getOffers(activeTarget),
-      ]);
-      setSettings(settingsData);
-      setOffers(offersData);
-
-      if (activeTarget === 'service') {
-        const [servicesData, categoriesData] = await Promise.all([
-          getServices(),
-          getServiceCategories(true),
-        ]);
-        setServices(servicesData);
-        setServiceCategories(categoriesData);
-      } else {
-        const [productsData, productCategoriesData] = await Promise.all([
-          getAdminProducts(),
-          getProductCategories(true),
-        ]);
-        setProducts(productsData);
-        setProductCategories(productCategoriesData);
-      }
-    } catch (error) {
-      toast({ title: 'Error', description: 'No se pudieron cargar las ofertas.', variant: 'destructive' });
-    } finally {
-      if (withLoader) setIsLoading(false);
+  const dispatchOfferCatalogUpdated = (target: OfferTarget) => {
+    if (target === 'service') {
+      dispatchServicesUpdated({ source: 'admin-offers' });
+      return;
     }
+    dispatchProductsUpdated({ source: 'admin-offers' });
   };
-
   useEffect(() => {
-    loadData();
-  }, [activeTarget]);
+    const hasQueryError = settingsQuery.error
+      || offersQuery.error
+      || (activeTarget === 'service'
+        ? servicesQuery.error || serviceCategoriesQuery.error
+        : productsQuery.error || productCategoriesQuery.error);
+    if (!hasQueryError) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudieron cargar las ofertas.',
+      variant: 'destructive',
+    });
+  }, [
+    activeTarget,
+    offersQuery.error,
+    productCategoriesQuery.error,
+    productsQuery.error,
+    serviceCategoriesQuery.error,
+    servicesQuery.error,
+    settingsQuery.error,
+    toast,
+  ]);
 
   useEffect(() => {
     if (settings && !settings.products.enabled && activeTarget === 'product') {
@@ -258,14 +309,31 @@ const AdminOffers: React.FC = () => {
         await updateOffer(editingOffer.id, payload);
         toast({ title: 'Oferta actualizada', description: 'Los cambios se han guardado.' });
       } else {
-        await createOffer(payload as any);
+        await createOffer(payload);
         toast({ title: 'Oferta creada', description: 'La oferta ya está activa.' });
       }
 
-      await loadData(false);
+      if (activeTarget === 'service') {
+        await Promise.all([
+          offersQuery.refetch(),
+          servicesQuery.refetch(),
+          serviceCategoriesQuery.refetch(),
+        ]);
+      } else {
+        await Promise.all([
+          offersQuery.refetch(),
+          productsQuery.refetch(),
+          productCategoriesQuery.refetch(),
+        ]);
+      }
+      dispatchOfferCatalogUpdated(editingOffer?.target ?? activeTarget);
       setIsDialogOpen(false);
-    } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'No se pudo guardar la oferta.', variant: 'destructive' });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo guardar la oferta.',
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -276,9 +344,26 @@ const AdminOffers: React.FC = () => {
     try {
       await deleteOffer(deletingOfferId);
       toast({ title: 'Oferta eliminada', description: 'Se ha retirado correctamente.' });
-      await loadData(false);
-    } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'No se pudo eliminar la oferta.', variant: 'destructive' });
+      if (activeTarget === 'service') {
+        await Promise.all([
+          offersQuery.refetch(),
+          servicesQuery.refetch(),
+          serviceCategoriesQuery.refetch(),
+        ]);
+      } else {
+        await Promise.all([
+          offersQuery.refetch(),
+          productsQuery.refetch(),
+          productCategoriesQuery.refetch(),
+        ]);
+      }
+      dispatchOfferCatalogUpdated(activeTarget);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo eliminar la oferta.',
+        variant: 'destructive',
+      });
     } finally {
       setIsDeleteDialogOpen(false);
       setDeletingOfferId(null);

@@ -72,6 +72,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           <img
             src={logoUrl}
             alt={`${settings.branding.shortName} logo`}
+            loading="eager"
+            decoding="async"
+            width={40}
+            height={40}
             className="w-10 h-10 rounded-lg object-contain shadow-sm"
           />
           {!collapsed && (

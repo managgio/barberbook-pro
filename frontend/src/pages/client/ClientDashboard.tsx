@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,61 +14,128 @@ import defaultAvatar from '@/assets/img/default-image.webp';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { getStoredLocalId } from '@/lib/tenant';
+
+const EMPTY_APPOINTMENTS: Appointment[] = [];
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_SERVICES: Service[] = [];
 
 const ClientDashboard: React.FC = () => {
   const { user } = useAuth();
   const copy = useBusinessCopy();
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loyaltySummary, setLoyaltySummary] = useState<LoyaltySummary | null>(null);
-  const [referralSummary, setReferralSummary] = useState<ReferralSummaryResponse | null>(null);
   const [referralBannerDismissed, setReferralBannerDismissed] = useState(false);
+  const localId = getStoredLocalId();
+  const userId = user?.id;
+
+  const appointmentsQuery = useQuery<Appointment[]>({
+    queryKey: queryKeys.clientAppointments(localId, userId),
+    queryFn: () => getAppointmentsByUser(userId as string),
+    enabled: Boolean(userId),
+    staleTime: 30_000,
+  });
+
+  const barbersQuery = useQuery<Barber[]>({
+    queryKey: queryKeys.barbers(localId),
+    queryFn: () => getBarbers(),
+    enabled: Boolean(userId),
+  });
+
+  const servicesQuery = useQuery<Service[]>({
+    queryKey: queryKeys.services(localId, false),
+    queryFn: () => getServices(),
+    enabled: Boolean(userId),
+  });
+
+  const loyaltyQuery = useQuery<LoyaltySummary | null>({
+    queryKey: queryKeys.clientLoyaltySummary(localId, userId),
+    queryFn: async () => {
+      try {
+        return await getLoyaltySummary(userId as string);
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(userId),
+  });
+
+  const referralQuery = useQuery<ReferralSummaryResponse | null>({
+    queryKey: queryKeys.clientReferralSummary(localId, userId),
+    queryFn: async () => {
+      try {
+        return await getReferralSummary(userId as string);
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(userId),
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     setReferralBannerDismissed(localStorage.getItem('managgio.referrals.banner.dismissed') === 'true');
   }, []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
-      
-      const [appts, barbersData, servicesData, referralData] = await Promise.all([
-        getAppointmentsByUser(user.id),
-        getBarbers(),
-        getServices(),
-        getReferralSummary(user.id).catch(() => null),
-      ]);
-      const loyaltyData = await getLoyaltySummary(user.id).catch(() => null);
-      
-      setAppointments(appts);
-      setBarbers(barbersData);
-      setServices(servicesData);
-      setLoyaltySummary(loyaltyData);
-      setReferralSummary(referralData);
-      setIsLoading(false);
-    };
-    
-    fetchData();
-  }, [user]);
+  const appointments = useMemo(
+    () => appointmentsQuery.data ?? EMPTY_APPOINTMENTS,
+    [appointmentsQuery.data],
+  );
+  const barbers = useMemo(
+    () => barbersQuery.data ?? EMPTY_BARBERS,
+    [barbersQuery.data],
+  );
+  const services = useMemo(
+    () => servicesQuery.data ?? EMPTY_SERVICES,
+    [servicesQuery.data],
+  );
+  const loyaltySummary = loyaltyQuery.data ?? null;
+  const referralSummary = referralQuery.data ?? null;
+  const isLoading = appointmentsQuery.isLoading || barbersQuery.isLoading || servicesQuery.isLoading;
 
-  const upcomingAppointments = appointments
-    .filter(
-      (appointment) =>
-        !isPast(parseISO(appointment.startDateTime)) && isAppointmentUpcomingStatus(appointment.status),
-    )
-    .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
+  const upcomingAppointments = useMemo(
+    () =>
+      appointments
+        .filter(
+          (appointment) =>
+            !isPast(parseISO(appointment.startDateTime)) && isAppointmentUpcomingStatus(appointment.status),
+        )
+        .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()),
+    [appointments],
+  );
 
-  const completedAppointments = appointments.filter(a => a.status === 'completed');
+  const completedAppointments = useMemo(
+    () => appointments.filter((appointment) => appointment.status === 'completed'),
+    [appointments],
+  );
 
-  const getBarber = (id: string) => barbers.find(b => b.id === id);
-  const getService = (id: string) => services.find(s => s.id === id);
-  const getBarberSnapshot = (id: string) =>
-    appointments.find((item) => item.barberId === id && item.barberNameSnapshot)?.barberNameSnapshot ?? null;
-  const getServiceSnapshot = (id: string) =>
-    appointments.find((item) => item.serviceId === id && item.serviceNameSnapshot)?.serviceNameSnapshot ?? null;
+  const barbersById = useMemo(
+    () => new Map(barbers.map((barber) => [barber.id, barber])),
+    [barbers],
+  );
+  const servicesById = useMemo(
+    () => new Map(services.map((service) => [service.id, service])),
+    [services],
+  );
+  const barberSnapshotsById = useMemo(() => {
+    const map = new Map<string, string>();
+    appointments.forEach((item) => {
+      if (!item.barberNameSnapshot) return;
+      if (map.has(item.barberId)) return;
+      map.set(item.barberId, item.barberNameSnapshot);
+    });
+    return map;
+  }, [appointments]);
+  const serviceSnapshotsById = useMemo(() => {
+    const map = new Map<string, string>();
+    appointments.forEach((item) => {
+      if (!item.serviceNameSnapshot) return;
+      if (map.has(item.serviceId)) return;
+      map.set(item.serviceId, item.serviceNameSnapshot);
+    });
+    return map;
+  }, [appointments]);
+
   const getMostFrequentId = (items: Appointment[], key: 'serviceId' | 'barberId') => {
     const counts: Record<string, number> = {};
     items.forEach((item) => {
@@ -82,10 +149,10 @@ const ClientDashboard: React.FC = () => {
   const favoriteServiceId = getMostFrequentId(completedAppointments, 'serviceId');
   const favoriteBarberId = getMostFrequentId(completedAppointments, 'barberId');
   const favoriteServiceName = favoriteServiceId
-    ? getService(favoriteServiceId)?.name ?? getServiceSnapshot(favoriteServiceId) ?? 'Sin datos'
+    ? servicesById.get(favoriteServiceId)?.name ?? serviceSnapshotsById.get(favoriteServiceId) ?? 'Sin datos'
     : 'Sin datos';
   const favoriteBarberName = favoriteBarberId
-    ? getBarber(favoriteBarberId)?.name ?? getBarberSnapshot(favoriteBarberId) ?? 'Sin datos'
+    ? barbersById.get(favoriteBarberId)?.name ?? barberSnapshotsById.get(favoriteBarberId) ?? 'Sin datos'
     : 'Sin datos';
 
   const showReferralBanner =
@@ -202,8 +269,8 @@ const ClientDashboard: React.FC = () => {
           ) : upcomingAppointments.length > 0 ? (
             <div className="space-y-4">
               {upcomingAppointments.slice(0, 3).map((appointment) => {
-                const barber = getBarber(appointment.barberId);
-                const service = getService(appointment.serviceId);
+                const barber = barbersById.get(appointment.barberId);
+                const service = servicesById.get(appointment.serviceId);
                 const barberName = barber?.name ?? appointment.barberNameSnapshot ?? `${copy.staff.singular} eliminado`;
                 const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
                 const date = parseISO(appointment.startDateTime);
@@ -216,6 +283,10 @@ const ClientDashboard: React.FC = () => {
                     <img 
                       src={barber?.photo || defaultAvatar} 
                       alt={barberName}
+                      loading="lazy"
+                      decoding="async"
+                      width={48}
+                      height={48}
                       className="w-12 h-12 rounded-full object-cover"
                     />
                     <div className="flex-1 min-w-0">

@@ -18,28 +18,29 @@ import {
   createProductCategory,
   deleteProduct,
   deleteProductCategory,
-  getAdminProducts,
-  getProductCategories,
-  getSiteSettings,
   updateSiteSettings,
   importProducts,
   updateProduct,
   updateProductCategory,
 } from '@/data/api';
-import { Product, ProductCategory, SiteSettings } from '@/data/types';
+import { Product, ProductCategory } from '@/data/types';
 import { uploadToImageKit, deleteFromImageKit } from '@/lib/imagekit';
 import { Boxes, ImagePlus, Info, Loader2, PackagePlus, Pencil, RefreshCw, Trash2, Sparkles, CheckCircle2 } from 'lucide-react';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
+import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
+import { fetchAdminProductsCached, fetchProductCategoriesCached } from '@/lib/catalogQuery';
+import { dispatchProductsUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+
+const EMPTY_PRODUCTS: Product[] = [];
+const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
 
 const AdminStock: React.FC = () => {
   const { toast } = useToast();
   const { locations, currentLocationId, tenant } = useTenant();
   const copy = useBusinessCopy();
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -81,35 +82,39 @@ const AdminStock: React.FC = () => {
   const [importSourceLocalId, setImportSourceLocalId] = useState<string>('');
   const [importTargetLocalId, setImportTargetLocalId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.siteSettings(currentLocationId),
+    queryFn: () => fetchSiteSettingsCached(currentLocationId),
+  });
+  const productsQuery = useQuery({
+    queryKey: queryKeys.adminProducts(currentLocationId),
+    queryFn: () => fetchAdminProductsCached({ localId: currentLocationId }),
+  });
+  const categoriesQuery = useQuery({
+    queryKey: queryKeys.productCategories(currentLocationId),
+    queryFn: () => fetchProductCategoriesCached({ localId: currentLocationId }),
+  });
+  const settings = settingsQuery.data ?? null;
+  const products = useMemo(
+    () => productsQuery.data ?? EMPTY_PRODUCTS,
+    [productsQuery.data],
+  );
+  const categories = useMemo(
+    () => categoriesQuery.data ?? EMPTY_PRODUCT_CATEGORIES,
+    [categoriesQuery.data],
+  );
+  const isLoading = settingsQuery.isLoading || productsQuery.isLoading || categoriesQuery.isLoading;
 
   const productsEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
   const categoriesEnabled = settings?.products.categoriesEnabled ?? false;
-
-  const loadData = async () => {
-    setIsLoading(true);
-    try {
-      const [settingsData, productsData, categoriesData] = await Promise.all([
-        getSiteSettings(),
-        getAdminProducts(),
-        getProductCategories(true),
-      ]);
-      setSettings(settingsData);
-      setProducts(productsData);
-      setCategories(categoriesData);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo cargar el inventario.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadData();
-  }, [currentLocationId]);
+    if (!settingsQuery.error && !productsQuery.error && !categoriesQuery.error) return;
+    toast({
+      title: 'Error',
+      description: 'No se pudo cargar el inventario.',
+      variant: 'destructive',
+    });
+  }, [categoriesQuery.error, productsQuery.error, settingsQuery.error, toast]);
 
   useEffect(() => {
     if (!productImageFile) {
@@ -165,8 +170,7 @@ const AdminStock: React.FC = () => {
         ...settings,
         products: { ...settings.products, categoriesEnabled: enabled },
       });
-      setSettings(updated);
-      window.dispatchEvent(new CustomEvent('site-settings-updated', { detail: updated }));
+      dispatchSiteSettingsUpdated(updated);
       toast({
         title: 'Preferencias actualizadas',
         description: enabled ? 'Las categorías están activas.' : 'Las categorías se han desactivado.',
@@ -256,20 +260,14 @@ const AdminStock: React.FC = () => {
       if (editingProduct) {
         const previousImageFileId = editingProduct.imageFileId;
         const updated = await updateProduct(editingProduct.id, payload);
-        setProducts((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
         if (productImageFile && previousImageFileId && previousImageFileId !== updated.imageFileId) {
           await deleteFromImageKit(previousImageFileId);
         }
       } else {
-        const created = await createProduct(payload);
-        setProducts((prev) => {
-          const existingIndex = prev.findIndex((item) => item.id === created.id);
-          if (existingIndex !== -1) {
-            return prev.map((item) => (item.id === created.id ? created : item));
-          }
-          return [created, ...prev];
-        });
+        await createProduct(payload);
       }
+      dispatchProductsUpdated({ source: 'admin-stock' });
+      await productsQuery.refetch();
       toast({ title: 'Producto guardado', description: 'El inventario se actualizó.' });
       setIsProductDialogOpen(false);
     } catch (error) {
@@ -283,7 +281,8 @@ const AdminStock: React.FC = () => {
     if (!deleteProductId) return;
     try {
       await deleteProduct(deleteProductId);
-      setProducts((prev) => prev.filter((item) => item.id !== deleteProductId));
+      dispatchProductsUpdated({ source: 'admin-stock' });
+      await productsQuery.refetch();
       toast({ title: 'Producto eliminado' });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo eliminar el producto.', variant: 'destructive' });
@@ -314,20 +313,20 @@ const AdminStock: React.FC = () => {
     setIsCategorySaving(true);
     try {
       if (editingCategory) {
-        const updated = await updateProductCategory(editingCategory.id, {
+        await updateProductCategory(editingCategory.id, {
           name: categoryForm.name.trim(),
           description: categoryForm.description.trim(),
           position: categoryForm.position,
         });
-        setCategories((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       } else {
-        const created = await createProductCategory({
+        await createProductCategory({
           name: categoryForm.name.trim(),
           description: categoryForm.description.trim(),
           position: categoryForm.position,
         });
-        setCategories((prev) => [...prev, created]);
       }
+      dispatchProductsUpdated({ source: 'admin-stock' });
+      await Promise.all([categoriesQuery.refetch(), productsQuery.refetch()]);
       toast({ title: 'Categoría guardada' });
       setIsCategoryDialogOpen(false);
     } catch (error) {
@@ -341,7 +340,8 @@ const AdminStock: React.FC = () => {
     if (!deleteCategoryId) return;
     try {
       await deleteProductCategory(deleteCategoryId);
-      setCategories((prev) => prev.filter((item) => item.id !== deleteCategoryId));
+      dispatchProductsUpdated({ source: 'admin-stock' });
+      await Promise.all([categoriesQuery.refetch(), productsQuery.refetch()]);
       toast({ title: 'Categoría eliminada' });
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo eliminar la categoría.', variant: 'destructive' });
@@ -359,8 +359,9 @@ const AdminStock: React.FC = () => {
         title: 'Importación completada',
         description: `${result.created} creados · ${result.updated} actualizados`,
       });
+      dispatchProductsUpdated({ source: 'admin-stock' });
       setIsImportDialogOpen(false);
-      await loadData();
+      await Promise.all([productsQuery.refetch(), categoriesQuery.refetch()]);
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudo importar el catálogo.', variant: 'destructive' });
     } finally {
@@ -546,7 +547,15 @@ const AdminStock: React.FC = () => {
                             <div className="flex items-center gap-3">
                               <div className="w-12 h-12 rounded-xl bg-muted/50 overflow-hidden flex items-center justify-center">
                                 {product.imageUrl ? (
-                                  <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                                  <img
+                                    src={product.imageUrl}
+                                    alt={product.name}
+                                    loading="lazy"
+                                    decoding="async"
+                                    width={48}
+                                    height={48}
+                                    className="w-full h-full object-cover"
+                                  />
                                 ) : (
                                   <span className="text-xs text-muted-foreground">Sin foto</span>
                                 )}
@@ -777,6 +786,10 @@ const AdminStock: React.FC = () => {
                     <img
                       src={productImagePreview || productForm.imageUrl}
                       alt="Preview"
+                      loading="lazy"
+                      decoding="async"
+                      width={48}
+                      height={48}
                       className="w-12 h-12 rounded-lg object-cover"
                     />
                   )}

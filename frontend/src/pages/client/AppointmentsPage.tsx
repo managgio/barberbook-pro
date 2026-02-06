@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,13 @@ import defaultAvatar from '@/assets/img/default-image.webp';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { getAppointmentStatusBadgeClass, getAppointmentStatusLabel, isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+import { getStoredLocalId } from '@/lib/tenant';
+
+const EMPTY_APPOINTMENTS: Appointment[] = [];
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_SERVICES: Service[] = [];
 
 const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
@@ -25,54 +32,79 @@ const AppointmentsPage: React.FC = () => {
   const { settings } = useSiteSettings();
   const { toast } = useToast();
   const copy = useBusinessCopy();
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const localId = getStoredLocalId();
+  const userId = user?.id;
 
-  const loadData = useCallback(async () => {
-    if (!user) return;
-    setIsLoading(true);
-    const [appts, barbersData, servicesData] = await Promise.all([
-      getAppointmentsByUser(user.id),
-      getBarbers(),
-      getServices(),
-    ]);
-    setAppointments(appts);
-    setBarbers(barbersData);
-    setServices(servicesData);
-    setIsLoading(false);
-  }, [user]);
+  const appointmentsQuery = useQuery<Appointment[]>({
+    queryKey: queryKeys.clientAppointments(localId, userId),
+    queryFn: () => getAppointmentsByUser(userId as string),
+    enabled: Boolean(userId),
+    staleTime: 30_000,
+  });
 
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-  }, [user, loadData]);
+  const barbersQuery = useQuery<Barber[]>({
+    queryKey: queryKeys.barbers(localId),
+    queryFn: () => getBarbers(),
+    enabled: Boolean(userId),
+  });
 
-  const upcomingAppointments = appointments
-    .filter(
-      (appointment) =>
-        !isPast(parseISO(appointment.startDateTime)) && isAppointmentUpcomingStatus(appointment.status),
-    )
-    .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime());
+  const servicesQuery = useQuery<Service[]>({
+    queryKey: queryKeys.services(localId, false),
+    queryFn: () => getServices(),
+    enabled: Boolean(userId),
+  });
 
-  const pastAppointments = appointments
-    .filter(
-      (appointment) =>
-        isPast(parseISO(appointment.startDateTime)) ||
-        appointment.status === 'completed' ||
-        appointment.status === 'cancelled' ||
-        appointment.status === 'no_show',
-    )
-    .sort((a, b) => new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime());
+  const appointments = useMemo(
+    () => appointmentsQuery.data ?? EMPTY_APPOINTMENTS,
+    [appointmentsQuery.data],
+  );
+  const barbers = useMemo(
+    () => barbersQuery.data ?? EMPTY_BARBERS,
+    [barbersQuery.data],
+  );
+  const services = useMemo(
+    () => servicesQuery.data ?? EMPTY_SERVICES,
+    [servicesQuery.data],
+  );
+  const isLoading = appointmentsQuery.isLoading || barbersQuery.isLoading || servicesQuery.isLoading;
 
-  const getBarber = (id: string) => barbers.find(b => b.id === id);
-  const getService = (id: string) => services.find(s => s.id === id);
+  const upcomingAppointments = useMemo(
+    () =>
+      appointments
+        .filter(
+          (appointment) =>
+            !isPast(parseISO(appointment.startDateTime)) && isAppointmentUpcomingStatus(appointment.status),
+        )
+        .sort((a, b) => new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()),
+    [appointments],
+  );
+
+  const pastAppointments = useMemo(
+    () =>
+      appointments
+        .filter(
+          (appointment) =>
+            isPast(parseISO(appointment.startDateTime)) ||
+            appointment.status === 'completed' ||
+            appointment.status === 'cancelled' ||
+            appointment.status === 'no_show',
+        )
+        .sort((a, b) => new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime()),
+    [appointments],
+  );
+
+  const barbersById = useMemo(
+    () => new Map(barbers.map((barber) => [barber.id, barber])),
+    [barbers],
+  );
+  const servicesById = useMemo(
+    () => new Map(services.map((service) => [service.id, service])),
+    [services],
+  );
 
   const cancellationCutoffHours = settings.appointments?.cancellationCutoffHours ?? 0;
   const canCancelAppointment = (appointment: Appointment) => {
@@ -83,8 +115,8 @@ const AppointmentsPage: React.FC = () => {
   };
 
   const generateCalendarLink = (appointment: Appointment) => {
-    const service = getService(appointment.serviceId);
-    const barber = getBarber(appointment.barberId);
+    const service = servicesById.get(appointment.serviceId);
+    const barber = barbersById.get(appointment.barberId);
     const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio';
     const barberName = barber?.name ?? appointment.barberNameSnapshot ?? copy.staff.singular;
     const startDate = parseISO(appointment.startDateTime);
@@ -108,8 +140,8 @@ const AppointmentsPage: React.FC = () => {
     appointment, 
     isPast: isHistorical = false 
   }) => {
-    const barber = getBarber(appointment.barberId);
-    const service = getService(appointment.serviceId);
+    const barber = barbersById.get(appointment.barberId);
+    const service = servicesById.get(appointment.serviceId);
     const barberName = barber?.name ?? appointment.barberNameSnapshot ?? `${copy.staff.singular} eliminado`;
     const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
     const date = parseISO(appointment.startDateTime);
@@ -125,6 +157,10 @@ const AppointmentsPage: React.FC = () => {
             <img 
               src={barber?.photo || defaultAvatar} 
               alt={barberName}
+              loading="lazy"
+              decoding="async"
+              width={64}
+              height={64}
               className="w-16 h-16 rounded-xl object-cover"
             />
             <div className="flex-1 min-w-0">
@@ -286,7 +322,7 @@ const AppointmentsPage: React.FC = () => {
           setEditingAppointment(null);
         }}
         onSaved={async () => {
-          await loadData();
+          await appointmentsQuery.refetch();
           setIsEditorOpen(false);
           setEditingAppointment(null);
         }}
@@ -312,7 +348,7 @@ const AppointmentsPage: React.FC = () => {
                   await updateAppointment(deleteTarget.id, { status: 'cancelled' });
                   toast({ title: 'Cita cancelada', description: 'Tu cita ha sido cancelada correctamente.' });
                   setDeleteTarget(null);
-                  await loadData();
+                  await appointmentsQuery.refetch();
                 } catch (error) {
                   toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
                 } finally {

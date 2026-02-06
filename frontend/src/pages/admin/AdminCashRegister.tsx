@@ -9,16 +9,14 @@ import { useToast } from '@/hooks/use-toast';
 import {
   createCashMovement,
   deleteCashMovement,
-  getAdminProducts,
   getAppointmentsByDate,
   getAppointmentsByDateForLocal,
   getAdminStripeConfig,
-  getBarbers,
   getCashMovements,
   getCashMovementsForLocal,
-  getProductCategories,
 } from '@/data/api';
 import {
+  AdminStripeConfig,
   Appointment,
   Barber,
   CashMovement,
@@ -46,6 +44,14 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip } 
 import { useTenant } from '@/context/TenantContext';
 import ProductSelector from '@/components/common/ProductSelector';
 import { getAllNounLabel, useBusinessCopy } from '@/lib/businessCopy';
+import {
+  fetchAdminProductsCached,
+  fetchBarbersCached,
+  fetchProductCategoriesCached,
+} from '@/lib/catalogQuery';
+import { dispatchProductsUpdated } from '@/lib/adminEvents';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 
 const currencyFormatter = new Intl.NumberFormat('es-ES', {
   style: 'currency',
@@ -77,10 +83,44 @@ const methodIcons: Record<PaymentMethod | 'unknown', React.ElementType> = {
   unknown: BadgeDollarSign,
 };
 
-type StripeConfig = {
-  brandEnabled?: boolean;
-  platformEnabled?: boolean;
-  localEnabled?: boolean;
+type CashRegisterData = {
+  appointments: Appointment[];
+  barbers: Barber[];
+  movements: CashMovement[];
+  products: Product[];
+  productCategories: ProductCategory[];
+  netAllLocations: number | null;
+};
+
+const EMPTY_APPOINTMENTS: Appointment[] = [];
+const EMPTY_BARBERS: Barber[] = [];
+const EMPTY_MOVEMENTS: CashMovement[] = [];
+const EMPTY_PRODUCTS: Product[] = [];
+const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
+
+const getProductsTotalFromAppointment = (appointment: Appointment) =>
+  appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0;
+
+const getAppointmentAmountForCash = (appointment: Appointment, productsEnabled: boolean) => {
+  const productsTotal = getProductsTotalFromAppointment(appointment);
+  return productsEnabled ? appointment.price : Math.max(0, appointment.price - productsTotal);
+};
+
+const calculateNetTotalFromCollections = (
+  appointments: Appointment[],
+  movements: CashMovement[],
+  productsEnabled: boolean,
+) => {
+  const completedTotal = appointments
+    .filter((appointment) => appointment.status === 'completed')
+    .reduce((acc, appointment) => acc + getAppointmentAmountForCash(appointment, productsEnabled), 0);
+  const manualInTotal = movements
+    .filter((movement) => movement.type === 'in')
+    .reduce((acc, movement) => acc + movement.amount, 0);
+  const manualOutTotal = movements
+    .filter((movement) => movement.type === 'out')
+    .reduce((acc, movement) => acc + movement.amount, 0);
+  return completedTotal + manualInTotal - manualOutTotal;
 };
 
 const AdminCashRegister: React.FC = () => {
@@ -88,16 +128,8 @@ const AdminCashRegister: React.FC = () => {
   const { locations, currentLocationId, tenant } = useTenant();
   const copy = useBusinessCopy();
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [movements, setMovements] = useState<CashMovement[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSavingMovement, setIsSavingMovement] = useState(false);
   const [deletingMovementId, setDeletingMovementId] = useState<string | null>(null);
-  const [stripeConfig, setStripeConfig] = useState<StripeConfig | null>(null);
-  const [netAllLocations, setNetAllLocations] = useState<number | null>(null);
   const [paymentBarberFilter, setPaymentBarberFilter] = useState<string>('all');
   const [barberPaymentMethodFilter, setBarberPaymentMethodFilter] = useState<
     'all' | PaymentMethod | 'unknown'
@@ -126,101 +158,120 @@ const AdminCashRegister: React.FC = () => {
     note: '',
     products: [],
   });
+  const cashRegisterQuery = useQuery<CashRegisterData>({
+    queryKey: queryKeys.cashRegister(currentLocationId, selectedDate, productsEnabled),
+    enabled: Boolean(currentLocationId),
+    queryFn: async () => {
+      const productsPromise: Promise<Product[]> = productsEnabled
+        ? fetchAdminProductsCached({ localId: currentLocationId })
+        : Promise.resolve([]);
+      const categoriesPromise: Promise<ProductCategory[]> = productsEnabled
+        ? fetchProductCategoriesCached({ localId: currentLocationId })
+        : Promise.resolve([]);
+
+      const [appointmentsData, barbersData, movementsData, productsData, productCategoriesData] = await Promise.all([
+        getAppointmentsByDate(selectedDate),
+        fetchBarbersCached({ localId: currentLocationId }),
+        getCashMovements(selectedDate),
+        productsPromise,
+        categoriesPromise,
+      ]);
+
+      const localNet = calculateNetTotalFromCollections(appointmentsData, movementsData, productsEnabled);
+      const locationIds = (locations || []).map((loc) => loc.id).filter(Boolean);
+      if (!currentLocationId || locationIds.length <= 1) {
+        return {
+          appointments: appointmentsData,
+          barbers: barbersData,
+          movements: movementsData,
+          products: productsData,
+          productCategories: productCategoriesData,
+          netAllLocations: localNet,
+        };
+      }
+
+      const otherIds = locationIds.filter((id) => id !== currentLocationId);
+      const otherData = await Promise.all(
+        otherIds.map(async (localId) => {
+          const [appts, moves] = await Promise.all([
+            getAppointmentsByDateForLocal(selectedDate, localId),
+            getCashMovementsForLocal(selectedDate, localId),
+          ]);
+          return calculateNetTotalFromCollections(appts, moves, productsEnabled);
+        }),
+      );
+      const combined = localNet + otherData.reduce((acc, value) => acc + value, 0);
+
+      return {
+        appointments: appointmentsData,
+        barbers: barbersData,
+        movements: movementsData,
+        products: productsData,
+        productCategories: productCategoriesData,
+        netAllLocations: combined,
+      };
+    },
+  });
+  const stripeConfigQuery = useQuery<AdminStripeConfig | null>({
+    queryKey: queryKeys.adminStripeConfig(currentLocationId),
+    enabled: Boolean(currentLocationId),
+    queryFn: async () => {
+      try {
+        return await getAdminStripeConfig();
+      } catch {
+        return null;
+      }
+    },
+  });
+  const appointments = useMemo(
+    () => cashRegisterQuery.data?.appointments ?? EMPTY_APPOINTMENTS,
+    [cashRegisterQuery.data?.appointments],
+  );
+  const barbers = useMemo(
+    () => cashRegisterQuery.data?.barbers ?? EMPTY_BARBERS,
+    [cashRegisterQuery.data?.barbers],
+  );
+  const movements = useMemo(
+    () => cashRegisterQuery.data?.movements ?? EMPTY_MOVEMENTS,
+    [cashRegisterQuery.data?.movements],
+  );
+  const products = useMemo(
+    () => cashRegisterQuery.data?.products ?? EMPTY_PRODUCTS,
+    [cashRegisterQuery.data?.products],
+  );
+  const productCategories = useMemo(
+    () => cashRegisterQuery.data?.productCategories ?? EMPTY_PRODUCT_CATEGORIES,
+    [cashRegisterQuery.data?.productCategories],
+  );
+  const netAllLocations = cashRegisterQuery.data?.netAllLocations ?? null;
+  const isLoading = cashRegisterQuery.isLoading;
+  const stripeConfig = stripeConfigQuery.data ?? null;
   const today = format(new Date(), 'yyyy-MM-dd');
   const stripeEnabled = Boolean(
     stripeConfig?.brandEnabled && stripeConfig?.platformEnabled && stripeConfig?.localEnabled,
   );
-  const visibleMethods: Array<PaymentMethod | 'unknown'> = stripeEnabled
-    ? ['cash', 'card', 'bizum', 'stripe', 'unknown']
-    : ['cash', 'card', 'bizum', 'unknown'];
-
-  const getProductsTotal = useCallback(
-    (appointment: Appointment) =>
-      appointment.products?.reduce((acc, item) => acc + item.totalPrice, 0) ?? 0,
-    [],
+  const visibleMethods = useMemo<Array<PaymentMethod | 'unknown'>>(
+    () => (
+      stripeEnabled
+        ? ['cash', 'card', 'bizum', 'stripe', 'unknown']
+        : ['cash', 'card', 'bizum', 'unknown']
+    ),
+    [stripeEnabled],
   );
 
   const getAppointmentAmount = useCallback(
-    (appointment: Appointment) => {
-      const productsTotal = getProductsTotal(appointment);
-      return productsEnabled ? appointment.price : Math.max(0, appointment.price - productsTotal);
-    },
-    [getProductsTotal, productsEnabled],
+    (appointment: Appointment) => getAppointmentAmountForCash(appointment, productsEnabled),
+    [productsEnabled],
   );
 
-  const calculateNetTotal = useCallback((appts: Appointment[], moves: CashMovement[]) => {
-    const completedTotal = appts.filter((apt) => apt.status === 'completed')
-      .reduce((acc, apt) => acc + getAppointmentAmount(apt), 0);
-    const manualInTotal = moves.filter((movement) => movement.type === 'in')
-      .reduce((acc, movement) => acc + movement.amount, 0);
-    const manualOutTotal = moves.filter((movement) => movement.type === 'out')
-      .reduce((acc, movement) => acc + movement.amount, 0);
-    return completedTotal + manualInTotal - manualOutTotal;
-  }, [getAppointmentAmount]);
-
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [appointmentsData, barbersData, movementsData, productsData, productCategoriesData] = await Promise.all([
-        getAppointmentsByDate(selectedDate),
-        getBarbers(),
-        getCashMovements(selectedDate),
-        productsEnabled ? getAdminProducts() : Promise.resolve([]),
-        productsEnabled ? getProductCategories(true) : Promise.resolve([]),
-      ]);
-      setAppointments(appointmentsData);
-      setBarbers(barbersData);
-      setMovements(movementsData);
-      setProducts(productsData as Product[]);
-      setProductCategories(productCategoriesData as ProductCategory[]);
-      const localNet = calculateNetTotal(appointmentsData, movementsData);
-      const locationIds = (locations || []).map((loc) => loc.id).filter(Boolean);
-      if (!currentLocationId || locationIds.length <= 1) {
-        setNetAllLocations(localNet);
-      } else {
-        const otherIds = locationIds.filter((id) => id !== currentLocationId);
-        const otherData = await Promise.all(
-          otherIds.map(async (localId) => {
-            const [appts, moves] = await Promise.all([
-              getAppointmentsByDateForLocal(selectedDate, localId),
-              getCashMovementsForLocal(selectedDate, localId),
-            ]);
-            return calculateNetTotal(appts, moves);
-          }),
-        );
-        const combined = localNet + otherData.reduce((acc, value) => acc + value, 0);
-        setNetAllLocations(combined);
-      }
-    } catch (error) {
-      toast({
-        title: 'No se pudo cargar la caja',
-        description: 'Revisa tu conexión e inténtalo de nuevo.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedDate, toast, calculateNetTotal, locations, currentLocationId, productsEnabled]);
-
   useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    let active = true;
-    const loadStripeConfig = async () => {
-      try {
-        const data = await getAdminStripeConfig();
-        if (active) setStripeConfig(data as StripeConfig);
-      } catch {
-        if (active) setStripeConfig(null);
-      }
-    };
-    loadStripeConfig();
-    return () => {
-      active = false;
-    };
-  }, [currentLocationId]);
+    if (!cashRegisterQuery.error) return;
+    toast({
+      title: 'No se pudo cargar la caja',
+      description: 'Revisa tu conexión e inténtalo de nuevo.',
+      variant: 'destructive',
+    });
+  }, [cashRegisterQuery.error, toast]);
 
   useEffect(() => {
     if (!stripeEnabled && barberPaymentMethodFilter === 'stripe') {
@@ -478,10 +529,10 @@ const AdminCashRegister: React.FC = () => {
         }));
       }
 
-      setMovements((prev) => [created, ...prev]);
+      await cashRegisterQuery.refetch();
       toast({ title: 'Movimiento guardado', description: 'La caja se actualizó correctamente.' });
       if (created.productOperationType) {
-        await loadData();
+        dispatchProductsUpdated({ source: 'admin-cash-register' });
       }
     } catch (error) {
       toast({
@@ -498,8 +549,12 @@ const AdminCashRegister: React.FC = () => {
     if (deletingMovementId) return;
     setDeletingMovementId(movementId);
     try {
+      const deletedMovement = movements.find((movement) => movement.id === movementId);
       await deleteCashMovement(movementId);
-      setMovements((prev) => prev.filter((movement) => movement.id !== movementId));
+      await cashRegisterQuery.refetch();
+      if (deletedMovement?.productOperationType) {
+        dispatchProductsUpdated({ source: 'admin-cash-register' });
+      }
       toast({ title: 'Movimiento eliminado', description: 'La caja se actualizó.' });
     } catch (error) {
       toast({

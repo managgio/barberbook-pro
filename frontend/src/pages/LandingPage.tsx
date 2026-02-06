@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,12 +23,14 @@ import {
 } from 'lucide-react';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { Barber, Product, ProductCategory, Service } from '@/data/types';
-import { getBarbers, getProductCategories, getProducts, getServices } from '@/data/api';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { CATALOG_STALE_TIME } from '@/lib/catalogQuery';
+import { getBarbers, getProductCategories, getProducts, getServices } from '@/data/api';
+import { queryKeys } from '@/lib/queryKeys';
 
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
@@ -38,6 +41,13 @@ type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
 const isLandingSectionKey = (value: string): value is LandingSectionKey =>
   (LANDING_SECTION_ORDER as readonly string[]).includes(value);
 type HeroTextColorKey = 'auto' | 'white' | 'black' | 'gray-dark' | 'gray-light';
+type LandingPresentationSectionInput = {
+  enabled?: unknown;
+  imageUrl?: unknown;
+  title?: unknown;
+  body?: unknown;
+  imagePosition?: unknown;
+};
 
 const HERO_TEXT_COLOR_STYLES: Record<HeroTextColorKey, { title: string; description: string; stats: string }> = {
   auto: { title: 'text-foreground', description: 'text-muted-foreground', stats: 'text-muted-foreground' },
@@ -145,13 +155,38 @@ const LandingPage: React.FC = () => {
     { key: 'youtube', label: formatHandle(settings.socials.youtube), icon: Youtube, url: buildSocialUrl('youtube', settings.socials.youtube) },
     { key: 'linkedin', label: formatHandle(settings.socials.linkedin), icon: Linkedin, url: buildSocialUrl('linkedin', settings.socials.linkedin) },
   ].filter((item) => item.url && item.label);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productCategories, setProductCategories] = useState<ProductCategory[]>([]);
   const categoriesEnabled = settings.products.categoriesEnabled;
   const landingConfig = tenant?.config?.landing || null;
   const productsModuleEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
+  const localId = tenant?.currentLocalId ?? null;
+
+  const barbersQuery = useQuery<Barber[]>({
+    queryKey: queryKeys.barbers(localId),
+    queryFn: () => getBarbers(),
+    staleTime: CATALOG_STALE_TIME,
+  });
+  const servicesQuery = useQuery<Service[]>({
+    queryKey: queryKeys.services(localId, false),
+    queryFn: () => getServices(),
+    staleTime: CATALOG_STALE_TIME,
+  });
+  const productsQuery = useQuery<Product[]>({
+    queryKey: queryKeys.products(localId, 'landing'),
+    queryFn: () => getProducts('landing'),
+    staleTime: CATALOG_STALE_TIME,
+    enabled: settings.products.showOnLanding && productsModuleEnabled,
+  });
+  const productCategoriesQuery = useQuery<ProductCategory[]>({
+    queryKey: queryKeys.productCategories(localId, true),
+    queryFn: () => getProductCategories(true),
+    staleTime: CATALOG_STALE_TIME,
+    enabled: settings.products.showOnLanding && categoriesEnabled && productsModuleEnabled,
+  });
+
+  const barbers = barbersQuery.data ?? [];
+  const services = servicesQuery.data ?? [];
+  const products = productsQuery.data ?? [];
+  const productCategories = productCategoriesQuery.data ?? [];
   const showProducts = productsModuleEnabled && settings.products.showOnLanding && products.length > 0;
   const landingOrder = useMemo(() => {
     const configured = (landingConfig?.order || [])
@@ -230,8 +265,15 @@ const LandingPage: React.FC = () => {
       { enabled: false, imagePosition: 'right' as const },
     ];
     return defaults.map((fallback, index) => {
-      const current = (sections[index] || {}) as any;
-      const imagePosition = current.imagePosition === 'right' ? 'right' : current.imagePosition === 'left' ? 'left' : fallback.imagePosition;
+      const currentRaw = sections[index];
+      const current: LandingPresentationSectionInput =
+        currentRaw && typeof currentRaw === 'object' ? (currentRaw as LandingPresentationSectionInput) : {};
+      const imagePosition =
+        current.imagePosition === 'right'
+          ? 'right'
+          : current.imagePosition === 'left'
+            ? 'left'
+            : fallback.imagePosition;
       return {
         enabled: typeof current.enabled === 'boolean' ? current.enabled : fallback.enabled,
         imageUrl: typeof current.imageUrl === 'string' ? current.imageUrl : '',
@@ -265,6 +307,10 @@ const LandingPage: React.FC = () => {
                       <img
                         src={section.imageUrl || heroImageFallback}
                         alt={section.title || settings.branding.name}
+                        loading="lazy"
+                        decoding="async"
+                        width={1200}
+                        height={900}
                         className="block h-full w-full object-cover"
                       />
                     </div>
@@ -288,7 +334,7 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
     );
-  }, [presentationSections, heroImageFallback, settings.branding.name]);
+  }, [presentationSections, settings.branding.name]);
 
   const renderProductCard = (product: Product, index: number) => {
     const price = product.finalPrice ?? product.price;
@@ -307,6 +353,10 @@ const LandingPage: React.FC = () => {
           <img
             src={product.imageUrl || productImageFallback}
             alt={product.name}
+            loading="lazy"
+            decoding="async"
+            width={800}
+            height={600}
             className="w-full h-full object-cover"
           />
           {hasOffer && (
@@ -373,28 +423,6 @@ const LandingPage: React.FC = () => {
     }
     return ordered;
   }, [categoriesEnabled, productCategories, products]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [barbersData, servicesData, productsData, productCategoriesData] = await Promise.all([
-          getBarbers(),
-          getServices(),
-          settings.products.showOnLanding && productsModuleEnabled ? getProducts('landing') : Promise.resolve([]),
-          settings.products.showOnLanding && settings.products.categoriesEnabled && productsModuleEnabled
-            ? getProductCategories(true)
-            : Promise.resolve([]),
-        ]);
-        setBarbers(barbersData);
-        setServices(servicesData);
-        setProducts(productsData as Product[]);
-        setProductCategories(productCategoriesData as ProductCategory[]);
-      } catch (error) {
-        console.error('Error loading landing data', error);
-      }
-    };
-    loadData();
-  }, [settings.products.showOnLanding, settings.products.categoriesEnabled, productsModuleEnabled]);
 
   const servicesSection = (
     <section className="py-24 bg-card/50">
@@ -538,6 +566,10 @@ const LandingPage: React.FC = () => {
                   <img
                     src={barber.photo || defaultAvatar}
                     alt={barber.name}
+                    loading="lazy"
+                    decoding="async"
+                    width={600}
+                    height={600}
                     className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                   />
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-4" />
@@ -669,6 +701,11 @@ const LandingPage: React.FC = () => {
                       <img
                         src={heroImageUrl}
                         alt={`Experiencia premium en ${settings.branding.name}`}
+                        loading="eager"
+                        decoding="async"
+                        fetchPriority="high"
+                        width={1200}
+                        height={900}
                         className={`block h-full w-full object-cover transition-opacity duration-700 ${heroImageFading ? 'opacity-0' : 'opacity-100'}`}
                       />
                     </div>
@@ -743,6 +780,10 @@ const LandingPage: React.FC = () => {
                 <img
                   src={logoUrl}
                   alt={`${settings.branding.shortName} logo`}
+                  loading="lazy"
+                  decoding="async"
+                  width={40}
+                  height={40}
                   className="w-10 h-10 rounded-lg object-contain shadow-sm"
                 />
                 <span className="text-xl font-bold text-foreground">{settings.branding.name}</span>

@@ -17,10 +17,12 @@ import {
   copyReferralConfig,
   getReferralOverview,
   getReferralList,
-  getServices,
 } from '@/data/api';
-import { ReferralProgramConfig, Service, ReferralAttributionItem } from '@/data/types';
+import { ReferralProgramConfig, Service, ReferralAttributionItem, RewardType } from '@/data/types';
 import { Award, Copy, Users, TrendingUp, Info } from 'lucide-react';
+import { fetchServicesCached } from '@/lib/catalogQuery';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 
 const rewardTypeOptions = [
   { value: 'WALLET', label: 'Saldo (wallet)' },
@@ -28,21 +30,36 @@ const rewardTypeOptions = [
   { value: 'FIXED_DISCOUNT', label: 'Descuento fijo' },
   { value: 'FREE_SERVICE', label: 'Servicio gratis' },
 ] as const;
+const LIST_PAGE = 1;
+const LIST_PAGE_SIZE = 25;
+const LIST_QUERY_DEBOUNCE_MS = 250;
+const EMPTY_SERVICES: Service[] = [];
+const EMPTY_REFERRAL_LIST: { total: number; items: ReferralAttributionItem[] } = { total: 0, items: [] };
+type ReferralOverview = {
+  invites?: number;
+  pending?: number;
+  confirmed?: number;
+  revenueAttributable?: number;
+  topAmbassadors?: Array<{
+    userId: string;
+    name?: string;
+    email?: string;
+    count: number;
+  }>;
+};
 
 const AdminReferrals: React.FC = () => {
   const { toast } = useToast();
   const { locations, currentLocationId } = useTenant();
+  const queryClient = useQueryClient();
   const copy = useBusinessCopy();
   const [config, setConfig] = useState<ReferralProgramConfig | null>(null);
-  const [services, setServices] = useState<Service[]>([]);
-  const [overview, setOverview] = useState<any>(null);
-  const [list, setList] = useState<{ total: number; items: ReferralAttributionItem[] }>({ total: 0, items: [] });
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [selectedCopyLocation, setSelectedCopyLocation] = useState<string>('');
   const [listStatus, setListStatus] = useState<string>('all');
   const [listQuery, setListQuery] = useState('');
+  const [debouncedListQuery, setDebouncedListQuery] = useState('');
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoKey, setInfoKey] = useState<'expiry' | 'newCustomer' | 'monthlyLimit' | 'allowedServices' | 'rewardReferrer' | 'rewardReferred' | 'antiFraud' | null>(null);
 
@@ -88,52 +105,68 @@ const AdminReferrals: React.FC = () => {
   );
 
   useEffect(() => {
-    let active = true;
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const [configData, servicesData, overviewData] = await Promise.all([
-          getReferralConfig(),
-          getServices(),
-          getReferralOverview(),
-        ]);
-        if (!active) return;
-        setConfig(configData);
-        setServices(servicesData);
-        setOverview(overviewData);
-      } catch (error) {
-        if (!active) return;
-        toast({
-          title: 'No se pudo cargar referidos',
-          description: error instanceof Error ? error.message : 'Inténtalo más tarde.',
-          variant: 'destructive',
-        });
-      } finally {
-        if (active) setIsLoading(false);
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, [toast]);
+    const timer = window.setTimeout(() => {
+      setDebouncedListQuery(listQuery.trim());
+    }, LIST_QUERY_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [listQuery]);
+
+  const configQuery = useQuery({
+    queryKey: queryKeys.adminReferralConfig(currentLocationId),
+    queryFn: getReferralConfig,
+  });
+  const servicesQuery = useQuery({
+    queryKey: queryKeys.services(currentLocationId),
+    queryFn: () => fetchServicesCached({ localId: currentLocationId }),
+  });
+  const overviewQuery = useQuery<ReferralOverview>({
+    queryKey: queryKeys.adminReferralOverview(currentLocationId),
+    queryFn: () => getReferralOverview() as Promise<ReferralOverview>,
+  });
+  const listQueryResult = useQuery({
+    queryKey: queryKeys.adminReferralList(
+      currentLocationId,
+      listStatus,
+      debouncedListQuery,
+      LIST_PAGE,
+      LIST_PAGE_SIZE,
+    ),
+    queryFn: () =>
+      getReferralList({
+        status: listStatus === 'all' ? undefined : listStatus,
+        q: debouncedListQuery || undefined,
+        page: LIST_PAGE,
+        pageSize: LIST_PAGE_SIZE,
+      }),
+  });
 
   useEffect(() => {
-    const loadList = async () => {
-      try {
-        const data = await getReferralList({
-          status: listStatus === 'all' ? undefined : listStatus,
-          q: listQuery || undefined,
-          page: 1,
-          pageSize: 25,
-        });
-        setList(data);
-      } catch {
-        setList({ total: 0, items: [] });
-      }
-    };
-    loadList();
-  }, [listStatus, listQuery]);
+    if (!configQuery.data) return;
+    setConfig(configQuery.data);
+  }, [configQuery.data]);
+
+  useEffect(() => {
+    if (!configQuery.error && !servicesQuery.error && !overviewQuery.error) return;
+    toast({
+      title: 'No se pudo cargar referidos',
+      description: 'Inténtalo más tarde.',
+      variant: 'destructive',
+    });
+  }, [configQuery.error, overviewQuery.error, servicesQuery.error, toast]);
+
+  useEffect(() => {
+    if (!listQueryResult.error) return;
+    toast({
+      title: 'No se pudo cargar el listado',
+      description: 'Inténtalo más tarde.',
+      variant: 'destructive',
+    });
+  }, [listQueryResult.error, toast]);
+
+  const services = servicesQuery.data ?? EMPTY_SERVICES;
+  const overview = overviewQuery.data ?? null;
+  const list = listQueryResult.data ?? EMPTY_REFERRAL_LIST;
+  const isLoading = configQuery.isLoading || servicesQuery.isLoading || overviewQuery.isLoading || !config;
 
   const updateConfigField = <K extends keyof ReferralProgramConfig>(key: K, value: ReferralProgramConfig[K]) => {
     if (!config) return;
@@ -154,10 +187,12 @@ const AdminReferrals: React.FC = () => {
     try {
       const updated = await updateReferralConfig(config);
       setConfig(updated);
+      queryClient.setQueryData(queryKeys.adminReferralConfig(currentLocationId), updated);
       toast({
         title: 'Configuración guardada',
         description: 'Programa de referidos actualizado.',
       });
+      await Promise.all([overviewQuery.refetch(), listQueryResult.refetch()]);
     } catch (error) {
       toast({
         title: 'No se pudo guardar',
@@ -174,6 +209,7 @@ const AdminReferrals: React.FC = () => {
     try {
       const updated = await copyReferralConfig(selectedCopyLocation);
       setConfig(updated);
+      queryClient.setQueryData(queryKeys.adminReferralConfig(currentLocationId), updated);
       toast({ title: 'Configuración copiada', description: `Se aplicó la configuración ${copy.location.fromWithDefinite}.` });
       setCopyDialogOpen(false);
     } catch (error) {
@@ -345,7 +381,9 @@ const AdminReferrals: React.FC = () => {
                     <Label>Tipo</Label>
                     <Select
                       value={config.rewardReferrerType}
-                      onValueChange={(val) => updateConfigField('rewardReferrerType', val as any)}
+                      onValueChange={(val) =>
+                        updateConfigField('rewardReferrerType', val as RewardType)
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -413,7 +451,9 @@ const AdminReferrals: React.FC = () => {
                     <Label>Tipo</Label>
                     <Select
                       value={config.rewardReferredType}
-                      onValueChange={(val) => updateConfigField('rewardReferredType', val as any)}
+                      onValueChange={(val) =>
+                        updateConfigField('rewardReferredType', val as RewardType)
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -537,7 +577,7 @@ const AdminReferrals: React.FC = () => {
               {(overview?.topAmbassadors ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">Aún no hay embajadores destacados.</p>
               ) : (
-                overview.topAmbassadors.map((item: any) => (
+                overview.topAmbassadors.map((item) => (
                   <div key={item.userId} className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-2">
                     <div>
                       <p className="text-sm font-semibold text-foreground">{item.name}</p>

@@ -1,5 +1,13 @@
 export type UserRole = 'client' | 'admin';
 
+export interface PaginatedResponse<T> {
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  items: T[];
+}
+
 export interface User {
   id: string;
   firebaseUid?: string;
@@ -225,6 +233,108 @@ export interface StripeAvailability {
   mode?: 'brand' | 'location';
   reason?: string;
   publishableKey?: string | null;
+}
+
+export interface StripeAccountStatus {
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+}
+
+export interface StripeCheckoutResponse {
+  mode: 'stripe' | 'exempt';
+  appointmentId: string;
+  checkoutUrl?: string | null;
+}
+
+export interface StripeSessionResponse {
+  id?: string;
+  status?: string | null;
+  payment_status?: string | null;
+  [key: string]: unknown;
+}
+
+export interface AdminStripeConfig {
+  mode: 'brand' | 'location';
+  brandEnabled: boolean;
+  platformEnabled: boolean;
+  localEnabled: boolean;
+  accountIdExists: boolean;
+  status?: StripeAccountStatus | null;
+}
+
+export interface AdminStripeToggleResponse {
+  enabled: boolean;
+}
+
+export interface StripeOnboardingResponse {
+  url: string;
+  accountId: string;
+}
+
+export interface OperationSuccessResponse {
+  success: boolean;
+}
+
+export type PlatformConfigData = Record<string, unknown>;
+
+export interface PlatformRoleSummary {
+  id: string;
+  name: string;
+}
+
+export interface PlatformAdminSummary {
+  userId: string;
+  name?: string;
+  email?: string;
+  isSuperAdmin?: boolean;
+  isPlatformAdmin?: boolean;
+  adminRoleId?: string | null;
+  adminRoleName?: string | null;
+}
+
+export interface PlatformLocationSummary {
+  id: string;
+  name: string;
+  slug?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  roles?: PlatformRoleSummary[];
+  admins?: PlatformAdminSummary[];
+}
+
+export interface PlatformBrandSummary {
+  id: string;
+  name: string;
+  subdomain: string;
+  customDomain?: string | null;
+  defaultLocationId?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  locations?: PlatformLocationSummary[];
+  config?: { data?: PlatformConfigData } | null;
+}
+
+export interface PlatformBrandAdminsOverview {
+  locations: PlatformLocationSummary[];
+}
+
+export interface PlatformBrandConfigRecord {
+  id?: string;
+  brandId: string;
+  data: PlatformConfigData;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PlatformLocationConfigRecord {
+  id?: string;
+  localId: string;
+  data: PlatformConfigData;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CashMovement {
@@ -533,6 +643,20 @@ export interface ReferralSummaryResponse {
   confirmed: ReferralAttributionItem[];
   expired: ReferralAttributionItem[];
   invalidated: ReferralAttributionItem[];
+}
+
+export interface ReferralCodeResponse {
+  code: string;
+  rewardSummary: ReferralRewardSummary;
+  shareUrl?: string | null;
+  qrUrlPayload?: string | null;
+}
+
+export interface ReferralCodeResolution {
+  referrerDisplayName: string;
+  programEnabled: boolean;
+  rewardSummary: ReferralRewardSummary;
+  expiresInDays: number;
 }
 
 export interface ReviewCopy {
@@ -876,4 +1000,59 @@ export interface PlatformUsageMetrics {
   openai: { series: PlatformUsageSeriesPoint[] };
   twilio: { series: PlatformUsageSeriesPoint[] };
   imagekit: { series: PlatformUsageSeriesPoint[] };
+}
+
+export interface AdminDashboardTodayAppointment {
+  id: string;
+  startDateTime: string;
+  serviceName: string;
+  barberName: string;
+  clientName: string;
+}
+
+export interface AdminDashboardLossByWeekday {
+  day: number;
+  noShow: number;
+  cancelled: number;
+}
+
+export interface AdminDashboardOccupancy {
+  hours: number[];
+  matrix: number[][];
+  max: number;
+}
+
+export interface AdminDashboardSummary {
+  windowDays: number;
+  generatedAt: string;
+  barbers: Array<{ id: string; name: string }>;
+  stats: {
+    todayAppointments: number;
+    revenueToday: number;
+    weekCancelled: number;
+    weekNoShow: number;
+  };
+  todayAppointments: AdminDashboardTodayAppointment[];
+  revenueDaily: Array<{ date: string; value: number }>;
+  serviceMix: Array<{ name: string; value: number }>;
+  ticketDaily: Array<{ date: string; value: number }>;
+  ticketAverage: number;
+  lossByWeekday: AdminDashboardLossByWeekday[];
+  occupancy: AdminDashboardOccupancy;
+}
+
+export interface AdminSearchClientSummary {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+}
+
+export interface AdminSearchAppointmentsResponse extends PaginatedResponse<Appointment> {
+  clients: AdminSearchClientSummary[];
+}
+
+export interface AdminCalendarResponse {
+  items: Appointment[];
+  clients: AdminSearchClientSummary[];
 }
