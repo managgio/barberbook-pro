@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, RefreshCcw } from 'lucide-react';
+import { AlertTriangle, CircleHelp, RefreshCcw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   getPlatformApiMetricsSummary,
   getPlatformWebVitalsSummary,
@@ -120,6 +121,23 @@ const getErrorMessage = (error: unknown) => {
   return error.message || 'Error inesperado al cargar observabilidad.';
 };
 
+const CardInfoTooltip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <button
+        type="button"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+        aria-label={label}
+      >
+        <CircleHelp className="h-4 w-4" />
+      </button>
+    </TooltipTrigger>
+    <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
+      {children}
+    </TooltipContent>
+  </Tooltip>
+);
+
 const WebVitalsTable: React.FC<{ rows: PlatformObservabilityWebVitalMetricSummary[] }> = ({ rows }) => {
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">Todavía no hay muestras de Web Vitals para esta ventana.</p>;
@@ -185,17 +203,18 @@ const ApiTable: React.FC<{ rows: PlatformObservabilityApiRouteSummary[] }> = ({ 
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => {
+        {rows.map((row, index) => {
           const health = getApiHealth(row);
           const meta = getHealthMeta(health);
+          const stableKey = `${row.method}-${row.route}-${row.subdomain ?? 'none'}-${index}`;
           return (
-            <TableRow key={`${row.method}-${row.route}`} className={meta.rowClassName}>
+            <TableRow key={stableKey} className={meta.rowClassName}>
               <TableCell>
                 <Badge variant="outline" className={meta.badgeClassName}>
                   {meta.label}
                 </Badge>
               </TableCell>
-              <TableCell className="font-mono text-xs sm:text-sm">{row.method} {row.route}</TableCell>
+              <TableCell className="font-mono text-xs sm:text-sm break-all">{row.method} {row.route}</TableCell>
               <TableCell>{row.subdomain || 'sin subdominio'}</TableCell>
               <TableCell>{formatMs(row.avgDurationMs)}</TableCell>
               <TableCell>{formatMs(row.p95DurationMs)}</TableCell>
@@ -263,7 +282,7 @@ const PlatformObservability: React.FC = () => {
             Vista rápida de experiencia de usuario y salud de API para plataforma.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={String(windowMinutes)} onValueChange={(value) => setWindowMinutes(Number(value))}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Ventana" />
@@ -290,11 +309,17 @@ const PlatformObservability: React.FC = () => {
       </header>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="flex max-h-[calc(100vh-10rem)] flex-col">
+        <Card className="flex min-w-0 max-h-[calc(100vh-10rem)] flex-col">
           <CardHeader>
-            <CardTitle>Experiencia (Web Vitals)</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Experiencia (Web Vitals)
+              <CardInfoTooltip label="Qué muestra esta card de experiencia">
+                Resume la calidad real de la experiencia en cada ruta: tiempos de carga, respuesta y estabilidad
+                visual. Prioriza filas con más impacto para que detectes rápido degradaciones UX.
+              </CardInfoTooltip>
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 overflow-y-auto">
+          <CardContent className="min-w-0 space-y-4 overflow-y-auto overflow-x-hidden">
             {webVitalsQuery.error ? (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                 <div className="flex items-center gap-2 font-medium">
@@ -343,11 +368,17 @@ const PlatformObservability: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card className="flex max-h-[calc(100vh-10rem)] flex-col">
+        <Card className="flex min-w-0 max-h-[calc(100vh-10rem)] flex-col">
           <CardHeader>
-            <CardTitle>API (Top endpoints)</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              API (Top endpoints)
+              <CardInfoTooltip label="Qué muestra esta card de API">
+                Resume salud operativa de endpoints por subdominio: latencia media, p95, porcentaje de error y
+                volumen de uso. El estado destaca primero lo que necesita atención.
+              </CardInfoTooltip>
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 overflow-y-auto">
+          <CardContent className="min-w-0 space-y-4 overflow-y-auto overflow-x-hidden">
             {apiQuery.error ? (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                 <div className="flex items-center gap-2 font-medium">
