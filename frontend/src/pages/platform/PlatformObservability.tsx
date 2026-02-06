@@ -45,6 +45,59 @@ const WEB_VITAL_LEGEND = [
 const formatMs = (value: number) => `${value.toFixed(0)} ms`;
 const formatPct = (value: number) => `${value.toFixed(2)}%`;
 
+type HealthLevel = 'ok' | 'warning' | 'critical';
+
+const HEALTH_PRIORITY: Record<HealthLevel, number> = {
+  critical: 0,
+  warning: 1,
+  ok: 2,
+};
+
+const getHealthMeta = (level: HealthLevel) => {
+  if (level === 'critical') {
+    return {
+      label: 'Crítico',
+      badgeClassName: 'border-destructive/40 bg-destructive/10 text-destructive',
+      rowClassName: 'bg-destructive/5',
+    };
+  }
+  if (level === 'warning') {
+    return {
+      label: 'Vigilar',
+      badgeClassName: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      rowClassName: 'bg-amber-500/5',
+    };
+  }
+  return {
+    label: 'OK',
+    badgeClassName: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    rowClassName: '',
+  };
+};
+
+const getWebVitalHealth = (row: PlatformObservabilityWebVitalMetricSummary): HealthLevel => {
+  if (row.ratings.poor > 0) return 'critical';
+  if (row.ratings.needsImprovement > 0) return 'warning';
+  return 'ok';
+};
+
+const getApiHealth = (row: PlatformObservabilityApiRouteSummary): HealthLevel => {
+  const has5xx = row.statuses.some((status) => status.status >= 500);
+  if (has5xx || row.errorRate >= 5 || row.p95DurationMs >= 2_000) return 'critical';
+  if (row.errorRate >= 1 || row.p95DurationMs >= 1_000) return 'warning';
+  return 'ok';
+};
+
+const buildHealthSummary = <T,>(rows: T[], resolver: (row: T) => HealthLevel) =>
+  rows.reduce(
+    (acc, row) => {
+      const level = resolver(row);
+      acc[level] += 1;
+      return acc;
+    },
+    { critical: 0, warning: 0, ok: 0 },
+  );
+
 const getErrorMessage = (error: unknown) => {
   if (!isApiRequestError(error)) {
     return 'No se pudieron cargar los datos ahora mismo. Revisa la conexión e inténtalo de nuevo.';
@@ -76,6 +129,7 @@ const WebVitalsTable: React.FC<{ rows: PlatformObservabilityWebVitalMetricSummar
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>Estado</TableHead>
           <TableHead>Métrica</TableHead>
           <TableHead>Promedio</TableHead>
           <TableHead>P95</TableHead>
@@ -84,20 +138,29 @@ const WebVitalsTable: React.FC<{ rows: PlatformObservabilityWebVitalMetricSummar
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.name}>
-            <TableCell>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{row.name}</span>
-                {CRITICAL_WEB_VITALS.has(row.name) && <Badge variant="secondary">Crítica</Badge>}
-              </div>
-            </TableCell>
-            <TableCell>{row.name === 'CLS' ? row.avg.toFixed(3) : formatMs(row.avg)}</TableCell>
-            <TableCell>{row.name === 'CLS' ? row.p95.toFixed(3) : formatMs(row.p95)}</TableCell>
-            <TableCell>{row.count}</TableCell>
-            <TableCell>{row.ratings.poor}</TableCell>
-          </TableRow>
-        ))}
+        {rows.map((row) => {
+          const health = getWebVitalHealth(row);
+          const meta = getHealthMeta(health);
+          return (
+            <TableRow key={row.name} className={meta.rowClassName}>
+              <TableCell>
+                <Badge variant="outline" className={meta.badgeClassName}>
+                  {meta.label}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{row.name}</span>
+                  {CRITICAL_WEB_VITALS.has(row.name) && <Badge variant="secondary">Crítica</Badge>}
+                </div>
+              </TableCell>
+              <TableCell>{row.name === 'CLS' ? row.avg.toFixed(3) : formatMs(row.avg)}</TableCell>
+              <TableCell>{row.name === 'CLS' ? row.p95.toFixed(3) : formatMs(row.p95)}</TableCell>
+              <TableCell>{row.count}</TableCell>
+              <TableCell className={row.ratings.poor > 0 ? 'text-destructive font-medium' : ''}>{row.ratings.poor}</TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
@@ -112,7 +175,9 @@ const ApiTable: React.FC<{ rows: PlatformObservabilityApiRouteSummary[] }> = ({ 
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>Estado</TableHead>
           <TableHead>Ruta</TableHead>
+          <TableHead>Subdominio</TableHead>
           <TableHead>Latencia media</TableHead>
           <TableHead>P95</TableHead>
           <TableHead>Error ratio</TableHead>
@@ -120,15 +185,25 @@ const ApiTable: React.FC<{ rows: PlatformObservabilityApiRouteSummary[] }> = ({ 
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => (
-          <TableRow key={`${row.method}-${row.route}`}>
-            <TableCell className="font-mono text-xs sm:text-sm">{row.method} {row.route}</TableCell>
-            <TableCell>{formatMs(row.avgDurationMs)}</TableCell>
-            <TableCell>{formatMs(row.p95DurationMs)}</TableCell>
-            <TableCell>{formatPct(row.errorRate)}</TableCell>
-            <TableCell>{row.count}</TableCell>
-          </TableRow>
-        ))}
+        {rows.map((row) => {
+          const health = getApiHealth(row);
+          const meta = getHealthMeta(health);
+          return (
+            <TableRow key={`${row.method}-${row.route}`} className={meta.rowClassName}>
+              <TableCell>
+                <Badge variant="outline" className={meta.badgeClassName}>
+                  {meta.label}
+                </Badge>
+              </TableCell>
+              <TableCell className="font-mono text-xs sm:text-sm">{row.method} {row.route}</TableCell>
+              <TableCell>{row.subdomain || 'sin subdominio'}</TableCell>
+              <TableCell>{formatMs(row.avgDurationMs)}</TableCell>
+              <TableCell>{formatMs(row.p95DurationMs)}</TableCell>
+              <TableCell className={row.errorRate >= 1 ? 'text-destructive font-medium' : ''}>{formatPct(row.errorRate)}</TableCell>
+              <TableCell>{row.count}</TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
@@ -154,13 +229,30 @@ const PlatformObservability: React.FC = () => {
   const isRefreshing = webVitalsQuery.isFetching || apiQuery.isFetching;
 
   const webVitalRows = useMemo(
-    () => (webVitalsQuery.data?.byMetric || []).slice().sort((a, b) => b.count - a.count),
+    () =>
+      (webVitalsQuery.data?.byMetric || [])
+        .slice()
+        .sort((a, b) => {
+          const healthDiff = HEALTH_PRIORITY[getWebVitalHealth(a)] - HEALTH_PRIORITY[getWebVitalHealth(b)];
+          if (healthDiff !== 0) return healthDiff;
+          return b.count - a.count;
+        }),
     [webVitalsQuery.data?.byMetric],
   );
   const apiRows = useMemo(
-    () => (apiQuery.data?.topRoutes || []).slice(0, 20),
+    () =>
+      (apiQuery.data?.topRoutes || [])
+        .slice()
+        .sort((a, b) => {
+          const healthDiff = HEALTH_PRIORITY[getApiHealth(a)] - HEALTH_PRIORITY[getApiHealth(b)];
+          if (healthDiff !== 0) return healthDiff;
+          return b.count - a.count;
+        })
+        .slice(0, 20),
     [apiQuery.data?.topRoutes],
   );
+  const webVitalsHealth = useMemo(() => buildHealthSummary(webVitalRows, getWebVitalHealth), [webVitalRows]);
+  const apiHealth = useMemo(() => buildHealthSummary(apiRows, getApiHealth), [apiRows]);
 
   return (
     <section className="space-y-6">
@@ -217,6 +309,11 @@ const PlatformObservability: React.FC = () => {
                   <span>Eventos: <strong className="text-foreground">{webVitalsQuery.data?.totalEvents ?? 0}</strong></span>
                   <span>Ventana: <strong className="text-foreground">{webVitalsQuery.data?.windowMinutes ?? windowMinutes} min</strong></span>
                 </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline" className={getHealthMeta('critical').badgeClassName}>Crítico: {webVitalsHealth.critical}</Badge>
+                  <Badge variant="outline" className={getHealthMeta('warning').badgeClassName}>Vigilar: {webVitalsHealth.warning}</Badge>
+                  <Badge variant="outline" className={getHealthMeta('ok').badgeClassName}>OK: {webVitalsHealth.ok}</Badge>
+                </div>
                 <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
                   <p className="mb-2 font-medium text-foreground">Qué mide cada métrica</p>
                   <ul className="space-y-1">
@@ -264,6 +361,11 @@ const PlatformObservability: React.FC = () => {
                 <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                   <span>Eventos: <strong className="text-foreground">{apiQuery.data?.totalEvents ?? 0}</strong></span>
                   <span>Ventana: <strong className="text-foreground">{apiQuery.data?.windowMinutes ?? windowMinutes} min</strong></span>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline" className={getHealthMeta('critical').badgeClassName}>Crítico: {apiHealth.critical}</Badge>
+                  <Badge variant="outline" className={getHealthMeta('warning').badgeClassName}>Vigilar: {apiHealth.warning}</Badge>
+                  <Badge variant="outline" className={getHealthMeta('ok').badgeClassName}>OK: {apiHealth.ok}</Badge>
                 </div>
                 <ApiTable rows={apiRows} />
               </>

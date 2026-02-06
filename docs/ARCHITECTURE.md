@@ -161,7 +161,7 @@ Observabilidad UX:
 - Emision de evento `window` `web-vital` para extensiones de analitica no acopladas.
 - Interceptor global de API (`ApiMetricsInterceptor`) registra latencia/estado por ruta en backend.
 - Resumen operativo solo plataforma: `GET /api/platform/observability/web-vitals?minutes=<n>` y `GET /api/platform/observability/api?minutes=<n>`.
-- **UI operativa de observabilidad en plataforma**: ruta `GET /platform/observability` (frontend) con selector temporal `60 min | 24 h | 7 dias`, tablas de Web Vitals agregadas (`avg`, `p95`, `samples`) y Top endpoints API (`avg`, `p95`, `errorRate`, `hits`) con `React Query` (`platform-observability-webvitals`, `platform-observability-api`), botón de refresco manual, leyenda breve de métricas UX y cards con altura máxima + scroll interno para mantener legibilidad.
+- **UI operativa de observabilidad en plataforma**: ruta `GET /platform/observability` (frontend) con selector temporal `60 min | 24 h | 7 dias`, tablas de Web Vitals agregadas (`avg`, `p95`, `samples`) y Top endpoints API (`subdomain`, `avg`, `p95`, `errorRate`, `hits`) con `React Query` (`platform-observability-webvitals`, `platform-observability-api`), botón de refresco manual, leyenda breve de métricas UX, cards con altura máxima + scroll interno y semáforo visual por fila (`OK`/`Vigilar`/`Crítico`) con resumen agregado por card para detección rápida.
 - Alertas operativas por email (event-driven, no periodicas): cuando llega un Web Vital en estado `poor` o cuando una ruta API entra en degradacion (5xx/p95 en ventana), backend envia correo con contexto (metrica, ruta, severidad, tenant, umbral y distribucion de estados). Incluye cooldown por clave para evitar spam.
 
 Paginas clave:
@@ -443,7 +443,7 @@ Frontend (`frontend/.env*`):
 - `syncAppointmentStatuses` procesa efectos de cierre en lotes (`BATCH_SIZE=20`) para evitar secuencias largas por cita en ciclos de sincronizacion con volumen alto.
 - Observabilidad backend:
   - `POST /api/observability/web-vitals` recibe métricas UX de cliente.
-  - `GET /api/platform/observability/web-vitals` y `GET /api/platform/observability/api` exponen resumen de Web Vitals y latencia/errores por ruta para plataforma.
+  - `GET /api/platform/observability/web-vitals` y `GET /api/platform/observability/api` exponen resumen de Web Vitals y latencia/errores por ruta para plataforma; el resumen API incluye dimensión `subdomain` por fila.
   - Estado actual de persistencia: los eventos se almacenan en memoria del proceso (buffers con retención) y no en tablas persistentes de BD.
   - Alertas email automáticas (sin cron): disparo por evento degradado con cooldown configurable para evitar ruido.
 - Indices de consultas calientes en `Appointment`:

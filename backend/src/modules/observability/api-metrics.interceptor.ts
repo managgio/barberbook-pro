@@ -1,6 +1,6 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
-import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
+import { getCurrentBrandId, getCurrentLocalId, getTenantContext } from '../../tenancy/tenant.context';
 import { ObservabilityService } from './observability.service';
 
 @Injectable()
@@ -56,6 +56,7 @@ export class ApiMetricsInterceptor implements NestInterceptor {
         timestamp: Date.now(),
         localId: getCurrentLocalId(),
         brandId: getCurrentBrandId(),
+        subdomain: getTenantContext().subdomain || null,
       });
     };
 

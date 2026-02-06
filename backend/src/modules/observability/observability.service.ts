@@ -21,6 +21,7 @@ type ApiMetricRecord = {
   timestamp: number;
   localId: string;
   brandId: string;
+  subdomain: string | null;
 };
 
 const WEB_VITAL_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -401,6 +402,7 @@ export class ObservabilityService {
       {
         method: string;
         route: string;
+        subdomain: string | null;
         count: number;
         errorCount: number;
         totalDurationMs: number;
@@ -410,10 +412,11 @@ export class ObservabilityService {
     >();
 
     recent.forEach((entry) => {
-      const key = `${entry.method} ${entry.route}`;
+      const key = `${entry.method} ${entry.route}::${entry.subdomain || 'unknown'}`;
       const bucket = grouped.get(key) || {
         method: entry.method,
         route: entry.route,
+        subdomain: entry.subdomain,
         count: 0,
         errorCount: 0,
         totalDurationMs: 0,
@@ -434,6 +437,7 @@ export class ObservabilityService {
       .map((bucket) => ({
         method: bucket.method,
         route: bucket.route,
+        subdomain: bucket.subdomain,
         count: bucket.count,
         errorRate: Number(((bucket.errorCount / Math.max(1, bucket.count)) * 100).toFixed(2)),
         avgDurationMs: Number((bucket.totalDurationMs / Math.max(1, bucket.count)).toFixed(2)),

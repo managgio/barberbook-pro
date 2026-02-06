@@ -1027,6 +1027,7 @@ export interface PlatformObservabilityWebVitalsSummary {
 export interface PlatformObservabilityApiRouteSummary {
   method: string;
   route: string;
+  subdomain: string | null;
   count: number;
   errorRate: number;
   avgDurationMs: number;
