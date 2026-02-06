@@ -411,7 +411,8 @@ Frontend (`frontend/.env*`):
 - CI de budgets: workflow `/.github/workflows/frontend-perf-budget.yml` ejecuta `npm run perf:baseline` en PR/push y falla si se exceden umbrales.
 - Capa de red robusta: `apiRequest` usa timeout explicito, retry con backoff para `GET` idempotentes (errores de red/timeout y HTTP transitorios), clasifica errores (`HTTP`, `TIMEOUT`, `OFFLINE`, `NETWORK`, `ABORTED`) y emite evento global de sesion para 401/403.
 - Recharts: usar imports selectivos (`import { LineChart, ... } from 'recharts'`) y evitar namespace imports (`import * as Recharts...`) para no inflar chunks.
-- `manualChunks` en Vite mantiene el core de React (`react`, `react-dom`, `scheduler`) en el mismo chunk `vendor-react` para evitar ciclos de dependencias entre chunks base y errores de bootstrap en runtime.
+- `manualChunks` en Vite solo separa vendors pesados por dominio de coste (`firebase`, `recharts`, `date-fns`) y deja el resto en `vendor` para evitar ciclos de bootstrap entre chunks base.
+- Despliegue frontend debe ser atomico (`index.html` + `assets/*` del mismo build) y con invalidacion de cache/CDN para evitar mezclar chunks de builds distintos.
 - Carga de fuentes optimizada en `frontend/index.html` con `preconnect` + `preload`/`stylesheet` (sin `@import` bloqueante en CSS).
 - Higiene de imagenes en rutas criticas: logos/avatares/QR y miniaturas usan `loading`, `decoding` y dimensiones explicitas para reducir CLS y trabajo de render en navegacion.
 - Branding estático responsive en puntos críticos (`AuthPage`, `PlatformSidebar`) con `<picture>` + `AVIF/WebP` + `srcSet/sizes`:

@@ -34,23 +34,6 @@ export default defineConfig(({ mode }) => ({
           if (normalizedId.includes("/firebase/")) return "vendor-firebase";
           if (normalizedId.includes("/recharts/") || normalizedId.includes("/d3-")) return "vendor-charts";
           if (normalizedId.includes("/date-fns/")) return "vendor-date";
-          if (
-            normalizedId.includes("/@radix-ui/") ||
-            normalizedId.includes("/@floating-ui/") ||
-            normalizedId.includes("/cmdk/") ||
-            normalizedId.includes("/sonner/")
-          ) {
-            return "vendor-ui";
-          }
-          if (normalizedId.includes("/@tanstack/react-query/")) return "vendor-query";
-          if (normalizedId.includes("/react-router/") || normalizedId.includes("/react-router-dom/")) return "vendor-router";
-          if (
-            normalizedId.includes("/react/") ||
-            normalizedId.includes("/react-dom/") ||
-            normalizedId.includes("/scheduler/")
-          ) {
-            return "vendor-react";
-          }
           return "vendor";
         },
       },
