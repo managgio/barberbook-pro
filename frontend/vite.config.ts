@@ -29,16 +29,28 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes("node_modules")) return;
-          if (id.includes("firebase")) return "vendor-firebase";
-          if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
-          if (id.includes("date-fns")) return "vendor-date";
-          if (id.includes("@radix-ui") || id.includes("@floating-ui") || id.includes("cmdk") || id.includes("sonner")) {
+          const normalizedId = id.replace(/\\/g, "/");
+          if (!normalizedId.includes("/node_modules/")) return;
+          if (normalizedId.includes("/firebase/")) return "vendor-firebase";
+          if (normalizedId.includes("/recharts/") || normalizedId.includes("/d3-")) return "vendor-charts";
+          if (normalizedId.includes("/date-fns/")) return "vendor-date";
+          if (
+            normalizedId.includes("/@radix-ui/") ||
+            normalizedId.includes("/@floating-ui/") ||
+            normalizedId.includes("/cmdk/") ||
+            normalizedId.includes("/sonner/")
+          ) {
             return "vendor-ui";
           }
-          if (id.includes("@tanstack/react-query")) return "vendor-query";
-          if (id.includes("react-router")) return "vendor-router";
-          if (id.includes("react-dom") || id.includes("scheduler")) return "vendor-react";
+          if (normalizedId.includes("/@tanstack/react-query/")) return "vendor-query";
+          if (normalizedId.includes("/react-router/") || normalizedId.includes("/react-router-dom/")) return "vendor-router";
+          if (
+            normalizedId.includes("/react/") ||
+            normalizedId.includes("/react-dom/") ||
+            normalizedId.includes("/scheduler/")
+          ) {
+            return "vendor-react";
+          }
           return "vendor";
         },
       },
