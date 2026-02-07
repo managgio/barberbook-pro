@@ -438,6 +438,7 @@ Frontend (`frontend/.env*`):
 - Capa de red robusta: `apiRequest` usa timeout explicito, retry con backoff para `GET` idempotentes (errores de red/timeout y HTTP transitorios), clasifica errores (`HTTP`, `TIMEOUT`, `OFFLINE`, `NETWORK`, `ABORTED`) y emite evento global de sesion para 401/403.
 - Recharts: usar imports selectivos (`import { LineChart, ... } from 'recharts'`) y evitar namespace imports (`import * as Recharts...`) para no inflar chunks.
 - `manualChunks` en Vite separa vendors base por grupos estables (`vendor-react`, `vendor-router`, `vendor-query`, `vendor-radix`, `vendor-icons`, `vendor-ui-utils`, `vendor-misc`) y mantiene chunks dedicados para pesos altos (`vendor-firebase`, `vendor-charts`, `vendor-date`) para evitar warnings de tamaño y preservar carga incremental.
+- En `vendor-router` se agrupan `react-router-dom`, `react-router`, `@remix-run/router` y `history` para evitar ciclos entre chunks de router que pueden romper inicialización en producción (ej. `Cannot access uninitialized variable`).
 - Despliegue frontend debe ser atomico (`index.html` + `assets/*` del mismo build) y con invalidacion de cache/CDN para evitar mezclar chunks de builds distintos.
 - Carga de fuentes optimizada en `frontend/index.html` con `preconnect` + `preload`/`stylesheet` (sin `@import` bloqueante en CSS).
 - Higiene de imagenes en rutas criticas: logos/avatares/QR y miniaturas usan `loading`, `decoding` y dimensiones explicitas para reducir CLS y trabajo de render en navegacion.

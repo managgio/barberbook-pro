@@ -37,7 +37,12 @@ export default defineConfig(({ mode }) => ({
           if (normalizedId.includes("/react-dom/") || normalizedId.includes("/react/") || normalizedId.includes("/scheduler/")) {
             return "vendor-react";
           }
-          if (normalizedId.includes("/react-router-dom/") || normalizedId.includes("/@remix-run/router/")) {
+          if (
+            normalizedId.includes("/react-router-dom/")
+            || normalizedId.includes("/react-router/")
+            || normalizedId.includes("/@remix-run/router/")
+            || normalizedId.includes("/history/")
+          ) {
             return "vendor-router";
           }
           if (normalizedId.includes("/@tanstack/")) return "vendor-query";
