@@ -181,7 +181,7 @@ const AppRoutes: React.FC = () => {
 
 const RouterShell: React.FC = () => {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthSessionMonitor />
       <AppRoutes />
     </BrowserRouter>

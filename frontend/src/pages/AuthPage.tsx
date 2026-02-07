@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,7 @@ const AuthPage: React.FC = () => {
 
   const { login, loginWithGoogle, signup, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
@@ -62,22 +63,36 @@ const AuthPage: React.FC = () => {
     return value.toString();
   };
   const isSignup = activeTab === 'signup' && !isPlatform;
+  const fromPath = React.useMemo(() => {
+    const state = location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null;
+    const from = state?.from;
+    if (!from?.pathname) return null;
+    const candidate = `${from.pathname}${from.search || ''}${from.hash || ''}`;
+    if (!candidate.startsWith('/') || candidate.startsWith('//')) return null;
+    if (candidate.startsWith('/auth')) return null;
+    return candidate;
+  }, [location.state]);
 
   // Redirect if already authenticated
   React.useEffect(() => {
     if (isAuthenticated && user) {
+      const preferredTarget = fromPath ?? redirectTarget;
       if (user.isPlatformAdmin && isPlatform) {
-        navigate('/platform');
+        if (preferredTarget?.startsWith('/platform')) {
+          navigate(preferredTarget, { replace: true });
+          return;
+        }
+        navigate('/platform', { replace: true });
         return;
       }
-      if (redirectTarget && !isPlatform) {
-        navigate(redirectTarget);
+      if (preferredTarget && !isPlatform) {
+        navigate(preferredTarget, { replace: true });
         return;
       }
       const hasAdminAccess = Boolean(user.isSuperAdmin || user.isLocalAdmin || user.role === 'admin' || user.isPlatformAdmin);
-      navigate(hasAdminAccess ? '/admin' : '/app');
+      navigate(hasAdminAccess ? '/admin' : '/app', { replace: true });
     }
-  }, [isAuthenticated, user, navigate, isPlatform, redirectTarget]);
+  }, [isAuthenticated, user, navigate, isPlatform, redirectTarget, fromPath]);
 
   React.useEffect(() => {
     if (isPlatform && activeTab !== 'login') {

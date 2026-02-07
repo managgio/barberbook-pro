@@ -10,6 +10,8 @@ import managgioLogo160Avif from '@/assets/img/managgio/logo-app-160.avif';
 import managgioLogo80Webp from '@/assets/img/managgio/logo-app-80.webp';
 import managgioLogo160Webp from '@/assets/img/managgio/logo-app-160.webp';
 
+const PLATFORM_LAST_ROUTE_STORAGE_KEY = 'platform:last-route:session';
+
 const navItems = [
   { href: '/platform', label: 'Resumen', icon: LayoutDashboard },
   { href: '/platform/brands', label: 'Clientes', icon: Building2 },
@@ -34,6 +36,12 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
       onToggle();
     }
   };
+  const handleNavItemClick = (href: string) => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(PLATFORM_LAST_ROUTE_STORAGE_KEY, href);
+    }
+    handleNavClick();
+  };
 
   const isActive = (path: string) => {
     if (path === '/platform') return location.pathname === '/platform';
@@ -53,7 +61,7 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
       <div className={cn('border-b border-sidebar-border relative', collapsed ? 'p-4' : 'p-5')}>
         <Link
           to="/platform"
-          onClick={handleNavClick}
+          onClick={() => handleNavItemClick('/platform')}
           className={cn('flex items-center gap-3', collapsed && 'justify-center')}
         >
           <div className="w-11 h-11 rounded-xl flex items-center justify-center">
@@ -98,7 +106,7 @@ const PlatformSidebar: React.FC<PlatformSidebarProps> = ({ collapsed, onToggle }
             <Link
               key={item.href}
               to={item.href}
-              onClick={handleNavClick}
+              onClick={() => handleNavItemClick(item.href)}
               className={cn(
                 'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                 isActive(item.href)

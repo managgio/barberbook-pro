@@ -35,7 +35,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Building2, ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, ExternalLink, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -576,6 +576,53 @@ const isAdminSectionVisible = (config: PlatformConfig, section: AdminSectionKey)
   return !getAdminSidebarHiddenSections(config).includes(section);
 };
 
+const normalizeHostInput = (value?: string | null) => {
+  if (!value) return '';
+  return value
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/^\/+|\/+$/g, '');
+};
+
+const resolveBrandPublicUrl = (subdomain?: string | null, customDomain?: string | null) => {
+  const normalizedCustomDomain = normalizeHostInput(customDomain);
+  if (normalizedCustomDomain) {
+    const isCustomDomainLocal =
+      normalizedCustomDomain === 'localhost' ||
+      normalizedCustomDomain.endsWith('.localhost') ||
+      normalizedCustomDomain.startsWith('127.0.0.1');
+    return `${isCustomDomainLocal ? 'http' : 'https'}://${normalizedCustomDomain}`;
+  }
+
+  const normalizedSubdomain = subdomain?.trim().toLowerCase();
+  if (!normalizedSubdomain) return '';
+  if (typeof window === 'undefined') return `https://${normalizedSubdomain}.managgio.com`;
+
+  const hostname = window.location.hostname.toLowerCase();
+  const baseDomainRaw = (import.meta.env.VITE_TENANT_BASE_DOMAIN as string | undefined)?.trim().toLowerCase();
+  const baseDomain = baseDomainRaw?.replace(/^\.+|\.+$/g, '');
+  const runtimePort = window.location.port ? `:${window.location.port}` : '';
+
+  let resolvedHost = '';
+  if (baseDomain) {
+    resolvedHost = `${normalizedSubdomain}.${baseDomain}`;
+  } else if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
+    resolvedHost = `${normalizedSubdomain}.localhost`;
+  } else {
+    const parts = hostname.split('.');
+    if (parts.length > 2) {
+      resolvedHost = `${normalizedSubdomain}.${parts.slice(1).join('.')}`;
+    } else {
+      resolvedHost = `${normalizedSubdomain}.managgio.com`;
+    }
+  }
+
+  const isLocalHost =
+    resolvedHost === 'localhost' || resolvedHost.endsWith('.localhost') || resolvedHost.startsWith('127.0.0.1');
+  return `${isLocalHost ? 'http' : 'https'}://${resolvedHost}${runtimePort}`;
+};
+
 const PlatformBrands: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -660,6 +707,10 @@ const PlatformBrands: React.FC = () => {
       return name.includes(query) || subdomain.includes(query) || customDomain.includes(query);
     });
   }, [brands, brandQuery]);
+  const selectedBrandPublicUrl = useMemo(
+    () => resolveBrandPublicUrl(brandForm.subdomain, brandForm.customDomain),
+    [brandForm.subdomain, brandForm.customDomain],
+  );
   const brandListLayoutClass = isBrandListCollapsed ? 'lg:grid-cols-[96px_1fr]' : 'lg:grid-cols-[320px_1fr]';
   const brandListCardHeightClass = isBrandListCollapsed
     ? 'max-h-[170px] sm:max-h-[190px] lg:max-h-none'
@@ -2455,6 +2506,32 @@ const PlatformBrands: React.FC = () => {
                       placeholder="www.ejemplo.com"
                       onChange={(e) => setBrandForm((prev) => ({ ...prev, customDomain: e.target.value }))}
                     />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Web pública del cliente</Label>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        value={selectedBrandPublicUrl || ''}
+                        placeholder="Define subdominio o dominio personalizado"
+                        readOnly
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="sm:shrink-0"
+                        disabled={!selectedBrandPublicUrl}
+                        onClick={() => {
+                          if (!selectedBrandPublicUrl) return;
+                          window.open(selectedBrandPublicUrl, '_blank', 'noopener,noreferrer');
+                        }}
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Abrir web
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Enlace directo al sitio del cliente seleccionado (dominio personalizado o subdominio).
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Local por defecto</Label>

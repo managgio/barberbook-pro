@@ -190,7 +190,7 @@ const ApiTable: React.FC<{ rows: PlatformObservabilityApiRouteSummary[] }> = ({ 
   }
 
   return (
-    <Table>
+    <Table className="min-w-[980px]">
       <TableHeader>
         <TableRow>
           <TableHead>Estado</TableHead>
@@ -214,7 +214,7 @@ const ApiTable: React.FC<{ rows: PlatformObservabilityApiRouteSummary[] }> = ({ 
                   {meta.label}
                 </Badge>
               </TableCell>
-              <TableCell className="font-mono text-xs sm:text-sm break-all">{row.method} {row.route}</TableCell>
+              <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">{row.method} {row.route}</TableCell>
               <TableCell>{row.subdomain || 'sin subdominio'}</TableCell>
               <TableCell>{formatMs(row.avgDurationMs)}</TableCell>
               <TableCell>{formatMs(row.p95DurationMs)}</TableCell>

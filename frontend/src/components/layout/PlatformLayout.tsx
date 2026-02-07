@@ -1,15 +1,38 @@
-import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import PlatformSidebar from './PlatformSidebar';
 
+const PLATFORM_LAST_ROUTE_STORAGE_KEY = 'platform:last-route:session';
+const PLATFORM_ROUTES = new Set(['/platform', '/platform/brands', '/platform/observability']);
+const PLATFORM_DETAIL_ROUTES = new Set(['/platform/brands', '/platform/observability']);
+
 const PlatformLayout: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const didInitialRestoreRef = useRef(false);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     return window.matchMedia('(max-width: 767px)').matches;
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (didInitialRestoreRef.current) return;
+    didInitialRestoreRef.current = true;
+    if (location.pathname !== '/platform') return;
+    const persistedRoute = window.sessionStorage.getItem(PLATFORM_LAST_ROUTE_STORAGE_KEY);
+    if (!persistedRoute || persistedRoute === '/platform' || !PLATFORM_ROUTES.has(persistedRoute)) return;
+    navigate(persistedRoute, { replace: true });
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!PLATFORM_DETAIL_ROUTES.has(location.pathname)) return;
+    window.sessionStorage.setItem(PLATFORM_LAST_ROUTE_STORAGE_KEY, location.pathname);
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-background">
