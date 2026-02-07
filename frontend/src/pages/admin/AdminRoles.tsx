@@ -31,6 +31,8 @@ import { dispatchUsersUpdated } from '@/lib/adminEvents';
 import { useQuery } from '@tanstack/react-query';
 import { useTenant } from '@/context/TenantContext';
 import { queryKeys } from '@/lib/queryKeys';
+import { adminNavItems } from '@/components/layout/adminNavItems';
+import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 
 const isSuperAdminUser = (candidate: User) => Boolean(candidate.isSuperAdmin || candidate.isPlatformAdmin);
 const USER_SEARCH_DEBOUNCE_MS = 250;
@@ -42,7 +44,28 @@ const AdminRoles: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
   const { currentLocationId } = useTenant();
+  const { canAccessSection } = useAdminPermissions();
   const adminSections = useMemo(() => getAdminSections(copy), [copy]);
+  const visibleSidebarSectionKeys = useMemo(
+    () => new Set(adminNavItems.filter((item) => canAccessSection(item.section)).map((item) => item.section)),
+    [canAccessSection],
+  );
+  const rolePermissionSections = useMemo(
+    () => adminSections.filter((section) => visibleSidebarSectionKeys.has(section.key)),
+    [adminSections, visibleSidebarSectionKeys],
+  );
+  const rolePermissionSectionKeys = useMemo(
+    () => new Set(rolePermissionSections.map((section) => section.key)),
+    [rolePermissionSections],
+  );
+  const sanitizePermissions = useCallback(
+    (permissions: AdminSectionKey[]) => {
+      const filtered = permissions.filter((permission) => rolePermissionSectionKeys.has(permission));
+      if (filtered.length > 0) return filtered;
+      return rolePermissionSectionKeys.has('dashboard') ? ['dashboard'] : rolePermissionSections.slice(0, 1).map((section) => section.key);
+    },
+    [rolePermissionSectionKeys, rolePermissionSections],
+  );
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<AdminRole | null>(null);
@@ -139,7 +162,7 @@ const AdminRoles: React.FC = () => {
     setFormData({
       name: '',
       description: '',
-      permissions: ['dashboard'],
+      permissions: sanitizePermissions(['dashboard']),
     });
     setIsDialogOpen(true);
   };
@@ -149,26 +172,29 @@ const AdminRoles: React.FC = () => {
     setFormData({
       name: role.name,
       description: role.description || '',
-      permissions: role.permissions,
+      permissions: sanitizePermissions(role.permissions),
     });
     setIsDialogOpen(true);
   };
 
   const handleTogglePermission = (permission: AdminSectionKey) => {
+    if (!rolePermissionSectionKeys.has(permission)) return;
     setFormData((prev) => {
       const exists = prev.permissions.includes(permission);
+      const nextPermissions = exists
+        ? prev.permissions.filter((p) => p !== permission)
+        : [...prev.permissions, permission];
       return {
         ...prev,
-        permissions: exists
-          ? prev.permissions.filter((p) => p !== permission)
-          : [...prev.permissions, permission],
+        permissions: sanitizePermissions(nextPermissions),
       };
     });
   };
 
   const handleSaveRole = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.permissions.length === 0) {
+    const sanitizedPermissions = sanitizePermissions(formData.permissions);
+    if (sanitizedPermissions.length === 0) {
       toast({
         title: 'Selecciona permisos',
         description: 'Cada rol debe tener al menos una sección asignada.',
@@ -178,11 +204,15 @@ const AdminRoles: React.FC = () => {
     }
     setIsSavingRole(true);
     try {
+      const payload = {
+        ...formData,
+        permissions: sanitizedPermissions,
+      };
       if (editingRole) {
-        await updateAdminRole(editingRole.id, formData);
+        await updateAdminRole(editingRole.id, payload);
         toast({ title: 'Rol actualizado', description: 'Los cambios se han guardado.' });
       } else {
-        await createAdminRole(formData);
+        await createAdminRole(payload);
         toast({ title: 'Rol creado', description: 'El nuevo rol ya está disponible.' });
       }
       setIsDialogOpen(false);
@@ -500,11 +530,11 @@ const AdminRoles: React.FC = () => {
 
       {/* Role dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl h-[85vh] max-h-[760px] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingRole ? 'Editar rol' : 'Nuevo rol'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSaveRole} className="space-y-5">
+          <form onSubmit={handleSaveRole} className="flex flex-1 min-h-0 flex-col gap-5 overflow-hidden">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="role-name">Nombre del rol</Label>
@@ -526,10 +556,10 @@ const AdminRoles: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1">
               <Label>Permisos del sidebar</Label>
               <div className="grid sm:grid-cols-2 gap-2">
-                {adminSections.map((section) => (
+                {rolePermissionSections.map((section) => (
                   <label
                     key={section.key}
                     className={cn(
