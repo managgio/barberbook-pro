@@ -21,7 +21,7 @@ export class PlatformAdminController {
   private parseWindowMinutes(raw?: string) {
     const parsed = raw ? Number(raw) : 60;
     if (!Number.isFinite(parsed)) return 60;
-    return Math.min(24 * 60, Math.max(5, Math.floor(parsed)));
+    return Math.min(7 * 24 * 60, Math.max(5, Math.floor(parsed)));
   }
 
   @Get('brands')
@@ -54,6 +54,11 @@ export class PlatformAdminController {
   @Get('brands/:id')
   getBrand(@Param('id') id: string) {
     return this.platformService.getBrand(id);
+  }
+
+  @Get('brands/:id/health')
+  getBrandHealth(@Param('id') id: string) {
+    return this.platformService.getBrandHealth(id);
   }
 
   @Post('brands')

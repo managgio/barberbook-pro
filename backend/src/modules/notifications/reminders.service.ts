@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
+import { DistributedLockService } from '../../prisma/distributed-lock.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
 import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
@@ -18,6 +19,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly tenantConfig: TenantConfigService,
+    private readonly distributedLock: DistributedLockService,
   ) {}
 
   onModuleInit() {
@@ -30,6 +32,20 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleReminders() {
+    const executed = await this.distributedLock.runWithLock(
+      'cron:notifications-reminders',
+      async () => {
+        await this.runReminders();
+      },
+      {
+        ttlMs: 10 * 60_000,
+        onLockedMessage: 'Skipping reminders in this instance; lock already held',
+      },
+    );
+    if (!executed) return;
+  }
+
+  private async runReminders() {
     let totalReminders = 0;
     await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
       try {

@@ -548,6 +548,7 @@ model ReferralCode {
   @@unique([code, localId])
   @@unique([userId, localId])
   @@index([localId])
+  @@index([localId, createdAt])
 }
 
 model ReferralAttribution {
@@ -660,6 +661,7 @@ model RewardTransaction {
   createdAt  DateTime  @default(now())
 
   @@index([userId, localId, createdAt])
+  @@index([localId, status, createdAt])
   @@index([referralAttributionId])
   @@index([appointmentId])
   @@index([couponId])
@@ -709,6 +711,8 @@ model CashMovement {
 
   @@index([localId])
   @@index([occurredAt])
+  @@index([localId, occurredAt])
+  @@index([localId, createdAt])
 }
 
 model CashMovementProductItem {
@@ -742,6 +746,7 @@ model ClientNote {
   @@index([localId])
   @@index([userId])
   @@index([authorId])
+  @@index([localId, userId, createdAt])
 }
 
 model ConsentRecord {
@@ -1027,4 +1032,55 @@ model ProviderUsageDaily {
   @@index([provider, dateKey])
   @@index([brandId])
   @@map("provider_usage_daily")
+}
+
+model WebVitalEvent {
+  id        BigInt   @id @default(autoincrement())
+  brandId   String
+  localId   String
+  name      String   @db.VarChar(12)
+  value     Float
+  rating    String   @db.VarChar(24)
+  path      String   @db.VarChar(300)
+  timestamp DateTime @db.DateTime(3)
+  userAgent String?  @db.VarChar(200)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+
+  @@index([timestamp])
+  @@index([localId, timestamp])
+  @@index([brandId, localId, timestamp])
+  @@index([name, timestamp])
+  @@index([rating, timestamp])
+  @@map("web_vital_events")
+}
+
+model ApiMetricEvent {
+  id         BigInt   @id @default(autoincrement())
+  brandId    String
+  localId    String
+  subdomain  String?  @db.VarChar(80)
+  method     String   @db.VarChar(12)
+  route      String   @db.VarChar(220)
+  statusCode Int
+  durationMs Float
+  timestamp  DateTime @db.DateTime(3)
+  createdAt  DateTime @default(now()) @db.DateTime(3)
+
+  @@index([timestamp])
+  @@index([localId, timestamp])
+  @@index([brandId, localId, method, route, timestamp])
+  @@index([statusCode, timestamp])
+  @@index([subdomain, timestamp])
+  @@map("api_metric_events")
+}
+
+model DistributedLock {
+  lockKey   String   @id @db.VarChar(120)
+  ownerId   String   @db.VarChar(80)
+  expiresAt DateTime @db.DateTime(3)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  @@index([expiresAt])
+  @@map("distributed_locks")
 }

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getAdminCalendarData, updateAppointment } from '@/data/api/appointments';
 import { getAdminStripeConfig } from '@/data/api/payments';
@@ -64,9 +64,10 @@ const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_BARBERS: Barber[] = [];
 const EMPTY_SERVICES: Service[] = [];
+const EMPTY_CLIENTS: AdminCalendarResponse['clients'] = [];
 const EMPTY_CALENDAR_RESPONSE: AdminCalendarResponse = {
   items: EMPTY_APPOINTMENTS,
-  clients: [],
+  clients: EMPTY_CLIENTS,
 };
 const readCalendarPreference = (key: string) => {
   if (typeof window === 'undefined') return null;
@@ -147,7 +148,7 @@ const AdminCalendar: React.FC = () => {
   const appointments = calendarData.items ?? EMPTY_APPOINTMENTS;
   const barbers = barbersQuery.data ?? EMPTY_BARBERS;
   const services = servicesQuery.data ?? EMPTY_SERVICES;
-  const clients = calendarData.clients ?? [];
+  const clients = calendarData.clients ?? EMPTY_CLIENTS;
   const stripeEnabled = Boolean(
     stripeConfigQuery.data?.brandEnabled &&
       stripeConfigQuery.data?.platformEnabled &&
@@ -672,6 +673,9 @@ const AdminCalendar: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Detalle de cita</DialogTitle>
+            <DialogDescription className="sr-only">
+              Vista completa de la cita, estado, cliente, servicio y método de pago.
+            </DialogDescription>
           </DialogHeader>
           {selectedAppointment && (
             <div className="space-y-4">

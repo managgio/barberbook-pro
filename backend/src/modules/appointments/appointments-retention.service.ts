@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
+import { DistributedLockService } from '../../prisma/distributed-lock.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
 import { AI_TIME_ZONE } from '../ai-assistant/ai-assistant.utils';
@@ -15,6 +16,7 @@ export class AppointmentsRetentionService implements OnModuleInit, OnModuleDestr
     private readonly prisma: PrismaService,
     private readonly legalService: LegalService,
     private readonly appointmentsService: AppointmentsService,
+    private readonly distributedLock: DistributedLockService,
   ) {}
 
   onModuleInit() {
@@ -32,6 +34,20 @@ export class AppointmentsRetentionService implements OnModuleInit, OnModuleDestr
   }
 
   private async handleRetention() {
+    const executed = await this.distributedLock.runWithLock(
+      'cron:appointments-retention',
+      async () => {
+        await this.runRetention();
+      },
+      {
+        ttlMs: 90 * 60_000,
+        onLockedMessage: 'Skipping retention job in this instance; lock already held',
+      },
+    );
+    if (!executed) return;
+  }
+
+  private async runRetention() {
     let anonymizedTotal = 0;
     await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
       try {

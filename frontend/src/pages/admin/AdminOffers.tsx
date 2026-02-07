@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -529,6 +529,9 @@ const AdminOffers: React.FC = () => {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingOffer ? 'Editar oferta' : `Nueva oferta de ${targetLabels[activeTarget].toLowerCase()}`}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Configura descuento, alcance, vigencia y estado de la oferta.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="grid md:grid-cols-2 gap-4 py-4">
@@ -728,6 +731,9 @@ const AdminOffers: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Eliminar oferta</DialogTitle>
+            <DialogDescription className="sr-only">
+              Confirmación para eliminar la oferta seleccionada.
+            </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Esta acción no se puede deshacer. La oferta dejará de aplicarse inmediatamente.

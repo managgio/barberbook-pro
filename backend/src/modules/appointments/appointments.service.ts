@@ -1360,11 +1360,19 @@ export class AppointmentsService {
   }): string[] {
     const { dateOnly, schedule, shopSchedule, appointments, targetDuration } = params;
     const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
-    const endOverflowMinutes = schedule.endOverflowMinutes ?? shopSchedule.endOverflowMinutes ?? 0;
     const dayKey = getWeekdayKey(dateOnly, APP_TIMEZONE);
+    const endOverflowMinutes = this.resolveEndOverflowMinutes({
+      dateOnly,
+      dayKey,
+      barberSchedule: schedule,
+      shopSchedule,
+    });
     const daySchedule = (schedule || DEFAULT_SHOP_SCHEDULE)[dayKey];
     if (!daySchedule || daySchedule.closed) return [];
-    const dayBreaks = shopSchedule.breaks?.[dayKey] ?? [];
+    const dayBreaks = [
+      ...(shopSchedule.breaks?.[dayKey] ?? []),
+      ...(shopSchedule.breaksByDate?.[dateOnly] ?? []),
+    ];
     const targetDurationWithBuffer = targetDuration + Math.max(0, bufferMinutes);
     const normalizedEndOverflow = Math.max(0, Math.floor(endOverflowMinutes));
 
@@ -1494,6 +1502,49 @@ export class AppointmentsService {
     afternoonFree.intervals.forEach((interval) => maybeAddGapSlot(interval, afternoonFree.shiftEnd));
 
     return Array.from(slotSet).sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
+  }
+
+  private resolveEndOverflowFromSchedule(params: {
+    schedule: ShopSchedule | null | undefined;
+    dayKey: ReturnType<typeof getWeekdayKey>;
+    dateOnly: string;
+  }): number | null {
+    const { schedule, dayKey, dateOnly } = params;
+    if (!schedule) return null;
+    const byDate = schedule.endOverflowByDate?.[dateOnly];
+    if (typeof byDate === 'number' && Number.isFinite(byDate)) {
+      return Math.max(0, Math.floor(byDate));
+    }
+    const byDay = schedule.endOverflowByDay?.[dayKey];
+    if (typeof byDay === 'number' && Number.isFinite(byDay)) {
+      return Math.max(0, Math.floor(byDay));
+    }
+    const global = schedule.endOverflowMinutes;
+    if (typeof global === 'number' && Number.isFinite(global)) {
+      return Math.max(0, Math.floor(global));
+    }
+    return null;
+  }
+
+  private resolveEndOverflowMinutes(params: {
+    dateOnly: string;
+    dayKey: ReturnType<typeof getWeekdayKey>;
+    barberSchedule: ShopSchedule | null | undefined;
+    shopSchedule: ShopSchedule | null | undefined;
+  }): number {
+    const { dateOnly, dayKey, barberSchedule, shopSchedule } = params;
+    const barberValue = this.resolveEndOverflowFromSchedule({
+      schedule: barberSchedule,
+      dayKey,
+      dateOnly,
+    });
+    if (barberValue !== null) return barberValue;
+    const shopValue = this.resolveEndOverflowFromSchedule({
+      schedule: shopSchedule,
+      dayKey,
+      dateOnly,
+    });
+    return shopValue ?? 0;
   }
 
   async getAvailableSlots(

@@ -4,11 +4,12 @@ import { TenantService } from './tenant.service';
 import { TenantConfigService } from './tenant-config.service';
 import { TenantMiddleware } from './tenant.middleware';
 import { TenantController } from './tenant.controller';
+import { TenantPrismaService } from './tenant-prisma.service';
 
 @Module({
   imports: [PrismaModule],
-  providers: [TenantService, TenantConfigService, TenantMiddleware],
+  providers: [TenantService, TenantConfigService, TenantMiddleware, TenantPrismaService],
   controllers: [TenantController],
-  exports: [TenantService, TenantConfigService, TenantMiddleware],
+  exports: [TenantService, TenantConfigService, TenantMiddleware, TenantPrismaService],
 })
 export class TenancyModule {}

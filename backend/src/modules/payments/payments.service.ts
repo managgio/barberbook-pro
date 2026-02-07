@@ -4,6 +4,7 @@ import { Prisma, PaymentMethod, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { getCurrentBrandId, getCurrentLocalId, runWithTenantContextAsync } from '../../tenancy/tenant.context';
+import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { CreateStripeCheckoutDto } from './dto/create-stripe-checkout.dto';
 
@@ -571,17 +572,24 @@ export class PaymentsService {
 
   async cancelExpiredStripePayments() {
     const now = new Date();
-    const pending = await this.prisma.appointment.findMany({
-      where: {
-        paymentStatus: PaymentStatus.pending,
-        paymentExpiresAt: { lt: now },
-        status: { not: 'cancelled' },
-      },
-      select: { id: true },
+    let cancelled = 0;
+
+    await runForEachActiveLocation(this.prisma, async ({ localId }) => {
+      const pending = await this.prisma.appointment.findMany({
+        where: {
+          localId,
+          paymentStatus: PaymentStatus.pending,
+          paymentExpiresAt: { lt: now },
+          status: { not: 'cancelled' },
+        },
+        select: { id: true },
+      });
+      for (const appointment of pending) {
+        await this.cancelPendingAppointment(appointment.id, 'stripe_timeout');
+      }
+      cancelled += pending.length;
     });
-    for (const appointment of pending) {
-      await this.cancelPendingAppointment(appointment.id, 'stripe_timeout');
-    }
-    return { cancelled: pending.length };
+
+    return { cancelled };
   }
 }

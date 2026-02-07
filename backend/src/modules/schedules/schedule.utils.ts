@@ -1,8 +1,11 @@
 import {
   BreakRange,
   BreakSchedule,
+  BreakScheduleByDate,
   DayKey,
   DaySchedule,
+  EndOverflowByDate,
+  EndOverflowByDay,
   HolidayRange,
   ShiftSchedule,
   ShopSchedule,
@@ -67,6 +70,7 @@ const normalizeBufferMinutes = (value: unknown): number => {
 };
 
 const normalizeEndOverflowMinutes = (value: unknown): number => normalizeBufferMinutes(value);
+const ISO_DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const parseTime = (value?: string | null): number | null => {
   if (!value) return null;
@@ -74,6 +78,24 @@ const parseTime = (value?: string | null): number | null => {
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return hour * 60 + minute;
+};
+
+const normalizeBreakRange = (range: BreakRange | null | undefined): BreakRange | null => {
+  const startMinutes = parseTime(range?.start);
+  const endMinutes = parseTime(range?.end);
+  if (startMinutes === null || endMinutes === null) return null;
+  if (startMinutes === endMinutes) return null;
+  if (startMinutes > endMinutes) {
+    return { start: range!.end, end: range!.start };
+  }
+  return { start: range!.start, end: range!.end };
+};
+
+const normalizeBreakRangesList = (ranges: unknown): BreakRange[] => {
+  if (!Array.isArray(ranges)) return [];
+  return (ranges as BreakRange[])
+    .map((range) => normalizeBreakRange(range))
+    .filter((range): range is BreakRange => Boolean(range));
 };
 
 const normalizeBreaks = (input?: unknown): BreakSchedule => {
@@ -90,20 +112,44 @@ const normalizeBreaks = (input?: unknown): BreakSchedule => {
   const record = input as Record<string, unknown>;
   const normalized: BreakSchedule = { ...fallback };
   DAY_KEYS.forEach((day) => {
-    const ranges = record[day];
-    if (!Array.isArray(ranges)) return;
-    normalized[day] = (ranges as BreakRange[])
-      .map((range) => {
-        const startMinutes = parseTime(range?.start);
-        const endMinutes = parseTime(range?.end);
-        if (startMinutes === null || endMinutes === null) return null;
-        if (startMinutes === endMinutes) return null;
-        if (startMinutes > endMinutes) {
-          return { start: range.end, end: range.start };
-        }
-        return { start: range.start, end: range.end };
-      })
-      .filter((range): range is BreakRange => Boolean(range));
+    normalized[day] = normalizeBreakRangesList(record[day]);
+  });
+  return normalized;
+};
+
+const normalizeBreaksByDate = (input?: unknown): BreakScheduleByDate => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  const record = input as Record<string, unknown>;
+  const normalized: BreakScheduleByDate = {};
+  Object.entries(record).forEach(([dateKey, ranges]) => {
+    if (!ISO_DATE_KEY_REGEX.test(dateKey)) return;
+    const normalizedRanges = normalizeBreakRangesList(ranges);
+    if (normalizedRanges.length > 0) {
+      normalized[dateKey] = normalizedRanges;
+    }
+  });
+  return normalized;
+};
+
+const normalizeEndOverflowByDay = (input?: unknown): EndOverflowByDay => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  const record = input as Record<string, unknown>;
+  const normalized: EndOverflowByDay = {};
+  DAY_KEYS.forEach((day) => {
+    if (record[day] === undefined || record[day] === null || record[day] === '') return;
+    normalized[day] = normalizeEndOverflowMinutes(record[day]);
+  });
+  return normalized;
+};
+
+const normalizeEndOverflowByDate = (input?: unknown): EndOverflowByDate => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  const record = input as Record<string, unknown>;
+  const normalized: EndOverflowByDate = {};
+  Object.entries(record).forEach(([dateKey, value]) => {
+    if (!ISO_DATE_KEY_REGEX.test(dateKey)) return;
+    if (value === undefined || value === null || value === '') return;
+    normalized[dateKey] = normalizeEndOverflowMinutes(value);
   });
   return normalized;
 };
@@ -154,7 +200,22 @@ export const normalizeSchedule = (
       schedule?.endOverflowMinutes ?? DEFAULT_SHOP_SCHEDULE.endOverflowMinutes,
     );
   }
+  if (options?.preserveEndOverflowUndefined && schedule?.endOverflowByDay === undefined) {
+    normalized.endOverflowByDay = undefined;
+  } else {
+    normalized.endOverflowByDay = normalizeEndOverflowByDay(
+      schedule?.endOverflowByDay ?? DEFAULT_SHOP_SCHEDULE.endOverflowByDay,
+    );
+  }
+  if (options?.preserveEndOverflowUndefined && schedule?.endOverflowByDate === undefined) {
+    normalized.endOverflowByDate = undefined;
+  } else {
+    normalized.endOverflowByDate = normalizeEndOverflowByDate(
+      schedule?.endOverflowByDate ?? DEFAULT_SHOP_SCHEDULE.endOverflowByDate,
+    );
+  }
   normalized.breaks = normalizeBreaks(schedule?.breaks);
+  normalized.breaksByDate = normalizeBreaksByDate(schedule?.breaksByDate);
   DAY_KEYS.forEach((day) => {
     const fallback = cloneDaySchedule(DEFAULT_SHOP_SCHEDULE[day]);
     const dayData = schedule?.[day] as Partial<DaySchedule> | undefined;

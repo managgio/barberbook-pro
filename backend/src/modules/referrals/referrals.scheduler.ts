@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
+import { DistributedLockService } from '../../prisma/distributed-lock.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
 import { RewardTxStatus, RewardTxType } from '@prisma/client';
@@ -12,7 +13,10 @@ export class ReferralsSchedulerService implements OnModuleInit, OnModuleDestroy 
   private readonly logger = new Logger(ReferralsSchedulerService.name);
   private task: ScheduledTask | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly distributedLock: DistributedLockService,
+  ) {}
 
   onModuleInit() {
     this.task = schedule('0 3 * * *', () => {
@@ -25,6 +29,20 @@ export class ReferralsSchedulerService implements OnModuleInit, OnModuleDestroy 
   }
 
   private async handleDaily() {
+    const executed = await this.distributedLock.runWithLock(
+      'cron:referrals-daily',
+      async () => {
+        await this.runDaily();
+      },
+      {
+        ttlMs: 45 * 60_000,
+        onLockedMessage: 'Skipping referrals daily job in this instance; lock already held',
+      },
+    );
+    if (!executed) return;
+  }
+
+  private async runDaily() {
     try {
       await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
         try {

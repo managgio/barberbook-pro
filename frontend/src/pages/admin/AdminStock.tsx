@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -690,6 +690,9 @@ const AdminStock: React.FC = () => {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingProduct ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Completa los datos del producto, stock, categoría y visibilidad.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
@@ -832,6 +835,9 @@ const AdminStock: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingCategory ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Crea o edita categorías para organizar los productos.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -908,6 +914,9 @@ const AdminStock: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Importar productos</DialogTitle>
+            <DialogDescription className="sr-only">
+              Selecciona local origen y destino para copiar catálogo y datos de productos.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">

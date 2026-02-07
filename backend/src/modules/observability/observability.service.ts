@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { DistributedLockService } from '../../prisma/distributed-lock.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { ReportWebVitalDto, WebVitalName, WebVitalRating } from './dto/report-web-vital.dto';
 
 type WebVitalRecord = {
@@ -36,6 +38,12 @@ const DEFAULT_API_ALERT_MIN_SAMPLES = 20;
 const DEFAULT_API_ALERT_ERROR_RATE_PERCENT = 25;
 const DEFAULT_API_ALERT_ERROR_MIN_COUNT = 5;
 const DEFAULT_API_ALERT_P95_MS = 1800;
+const DEFAULT_PERSIST_FLUSH_INTERVAL_MS = 5_000;
+const DEFAULT_PERSIST_BATCH_SIZE = 500;
+const DEFAULT_PERSIST_BUFFER_LIMIT = 20_000;
+const DEFAULT_PERSIST_RETENTION_DAYS = 30;
+const DEFAULT_SUMMARY_QUERY_CAP = 120_000;
+
 const WEB_VITAL_THRESHOLDS: Record<WebVitalName, { good: number; poor: number; unit: string }> = {
   [WebVitalName.LCP]: { good: 2500, poor: 4000, unit: 'ms' },
   [WebVitalName.CLS]: { good: 0.1, poor: 0.25, unit: 'score' },
@@ -46,7 +54,7 @@ const WEB_VITAL_THRESHOLDS: Record<WebVitalName, { good: number; poor: number; u
 
 const clampWindowMinutes = (value?: number) => {
   if (!value || Number.isNaN(value)) return 60;
-  return Math.min(24 * 60, Math.max(5, Math.floor(value)));
+  return Math.min(7 * 24 * 60, Math.max(5, Math.floor(value)));
 };
 
 const parseNumber = (value: string | undefined, fallback: number) => {
@@ -72,10 +80,12 @@ const percentile = (values: number[], target: number) => {
 };
 
 @Injectable()
-export class ObservabilityService {
+export class ObservabilityService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ObservabilityService.name);
   private readonly webVitals: WebVitalRecord[] = [];
   private readonly apiMetrics: ApiMetricRecord[] = [];
+  private readonly pendingWebVitals: WebVitalRecord[] = [];
+  private readonly pendingApiMetrics: ApiMetricRecord[] = [];
   private readonly alertRecipients = parseRecipients(process.env.OBSERVABILITY_ALERT_EMAILS);
   private readonly alertCooldownMs = parseNumber(
     process.env.OBSERVABILITY_ALERT_COOLDOWN_MINUTES,
@@ -101,9 +111,55 @@ export class ObservabilityService {
     process.env.OBSERVABILITY_ALERT_API_P95_MS,
     DEFAULT_API_ALERT_P95_MS,
   );
+  private readonly persistFlushIntervalMs = parseNumber(
+    process.env.OBSERVABILITY_PERSIST_FLUSH_MS,
+    DEFAULT_PERSIST_FLUSH_INTERVAL_MS,
+  );
+  private readonly persistBatchSize = Math.max(
+    100,
+    parseNumber(process.env.OBSERVABILITY_PERSIST_BATCH_SIZE, DEFAULT_PERSIST_BATCH_SIZE),
+  );
+  private readonly persistBufferLimit = Math.max(
+    5_000,
+    parseNumber(process.env.OBSERVABILITY_PERSIST_BUFFER_LIMIT, DEFAULT_PERSIST_BUFFER_LIMIT),
+  );
+  private readonly persistedRetentionMs =
+    parseNumber(process.env.OBSERVABILITY_PERSIST_RETENTION_DAYS, DEFAULT_PERSIST_RETENTION_DAYS) *
+    24 *
+    60 *
+    60 *
+    1000;
+  private readonly summaryQueryCap = Math.max(
+    5_000,
+    parseNumber(process.env.OBSERVABILITY_SUMMARY_QUERY_CAP, DEFAULT_SUMMARY_QUERY_CAP),
+  );
   private readonly alertCooldownByKey = new Map<string, number>();
   private alertTransporter: nodemailer.Transporter | null | undefined;
   private missingEmailConfigWarned = false;
+  private flushTimer: NodeJS.Timeout | null = null;
+  private isFlushingWebVitals = false;
+  private isFlushingApiMetrics = false;
+  private lastPersistenceCleanupAt = 0;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly distributedLock: DistributedLockService,
+  ) {}
+
+  onModuleInit() {
+    this.flushTimer = setInterval(() => {
+      void this.flushBuffers();
+    }, this.persistFlushIntervalMs);
+    this.flushTimer.unref();
+  }
+
+  async onModuleDestroy() {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+    await this.flushBuffers(true);
+  }
 
   private pruneAlertCooldown(now: number) {
     const retentionMs = this.alertCooldownMs * 3;
@@ -204,21 +260,55 @@ export class ObservabilityService {
     });
   }
 
-  private maybeAlertApiDegradation(record: ApiMetricRecord) {
+  private async maybeAlertApiDegradation(record: ApiMetricRecord) {
     if (record.statusCode < 500 && record.durationMs < this.apiAlertP95Ms) {
       return;
     }
+
     const now = Date.now();
     const windowMs = this.apiAlertWindowMinutes * 60_000;
     const since = now - windowMs;
-    const routeSamples = this.apiMetrics.filter(
-      (item) =>
-        item.timestamp >= since &&
-        item.brandId === record.brandId &&
-        item.localId === record.localId &&
-        item.method === record.method &&
-        item.route === record.route,
-    );
+
+    let routeSamples: Array<{ statusCode: number; durationMs: number }> = [];
+    try {
+      await this.flushApiMetrics();
+      const persisted = await this.prisma.apiMetricEvent.findMany({
+        where: {
+          timestamp: { gte: new Date(since) },
+          brandId: record.brandId,
+          localId: record.localId,
+          method: record.method,
+          route: record.route,
+        },
+        select: {
+          statusCode: true,
+          durationMs: true,
+        },
+        orderBy: { timestamp: 'desc' },
+        take: this.summaryQueryCap,
+      });
+      routeSamples = persisted.map((entry) => ({
+        statusCode: entry.statusCode,
+        durationMs: Number(entry.durationMs),
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Observability API alert fallback to memory: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+
+    if (routeSamples.length === 0) {
+      routeSamples = this.apiMetrics
+        .filter(
+          (item) =>
+            item.timestamp >= since &&
+            item.brandId === record.brandId &&
+            item.localId === record.localId &&
+            item.method === record.method &&
+            item.route === record.route,
+        )
+        .map((item) => ({ statusCode: item.statusCode, durationMs: item.durationMs }));
+    }
 
     if (routeSamples.length < this.apiAlertMinSamples) {
       return;
@@ -231,11 +321,9 @@ export class ObservabilityService {
     const avgDurationMs = Number(
       (durations.reduce((acc, value) => acc + value, 0) / Math.max(1, durations.length)).toFixed(2),
     );
+
     const reasons: string[] = [];
-    if (
-      serverErrors >= this.apiAlertErrorMinCount &&
-      errorRate >= this.apiAlertErrorRatePercent
-    ) {
+    if (serverErrors >= this.apiAlertErrorMinCount && errorRate >= this.apiAlertErrorRatePercent) {
       reasons.push(
         `error rate 5xx ${errorRate.toFixed(2)}% (count ${serverErrors}/${routeSamples.length})`,
       );
@@ -243,7 +331,6 @@ export class ObservabilityService {
     if (p95DurationMs >= this.apiAlertP95Ms) {
       reasons.push(`p95 latency ${p95DurationMs}ms (threshold ${this.apiAlertP95Ms}ms)`);
     }
-
     if (!reasons.length) return;
 
     const key = `api-degraded:${record.brandId}:${record.localId}:${record.method}:${record.route}`;
@@ -295,6 +382,133 @@ export class ObservabilityService {
     }
   }
 
+  private pushPendingWebVital(record: WebVitalRecord) {
+    this.pendingWebVitals.push(record);
+    if (this.pendingWebVitals.length > this.persistBufferLimit) {
+      this.pendingWebVitals.splice(0, this.pendingWebVitals.length - this.persistBufferLimit);
+    }
+    if (this.pendingWebVitals.length >= this.persistBatchSize) {
+      void this.flushWebVitals();
+    }
+  }
+
+  private pushPendingApiMetric(record: ApiMetricRecord) {
+    this.pendingApiMetrics.push(record);
+    if (this.pendingApiMetrics.length > this.persistBufferLimit) {
+      this.pendingApiMetrics.splice(0, this.pendingApiMetrics.length - this.persistBufferLimit);
+    }
+    if (this.pendingApiMetrics.length >= this.persistBatchSize) {
+      void this.flushApiMetrics();
+    }
+  }
+
+  private async flushBuffers(force = false) {
+    await Promise.all([
+      this.flushWebVitals(force),
+      this.flushApiMetrics(force),
+    ]);
+    await this.maybeCleanupPersistedMetrics();
+  }
+
+  private async flushWebVitals(force = false) {
+    if (this.isFlushingWebVitals) return;
+    if (this.pendingWebVitals.length === 0) return;
+    this.isFlushingWebVitals = true;
+
+    const maxBatches = force ? Number.POSITIVE_INFINITY : 2;
+    let processed = 0;
+    try {
+      while (this.pendingWebVitals.length > 0 && processed < maxBatches) {
+        processed += 1;
+        const batch = this.pendingWebVitals.splice(0, this.persistBatchSize);
+        if (batch.length === 0) break;
+        await this.prisma.webVitalEvent.createMany({
+          data: batch.map((item) => ({
+            brandId: item.brandId,
+            localId: item.localId,
+            name: item.name,
+            value: item.value,
+            rating: item.rating,
+            path: item.path,
+            timestamp: new Date(item.timestamp),
+            userAgent: item.userAgent || null,
+          })),
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to flush web vitals to DB: ${error instanceof Error ? error.message : error}`,
+      );
+    } finally {
+      this.isFlushingWebVitals = false;
+      if (!force && this.pendingWebVitals.length > 0) {
+        void this.flushWebVitals();
+      }
+    }
+  }
+
+  private async flushApiMetrics(force = false) {
+    if (this.isFlushingApiMetrics) return;
+    if (this.pendingApiMetrics.length === 0) return;
+    this.isFlushingApiMetrics = true;
+
+    const maxBatches = force ? Number.POSITIVE_INFINITY : 2;
+    let processed = 0;
+    try {
+      while (this.pendingApiMetrics.length > 0 && processed < maxBatches) {
+        processed += 1;
+        const batch = this.pendingApiMetrics.splice(0, this.persistBatchSize);
+        if (batch.length === 0) break;
+        await this.prisma.apiMetricEvent.createMany({
+          data: batch.map((item) => ({
+            brandId: item.brandId,
+            localId: item.localId,
+            subdomain: item.subdomain,
+            method: item.method,
+            route: item.route,
+            statusCode: item.statusCode,
+            durationMs: item.durationMs,
+            timestamp: new Date(item.timestamp),
+          })),
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to flush API metrics to DB: ${error instanceof Error ? error.message : error}`,
+      );
+    } finally {
+      this.isFlushingApiMetrics = false;
+      if (!force && this.pendingApiMetrics.length > 0) {
+        void this.flushApiMetrics();
+      }
+    }
+  }
+
+  private async maybeCleanupPersistedMetrics() {
+    const now = Date.now();
+    if (now - this.lastPersistenceCleanupAt < 15 * 60_000) return;
+    this.lastPersistenceCleanupAt = now;
+
+    await this.distributedLock.runWithLock(
+      'cron:observability-retention',
+      async () => {
+        const cutoff = new Date(now - this.persistedRetentionMs);
+        await Promise.all([
+          this.prisma.webVitalEvent.deleteMany({
+            where: { timestamp: { lt: cutoff } },
+          }),
+          this.prisma.apiMetricEvent.deleteMany({
+            where: { timestamp: { lt: cutoff } },
+          }),
+        ]);
+      },
+      {
+        ttlMs: 5 * 60_000,
+        onLockedMessage: 'Skipping observability retention in this instance; lock already held',
+      },
+    );
+  }
+
   recordWebVital(
     payload: ReportWebVitalDto,
     context: { localId: string; brandId: string; userAgent?: string },
@@ -305,7 +519,7 @@ export class ObservabilityService {
         ? payload.timestamp
         : now;
 
-    this.webVitals.push({
+    const record: WebVitalRecord = {
       name: payload.name,
       value: Number(payload.value),
       rating: payload.rating,
@@ -314,7 +528,10 @@ export class ObservabilityService {
       localId: context.localId,
       brandId: context.brandId,
       userAgent: context.userAgent?.slice(0, 200),
-    });
+    };
+
+    this.webVitals.push(record);
+    this.pushPendingWebVital(record);
 
     this.pruneByRetention(this.webVitals, {
       now,
@@ -333,12 +550,15 @@ export class ObservabilityService {
 
   recordApiMetric(record: ApiMetricRecord) {
     const now = Date.now();
-    this.apiMetrics.push({
+    const normalized: ApiMetricRecord = {
       ...record,
       durationMs: Number(record.durationMs.toFixed(2)),
       route: record.route.slice(0, 220),
       method: record.method.slice(0, 12).toUpperCase(),
-    });
+    };
+
+    this.apiMetrics.push(normalized);
+    this.pushPendingApiMetric(normalized);
 
     this.pruneByRetention(this.apiMetrics, {
       now,
@@ -347,13 +567,96 @@ export class ObservabilityService {
       resolveTimestamp: (item) => item.timestamp,
     });
 
-    this.maybeAlertApiDegradation(record);
+    void this.maybeAlertApiDegradation(normalized);
   }
 
-  getWebVitalsSummary(windowMinutes?: number) {
+  private async loadWebVitalsSince(sinceMs: number) {
+    try {
+      await this.flushWebVitals();
+      const records = await this.prisma.webVitalEvent.findMany({
+        where: {
+          timestamp: { gte: new Date(sinceMs) },
+        },
+        select: {
+          name: true,
+          value: true,
+          rating: true,
+          path: true,
+          timestamp: true,
+        },
+        orderBy: { timestamp: 'desc' },
+        take: this.summaryQueryCap,
+      });
+      return records.map((record) => ({
+        name: record.name as WebVitalName,
+        value: Number(record.value),
+        rating: record.rating as WebVitalRating,
+        path: record.path,
+        timestamp: record.timestamp.getTime(),
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load web vitals from DB, using memory fallback: ${error instanceof Error ? error.message : error}`,
+      );
+      return this.webVitals
+        .filter((item) => item.timestamp >= sinceMs)
+        .map((item) => ({
+          name: item.name,
+          value: item.value,
+          rating: item.rating,
+          path: item.path,
+          timestamp: item.timestamp,
+        }));
+    }
+  }
+
+  private async loadApiMetricsSince(sinceMs: number) {
+    try {
+      await this.flushApiMetrics();
+      const records = await this.prisma.apiMetricEvent.findMany({
+        where: {
+          timestamp: { gte: new Date(sinceMs) },
+        },
+        select: {
+          method: true,
+          route: true,
+          subdomain: true,
+          statusCode: true,
+          durationMs: true,
+          timestamp: true,
+        },
+        orderBy: { timestamp: 'desc' },
+        take: this.summaryQueryCap,
+      });
+      return records.map((record) => ({
+        method: record.method,
+        route: record.route,
+        subdomain: record.subdomain,
+        statusCode: record.statusCode,
+        durationMs: Number(record.durationMs),
+        timestamp: record.timestamp.getTime(),
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load API metrics from DB, using memory fallback: ${error instanceof Error ? error.message : error}`,
+      );
+      return this.apiMetrics
+        .filter((item) => item.timestamp >= sinceMs)
+        .map((item) => ({
+          method: item.method,
+          route: item.route,
+          subdomain: item.subdomain,
+          statusCode: item.statusCode,
+          durationMs: item.durationMs,
+          timestamp: item.timestamp,
+        }));
+    }
+  }
+
+  async getWebVitalsSummary(windowMinutes?: number) {
     const safeWindowMinutes = clampWindowMinutes(windowMinutes);
     const since = Date.now() - safeWindowMinutes * 60_000;
-    const recent = this.webVitals.filter((item) => item.timestamp >= since);
+    const recent = await this.loadWebVitalsSince(since);
 
     const byMetric = WEB_VITAL_NAMES.map((name) => {
       const metricRecords = recent.filter((item) => item.name === name);
@@ -368,7 +671,10 @@ export class ObservabilityService {
       return {
         name,
         count: metricRecords.length,
-        avg: values.length === 0 ? 0 : Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)),
+        avg:
+          values.length === 0
+            ? 0
+            : Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)),
         p75: percentile(values, 0.75),
         p95: percentile(values, 0.95),
         ratings,
@@ -392,10 +698,10 @@ export class ObservabilityService {
     };
   }
 
-  getApiMetricsSummary(windowMinutes?: number) {
+  async getApiMetricsSummary(windowMinutes?: number) {
     const safeWindowMinutes = clampWindowMinutes(windowMinutes);
     const since = Date.now() - safeWindowMinutes * 60_000;
-    const recent = this.apiMetrics.filter((item) => item.timestamp >= since);
+    const recent = await this.loadApiMetricsSince(since);
 
     const grouped = new Map<
       string,

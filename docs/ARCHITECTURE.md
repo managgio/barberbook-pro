@@ -49,6 +49,8 @@ Infra/Dev:
 - Soporta `customDomain` por marca.
 - `PLATFORM_SUBDOMAIN` redirige al panel de plataforma.
 - Contexto de tenant via `AsyncLocalStorage` (brandId/localId/host/subdomain).
+- `TenantPrismaService` centraliza helpers de scoping (`localWhere`, `brandWhere`, `localData`, `brandData`) para reducir riesgo de queries sin tenant en código nuevo.
+- `PrismaService` aplica un runtime guard tenant-safe en operaciones Prisma masivas de modelos tenant-scoped: exige `localId` y falla rápido si falta (bypass explícito solo para casos cross-tenant controlados).
 - `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing/features/business, logos por modo, flags de hero y visibilidad de acciones flotantes admin).
 - `business.type` (brand-level, hereda a todos los locales) define el vocabulario usado en UI para staff y local.
 
@@ -81,7 +83,7 @@ Modulos principales:
 - **Loyalty**: tarjetas de fidelizacion (global/servicio/categoria), recompensas y progreso por cliente.
 - **Referrals**: programa de referidos (config local, codigos, atribuciones, wallet/cupones, analitica).
 - **Reviews**: reseñas inteligentes in-app (config local, requests, feedback privado y métricas).
-- **Schedules**: horario del local y horarios por barbero (JSON), con descansos y buffer entre citas.
+- **Schedules**: horario del local y horarios por barbero (JSON), con descansos/buffer entre citas y tolerancia de cierre con overrides por dia/fecha.
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
 - **Settings**: configuracion del sitio (branding/contacto/horarios/sociales/stats visibles).
@@ -91,6 +93,7 @@ Modulos principales:
 - **Payments (Stripe)**: Stripe Connect, checkout y webhooks por local/marca.
 - **AI Assistant**: chat/admin con tools y transcripcion.
 - **Platform Admin**: gestion de marcas, locales y configuracion global.
+- **Observability**: métricas UX/API por tenant y alerting operativo para plataforma.
 
 Seguridad actual (importante):
 - Endpoints admin se validan via `Authorization: Bearer <Firebase ID Token>` (JWT verificado en backend con Firebase Admin).
@@ -163,6 +166,7 @@ Observabilidad UX:
 - Emision de evento `window` `web-vital` para extensiones de analitica no acopladas.
 - Interceptor global de API (`ApiMetricsInterceptor`) registra latencia/estado por ruta en backend.
 - Resumen operativo solo plataforma: `GET /api/platform/observability/web-vitals?minutes=<n>` y `GET /api/platform/observability/api?minutes=<n>`.
+- Persistencia de métricas en DB (`web_vital_events`, `api_metric_events`) con flush por lotes y retención configurable para no perder histórico en reinicios ni escalar horizontal.
 - **UI operativa de observabilidad en plataforma**: ruta `GET /platform/observability` (frontend) con selector temporal `60 min | 24 h | 7 dias`, tablas de Web Vitals agregadas (`avg`, `p95`, `samples`) y Top endpoints API (`subdomain`, `avg`, `p95`, `errorRate`, `hits`) con `React Query` (`platform-observability-webvitals`, `platform-observability-api`), botón de refresco manual, tooltips discretos por card para interpretación rápida, leyenda breve de métricas UX, cards con altura máxima + scroll interno, layout responsive sin desbordes laterales en móvil y semáforo visual por fila (`OK`/`Vigilar`/`Crítico`) con resumen agregado por card para detección rápida.
 - **Persistencia de navegación en Platform**: `PlatformLayout` guarda en `sessionStorage` (`platform:last-route:session`) la última sección (`/platform`, `/platform/brands`, `/platform/observability`) y restaura en primera carga si aterriza en `/platform`; `AuthPage` además respeta `location.state.from` (cuando `ProtectedRoute` envía a `/auth`) para volver directamente a la sección original tras refresco/login.
 - Alertas operativas por email (event-driven, no periodicas): cuando llega un Web Vital en estado `poor` o cuando una ruta API entra en degradacion (5xx/p95 en ventana), backend envia correo con contexto (metrica, ruta, severidad, tenant, umbral y distribucion de estados). Incluye cooldown por clave para evitar spam.
@@ -212,12 +216,15 @@ PaymentStatus | Enum | pending/paid/failed/cancelled/exempt/in_person
 Alert | Avisos | Mensajes con tipo y rango de fechas
 GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
-ShopSchedule | Horario local | JSON con turnos diarios, descansos por dia, `bufferMinutes` y `endOverflowMinutes`
-BarberSchedule | Horario barbero | JSON con turnos diarios y `endOverflowMinutes` (override opcional por barbero)
+ShopSchedule | Horario local | JSON con turnos diarios, descansos por dia (`breaks`) y por fecha (`breaksByDate`), `bufferMinutes`, y overflow de cierre (`endOverflowMinutes`, `endOverflowByDay`, `endOverflowByDate`)
+BarberSchedule | Horario barbero | JSON con turnos diarios y overflow opcional por barbero (global, por dia de semana y por fecha fija)
 SiteSettings | Configuracion sitio | JSON con branding, contacto, horarios y stats visibles (toggle por admin)
 AiChatSession | Sesiones IA | Conversaciones por admin/local
 AiChatMessage | Mensajes IA | Historial y tool payload
 AiBusinessFact | Hechos IA | Datos fijos para contexto del asistente
+WebVitalEvent | Observabilidad UX persistida | Eventos de Web Vitals por tenant (LCP/INP/CLS/FCP/TTFB)
+ApiMetricEvent | Observabilidad API persistida | Latencia/estado por endpoint, tenant y subdominio
+DistributedLock | Lock distribuido | Exclusión mutua por clave para crons en multi-instancia
 
 ## Legal & GDPR
 Modelos nuevos:
@@ -246,6 +253,7 @@ Flujos:
    - Firebase Auth maneja login/registro.
    - Inicializacion Firebase en frontend es lazy (dynamic import) cuando `AuthContext` entra en funcionamiento.
    - Front crea/actualiza User en backend.
+   - El resultado de login en frontend se considera exitoso solo cuando termina la sincronizacion con backend (perfil/rol); si falla la sincronizacion se cancela la sesion local para evitar quedarse en `/auth` con toast de exito inconsistente.
    - El frontend usa `Authorization: Bearer <Firebase ID Token>` para endpoints admin.
    - Si API responde 401/403, se emite evento global de sesion y el frontend aplica logout/redirect consistente.
    - Si `BrandUser.isBlocked` esta activo, se bloquea el acceso del cliente a la app.
@@ -253,11 +261,10 @@ Flujos:
 
 3) **Disponibilidad de citas**
    - Se calcula por horario del barbero (por dia/turno) + horario del local.
-   - Se excluyen festivos (local y por barbero) y descansos por dia.
+   - Se excluyen festivos (local y por barbero) y descansos del local por dia (`breaks`) y por fecha concreta (`breaksByDate`).
    - Se aplica `bufferMinutes` del local a duraciones y solapes.
    - Slots base en intervalos de 15 min (`SLOT_INTERVAL_MINUTES`).
-   - **Overflow de fin de jornada**: `endOverflowMinutes` permite aceptar servicios que terminen un poco despues del cierre (solo en el ultimo turno del dia). Si no hay valor, no se excede el horario oficial.
-   - `endOverflowMinutes` se configura a nivel local y puede sobrescribirse por barbero (si no hay valor, hereda del local).
+   - **Overflow de fin de jornada**: se calcula en cascada por prioridad `por fecha` -> `por dia` -> `global` (barbero primero y, si no hay override, local). Solo aplica al ultimo turno activo del dia.
    - **Relleno de huecos no alineados**: si hay un intervalo libre cuyo inicio no cae en un multiplo de 15, se agrega un unico slot extra en el minuto exacto del inicio del hueco para evitar huecos grandes sin saturar la UI.
    - Se computan rangos ocupados con duracion real del servicio + buffer, y se filtran slots que solapen.
    - Todas las comparaciones de dia/hora usan `APP_TIMEZONE` y helpers `startOfDayInTimeZone/endOfDayInTimeZone` para evitar errores de zona horaria.
@@ -293,6 +300,7 @@ Flujos:
    - Job cron cada 5 min marca citas completadas cuando pasa el fin + grace.
    - `GET /api/appointments` ya no sincroniza estados de forma masiva en lectura (evita side-effects y latencia en listados grandes); la sincronizacion queda centralizada en el cron.
    - Job cron de recordatorios envia SMS y marca `reminderSent`.
+   - Todos los crons operativos usan lock distribuido en DB para evitar ejecuciones duplicadas al escalar a múltiples instancias.
 
 7) **Asistente IA**
    - `/api/admin/ai-assistant/chat` con tools para crear citas, alertas festivos.
@@ -362,6 +370,9 @@ Flujos:
    - `AdminClients` ya no carga todas las citas del local al entrar; consume historial paginado por cliente (`GET /api/appointments?userId=...&page=...&pageSize=...&sort=desc`) y lista de clientes paginada (`GET /api/users?page=...&pageSize=...&role=client&q=...`) bajo `useQuery`, con notas internas cacheadas por cliente y refresco por invalidación de dominio.
    - `AdminCalendar` consume `GET /api/appointments/admin-calendar?dateFrom=...&dateTo=...&sort=asc` y recibe `items + clients` en la misma respuesta, eliminando la segunda llamada a usuarios por lote y manteniendo carga acotada a la semana visible.
    - UX de `AdminCalendar`: los bloques de cita priorizan hora/servicio/cliente con estado visual por fondo (sin punto redundante), color de acento por profesional y accesibilidad de foco; la línea horizontal de "hora actual" se superpone a la rejilla semanal (cuando incluye hoy), con control on/off y filtro de `barber` persistidos en `localStorage` por local, etiqueta `HH:mm` en la columna izquierda y botón de recarga manual de citas sin refrescar toda la página.
+   - UX de `AdminSettings` (local): la pantalla de `Configuración` se compartimenta en pestañas internas relacionadas (`Identidad y landing`, `Operativa`, `Agenda y horarios`) para reducir longitud percibida y carga cognitiva; la pestaña activa se persiste en `sessionStorage` (`admin-settings-active-tab`) para mantener contexto tras recarga. En "Estadísticas destacadas", la visibilidad de cada métrica se controla con toggles inline junto al propio campo (sin subcard separada) para simplificar la lectura. El guardado se centraliza en un único botón contextual junto al navbar de pestañas (alineado a la derecha) que actúa según la pestaña activa.
+   - UX de disponibilidad (`AdminSettings`): en "Descansos y tiempos entre servicios" se configuran descansos por dia + descansos por fecha concreta, y overflow de cierre con override global/por-dia/por-fecha. La tolerancia semanal y por fecha se edita dentro de una sola card para evitar fragmentacion visual, y los bloques de "Huecos por fecha concreta" usan layout compacto (controles agrupados) para lectura/edicion mas rapida.
+   - UX de horario por profesional (`AdminBarbers`): el modal de horario se organiza en pestañas internas (`Horario` y `Tolerancia`, por defecto abre en `Horario`) y permite ajuste de overflow de cierre por profesional a nivel global, por dia de semana y por fecha fija (si no hay valor, hereda del local).
    - `AdminReferrals` carga configuración/analítica/listado con `useQuery` (`adminReferralConfig`, `adminReferralOverview`, `adminReferralList`) y aplica filtros (`status`, `q`) con debounce en el listado, evitando fetch manual por efecto en cada render.
    - `AdminReviews` carga configuración/métricas/feedback con `useQuery` (`adminReviewConfig`, `adminReviewMetrics`, `adminReviewFeedback`) y el cierre de feedback actualiza cache de la lista activa sin recargar toda la pantalla.
    - `AdminDashboard` usa un endpoint agregado (`GET /api/appointments/dashboard-summary?window=30[&barberId=...]`) que devuelve KPIs/series/listado diario ya procesados, evitando descargar citas + usuarios + servicios completos para construir gráficas en cliente.
@@ -389,11 +400,14 @@ Backend (`backend/.env`):
 - DB: `DATABASE_URL`.
 - Tenant defaults: `DEFAULT_BRAND_ID`, `DEFAULT_LOCAL_ID`, `DEFAULT_BRAND_SUBDOMAIN`, `TENANT_BASE_DOMAIN`, `PLATFORM_SUBDOMAIN`, `TENANT_REQUIRE_SUBDOMAIN`, `PLATFORM_ADMIN_EMAILS`.
 - Hardening tenant resolution: `TENANT_ALLOW_HEADER_OVERRIDES`, `TENANT_TRUST_X_FORWARDED_HOST`.
+- Runtime guard tenant en Prisma: `TENANT_SCOPE_RUNTIME_GUARD` (por defecto activo; desactivar solo en escenarios controlados de mantenimiento).
 - CORS: `CORS_ALLOWED_ORIGINS` (lista separada por comas para allowlist explícita en despliegue).
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`, `IMAGEKIT_FOLDER`.
 - Twilio: `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_SID`, `TWILIO_ACCOUNT_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_WHATSAPP_FROM`, `TWILIO_WHATSAPP_TEMPLATE_SID`, `TWILIO_SMS_COST_USD` (opcional).
 - Email: `EMAIL`, `PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_FROM_NAME`.
 - Observability alerts: `OBSERVABILITY_ALERT_EMAILS` (comma-separated, default `executive.managgio@gmail.com`), `OBSERVABILITY_ALERT_COOLDOWN_MINUTES`, `OBSERVABILITY_ALERT_API_WINDOW_MINUTES`, `OBSERVABILITY_ALERT_API_MIN_SAMPLES`, `OBSERVABILITY_ALERT_API_ERROR_RATE_PERCENT`, `OBSERVABILITY_ALERT_API_ERROR_MIN_COUNT`, `OBSERVABILITY_ALERT_API_P95_MS`.
+- Observability persistence: `OBSERVABILITY_PERSIST_FLUSH_MS`, `OBSERVABILITY_PERSIST_BATCH_SIZE`, `OBSERVABILITY_PERSIST_BUFFER_LIMIT`, `OBSERVABILITY_PERSIST_RETENTION_DAYS`, `OBSERVABILITY_SUMMARY_QUERY_CAP`.
+- Distributed locks: `DISTRIBUTED_LOCK_PREFIX` (namespace de locks compartidos entre instancias).
 - AI: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`, `AI_TRANSCRIPTION_MODEL`.
 - Firebase Admin: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`.
 - Legal: `IP_HASH_SALT` (hash IP para consentimientos).
@@ -421,7 +435,7 @@ Frontend (`frontend/.env*`):
 - CI de budgets: workflow `/.github/workflows/frontend-perf-budget.yml` ejecuta `npm run perf:baseline` en PR/push y falla si se exceden umbrales.
 - Capa de red robusta: `apiRequest` usa timeout explicito, retry con backoff para `GET` idempotentes (errores de red/timeout y HTTP transitorios), clasifica errores (`HTTP`, `TIMEOUT`, `OFFLINE`, `NETWORK`, `ABORTED`) y emite evento global de sesion para 401/403.
 - Recharts: usar imports selectivos (`import { LineChart, ... } from 'recharts'`) y evitar namespace imports (`import * as Recharts...`) para no inflar chunks.
-- `manualChunks` en Vite solo separa vendors pesados por dominio de coste (`firebase`, `recharts`, `date-fns`) y deja el resto en `vendor` para evitar ciclos de bootstrap entre chunks base.
+- `manualChunks` en Vite separa vendors base por grupos estables (`vendor-react`, `vendor-router`, `vendor-query`, `vendor-radix`, `vendor-icons`, `vendor-ui-utils`, `vendor-misc`) y mantiene chunks dedicados para pesos altos (`vendor-firebase`, `vendor-charts`, `vendor-date`) para evitar warnings de tamaño y preservar carga incremental.
 - Despliegue frontend debe ser atomico (`index.html` + `assets/*` del mismo build) y con invalidacion de cache/CDN para evitar mezclar chunks de builds distintos.
 - Carga de fuentes optimizada en `frontend/index.html` con `preconnect` + `preload`/`stylesheet` (sin `@import` bloqueante en CSS).
 - Higiene de imagenes en rutas criticas: logos/avatares/QR y miniaturas usan `loading`, `decoding` y dimensiones explicitas para reducir CLS y trabajo de render en navegacion.
@@ -433,7 +447,8 @@ Frontend (`frontend/.env*`):
 - React Query aplica retry inteligente segun tipo de error para evitar reintentos inutiles (ej. 401/403/404 u offline).
 - Invalida cache por eventos de dominio en lugar de forzar refetch global, reduciendo overfetch y manteniendo consistencia multi-pantalla.
 - Higiene de compatibilidad de navegadores: mantener `caniuse-lite/browserslist` actualizado (`npx update-browserslist-db@latest`) para evitar warnings y asegurar targets vigentes de build.
-- Verificacion operativa de hooks/renders: ejecutar `npx eslint src --rule '@typescript-eslint/no-explicit-any: off'` y mantener en `0` los warnings de `react-hooks/exhaustive-deps` (solo persisten advertencias de Fast Refresh en dev).
+- Verificacion operativa de hooks/renders: ejecutar `npx eslint src --rule '@typescript-eslint/no-explicit-any: off'` y mantener en `0` los warnings de `react-hooks/exhaustive-deps` y `react-refresh/only-export-components`.
+- Higiene de lint en React Fast Refresh: `react-refresh/only-export-components` mantiene regla activa, con allowlist explícita solo para hooks/utilidades compartidas (`useAuth`, `useTenant`, `useAdminPermissions`, `useAdminSpotlight`, `cropAndCompress`, `buttonVariants`, `toggleVariants`) y sin exports auxiliares innecesarios en componentes UI.
 
 ### Guardrails de performance (backend)
 - Endpoints masivos con contrato paginado:
@@ -443,8 +458,12 @@ Frontend (`frontend/.env*`):
 - Endpoint agregado para dashboard admin: `GET /api/appointments/dashboard-summary?window=<n>[&barberId=<id>]` devuelve KPIs, series de ingresos/ticket, mix de servicios, ocupacion y citas de hoy ya agregadas.
 - Endpoint agregado para búsqueda admin: `GET /api/appointments/admin-search?page=<n>&pageSize=<m>[&barberId=<id>][&date=<yyyy-mm-dd>]` devuelve `{ total, page, pageSize, hasMore, items, clients }`.
 - Endpoint agregado para calendario admin: `GET /api/appointments/admin-calendar?dateFrom=...&dateTo=...[&barberId=<id>][&sort=asc|desc]` devuelve `{ items, clients }` (sin segunda consulta a `/users`).
+- Endpoint operativo de salud por marca en plataforma: `GET /api/platform/brands/:id/health` devuelve estado agregado por local e integración (`email`, `twilio`, `stripe`, `imagekit`, `ai`) para detectar credenciales/fuentes degradadas antes de impacto en clientes.
 - Resolucion puntual de usuarios para listados paginados: `GET /api/users?ids=<id1,id2,...>` devuelve solo los usuarios solicitados (acotado al tenant actual).
+- Configuración plataforma (`PATCH /api/platform/brands/:id/config` y `PATCH /api/platform/locations/:id/config`) acepta `data` objeto, incluyendo `{}` para limpiar overrides sin romper el guardado de marca/local.
 - El formato legacy de lista completa para `/users` y `/appointments` queda retirado del contrato backend.
+- `UsersService` normaliza emails sensibles (`trim + lowercase`) al resolver superadmin por marca (`superAdminEmail`) para evitar desalineaciones por espacios/case en primer login.
+- Gate automático de aislamiento tenant en CI: `npm run tenant:scope:check` valida que consultas Prisma masivas en modelos tenant-scoped incluyan `localId`/`brandId` (workflow `backend-hardening.yml`).
 - `UsersService.update/remove` opera con scope de marca actual:
   - no permite actualizar usuarios fuera de `brandId` activo,
   - y en borrado elimina membresía/datos del usuario acotados a la marca actual antes de borrar globalmente (solo si no quedan membresías en otras marcas).
@@ -452,13 +471,19 @@ Frontend (`frontend/.env*`):
 - Observabilidad backend:
   - `POST /api/observability/web-vitals` recibe métricas UX de cliente.
   - `GET /api/platform/observability/web-vitals` y `GET /api/platform/observability/api` exponen resumen de Web Vitals y latencia/errores por ruta para plataforma; el resumen API incluye dimensión `subdomain` por fila.
-  - Estado actual de persistencia: los eventos se almacenan en memoria del proceso (buffers con retención) y no en tablas persistentes de BD.
+  - Persistencia: los eventos se almacenan en MySQL (`web_vital_events`, `api_metric_events`) con cola/batch en memoria para escritura eficiente y tolerancia a reinicios.
   - Alertas email automáticas (sin cron): disparo por evento degradado con cooldown configurable para evitar ruido.
 - Indices de consultas calientes en `Appointment`:
   - `(localId, startDateTime)`
   - `(localId, barberId, startDateTime)`
   - `(localId, userId, startDateTime)`
   - `(localId, status, startDateTime)`
+- Indices operativos adicionales para volumen alto:
+  - `ReferralCode(localId, createdAt)`
+  - `RewardTransaction(localId, status, createdAt)`
+  - `CashMovement(localId, occurredAt)` y `CashMovement(localId, createdAt)`
+  - `ClientNote(localId, userId, createdAt)`
+  - `WebVitalEvent(localId, timestamp)` y `ApiMetricEvent(localId, timestamp)`
 
 ## Seguridad, riesgos y casuisticas (checklist rapido)
 - **Auth admin por JWT**: `Authorization: Bearer <Firebase ID Token>` verificado en backend.
@@ -466,6 +491,7 @@ Frontend (`frontend/.env*`):
 - **CORS**: habilitado global; mantener allowlist estricta en despliegue.
 - **Multi-tenant**: validar siempre `localId` en queries (ya se usa `getCurrentLocalId`).
 - **Jobs cron**: iteran por marca/local para evitar usar `DEFAULT_LOCAL_ID` en multi-tenant.
+- **Cron multi-instancia**: los jobs críticos se ejecutan bajo lock distribuido para evitar duplicidades al escalar horizontal.
 - **Datos incompletos**: flows permiten `guestName`/`guestContact` sin userId.
 - **Email/SMS**: si faltan credenciales, notificaciones se deshabilitan (log warn).
 - **IA**: si no hay API key, el endpoint falla; manejar fallback.
@@ -499,6 +525,7 @@ Este contrato define el estandar minimo de calidad tecnica de Managgio. Cualquie
 - No reintroducir endpoints de lista completa para recursos masivos (`users`, `appointments`): siempre paginacion o endpoint agregado.
 - Mantener invalidacion de cache por dominio/evento; evitar `refetch` global indiscriminado.
 - En React Query, no llamar `queryClient.fetchQuery` dentro de `queryFn` con la misma `queryKey` (riesgo de carga infinita por dependencia circular). Para cache de apoyo, usar `getQueryData/getQueryState + setQueryData` o prefetch fuera de `queryFn`.
+- Accesibilidad obligatoria en modales: todo `DialogContent` debe incluir `DialogTitle` y `DialogDescription` (visible o `sr-only`) para evitar warnings de Radix y mantener semántica consistente.
 - Mantener contratos tipados end-to-end; evitar `any` salvo excepcion justificada y documentada.
 
 ### 2) Reglas de robustez y seguridad

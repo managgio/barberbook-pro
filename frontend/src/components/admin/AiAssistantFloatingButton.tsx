@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 const AdminAiAssistant = lazy(() => import('@/pages/admin/AdminAiAssistant'));
 
@@ -23,6 +23,9 @@ const AiAssistantFloatingButton: React.FC = () => {
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="max-w-5xl h-[80vh] max-h-[85vh] p-6 flex flex-col overflow-hidden">
           <DialogTitle className="sr-only">Asistente IA</DialogTitle>
+          <DialogDescription className="sr-only">
+            Asistente para gestionar citas, festivos y avisos del local desde el panel de administración.
+          </DialogDescription>
           <div className="flex-1 min-h-0">
             <Suspense
               fallback={(

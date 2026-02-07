@@ -19,7 +19,21 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "react-refresh/only-export-components": [
+        "warn",
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            "useAuth",
+            "useTenant",
+            "useAdminPermissions",
+            "useAdminSpotlight",
+            "cropAndCompress",
+            "buttonVariants",
+            "toggleVariants",
+          ],
+        },
+      ],
       "@typescript-eslint/no-unused-vars": "off",
     },
   },

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
+import { DistributedLockService } from '../../prisma/distributed-lock.service';
 import { AI_TIME_ZONE } from '../ai-assistant/ai-assistant.utils';
 import { UsageMetricsService } from './usage-metrics.service';
 
@@ -10,6 +11,7 @@ export class ImageKitUsageScheduler implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly usageMetrics: UsageMetricsService,
+    private readonly distributedLock: DistributedLockService,
   ) {}
 
   onModuleInit() {
@@ -27,6 +29,15 @@ export class ImageKitUsageScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   private async captureUsageSnapshot() {
-    await this.usageMetrics.refreshImageKitUsage();
+    await this.distributedLock.runWithLock(
+      'cron:usage-metrics-imagekit',
+      async () => {
+        await this.usageMetrics.refreshImageKitUsage();
+      },
+      {
+        ttlMs: 20 * 60_000,
+        onLockedMessage: 'Skipping ImageKit usage snapshot in this instance; lock already held',
+      },
+    );
   }
 }

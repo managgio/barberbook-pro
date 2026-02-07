@@ -6,9 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   createBarber,
   deleteBarber,
@@ -46,6 +47,7 @@ const DAY_LABELS: { key: DayKey; label: string; short: string }[] = [
 
 const SHIFT_KEYS = ['morning', 'afternoon'] as const;
 type ShiftKey = (typeof SHIFT_KEYS)[number];
+type ScheduleDialogTab = 'hours' | 'tolerance';
 
 const SHIFT_LABELS: Record<ShiftKey, { label: string; hint: string }> = {
   morning: {
@@ -100,6 +102,8 @@ const AdminBarbers: React.FC = () => {
   const [scheduleCache, setScheduleCache] = useState<Record<string, ShopSchedule>>({});
   const [copiedSchedule, setCopiedSchedule] = useState<ShopSchedule | null>(null);
   const [copySource, setCopySource] = useState(0);
+  const [scheduleActiveTab, setScheduleActiveTab] = useState<ScheduleDialogTab>('hours');
+  const [newScheduleOverflowDate, setNewScheduleOverflowDate] = useState('');
   const todayISO = new Date().toISOString().split('T')[0];
   const [pendingPhoto, setPendingPhoto] = useState<{ dataUrl: string; zoom: number } | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
@@ -218,6 +222,7 @@ const AdminBarbers: React.FC = () => {
 
   const openScheduleDialog = async (barber: Barber) => {
     setScheduleDialog({ open: true, barber });
+    setScheduleActiveTab('hours');
     setIsScheduleLoading(true);
     try {
       const existing = scheduleCache[barber.id];
@@ -268,6 +273,8 @@ const AdminBarbers: React.FC = () => {
     setScheduleDialog({ open: false, barber: null });
     setScheduleForm(null);
     setCopySource(0);
+    setScheduleActiveTab('hours');
+    setNewScheduleOverflowDate('');
     setIsScheduleLoading(false);
     setIsScheduleSaving(false);
   };
@@ -429,6 +436,77 @@ const AdminBarbers: React.FC = () => {
       }
       const parsed = Math.max(0, Math.floor(Number(value)));
       return { ...prev, endOverflowMinutes: Number.isFinite(parsed) ? parsed : undefined };
+    });
+  };
+
+  const ensureEndOverflowByDay = (current?: Partial<Record<DayKey, number>>) =>
+    DAY_LABELS.reduce((acc, day) => {
+      const value = current?.[day.key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        acc[day.key] = Math.max(0, Math.floor(value));
+      }
+      return acc;
+    }, {} as Partial<Record<DayKey, number>>);
+
+  const ensureEndOverflowByDate = (current?: Record<string, number>) => {
+    if (!current || typeof current !== 'object') return {};
+    return Object.entries(current).reduce((acc, [dateKey, value]) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return acc;
+      if (typeof value !== 'number' || !Number.isFinite(value)) return acc;
+      acc[dateKey] = Math.max(0, Math.floor(value));
+      return acc;
+    }, {} as Record<string, number>);
+  };
+
+  const handleEndOverflowByDayChange = (day: DayKey, value: string) => {
+    setScheduleForm((prev) => {
+      if (!prev) return prev;
+      const byDay = ensureEndOverflowByDay(prev.endOverflowByDay);
+      if (value.trim() === '') {
+        delete byDay[day];
+      } else {
+        const parsed = Math.max(0, Math.floor(Number(value)));
+        if (Number.isFinite(parsed)) {
+          byDay[day] = parsed;
+        }
+      }
+      return { ...prev, endOverflowByDay: byDay };
+    });
+  };
+
+  const handleAddEndOverflowDate = (dateKey: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+    setScheduleForm((prev) => {
+      if (!prev) return prev;
+      const byDate = ensureEndOverflowByDate(prev.endOverflowByDate);
+      if (byDate[dateKey] !== undefined) return prev;
+      byDate[dateKey] = Math.max(0, Math.floor(prev.endOverflowMinutes ?? 0));
+      return { ...prev, endOverflowByDate: byDate };
+    });
+  };
+
+  const handleEndOverflowByDateChange = (dateKey: string, value: string) => {
+    setScheduleForm((prev) => {
+      if (!prev) return prev;
+      const byDate = ensureEndOverflowByDate(prev.endOverflowByDate);
+      if (value.trim() === '') {
+        delete byDate[dateKey];
+      } else {
+        const parsed = Math.max(0, Math.floor(Number(value)));
+        if (Number.isFinite(parsed)) {
+          byDate[dateKey] = parsed;
+        }
+      }
+      return { ...prev, endOverflowByDate: byDate };
+    });
+  };
+
+  const handleRemoveEndOverflowDate = (dateKey: string) => {
+    setScheduleForm((prev) => {
+      if (!prev) return prev;
+      const byDate = ensureEndOverflowByDate(prev.endOverflowByDate);
+      delete byDate[dateKey];
+      return { ...prev, endOverflowByDate: byDate };
     });
   };
 
@@ -705,6 +783,9 @@ const AdminBarbers: React.FC = () => {
             <DialogTitle>
               {editingBarber ? `Editar ${copy.staff.singularLower}` : `Nuevo ${copy.staff.singularLower}`}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para crear o editar profesionales del equipo.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
@@ -801,6 +882,9 @@ const AdminBarbers: React.FC = () => {
             <DialogTitle>
               Asignaciones de {assignmentDialog.barber?.name}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Configura qué servicios y categorías puede atender este profesional.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-5">
             <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
@@ -914,6 +998,9 @@ const AdminBarbers: React.FC = () => {
             <DialogTitle>
               Horario de {scheduleDialog.barber?.name}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Ajusta horario semanal, descansos y tolerancia de cierre para este profesional.
+            </DialogDescription>
           </DialogHeader>
           {isScheduleLoading || !scheduleForm ? (
             <div className="flex items-center justify-center py-12">
@@ -921,122 +1008,226 @@ const AdminBarbers: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex flex-wrap gap-3 items-center">
-                <Button variant="outline" size="sm" onClick={handleCopySchedule}>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copiar horario
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePasteSchedule}
-                  disabled={!copiedSchedule}
-                >
-                  <ClipboardPaste className="w-4 h-4 mr-2" />
-                  Pegar horario copiado
-                </Button>
-                <Select key={copySource} onValueChange={handleCopyFromBarber} disabled={otherBarbers.length === 0}>
-                  <SelectTrigger className="w-full sm:w-64">
-                    <SelectValue placeholder={`Copiar desde otro ${copy.staff.singularLower}`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {otherBarbers.map((barber) => (
-                      <SelectItem key={barber.id} value={barber.id}>
-                        {barber.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Tabs
+                value={scheduleActiveTab}
+                onValueChange={(value) => setScheduleActiveTab(value as ScheduleDialogTab)}
+                className="space-y-4"
+              >
+                <TabsList className="inline-flex h-auto w-auto rounded-lg border border-border/60 bg-muted/30 p-1">
+                  <TabsTrigger value="hours" className="rounded-md px-3 py-1.5 text-xs sm:text-sm">
+                    Horario
+                  </TabsTrigger>
+                  <TabsTrigger value="tolerance" className="rounded-md px-3 py-1.5 text-xs sm:text-sm">
+                    Tolerancia
+                  </TabsTrigger>
+                </TabsList>
 
-              <div className="rounded-2xl border border-border/60 bg-muted/30 p-3">
-                <div className="space-y-2 max-w-xs">
-                  <Label className="text-sm">Tolerancia fin de jornada (minutos)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={5}
-                    value={scheduleForm.endOverflowMinutes ?? ''}
-                    onChange={(e) => handleEndOverflowMinutesChange(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Si lo dejas vacío, se usa el valor configurado en {copy.location.definiteSingular}.
-                  </p>
-                </div>
-              </div>
+                <TabsContent value="hours" className="mt-0 space-y-4">
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <Button variant="outline" size="sm" onClick={handleCopySchedule}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copiar horario
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePasteSchedule}
+                      disabled={!copiedSchedule}
+                    >
+                      <ClipboardPaste className="w-4 h-4 mr-2" />
+                      Pegar horario copiado
+                    </Button>
+                    <Select key={copySource} onValueChange={handleCopyFromBarber} disabled={otherBarbers.length === 0}>
+                      <SelectTrigger className="w-full sm:w-64">
+                        <SelectValue placeholder={`Copiar desde otro ${copy.staff.singularLower}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {otherBarbers.map((barber) => (
+                          <SelectItem key={barber.id} value={barber.id}>
+                            {barber.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              <div className="space-y-3">
-                {DAY_LABELS.map((day) => {
-                  const dayData = scheduleForm[day.key];
-                  return (
-                    <div key={day.key} className="space-y-3 border rounded-2xl p-3 bg-muted/30">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div>
-                          <p className="font-semibold text-foreground">{day.label}</p>
-                          <p className="text-xs text-muted-foreground">Define turnos independientes para mañana y tarde.</p>
+                  <div className="space-y-3">
+                    {DAY_LABELS.map((day) => {
+                      const dayData = scheduleForm[day.key];
+                      return (
+                        <div key={day.key} className="space-y-3 border rounded-2xl p-3 bg-muted/30">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-foreground">{day.label}</p>
+                              <p className="text-xs text-muted-foreground">Define turnos independientes para mañana y tarde.</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={!dayData.closed}
+                                onCheckedChange={(checked) => handleScheduleClosed(day.key, !checked)}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {dayData.closed ? 'Cerrado' : 'Abierto'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            {SHIFT_KEYS.map((shiftKey) => {
+                              const shift = dayData[shiftKey];
+                              const info = SHIFT_LABELS[shiftKey];
+                              return (
+                                <div key={shiftKey} className="rounded-2xl border border-border/60 bg-background/40 p-2.5">
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <div>
+                                      <p className="font-medium text-sm text-foreground">{info.label}</p>
+                                      <p className="text-xs text-muted-foreground">{info.hint}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Switch
+                                        checked={shift.enabled}
+                                        onCheckedChange={(checked) => handleShiftToggle(day.key, shiftKey, checked)}
+                                        disabled={dayData.closed}
+                                      />
+                                      <span className="text-xs text-muted-foreground">
+                                        {shift.enabled ? 'Activo' : 'Inactivo'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="grid sm:grid-cols-[repeat(2,minmax(140px,1fr))] gap-3 mt-2">
+                                    <div className="space-y-1 w-full sm:max-w-[200px]">
+                                      <Label className="text-xs text-muted-foreground">Inicio</Label>
+                                      <Input
+                                        type="time"
+                                        value={shift.start}
+                                        disabled={dayData.closed || !shift.enabled}
+                                        className="w-full sm:max-w-[200px]"
+                                        onChange={(e) => handleShiftTimeChange(day.key, shiftKey, 'start', e.target.value)}
+                                      />
+                                    </div>
+                                    <div className="space-y-1 w-full sm:max-w-[200px]">
+                                      <Label className="text-xs text-muted-foreground">Fin</Label>
+                                      <Input
+                                        type="time"
+                                        value={shift.end}
+                                        disabled={dayData.closed || !shift.enabled}
+                                        className="w-full sm:max-w-[200px]"
+                                        onChange={(e) => handleShiftTimeChange(day.key, shiftKey, 'end', e.target.value)}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={!dayData.closed}
-                            onCheckedChange={(checked) => handleScheduleClosed(day.key, !checked)}
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {dayData.closed ? 'Cerrado' : 'Abierto'}
-                          </span>
+                      );
+                    })}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="tolerance" className="mt-0">
+                  <div className="rounded-2xl border border-border/60 bg-muted/30 p-3">
+                    <div className="space-y-4">
+                      <div className="space-y-2 max-w-xs">
+                        <Label className="text-sm">Tolerancia fin de jornada (minutos)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={5}
+                          value={scheduleForm.endOverflowMinutes ?? ''}
+                          onChange={(e) => handleEndOverflowMinutesChange(e.target.value)}
+                          onFocus={(e) => e.currentTarget.select()}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Si lo dejas vacío, se usa el valor configurado en {copy.location.definiteSingular}.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-foreground">Ajuste por día de semana</p>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                          {DAY_LABELS.map((day) => (
+                            <div key={`barber-overflow-${day.key}`} className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">{day.short}</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                step={5}
+                                value={scheduleForm.endOverflowByDay?.[day.key] ?? ''}
+                                placeholder="Hereda local"
+                                onChange={(e) => handleEndOverflowByDayChange(day.key, e.target.value)}
+                                onFocus={(e) => e.currentTarget.select()}
+                              />
+                            </div>
+                          ))}
                         </div>
                       </div>
+
                       <div className="space-y-2">
-                        {SHIFT_KEYS.map((shiftKey) => {
-                          const shift = dayData[shiftKey];
-                          const info = SHIFT_LABELS[shiftKey];
-                          return (
-                            <div key={shiftKey} className="rounded-2xl border border-border/60 bg-background/40 p-2.5">
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <p className="text-xs font-medium text-foreground">Ajuste por fecha concreta</p>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Fecha</Label>
+                            <Input
+                              type="date"
+                              value={newScheduleOverflowDate}
+                              onChange={(e) => setNewScheduleOverflowDate(e.target.value)}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              handleAddEndOverflowDate(newScheduleOverflowDate);
+                              setNewScheduleOverflowDate('');
+                            }}
+                            disabled={!newScheduleOverflowDate}
+                          >
+                            Añadir fecha
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {Object.entries(scheduleForm.endOverflowByDate ?? {})
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([dateKey, value]) => (
+                              <div
+                                key={`barber-overflow-date-${dateKey}`}
+                                className="grid grid-cols-[minmax(120px,1fr)_minmax(90px,130px)_auto] items-end gap-2 rounded-lg border border-border/60 bg-background/80 p-2"
+                              >
                                 <div>
-                                  <p className="font-medium text-sm text-foreground">{info.label}</p>
-                                  <p className="text-xs text-muted-foreground">{info.hint}</p>
+                                  <p className="text-xs font-medium text-foreground">{dateKey}</p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <Switch
-                                    checked={shift.enabled}
-                                    onCheckedChange={(checked) => handleShiftToggle(day.key, shiftKey, checked)}
-                                    disabled={dayData.closed}
-                                  />
-                                  <span className="text-xs text-muted-foreground">
-                                    {shift.enabled ? 'Activo' : 'Inactivo'}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="grid sm:grid-cols-[repeat(2,minmax(140px,1fr))] gap-3 mt-2">
-                                <div className="space-y-1 w-full sm:max-w-[200px]">
-                                  <Label className="text-xs text-muted-foreground">Inicio</Label>
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-muted-foreground">Minutos</Label>
                                   <Input
-                                    type="time"
-                                    value={shift.start}
-                                    disabled={dayData.closed || !shift.enabled}
-                                    className="w-full sm:max-w-[200px]"
-                                    onChange={(e) => handleShiftTimeChange(day.key, shiftKey, 'start', e.target.value)}
+                                    type="number"
+                                    min={0}
+                                    step={5}
+                                    value={value}
+                                    onChange={(e) => handleEndOverflowByDateChange(dateKey, e.target.value)}
+                                    onFocus={(e) => e.currentTarget.select()}
                                   />
                                 </div>
-                                <div className="space-y-1 w-full sm:max-w-[200px]">
-                                  <Label className="text-xs text-muted-foreground">Fin</Label>
-                                  <Input
-                                    type="time"
-                                    value={shift.end}
-                                    disabled={dayData.closed || !shift.enabled}
-                                    className="w-full sm:max-w-[200px]"
-                                    onChange={(e) => handleShiftTimeChange(day.key, shiftKey, 'end', e.target.value)}
-                                  />
-                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveEndOverflowDate(dateKey)}
+                                >
+                                  Quitar
+                                </Button>
                               </div>
-                            </div>
-                          );
-                        })}
+                            ))}
+                          {Object.keys(scheduleForm.endOverflowByDate ?? {}).length === 0 && (
+                            <p className="text-xs text-muted-foreground">Sin fechas específicas.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closeScheduleDialog}>

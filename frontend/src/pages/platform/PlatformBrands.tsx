@@ -31,7 +31,7 @@ import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -1909,9 +1909,9 @@ const PlatformBrands: React.FC = () => {
     });
   };
 
-  const handleSaveBrand = async () => {
+  const handleSaveBrand = () => {
     if (!user?.id || !selectedBrand) return;
-    await saveBrandMutation.mutateAsync();
+    saveBrandMutation.mutate();
   };
 
   const updateLegalField = <K extends keyof LegalSettings>(field: K, value: LegalSettings[K]) => {
@@ -4488,6 +4488,9 @@ const PlatformBrands: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nueva marca</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para crear una nueva marca con su subdominio y estado.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -4522,6 +4525,9 @@ const PlatformBrands: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevo local</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para crear un local dentro de la marca seleccionada.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -4550,6 +4556,9 @@ const PlatformBrands: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar local</DialogTitle>
+            <DialogDescription className="sr-only">
+              Actualiza nombre, slug y estado del local seleccionado.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">

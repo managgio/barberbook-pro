@@ -7,6 +7,7 @@ export type TenantContext = {
   host?: string;
   subdomain?: string | null;
   isPlatform?: boolean;
+  scopeGuardBypass?: boolean;
 };
 
 const tenantStorage = new AsyncLocalStorage<TenantContext>();
@@ -29,6 +30,13 @@ export const runWithTenantContextAsync = async <T>(
   });
 
 export const getTenantContext = (): TenantContext => tenantStorage.getStore() || {};
+
+export const isTenantScopeGuardBypassed = (): boolean => Boolean(getTenantContext().scopeGuardBypass);
+
+export const runWithTenantScopeGuardBypassAsync = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const current = getTenantContext();
+  return runWithTenantContextAsync({ ...current, scopeGuardBypass: true }, fn);
+};
 
 export const getCurrentBrandId = (): string =>
   getTenantContext().brandId || DEFAULT_BRAND_ID;

@@ -34,7 +34,23 @@ export default defineConfig(({ mode }) => ({
           if (normalizedId.includes("/firebase/")) return "vendor-firebase";
           if (normalizedId.includes("/recharts/") || normalizedId.includes("/d3-")) return "vendor-charts";
           if (normalizedId.includes("/date-fns/")) return "vendor-date";
-          return "vendor";
+          if (normalizedId.includes("/react-dom/") || normalizedId.includes("/react/") || normalizedId.includes("/scheduler/")) {
+            return "vendor-react";
+          }
+          if (normalizedId.includes("/react-router-dom/") || normalizedId.includes("/@remix-run/router/")) {
+            return "vendor-router";
+          }
+          if (normalizedId.includes("/@tanstack/")) return "vendor-query";
+          if (normalizedId.includes("/@radix-ui/")) return "vendor-radix";
+          if (normalizedId.includes("/lucide-react/")) return "vendor-icons";
+          if (
+            normalizedId.includes("/class-variance-authority/")
+            || normalizedId.includes("/clsx/")
+            || normalizedId.includes("/tailwind-merge/")
+          ) {
+            return "vendor-ui-utils";
+          }
+          return "vendor-misc";
         },
       },
     },

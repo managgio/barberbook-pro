@@ -18,6 +18,7 @@ import { useBusinessCopy } from '@/lib/businessCopy';
 import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Loader2,
   MapPin,
@@ -51,9 +52,12 @@ const DAY_LABELS: { key: DayKey; label: string }[] = [
 
 const SHIFT_KEYS = ['morning', 'afternoon'] as const;
 type ShiftKey = (typeof SHIFT_KEYS)[number];
+type SettingsTab = 'identity' | 'operations' | 'availability';
 
 const cloneSettings = (data: SiteSettings): SiteSettings => JSON.parse(JSON.stringify(data));
 const DEFAULT_BREAK_RANGE: BreakRange = { start: '13:30', end: '14:00' };
+const SETTINGS_TAB_STORAGE_KEY = 'admin-settings-active-tab';
+const SETTINGS_TABS: SettingsTab[] = ['identity', 'operations', 'availability'];
 
 const AdminSettings: React.FC = () => {
   const XBrandIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -79,6 +83,13 @@ const AdminSettings: React.FC = () => {
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
   const [isStripeSaving, setIsStripeSaving] = useState(false);
   const [isStripeConnecting, setIsStripeConnecting] = useState(false);
+  const [newOverflowDate, setNewOverflowDate] = useState('');
+  const [newBreakDate, setNewBreakDate] = useState('');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    if (typeof window === 'undefined') return 'identity';
+    const saved = window.sessionStorage.getItem(SETTINGS_TAB_STORAGE_KEY);
+    return SETTINGS_TABS.includes(saved as SettingsTab) ? (saved as SettingsTab) : 'identity';
+  });
   const [{ prefix: phonePrefix, number: phoneNumber }, setPhoneParts] = useState(() =>
     normalizePhoneParts(DEFAULT_SITE_SETTINGS.contact.phone)
   );
@@ -140,6 +151,11 @@ const AdminSettings: React.FC = () => {
     });
   }, [stripeConfigQuery.error, toast]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
   const buildSettingsPayload = (nextSettings: SiteSettings) => {
     const phone = composePhone(phonePrefix, phoneNumber);
     const payload: SiteSettings = {
@@ -153,12 +169,8 @@ const AdminSettings: React.FC = () => {
     return payload;
   };
 
-  const handleSave = async (fromSchedule = false) => {
-    if (fromSchedule) {
-      setIsSavingSchedule(true);
-    } else {
-      setIsSaving(true);
-    }
+  const handleSave = async () => {
+    setIsSaving(true);
     try {
       const payload = buildSettingsPayload(settings);
       const updated = await updateSiteSettings(payload);
@@ -167,7 +179,7 @@ const AdminSettings: React.FC = () => {
       dispatchSiteSettingsUpdated(updated);
       toast({
         title: 'Configuración actualizada',
-        description: fromSchedule ? 'Horario guardado.' : 'Los cambios se han guardado correctamente.',
+        description: 'Los cambios se han guardado correctamente.',
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Revisa los campos e intenta nuevamente.';
@@ -177,11 +189,7 @@ const AdminSettings: React.FC = () => {
         variant: 'destructive',
       });
     } finally {
-      if (fromSchedule) {
-        setIsSavingSchedule(false);
-      } else {
-        setIsSaving(false);
-      }
+      setIsSaving(false);
     }
   };
 
@@ -302,17 +310,106 @@ const AdminSettings: React.FC = () => {
       return acc;
     }, {} as Record<DayKey, BreakRange[]>);
 
-  const handleBufferMinutesChange = (value: number) => {
+  const ensureEndOverflowByDayRecord = (current?: Partial<Record<DayKey, number>>) =>
+    DAY_LABELS.reduce((acc, { key }) => {
+      const value = current?.[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        acc[key] = Math.max(0, Math.floor(value));
+      }
+      return acc;
+    }, {} as Partial<Record<DayKey, number>>);
+
+  const ensureEndOverflowByDateRecord = (current?: Record<string, number>) => {
+    if (!current || typeof current !== 'object') return {};
+    return Object.entries(current).reduce((acc, [dateKey, value]) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return acc;
+      if (typeof value !== 'number' || !Number.isFinite(value)) return acc;
+      acc[dateKey] = Math.max(0, Math.floor(value));
+      return acc;
+    }, {} as Record<string, number>);
+  };
+
+  const ensureBreaksByDateRecord = (current?: Record<string, BreakRange[]>) => {
+    if (!current || typeof current !== 'object') return {};
+    return Object.entries(current).reduce((acc, [dateKey, ranges]) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !Array.isArray(ranges)) return acc;
+      acc[dateKey] = ranges.map((range) => ({ ...range }));
+      return acc;
+    }, {} as Record<string, BreakRange[]>);
+  };
+
+  const handleBufferMinutesChange = (value: string) => {
     setShopSchedule((prev) => {
       if (!prev) return prev;
-      return { ...prev, bufferMinutes: Math.max(0, Math.floor(value)) };
+      if (value.trim() === '') {
+        return { ...prev, bufferMinutes: undefined };
+      }
+      const parsed = Math.max(0, Math.floor(Number(value)));
+      return { ...prev, bufferMinutes: Number.isFinite(parsed) ? parsed : prev.bufferMinutes };
     });
   };
 
-  const handleEndOverflowMinutesChange = (value: number) => {
+  const handleEndOverflowMinutesChange = (value: string) => {
     setShopSchedule((prev) => {
       if (!prev) return prev;
-      return { ...prev, endOverflowMinutes: Math.max(0, Math.floor(value)) };
+      if (value.trim() === '') {
+        return { ...prev, endOverflowMinutes: undefined };
+      }
+      const parsed = Math.max(0, Math.floor(Number(value)));
+      return { ...prev, endOverflowMinutes: Number.isFinite(parsed) ? parsed : prev.endOverflowMinutes };
+    });
+  };
+
+  const handleEndOverflowByDayChange = (day: DayKey, value: string) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const nextByDay = ensureEndOverflowByDayRecord(prev.endOverflowByDay);
+      if (value.trim() === '') {
+        delete nextByDay[day];
+      } else {
+        const parsed = Math.max(0, Math.floor(Number(value)));
+        if (Number.isFinite(parsed)) {
+          nextByDay[day] = parsed;
+        }
+      }
+      return { ...prev, endOverflowByDay: nextByDay };
+    });
+  };
+
+  const handleAddEndOverflowDate = (dateKey: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const nextByDate = ensureEndOverflowByDateRecord(prev.endOverflowByDate);
+      if (nextByDate[dateKey] !== undefined) return prev;
+      nextByDate[dateKey] = Math.max(0, Math.floor(prev.endOverflowMinutes ?? 0));
+      return { ...prev, endOverflowByDate: nextByDate };
+    });
+  };
+
+  const handleEndOverflowByDateChange = (dateKey: string, value: string) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const nextByDate = ensureEndOverflowByDateRecord(prev.endOverflowByDate);
+      if (value.trim() === '') {
+        delete nextByDate[dateKey];
+      } else {
+        const parsed = Math.max(0, Math.floor(Number(value)));
+        if (Number.isFinite(parsed)) {
+          nextByDate[dateKey] = parsed;
+        }
+      }
+      return { ...prev, endOverflowByDate: nextByDate };
+    });
+  };
+
+  const handleRemoveEndOverflowDate = (dateKey: string) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const nextByDate = ensureEndOverflowByDateRecord(prev.endOverflowByDate);
+      if (nextByDate[dateKey] === undefined) return prev;
+      delete nextByDate[dateKey];
+      return { ...prev, endOverflowByDate: nextByDate };
     });
   };
 
@@ -356,17 +453,75 @@ const AdminSettings: React.FC = () => {
     });
   };
 
-  const handleSaveAvailability = async () => {
-    if (!shopSchedule || isSavingAvailability) return;
+  const handleAddBreakDate = (dateKey: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
+      if (!breaksByDate[dateKey]) {
+        breaksByDate[dateKey] = [];
+      }
+      return { ...prev, breaksByDate };
+    });
+  };
+
+  const handleAddBreakForDate = (dateKey: string) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
+      const current = breaksByDate[dateKey] ?? [];
+      breaksByDate[dateKey] = [...current, { ...DEFAULT_BREAK_RANGE }];
+      return { ...prev, breaksByDate };
+    });
+  };
+
+  const handleUpdateBreakByDate = (dateKey: string, index: number, field: 'start' | 'end', value: string) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
+      const current = breaksByDate[dateKey] ?? [];
+      breaksByDate[dateKey] = current.map((range, idx) => (idx === index ? { ...range, [field]: value } : range));
+      return { ...prev, breaksByDate };
+    });
+  };
+
+  const handleRemoveBreakByDate = (dateKey: string, index: number) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
+      const current = breaksByDate[dateKey] ?? [];
+      breaksByDate[dateKey] = current.filter((_, idx) => idx !== index);
+      return { ...prev, breaksByDate };
+    });
+  };
+
+  const handleRemoveBreakDate = (dateKey: string) => {
+    setShopSchedule((prev) => {
+      if (!prev) return prev;
+      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
+      delete breaksByDate[dateKey];
+      return { ...prev, breaksByDate };
+    });
+  };
+
+  const handleSaveAvailabilityAndSchedule = async () => {
+    if (!shopSchedule || isSavingAvailability || isSavingSchedule) return;
     setIsSavingAvailability(true);
+    setIsSavingSchedule(true);
     try {
-      const updated = await updateShopSchedule(shopSchedule);
-      setShopSchedule(updated);
+      const [updatedSchedule, updatedSettings] = await Promise.all([
+        updateShopSchedule(shopSchedule),
+        updateSiteSettings(buildSettingsPayload(settings)),
+      ]);
+      setShopSchedule(updatedSchedule);
+      setSettings(updatedSettings);
+      setPhoneParts(normalizePhoneParts(updatedSettings.contact.phone));
       await scheduleQuery.refetch();
       dispatchSchedulesUpdated({ source: 'admin-settings' });
+      dispatchSiteSettingsUpdated(updatedSettings);
       toast({
-        title: 'Disponibilidad actualizada',
-        description: 'Los descansos y tiempos entre servicios se han guardado.',
+        title: 'Agenda y horarios actualizados',
+        description: 'La disponibilidad y el horario informativo se han guardado correctamente.',
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudieron guardar los cambios.';
@@ -377,7 +532,16 @@ const AdminSettings: React.FC = () => {
       });
     } finally {
       setIsSavingAvailability(false);
+      setIsSavingSchedule(false);
     }
+  };
+
+  const handleSaveByActiveTab = async () => {
+    if (activeTab === 'availability') {
+      await handleSaveAvailabilityAndSchedule();
+      return;
+    }
+    await handleSave();
   };
 
   const handleShiftTimeChange = (
@@ -461,6 +625,12 @@ const AdminSettings: React.FC = () => {
     ? 'Cuenta centralizada de la marca'
     : `Cuenta propia por ${copy.location.singularLower}`;
   const stripeVisible = Boolean(stripeConfig?.brandEnabled && stripeConfig?.platformEnabled);
+  const isCurrentTabSaving = activeTab === 'availability'
+    ? (isSavingAvailability || isSavingSchedule)
+    : isSaving;
+  const isCurrentTabSaveDisabled = activeTab === 'availability'
+    ? (isLoading || isScheduleLoading || !shopSchedule || isSavingAvailability || isSavingSchedule || isSaving)
+    : (isLoading || isSaving || isSavingSchedule || isSavingAvailability);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -471,11 +641,6 @@ const AdminSettings: React.FC = () => {
             Ajusta los datos públicos del sitio, las estadísticas destacadas y el horario de apertura.
           </p>
         </div>
-        <Button onClick={() => handleSave(false)} disabled={isSaving || isSavingSchedule || isLoading}>
-          {(isSaving || isLoading) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          <Settings className="w-4 h-4 mr-2" />
-          Guardar cambios
-        </Button>
       </div>
 
       {isLoading && (
@@ -485,6 +650,33 @@ const AdminSettings: React.FC = () => {
         </div>
       )}
 
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as SettingsTab)}
+        className="space-y-6"
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="h-auto w-max justify-start gap-1 rounded-xl bg-muted/60 p-1">
+              <TabsTrigger value="identity" className="min-h-9 whitespace-nowrap">
+                Identidad y landing
+              </TabsTrigger>
+              <TabsTrigger value="operations" className="min-h-9 whitespace-nowrap">
+                Operativa
+              </TabsTrigger>
+              <TabsTrigger value="availability" className="min-h-9 whitespace-nowrap">
+                Agenda y horarios
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <Button onClick={handleSaveByActiveTab} disabled={isCurrentTabSaveDisabled} className="md:shrink-0">
+            {isCurrentTabSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Settings className="w-4 h-4 mr-2" />
+            Guardar cambios
+          </Button>
+        </div>
+
+        <TabsContent value="identity" className="mt-0 space-y-6">
       {/* Branding & Location */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card variant="elevated">
@@ -542,41 +734,15 @@ const AdminSettings: React.FC = () => {
                 disabled={isLoading}
               />
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 leading-tight">
-                  <MapPin className="w-4 h-4 text-muted-foreground" />
-                  Ubicación visible
-                </Label>
-                <Input
-                  value={settings.location.label}
-                  onChange={(e) => handleLocationChange('label', e.target.value)}
-                  placeholder="Le Blond Hair Salon, Canet d'en Berenguer"
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 leading-tight">
-                  <Link2 className="w-4 h-4 text-muted-foreground" />
-                  Enlace a Google Maps
-                </Label>
-                <Input
-                  value={settings.location.mapUrl}
-                  onChange={(e) => handleLocationChange('mapUrl', e.target.value)}
-                  placeholder="https://maps.google.com/..."
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
             <div className="space-y-2">
               <Label className="flex items-center gap-2 leading-tight">
-                <Globe2 className="w-4 h-4 text-muted-foreground" />
-                Enlace para mapa visual (iframe)
+                <MapPin className="w-4 h-4 text-muted-foreground" />
+                Ubicación visible
               </Label>
               <Input
-                value={settings.location.mapEmbedUrl}
-                onChange={(e) => handleLocationChange('mapEmbedUrl', e.target.value)}
-                placeholder="https://www.google.com/maps/embed?..."
+                value={settings.location.label}
+                onChange={(e) => handleLocationChange('label', e.target.value)}
+                placeholder="Le Blond Hair Salon, Canet d'en Berenguer"
                 disabled={isLoading}
               />
             </div>
@@ -616,6 +782,32 @@ const AdminSettings: React.FC = () => {
                   value={settings.contact.email}
                   onChange={(e) => setSettings((prev) => ({ ...prev, contact: { ...prev.contact, email: e.target.value } }))}
                   placeholder="contacto@leblond.com"
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 leading-tight">
+                  <Link2 className="w-4 h-4 text-muted-foreground" />
+                  Enlace a Google Maps
+                </Label>
+                <Input
+                  value={settings.location.mapUrl}
+                  onChange={(e) => handleLocationChange('mapUrl', e.target.value)}
+                  placeholder="https://maps.google.com/..."
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 leading-tight">
+                  <Globe2 className="w-4 h-4 text-muted-foreground" />
+                  Enlace para mapa visual (iframe)
+                </Label>
+                <Input
+                  value={settings.location.mapEmbedUrl}
+                  onChange={(e) => handleLocationChange('mapEmbedUrl', e.target.value)}
+                  placeholder="https://www.google.com/maps/embed?..."
                   disabled={isLoading}
                 />
               </div>
@@ -694,19 +886,34 @@ const AdminSettings: React.FC = () => {
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <Label>Año de inicio</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Año de inicio</Label>
+                <Switch
+                  checked={statsVisibility.experienceYears}
+                  onCheckedChange={(checked) =>
+                    handleStatsVisibilityChange('experienceYears', checked)
+                  }
+                  disabled={isLoading}
+                />
+              </div>
               <Input
                 type="number"
                 value={settings.stats.experienceStartYear}
                 onChange={(e) => handleStatsChange('experienceStartYear', parseInt(e.target.value, 10) || settings.stats.experienceStartYear)}
                 disabled={isLoading}
               />
-              <p className="text-xs text-muted-foreground">
-                Experiencia: <span className="text-foreground font-medium">{experienceYears} años</span>
-              </p>
             </div>
             <div className="space-y-2">
-              <Label>Valoración media</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Valoración media</Label>
+                <Switch
+                  checked={statsVisibility.averageRating}
+                  onCheckedChange={(checked) =>
+                    handleStatsVisibilityChange('averageRating', checked)
+                  }
+                  disabled={isLoading}
+                />
+              </div>
               <Input
                 type="number"
                 step="0.1"
@@ -718,7 +925,16 @@ const AdminSettings: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label>Reservas / año</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Reservas / año</Label>
+                <Switch
+                  checked={statsVisibility.yearlyBookings}
+                  onCheckedChange={(checked) =>
+                    handleStatsVisibilityChange('yearlyBookings', checked)
+                  }
+                  disabled={isLoading}
+                />
+              </div>
               <Input
                 type="number"
                 min={0}
@@ -728,7 +944,16 @@ const AdminSettings: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label>% clientes que repiten</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>% clientes que repiten</Label>
+                <Switch
+                  checked={statsVisibility.repeatClientsPercentage}
+                  onCheckedChange={(checked) =>
+                    handleStatsVisibilityChange('repeatClientsPercentage', checked)
+                  }
+                  disabled={isLoading}
+                />
+              </div>
               <Input
                 type="number"
                 min={0}
@@ -742,37 +967,6 @@ const AdminSettings: React.FC = () => {
                 }
                 disabled={isLoading}
               />
-            </div>
-          </div>
-          <div className="rounded-xl border border-border/70 bg-muted/30 px-4 py-4">
-            <div>
-              <p className="text-sm font-medium text-foreground">Visibilidad en la landing</p>
-              <p className="text-xs text-muted-foreground">Elige qué estadísticas mostrar.</p>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { key: 'experienceYears', label: 'Experiencia' },
-                { key: 'averageRating', label: 'Valoración' },
-                { key: 'yearlyBookings', label: 'Reservas/año' },
-                { key: 'repeatClientsPercentage', label: 'Repetición' },
-              ].map((stat) => (
-                <div
-                  key={stat.key}
-                  className="flex items-center justify-between rounded-lg border border-border/60 bg-background/80 px-3 py-2"
-                >
-                  <span className="text-xs font-medium text-foreground">{stat.label}</span>
-                  <Switch
-                    checked={statsVisibility[stat.key as keyof typeof statsVisibility]}
-                    onCheckedChange={(checked) =>
-                      handleStatsVisibilityChange(
-                        stat.key as keyof SiteSettings['stats']['visibility'],
-                        checked,
-                      )
-                    }
-                    disabled={isLoading}
-                  />
-                </div>
-              ))}
             </div>
           </div>
           <div className="grid md:grid-cols-4 gap-3">
@@ -798,6 +992,10 @@ const AdminSettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+        </TabsContent>
+
+        <TabsContent value="operations" className="mt-0 space-y-6">
 
       {/* Payments */}
       {stripeConfig && stripeVisible && (
@@ -958,6 +1156,10 @@ const AdminSettings: React.FC = () => {
         </CardContent>
       </Card>
 
+        </TabsContent>
+
+        <TabsContent value="availability" className="mt-0 space-y-6">
+
       {/* Breaks and buffers */}
       <Card variant="elevated">
         <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -970,45 +1172,141 @@ const AdminSettings: React.FC = () => {
               Bloquea huecos en la agenda y añade minutos de preparación entre citas.
             </p>
           </div>
-          <Button onClick={handleSaveAvailability} disabled={isScheduleLoading || isSavingAvailability || isLoading}>
-            {isSavingAvailability && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Guardar disponibilidad
-          </Button>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-4 max-w-xs">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
               <div className="space-y-2">
                 <Label>Tiempo entre servicios (minutos)</Label>
                 <Input
                   type="number"
                   min={0}
                   step={5}
-                  value={shopSchedule?.bufferMinutes ?? 0}
-                  onChange={(e) => handleBufferMinutesChange(parseInt(e.target.value, 10) || 0)}
+                  value={shopSchedule?.bufferMinutes ?? ''}
+                  onChange={(e) => handleBufferMinutesChange(e.target.value)}
                   disabled={isScheduleLoading || !shopSchedule}
+                  onFocus={(e) => e.currentTarget.select()}
                 />
                 <p className="text-xs text-muted-foreground">
                   Se aplica {copy.staff.toWithDefinitePlural} para limpieza, preparación o descanso.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label>Tolerancia fin de jornada (minutos)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={5}
-                  value={shopSchedule?.endOverflowMinutes ?? 0}
-                  onChange={(e) => handleEndOverflowMinutesChange(parseInt(e.target.value, 10) || 0)}
-                  disabled={isScheduleLoading || !shopSchedule}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Permite reservar si la cita termina unos minutos después del cierre.
-                </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Tolerancia fin de jornada (minutos)</Label>
+              <Input
+                type="number"
+                min={0}
+                step={5}
+                value={shopSchedule?.endOverflowMinutes ?? ''}
+                onChange={(e) => handleEndOverflowMinutesChange(e.target.value)}
+                disabled={isScheduleLoading || !shopSchedule}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <p className="text-xs text-muted-foreground">
+                Permite reservar si la cita termina unos minutos después del cierre.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-xl border border-border/70 bg-muted/20 p-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Tolerancia por día y fecha</p>
+              <p className="text-xs text-muted-foreground">
+                Prioridad de aplicación: fecha concreta, luego día de semana y después global.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Tolerancia por día de semana
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {DAY_LABELS.map(({ key, label }) => (
+                <div key={`overflow-day-${key}`} className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">{label}</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={shopSchedule?.endOverflowByDay?.[key] ?? ''}
+                    placeholder="Hereda global"
+                    onChange={(e) => handleEndOverflowByDayChange(key, e.target.value)}
+                    disabled={isScheduleLoading || !shopSchedule}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                </div>
+              ))}
               </div>
             </div>
-            <div className="rounded-xl border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-              Estos bloques impiden reservar en las franjas indicadas y se aplican a todo el equipo.
+
+            <div className="space-y-3 border-t border-border/60 pt-4">
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Tolerancia por fecha concreta
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Nueva fecha</Label>
+                    <Input
+                      type="date"
+                      value={newOverflowDate}
+                      onChange={(e) => setNewOverflowDate(e.target.value)}
+                      disabled={isScheduleLoading || !shopSchedule}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      handleAddEndOverflowDate(newOverflowDate);
+                      setNewOverflowDate('');
+                    }}
+                    disabled={!newOverflowDate || isScheduleLoading || !shopSchedule}
+                  >
+                    Añadir fecha
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {Object.entries(shopSchedule?.endOverflowByDate ?? {})
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([dateKey, value]) => (
+                    <div
+                      key={`overflow-date-${dateKey}`}
+                      className="grid items-end gap-2 rounded-lg border border-border/60 bg-background/80 p-2.5 sm:grid-cols-[minmax(120px,1fr)_minmax(90px,120px)_auto]"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{dateKey}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Minutos</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={5}
+                          value={value}
+                          onChange={(e) => handleEndOverflowByDateChange(dateKey, e.target.value)}
+                          disabled={isScheduleLoading || !shopSchedule}
+                          onFocus={(e) => e.currentTarget.select()}
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="sm:justify-self-end"
+                        onClick={() => handleRemoveEndOverflowDate(dateKey)}
+                        disabled={isScheduleLoading || !shopSchedule}
+                      >
+                        Quitar
+                      </Button>
+                    </div>
+                  ))}
+                {Object.keys(shopSchedule?.endOverflowByDate ?? {}).length === 0 && (
+                  <p className="text-xs text-muted-foreground">No hay fechas con tolerancia específica.</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1088,6 +1386,111 @@ const AdminSettings: React.FC = () => {
               );
             })}
           </div>
+
+          <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Huecos por fecha concreta</p>
+                <p className="text-xs text-muted-foreground">Añade descansos solo para una fecha puntual.</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Nueva fecha</Label>
+                  <Input
+                    type="date"
+                    value={newBreakDate}
+                    onChange={(e) => setNewBreakDate(e.target.value)}
+                    disabled={isScheduleLoading || !shopSchedule}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    handleAddBreakDate(newBreakDate);
+                    setNewBreakDate('');
+                  }}
+                  disabled={!newBreakDate || isScheduleLoading || !shopSchedule}
+                >
+                  Añadir fecha
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {Object.entries(shopSchedule?.breaksByDate ?? {})
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([dateKey, ranges]) => (
+                  <div key={`break-date-${dateKey}`} className="space-y-2 rounded-lg border border-border/60 bg-background/85 p-2.5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold text-foreground">{dateKey}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {ranges.length ? `${ranges.length} huecos` : 'Sin huecos definidos'}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 sm:justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleAddBreakForDate(dateKey)}
+                          disabled={isScheduleLoading || !shopSchedule}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Añadir hueco
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveBreakDate(dateKey)}
+                          disabled={isScheduleLoading || !shopSchedule}
+                        >
+                          Quitar fecha
+                        </Button>
+                      </div>
+                    </div>
+
+                    {ranges.length > 0 ? (
+                      <div className="space-y-2">
+                        {ranges.map((range, index) => (
+                          <div
+                            key={`break-date-${dateKey}-${index}`}
+                            className="grid items-center gap-2 rounded-md bg-muted/20 p-2 sm:grid-cols-[1fr_1fr_auto]"
+                          >
+                            <Input
+                              type="time"
+                              value={range.start}
+                              onChange={(e) => handleUpdateBreakByDate(dateKey, index, 'start', e.target.value)}
+                              disabled={isScheduleLoading || !shopSchedule}
+                            />
+                            <Input
+                              type="time"
+                              value={range.end}
+                              onChange={(e) => handleUpdateBreakByDate(dateKey, index, 'end', e.target.value)}
+                              disabled={isScheduleLoading || !shopSchedule}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveBreakByDate(dateKey, index)}
+                              disabled={isScheduleLoading || !shopSchedule}
+                              className="text-muted-foreground hover:text-foreground sm:justify-self-end"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No hay huecos configurados.</p>
+                    )}
+                  </div>
+                ))}
+              {Object.keys(shopSchedule?.breaksByDate ?? {}).length === 0 && (
+                <p className="text-xs text-muted-foreground">No hay fechas con huecos específicos.</p>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -1103,10 +1506,6 @@ const AdminSettings: React.FC = () => {
               Este horario se muestra en la web y es independiente de la disponibilidad {copy.staff.fromWithDefinitePlural}.
             </p>
           </div>
-          <Button onClick={() => handleSave(true)} disabled={isSavingSchedule || isSaving || isLoading}>
-            {isSavingSchedule && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Guardar horario
-          </Button>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-4 xl:grid-cols-3">
@@ -1180,6 +1579,8 @@ const AdminSettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

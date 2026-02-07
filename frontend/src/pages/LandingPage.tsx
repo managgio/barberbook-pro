@@ -39,6 +39,8 @@ const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
 const signImageFallback = '/placeholder.svg';
 const productImageFallback = '/placeholder.svg';
+const EMPTY_PRODUCTS: Product[] = [];
+const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
 const LANDING_SECTION_ORDER = ['presentation', 'services', 'products', 'barbers', 'cta'] as const;
 type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
 const isLandingSectionKey = (value: string): value is LandingSectionKey =>
@@ -188,8 +190,8 @@ const LandingPage: React.FC = () => {
 
   const barbers = barbersQuery.data ?? [];
   const services = servicesQuery.data ?? [];
-  const products = productsQuery.data ?? [];
-  const productCategories = productCategoriesQuery.data ?? [];
+  const products = productsQuery.data ?? EMPTY_PRODUCTS;
+  const productCategories = productCategoriesQuery.data ?? EMPTY_PRODUCT_CATEGORIES;
   const showProducts = productsModuleEnabled && settings.products.showOnLanding && products.length > 0;
   const landingOrder = useMemo(() => {
     const configured = (landingConfig?.order || [])

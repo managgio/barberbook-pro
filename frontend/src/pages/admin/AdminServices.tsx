@@ -581,6 +581,9 @@ const AdminServices: React.FC = () => {
             <DialogTitle>
               {editingService ? 'Editar servicio' : 'Nuevo servicio'}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Completa nombre, descripción, precio, duración y categoría del servicio.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
@@ -678,6 +681,9 @@ const AdminServices: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingCategory ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Crea o edita categorías para agrupar servicios.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCategorySubmit}>
             <div className="space-y-4 py-4">

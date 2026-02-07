@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
@@ -533,6 +533,9 @@ const AdminRoles: React.FC = () => {
         <DialogContent className="max-w-2xl h-[85vh] max-h-[760px] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingRole ? 'Editar rol' : 'Nuevo rol'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Define permisos y descripción del rol para administradores del local.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveRole} className="flex flex-1 min-h-0 flex-col gap-5 overflow-hidden">
             <div className="grid sm:grid-cols-2 gap-4">

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -304,6 +304,9 @@ const AdminLoyalty: React.FC = () => {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>{editingProgram ? 'Editar tarjeta' : 'Nueva tarjeta'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Configura reglas, alcance y prioridad de la tarjeta de fidelización.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -451,6 +454,9 @@ const AdminLoyalty: React.FC = () => {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Eliminar tarjeta</DialogTitle>
+            <DialogDescription className="sr-only">
+              Confirmación para eliminar esta tarjeta de fidelización.
+            </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             ¿Quieres eliminar esta tarjeta? No afectará a las citas ya registradas.

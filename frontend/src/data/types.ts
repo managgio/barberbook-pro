@@ -400,7 +400,10 @@ export interface BreakRange {
 export interface ShopSchedule {
   bufferMinutes?: number;
   endOverflowMinutes?: number;
+  endOverflowByDay?: Partial<Record<DayKey, number>>;
+  endOverflowByDate?: Record<string, number>;
   breaks?: Record<DayKey, BreakRange[]>;
+  breaksByDate?: Record<string, BreakRange[]>;
   monday: DaySchedule;
   tuesday: DaySchedule;
   wednesday: DaySchedule;

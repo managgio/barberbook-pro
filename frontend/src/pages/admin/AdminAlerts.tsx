@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { createAlert, deleteAlert, getAlerts, updateAlert } from '@/data/api/alerts';
 import { Alert as AlertType } from '@/data/types';
@@ -251,6 +251,9 @@ const AdminAlerts: React.FC = () => {
             <DialogTitle>
               {editingAlert ? 'Editar alerta' : 'Nueva alerta'}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Define el título, mensaje, tipo y programación de la alerta.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">

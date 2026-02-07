@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
+import { DistributedLockService } from '../../prisma/distributed-lock.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
 import { AppointmentsService } from './appointments.service';
@@ -12,6 +13,7 @@ export class AppointmentsStatusSyncService implements OnModuleInit, OnModuleDest
   constructor(
     private readonly appointmentsService: AppointmentsService,
     private readonly prisma: PrismaService,
+    private readonly distributedLock: DistributedLockService,
   ) {}
 
   onModuleInit() {
@@ -25,6 +27,20 @@ export class AppointmentsStatusSyncService implements OnModuleInit, OnModuleDest
   }
 
   private async handleSync() {
+    const executed = await this.distributedLock.runWithLock(
+      'cron:appointments-status-sync',
+      async () => {
+        await this.runSync();
+      },
+      {
+        ttlMs: 8 * 60_000,
+        onLockedMessage: 'Skipping status sync in this instance; lock already held',
+      },
+    );
+    if (!executed) return;
+  }
+
+  private async runSync() {
     try {
       let updatedTotal = 0;
       await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {

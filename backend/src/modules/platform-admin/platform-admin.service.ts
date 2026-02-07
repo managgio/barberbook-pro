@@ -6,6 +6,19 @@ import { UsageMetricsService } from '../usage-metrics/usage-metrics.service';
 import { AssignBrandAdminDto } from './dto/assign-brand-admin.dto';
 import { RemoveBrandAdminDto } from './dto/remove-brand-admin.dto';
 
+const mergeRecords = <T extends Record<string, any>>(base: T, override?: Partial<T>): T => {
+  if (!override) return { ...base };
+  const result = { ...base } as Record<string, any>;
+  Object.entries(override).forEach(([key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = mergeRecords((base as any)?.[key] || {}, value as Record<string, any>);
+    } else if (value !== undefined) {
+      result[key] = value;
+    }
+  });
+  return result as T;
+};
+
 const sanitizeThemeConfig = (data: Record<string, unknown>) => {
   if (!data || typeof data !== 'object') return data;
   const theme = data.theme;
@@ -42,6 +55,42 @@ const BRANDING_FILE_ID_FIELDS = [
   'signImageFileId',
 ] as const;
 
+type HealthStatus = 'ok' | 'warning' | 'error' | 'disabled';
+type IntegrationKey = 'email' | 'twilio' | 'stripe' | 'imagekit' | 'ai';
+
+type IntegrationHealth = {
+  key: IntegrationKey;
+  status: HealthStatus;
+  summary: string;
+  details: string[];
+};
+
+type LocationHealth = {
+  id: string;
+  name: string;
+  slug: string | null;
+  isActive: boolean;
+  overallStatus: HealthStatus;
+  integrations: IntegrationHealth[];
+};
+
+const HEALTH_PRIORITY: Record<HealthStatus, number> = {
+  error: 4,
+  warning: 3,
+  ok: 2,
+  disabled: 1,
+};
+
+const pickWorstStatus = (statuses: HealthStatus[]): HealthStatus =>
+  statuses.reduce((worst, current) =>
+    HEALTH_PRIORITY[current] > HEALTH_PRIORITY[worst] ? current : worst, 'disabled');
+
+const resolveCountsByStatus = (statuses: HealthStatus[]) =>
+  statuses.reduce<Record<HealthStatus, number>>(
+    (acc, status) => ({ ...acc, [status]: acc[status] + 1 }),
+    { ok: 0, warning: 0, error: 0, disabled: 0 },
+  );
+
 @Injectable()
 export class PlatformAdminService {
   constructor(
@@ -51,6 +100,158 @@ export class PlatformAdminService {
   ) {}
 
   private readonly logger = new Logger(PlatformAdminService.name);
+
+  private getEmailHealth(config: Record<string, any>, notifications: Record<string, any>): IntegrationHealth {
+    const enabled = notifications?.email !== false;
+    if (!enabled) {
+      return { key: 'email', status: 'disabled', summary: 'Email desactivado', details: [] };
+    }
+    const email = config?.email || {};
+    const missing: string[] = [];
+    if (!email.user) missing.push('user');
+    if (!email.password) missing.push('password');
+    const details: string[] = [];
+    if (!email.host) details.push('host ausente (usa fallback global)');
+    if (!email.port) details.push('port ausente (usa fallback global)');
+    if (missing.length > 0) {
+      return {
+        key: 'email',
+        status: 'error',
+        summary: 'SMTP incompleto',
+        details: [`Faltan credenciales: ${missing.join(', ')}`],
+      };
+    }
+    return {
+      key: 'email',
+      status: details.length > 0 ? 'warning' : 'ok',
+      summary: 'SMTP configurado',
+      details,
+    };
+  }
+
+  private getTwilioHealth(config: Record<string, any>, notifications: Record<string, any>): IntegrationHealth {
+    const smsEnabled = notifications?.sms !== false;
+    const whatsappEnabled = notifications?.whatsapp !== false;
+    if (!smsEnabled && !whatsappEnabled) {
+      return { key: 'twilio', status: 'disabled', summary: 'SMS/WhatsApp desactivados', details: [] };
+    }
+    const twilio = config?.twilio || {};
+    const missing: string[] = [];
+    if (!twilio.accountSid) missing.push('accountSid');
+    if (!twilio.authToken) missing.push('authToken');
+    if (missing.length > 0) {
+      return {
+        key: 'twilio',
+        status: 'error',
+        summary: 'Twilio incompleto',
+        details: [`Faltan credenciales: ${missing.join(', ')}`],
+      };
+    }
+    const details: string[] = [];
+    if (smsEnabled && !twilio.messagingServiceSid && !twilio.smsSenderId) {
+      details.push('SMS sin sender explícito (messagingServiceSid/smsSenderId)');
+    }
+    if (whatsappEnabled && !twilio.whatsappFrom) {
+      details.push('WhatsApp sin remitente (whatsappFrom)');
+    }
+    return {
+      key: 'twilio',
+      status: details.some((detail) => detail.includes('sin remitente')) ? 'error' : details.length > 0 ? 'warning' : 'ok',
+      summary: 'Twilio configurado',
+      details,
+    };
+  }
+
+  private getStripeHealth(
+    brandConfig: Record<string, any>,
+    locationConfig: Record<string, any>,
+  ): IntegrationHealth {
+    const brandStripe = brandConfig?.payments?.stripe || {};
+    const locationStripe = locationConfig?.payments?.stripe || {};
+    const mode = brandStripe?.mode === 'brand' ? 'brand' : 'location';
+    const statusDetails: string[] = [];
+
+    if (mode === 'brand') {
+      if (brandStripe.enabled !== true) {
+        return { key: 'stripe', status: 'disabled', summary: 'Stripe desactivado (modo marca)', details: [] };
+      }
+      if (!brandStripe.accountId) {
+        return { key: 'stripe', status: 'error', summary: 'Stripe marca sin accountId', details: [] };
+      }
+      if (brandStripe.detailsSubmitted === false) statusDetails.push('detailsSubmitted=false');
+      if (brandStripe.chargesEnabled === false) statusDetails.push('chargesEnabled=false');
+      if (brandStripe.payoutsEnabled === false) statusDetails.push('payoutsEnabled=false');
+      return {
+        key: 'stripe',
+        status: statusDetails.length > 0 ? 'warning' : 'ok',
+        summary: 'Stripe modo marca',
+        details: statusDetails,
+      };
+    }
+
+    if (locationStripe.platformEnabled === false || locationStripe.enabled !== true) {
+      return { key: 'stripe', status: 'disabled', summary: 'Stripe local desactivado', details: [] };
+    }
+    if (!locationStripe.accountId) {
+      return { key: 'stripe', status: 'error', summary: 'Stripe local sin accountId', details: [] };
+    }
+    if (locationStripe.detailsSubmitted === false) statusDetails.push('detailsSubmitted=false');
+    if (locationStripe.chargesEnabled === false) statusDetails.push('chargesEnabled=false');
+    if (locationStripe.payoutsEnabled === false) statusDetails.push('payoutsEnabled=false');
+    return {
+      key: 'stripe',
+      status: statusDetails.length > 0 ? 'warning' : 'ok',
+      summary: 'Stripe modo local',
+      details: statusDetails,
+    };
+  }
+
+  private getImageKitHealth(config: Record<string, any>): IntegrationHealth {
+    const imagekit = config?.imagekit || {};
+    const missing: string[] = [];
+    if (!imagekit.publicKey) missing.push('publicKey');
+    if (!imagekit.privateKey) missing.push('privateKey');
+    if (!imagekit.urlEndpoint) missing.push('urlEndpoint');
+    if (missing.length > 0) {
+      return {
+        key: 'imagekit',
+        status: 'error',
+        summary: 'ImageKit incompleto',
+        details: [`Faltan campos: ${missing.join(', ')}`],
+      };
+    }
+    const details: string[] = [];
+    if (!imagekit.folder) {
+      details.push('folder no definido (usa fallback)');
+    }
+    return {
+      key: 'imagekit',
+      status: details.length > 0 ? 'warning' : 'ok',
+      summary: 'ImageKit configurado',
+      details,
+    };
+  }
+
+  private getAiHealth(config: Record<string, any>): IntegrationHealth {
+    const ai = config?.ai || {};
+    const provider = typeof ai.provider === 'string' ? ai.provider.trim().toLowerCase() : '';
+    if (!provider || provider === 'disabled' || provider === 'none') {
+      return { key: 'ai', status: 'disabled', summary: 'IA desactivada', details: [] };
+    }
+    if (!ai.apiKey) {
+      return { key: 'ai', status: 'error', summary: 'IA sin API key', details: [] };
+    }
+    const details: string[] = [];
+    if (!ai.model) {
+      details.push('model no definido (usa fallback)');
+    }
+    return {
+      key: 'ai',
+      status: details.length > 0 ? 'warning' : 'ok',
+      summary: `IA (${provider}) configurada`,
+      details,
+    };
+  }
 
   private collectBrandingFileIds(target: Set<string>, branding?: Record<string, unknown> | null) {
     if (!branding || typeof branding !== 'object') return;
@@ -458,5 +659,78 @@ export class PlatformAdminService {
   async refreshUsageMetrics(windowDays: number) {
     await this.usageMetrics.refreshImageKitUsage();
     return this.usageMetrics.getPlatformMetrics(windowDays, { forceOpenAi: true });
+  }
+
+  async getBrandHealth(brandId: string) {
+    const brand = await this.prisma.brand.findUnique({
+      where: { id: brandId },
+      select: {
+        id: true,
+        name: true,
+        subdomain: true,
+        customDomain: true,
+        isActive: true,
+      },
+    });
+    if (!brand) {
+      throw new NotFoundException('Brand not found');
+    }
+
+    const [brandConfig, locations, locationConfigs] = await Promise.all([
+      this.prisma.brandConfig.findUnique({
+        where: { brandId },
+        select: { data: true },
+      }),
+      this.prisma.location.findMany({
+        where: { brandId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, name: true, slug: true, isActive: true },
+      }),
+      this.prisma.locationConfig.findMany({
+        where: { local: { brandId } },
+        select: { localId: true, data: true },
+      }),
+    ]);
+
+    const brandData = ((brandConfig?.data || {}) as Record<string, any>) || {};
+    const locationConfigByLocalId = new Map(
+      locationConfigs.map((config) => [config.localId, ((config.data || {}) as Record<string, any>) || {}]),
+    );
+
+    const locationsHealth: LocationHealth[] = locations.map((location) => {
+      const localData = locationConfigByLocalId.get(location.id) || {};
+      const effectiveConfig = mergeRecords(brandData, localData);
+      const notifications = mergeRecords(brandData.notificationPrefs || {}, localData.notificationPrefs || {});
+      const integrations: IntegrationHealth[] = [
+        this.getEmailHealth(effectiveConfig, notifications),
+        this.getTwilioHealth(effectiveConfig, notifications),
+        this.getStripeHealth(brandData, localData),
+        this.getImageKitHealth(effectiveConfig),
+        this.getAiHealth(effectiveConfig),
+      ];
+      const overallStatus = pickWorstStatus(integrations.map((item) => item.status));
+      return {
+        ...location,
+        overallStatus,
+        integrations,
+      };
+    });
+
+    const overallStatuses = locationsHealth.map((item) => item.overallStatus);
+    const integrationsByStatus = resolveCountsByStatus(
+      locationsHealth.flatMap((location) => location.integrations.map((integration) => integration.status)),
+    );
+
+    return {
+      brand,
+      checkedAt: new Date().toISOString(),
+      summary: {
+        locations: locationsHealth.length,
+        overallStatus: pickWorstStatus(overallStatuses.length ? overallStatuses : ['disabled']),
+        byStatus: resolveCountsByStatus(overallStatuses),
+        integrationsByStatus,
+      },
+      locations: locationsHealth,
+    };
   }
 }

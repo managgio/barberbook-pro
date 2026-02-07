@@ -6,11 +6,12 @@
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",
-    "start:dev": "DISABLE_CONSOLE_NINJA=1 CONSOLE_NINJA_ENABLED=false NODE_OPTIONS= nest start --watch",
+    "start:dev": "node scripts/start-dev.mjs",
     "start:prod": "node dist/main.js",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "node --test -r ts-node/register test/**/*.test.ts",
+    "tenant:scope:check": "node scripts/check-tenant-scope.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",

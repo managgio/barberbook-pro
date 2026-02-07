@@ -1,0 +1,42 @@
+name: Backend Hardening
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-hardening.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-hardening.yml"
+
+jobs:
+  backend-hardening:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Tenant Scope Gate
+        run: npm run tenant:scope:check
+
+      - name: Build
+        run: npm run build

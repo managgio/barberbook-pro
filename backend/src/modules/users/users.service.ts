@@ -25,12 +25,16 @@ export class UsersService {
     private readonly firebaseAdmin: FirebaseAdminService,
   ) {}
 
+  private normalizeEmail(email?: string | null): string {
+    return (email || '').trim().toLowerCase();
+  }
+
   private async applySuperAdminFlag<T extends Partial<CreateUserDto | UpdateUserDto>>(data: T): Promise<T> {
-    const email = data.email?.toLowerCase();
+    const email = this.normalizeEmail(data.email);
     if (!email) return data;
 
     const brandConfig = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
-    const brandSuperAdminEmail = brandConfig.superAdminEmail?.toLowerCase() || SUPER_ADMIN_EMAIL;
+    const brandSuperAdminEmail = this.normalizeEmail(brandConfig.superAdminEmail) || SUPER_ADMIN_EMAIL;
     const isBrandSuperAdmin = email === brandSuperAdminEmail;
     const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(email);
 
@@ -49,7 +53,7 @@ export class UsersService {
 
   private async getBrandSuperAdminEmail(): Promise<string> {
     const brandConfig = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
-    return (brandConfig.superAdminEmail || SUPER_ADMIN_EMAIL).toLowerCase();
+    return this.normalizeEmail(brandConfig.superAdminEmail) || SUPER_ADMIN_EMAIL;
   }
 
   private mapUserWithAccess(
@@ -529,6 +533,7 @@ export class UsersService {
           },
         },
       });
+      // tenant-scope-ignore: global membership count is required to decide if user can be deleted globally.
       const remainingMemberships = await tx.brandUser.count({
         where: { userId: id },
       });

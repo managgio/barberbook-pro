@@ -178,6 +178,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [currentLocationId, user]);
 
+  const authenticateAndSync = useCallback(
+    async (firebaseUser: FirebaseUser | null): Promise<{ success: boolean; error?: string }> => {
+      if (!firebaseUser) {
+        return { success: false, error: 'No se pudo completar el inicio de sesión.' };
+      }
+      try {
+        await syncFirebaseProfile(firebaseUser);
+        return { success: true };
+      } catch (error) {
+        console.error('Error sincronizando perfil tras autenticación', error);
+        setUser(null);
+        try {
+          await signOutFirebase();
+        } catch {
+          // Ignore sign-out cleanup errors to keep original sync error context.
+        }
+        return { success: false, error: getFriendlyError(error) };
+      }
+    },
+    [syncFirebaseProfile],
+  );
+
   const ensureFirebaseReady = useCallback(async () => {
     const fallback = getFirebaseFallback();
     if (!fallback?.apiKey) {
@@ -250,35 +272,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       await ensureFirebaseReady();
-      await signInFirebaseWithEmailAndPassword(email, password);
-      return { success: true };
+      const credentials = await signInFirebaseWithEmailAndPassword(email, password);
+      return await authenticateAndSync(credentials.user);
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
     }
-  }, [ensureFirebaseReady]);
+  }, [authenticateAndSync, ensureFirebaseReady]);
 
   const loginWithGoogle = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     try {
       await ensureFirebaseReady();
-      await signInFirebaseWithGooglePopup();
-      return { success: true };
+      const credentials = await signInFirebaseWithGooglePopup();
+      return await authenticateAndSync(credentials.user);
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
     }
-  }, [ensureFirebaseReady]);
+  }, [authenticateAndSync, ensureFirebaseReady]);
 
   const signup = useCallback(async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const auth = await ensureFirebaseReady();
-      await createFirebaseUserWithEmailAndPassword(email, password);
-      if (auth.currentUser) {
-        await updateFirebaseUserProfile(auth.currentUser, { displayName: name });
+      const credentials = await createFirebaseUserWithEmailAndPassword(email, password);
+      const targetUser = auth.currentUser ?? credentials.user;
+      if (targetUser) {
+        await updateFirebaseUserProfile(targetUser, { displayName: name });
       }
-      return { success: true };
+      return await authenticateAndSync(targetUser);
     } catch (error) {
       return { success: false, error: getFriendlyError(error) };
     }
-  }, [ensureFirebaseReady]);
+  }, [authenticateAndSync, ensureFirebaseReady]);
 
   const logout = useCallback(async () => {
     await ensureFirebaseReady();
