@@ -24,6 +24,13 @@ export class PlatformAdminController {
     return Math.min(7 * 24 * 60, Math.max(5, Math.floor(parsed)));
   }
 
+  private parseMetricsWindowDays(raw?: string) {
+    const parsed = raw ? Number(raw) : 7;
+    if (!Number.isFinite(parsed)) return 7;
+    const normalized = Math.floor(parsed);
+    return [7, 14, 30].includes(normalized) ? normalized : 7;
+  }
+
   @Get('brands')
   listBrands() {
     return this.platformService.listBrands();
@@ -31,14 +38,12 @@ export class PlatformAdminController {
 
   @Get('metrics')
   getUsageMetrics(@Query('window') window?: string) {
-    const parsed = window ? Number(window) : 7;
-    return this.platformService.getUsageMetrics(Number.isFinite(parsed) ? parsed : 7);
+    return this.platformService.getUsageMetrics(this.parseMetricsWindowDays(window));
   }
 
   @Post('metrics/refresh')
   refreshUsageMetrics(@Query('window') window?: string) {
-    const parsed = window ? Number(window) : 7;
-    return this.platformService.refreshUsageMetrics(Number.isFinite(parsed) ? parsed : 7);
+    return this.platformService.refreshUsageMetrics(this.parseMetricsWindowDays(window));
   }
 
   @Get('observability/web-vitals')

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -11,6 +11,10 @@ import { getCurrentLocalId } from '../../tenancy/tenant.context';
 
 @Controller('users')
 export class UsersController {
+  private static readonly MAX_USERS_IDS = 200;
+  private static readonly MAX_QUERY_LENGTH = 120;
+  private static readonly MAX_PAGE = 10_000;
+
   constructor(
     private readonly usersService: UsersService,
     private readonly authService: AuthService,
@@ -66,16 +70,26 @@ export class UsersController {
     @Query('q') q?: string,
   ) {
     const normalizedRole = role === 'admin' || role === 'client' ? role : undefined;
-    const normalizedQuery = q?.trim() || undefined;
+    const rawQuery = q?.trim();
+    if (rawQuery && rawQuery.length > UsersController.MAX_QUERY_LENGTH) {
+      throw new BadRequestException(`El filtro q no puede superar ${UsersController.MAX_QUERY_LENGTH} caracteres.`);
+    }
+    const normalizedQuery = rawQuery || undefined;
     const parsedIds = ids
       ?.split(',')
       .map((value) => value.trim())
       .filter((value) => value.length > 0);
+    if (parsedIds && parsedIds.length > UsersController.MAX_USERS_IDS) {
+      throw new BadRequestException(`El parámetro ids admite un máximo de ${UsersController.MAX_USERS_IDS} elementos.`);
+    }
     if (parsedIds && parsedIds.length > 0) {
-      return this.usersService.findByIds(parsedIds);
+      return this.usersService.findByIds([...new Set(parsedIds)]);
     }
 
-    const pageNumber = Math.max(1, parseInt(page ?? '1', 10) || 1);
+    const pageNumber = Math.min(
+      UsersController.MAX_PAGE,
+      Math.max(1, parseInt(page ?? '1', 10) || 1),
+    );
     const limit = Math.min(200, Math.max(10, parseInt(pageSize ?? '50', 10) || 50));
     return this.usersService.findPage({
       page: pageNumber,

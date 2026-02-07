@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "description": "Backend NestJS + Prisma para la aplicación de reservas de Le Blond.",
   "license": "MIT",
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10"
+  },
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",

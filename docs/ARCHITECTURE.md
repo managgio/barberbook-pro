@@ -35,6 +35,7 @@ Backend:
 Infra/Dev:
 - Docker Compose para MySQL.
 - Prisma migrations + seed.
+- Runtime estandarizado en Node.js LTS 22 (en local/CI con `.nvmrc` y `engines` en `frontend/package.json` y `backend/package.json`).
 
 ## Multi-tenant y resolucion de marca/local
 **Backend**
@@ -421,6 +422,7 @@ Frontend (`frontend/.env*`):
 
 ## Operativa y desarrollo
 - MySQL local con Docker: `docker compose up -d`.
+- Runtime recomendado: `nvm use` (lee `.nvmrc` = Node 22).
 - Backend: `npm install`, `npx prisma generate`, `npx prisma migrate dev`, `npm run prisma:seed`, `npm run start:dev`.
 - Frontend: `npm install`, `npm run dev`.
 - Scripts DB: `scripts/db_dump.sh` y `scripts/db_restore.sh`.
@@ -458,6 +460,11 @@ Frontend (`frontend/.env*`):
 - Endpoint agregado para dashboard admin: `GET /api/appointments/dashboard-summary?window=<n>[&barberId=<id>]` devuelve KPIs, series de ingresos/ticket, mix de servicios, ocupacion y citas de hoy ya agregadas.
 - Endpoint agregado para búsqueda admin: `GET /api/appointments/admin-search?page=<n>&pageSize=<m>[&barberId=<id>][&date=<yyyy-mm-dd>]` devuelve `{ total, page, pageSize, hasMore, items, clients }`.
 - Endpoint agregado para calendario admin: `GET /api/appointments/admin-calendar?dateFrom=...&dateTo=...[&barberId=<id>][&sort=asc|desc]` devuelve `{ items, clients }` (sin segunda consulta a `/users`).
+- Guardrails de entrada (anti abuso/sobrecarga):
+  - `GET /api/users`: `q` max 120 caracteres, `ids` max 200, `page` acotada a 10.000.
+  - `GET /api/appointments` + `admin-search` + `admin-calendar` + `weekly-load`: rango `dateFrom/dateTo` max 62 dias y `page` acotada a 10.000.
+  - `GET /api/appointments/availability-batch`: `barberIds` max 80.
+  - `GET/POST /api/platform/metrics`: ventana permitida solo `7 | 14 | 30` dias.
 - Endpoint operativo de salud por marca en plataforma: `GET /api/platform/brands/:id/health` devuelve estado agregado por local e integración (`email`, `twilio`, `stripe`, `imagekit`, `ai`) para detectar credenciales/fuentes degradadas antes de impacto en clientes.
 - Resolucion puntual de usuarios para listados paginados: `GET /api/users?ids=<id1,id2,...>` devuelve solo los usuarios solicitados (acotado al tenant actual).
 - Configuración plataforma (`PATCH /api/platform/brands/:id/config` y `PATCH /api/platform/locations/:id/config`) acepta `data` objeto, incluyendo `{}` para limpiar overrides sin romper el guardado de marca/local.
