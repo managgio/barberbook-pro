@@ -309,6 +309,10 @@ const AdminCashRegister: React.FC = () => {
     () => completedAppointments.reduce((acc, appointment) => acc + getAppointmentAmount(appointment), 0),
     [completedAppointments, getAppointmentAmount],
   );
+  const appointmentsTotalWithProducts = useMemo(
+    () => completedAppointments.reduce((acc, appointment) => acc + appointment.price, 0),
+    [completedAppointments],
+  );
   const pendingIncome = useMemo(
     () => pendingAppointments.reduce((acc, appointment) => acc + getAppointmentAmount(appointment), 0),
     [pendingAppointments, getAppointmentAmount],
@@ -626,11 +630,13 @@ const AdminCashRegister: React.FC = () => {
       >
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos del día</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Citas del día</CardTitle>
             <TrendingUp className="w-4 h-4 text-emerald-500 md:w-5 md:h-5 lg:w-6 lg:h-6" />
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold text-foreground">{currencyFormatter.format(totalIncome)}</p>
+            <p className="text-2xl font-semibold text-foreground">
+              {currencyFormatter.format(appointmentsTotalWithProducts)}
+            </p>
             <p className="text-xs text-muted-foreground mt-1">
               {completedAppointments.length} citas completadas · {pendingAppointments.length}{' '}
               {pendingAppointments.length === 1 ? 'cita pendiente' : 'citas pendientes'}

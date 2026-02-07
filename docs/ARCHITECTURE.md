@@ -303,6 +303,7 @@ Flujos:
  
 8) **Caja registradora**
    - Combina citas (precio final, incluye productos) + movimientos manuales.
+   - KPI principal `Citas del día`: suma solo citas completadas (servicios + productos de la cita), sin incluir movimientos manuales de caja.
    - Soporta movimientos de **compra/venta de productos sin cita** (venta suelta) desde caja.
    - Compra incrementa stock y venta decrementa stock en el inventario del local.
    - Si se elimina un movimiento de compra/venta, se revierte el ajuste de stock para mantener consistencia.
