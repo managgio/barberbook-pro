@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getAdminCalendarData, updateAppointment } from '@/data/api/appointments';
@@ -12,6 +13,7 @@ import {
   ChevronRight, 
   Clock,
   Loader2,
+  RefreshCcw,
   User as UserIcon,
   Scissors,
   MessageSquare,
@@ -51,6 +53,8 @@ const END_HOUR = 20;
 const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => i + START_HOUR);
 const HOUR_HEIGHT = 60;
 const MINUTES_IN_DAY_VIEW = HOURS.length * 60;
+const BARBER_FILTER_STORAGE_PREFIX = 'admin:calendar:barber-filter';
+const NOW_INDICATOR_STORAGE_PREFIX = 'admin:calendar:now-indicator';
 const currencyFormatter = new Intl.NumberFormat('es-ES', {
   style: 'currency',
   currency: 'EUR',
@@ -64,6 +68,24 @@ const EMPTY_CALENDAR_RESPONSE: AdminCalendarResponse = {
   items: EMPTY_APPOINTMENTS,
   clients: [],
 };
+const readCalendarPreference = (key: string) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const writeCalendarPreference = (key: string, value: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore storage errors
+  }
+};
+const resolveCalendarPreferenceKey = (prefix: string, locationId?: string | null) =>
+  locationId ? `${prefix}:${locationId}` : prefix;
 
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
@@ -82,6 +104,10 @@ const AdminCalendar: React.FC = () => {
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [isCurrentTimeIndicatorEnabled, setIsCurrentTimeIndicatorEnabled] = useState(true);
+  const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false);
+  const [isRefreshingCalendar, setIsRefreshingCalendar] = useState(false);
   const dateFrom = useMemo(
     () => format(currentWeekStart, 'yyyy-MM-dd'),
     [currentWeekStart],
@@ -159,6 +185,41 @@ const AdminCalendar: React.FC = () => {
     ]);
   });
 
+  useEffect(() => {
+    const syncNow = () => setCurrentTime(new Date());
+    syncNow();
+    const intervalId = window.setInterval(syncNow, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const savedBarber = readCalendarPreference(
+      resolveCalendarPreferenceKey(BARBER_FILTER_STORAGE_PREFIX, currentLocationId),
+    );
+    const savedIndicator = readCalendarPreference(
+      resolveCalendarPreferenceKey(NOW_INDICATOR_STORAGE_PREFIX, currentLocationId),
+    );
+    setSelectedBarberId(savedBarber || 'all');
+    setIsCurrentTimeIndicatorEnabled(savedIndicator === null ? true : savedIndicator === '1');
+    setHasLoadedPreferences(true);
+  }, [currentLocationId]);
+
+  useEffect(() => {
+    if (!hasLoadedPreferences) return;
+    writeCalendarPreference(
+      resolveCalendarPreferenceKey(BARBER_FILTER_STORAGE_PREFIX, currentLocationId),
+      selectedBarberId,
+    );
+  }, [currentLocationId, hasLoadedPreferences, selectedBarberId]);
+
+  useEffect(() => {
+    if (!hasLoadedPreferences) return;
+    writeCalendarPreference(
+      resolveCalendarPreferenceKey(NOW_INDICATOR_STORAGE_PREFIX, currentLocationId),
+      isCurrentTimeIndicatorEnabled ? '1' : '0',
+    );
+  }, [currentLocationId, hasLoadedPreferences, isCurrentTimeIndicatorEnabled]);
+
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
   const getClientInfo = (appointment: Appointment) => {
@@ -173,6 +234,10 @@ const AdminCalendar: React.FC = () => {
   const selectedClientInfo = selectedAppointment ? getClientInfo(selectedAppointment) : null;
   const selectedProductsTotal = selectedAppointment ? getProductsTotal(selectedAppointment) : 0;
   const hasSelectedProducts = selectedProductsTotal > 0;
+  const clientsById = useMemo(
+    () => new Map(clients.map((client) => [client.id, client])),
+    [clients],
+  );
 
   const applyAppointmentUpdate = useCallback((updated: Appointment) => {
     queryClient.setQueryData<AdminCalendarResponse>(appointmentsQueryKey, (previous) => {
@@ -275,6 +340,43 @@ const AdminCalendar: React.FC = () => {
   };
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
+  const weekContainsCurrentDay = useMemo(
+    () => weekDays.some((day) => isSameDay(day, currentTime)),
+    [weekDays, currentTime],
+  );
+  const dayStartForNow = useMemo(
+    () => setMinutes(setHours(startOfDay(currentTime), START_HOUR), 0),
+    [currentTime],
+  );
+  const currentTimeMinutes = useMemo(
+    () => differenceInMinutes(currentTime, dayStartForNow),
+    [currentTime, dayStartForNow],
+  );
+  const showCurrentTimeLine =
+    isCurrentTimeIndicatorEnabled &&
+    weekContainsCurrentDay &&
+    currentTimeMinutes >= 0 &&
+    currentTimeMinutes <= MINUTES_IN_DAY_VIEW;
+  const currentTimeOffsetPx = Math.min(
+    HOUR_HEIGHT * HOURS.length,
+    Math.max(0, currentTimeMinutes * (HOUR_HEIGHT / 60)),
+  );
+
+  useEffect(() => {
+    if (selectedBarberId === 'all') return;
+    if (!barbers.some((barber) => barber.id === selectedBarberId)) {
+      setSelectedBarberId('all');
+    }
+  }, [barbers, selectedBarberId]);
+
+  const handleManualRefresh = useCallback(async () => {
+    setIsRefreshingCalendar(true);
+    try {
+      await appointmentsQuery.refetch();
+    } finally {
+      setIsRefreshingCalendar(false);
+    }
+  }, [appointmentsQuery]);
 
   const getAppointmentsForDay = (day: Date) => {
     return appointments.filter((apt) => {
@@ -288,6 +390,22 @@ const AdminCalendar: React.FC = () => {
   const getAppointmentDuration = (apt: Appointment) => {
     const service = getService(apt.serviceId);
     return service?.duration ?? 30;
+  };
+  const getAppointmentCardTone = (status: Appointment['status']) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-emerald-950/80 border-emerald-300/20';
+      case 'no_show':
+        return 'bg-rose-950/85 border-rose-300/20';
+      case 'cancelled':
+        return 'bg-slate-700/75 border-slate-300/15';
+      default:
+        return 'bg-slate-900/85 border-white/15';
+    }
+  };
+  const getAppointmentClientName = (apt: Appointment) => {
+    const client = apt.userId ? clientsById.get(apt.userId) : undefined;
+    return client?.name || apt.guestName || 'Cliente';
   };
 
   const buildDayEvents = (day: Date) => {
@@ -347,11 +465,14 @@ const AdminCalendar: React.FC = () => {
     });
   };
 
-  const barberColors: Record<string, string> = {
-    'barber-1': 'bg-primary/80',
-    'barber-2': 'bg-blue-500/80',
-    'barber-3': 'bg-green-500/80',
-    'barber-4': 'bg-purple-500/80',
+  const barberPalette = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ec4899', '#14b8a6'];
+  const getBarberAccentColor = (barberId: string) => {
+    let hash = 0;
+    for (let i = 0; i < barberId.length; i += 1) {
+      hash = (hash << 5) - hash + barberId.charCodeAt(i);
+      hash |= 0;
+    }
+    return barberPalette[Math.abs(hash) % barberPalette.length];
   };
 
   return (
@@ -365,7 +486,7 @@ const AdminCalendar: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Select value={selectedBarberId} onValueChange={setSelectedBarberId}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
@@ -377,6 +498,17 @@ const AdminCalendar: React.FC = () => {
               ))}
             </SelectContent>
           </Select>
+          <label className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-2 text-sm text-muted-foreground">
+            <Switch
+              checked={isCurrentTimeIndicatorEnabled}
+              onCheckedChange={setIsCurrentTimeIndicatorEnabled}
+            />
+            Indicador hora actual
+          </label>
+          <Button variant="outline" size="sm" onClick={() => void handleManualRefresh()} disabled={isRefreshingCalendar}>
+            <RefreshCcw className={cn('mr-2 h-4 w-4', isRefreshingCalendar && 'animate-spin')} />
+            Recargar
+          </Button>
         </div>
       </div>
 
@@ -424,7 +556,7 @@ const AdminCalendar: React.FC = () => {
 
             {/* Time Grid */}
             <div
-              className="grid"
+              className="relative grid"
               style={{ gridTemplateColumns: '64px repeat(7, minmax(0, 1fr))' }}
             >
               <div className="border-r border-border">
@@ -467,20 +599,28 @@ const AdminCalendar: React.FC = () => {
                       const startLabel = format(event.start, 'HH:mm');
                       const endLabel = format(event.end, 'HH:mm');
                       const columnWidth = 100 / event.columns;
+                      const horizontalGapPx = event.columns > 1 ? 2 : 8;
+                      const sideInsetPx = event.columns > 1 ? 1 : 4;
+                      const eventHeight = Math.max(18, (event.endMinutes - event.startMinutes) * (HOUR_HEIGHT / 60));
+                      const isCompact = eventHeight < 44;
+                      const showClient = eventHeight >= 60;
                       return (
                         <button
                           key={event.appointment.id}
                           onClick={() => setSelectedAppointment(event.appointment)}
                           title={`${startLabel} - ${endLabel} · ${service?.name || 'Servicio'}`}
                           className={cn(
-                            'relative absolute rounded text-[11px] leading-tight text-white px-2 py-1 overflow-hidden transition-opacity hover:opacity-80',
-                            barberColors[event.appointment.barberId] || 'bg-primary/80'
+                            'absolute overflow-hidden rounded-sm border px-2 py-1 text-left text-[11px] leading-tight text-white shadow-sm transition-all',
+                            'hover:-translate-y-[1px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-1',
+                            getAppointmentCardTone(event.appointment.status)
                           )}
                           style={{
                             top: event.startMinutes * (HOUR_HEIGHT / 60),
-                            height: Math.max(18, (event.endMinutes - event.startMinutes) * (HOUR_HEIGHT / 60)),
-                            left: `calc(${event.column * columnWidth}% + 4px)`,
-                            width: `calc(${columnWidth}% - 8px)`,
+                            height: eventHeight,
+                            left: `calc(${event.column * columnWidth}% + ${sideInsetPx}px)`,
+                            width: `calc(${columnWidth}% - ${horizontalGapPx}px)`,
+                            borderLeftWidth: 2,
+                            borderLeftColor: getBarberAccentColor(event.appointment.barberId),
                           }}
                         >
                           <AppointmentNoteIndicator
@@ -488,14 +628,40 @@ const AdminCalendar: React.FC = () => {
                             variant="icon"
                             className="absolute right-1 top-1 border-white/40 bg-white/20 text-white/90"
                           />
-                          <div className="font-semibold">{startLabel} - {endLabel}</div>
-                          <div className="truncate">{service?.name || 'Servicio'}</div>
+                          <div className="pr-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold tabular-nums">{startLabel}</span>
+                              {!isCompact && <span className="text-white/70">- {endLabel}</span>}
+                            </div>
+                            <div className={cn('truncate font-medium text-white/95', isCompact && 'text-[10px]')}>
+                              {service?.name || 'Servicio'}
+                            </div>
+                            {showClient && (
+                              <div className="truncate text-[10px] text-white/75">
+                                {getAppointmentClientName(event.appointment)}
+                              </div>
+                            )}
+                          </div>
                         </button>
                       );
                     })}
                   </div>
                 );
               })}
+              {showCurrentTimeLine && (
+                <div
+                  className="pointer-events-none absolute z-30"
+                  style={{ top: 0, bottom: 0, left: 0, right: 0 }}
+                >
+                  <div
+                    className="absolute right-0 border-t-2 border-rose-500"
+                    style={{ left: 64, top: currentTimeOffsetPx }}
+                  />
+                  <div className="absolute left-1 -translate-y-1/2 rounded bg-rose-500/55 px-1.5 py-0.5 text-[10px] font-semibold text-white/95 shadow" style={{ top: currentTimeOffsetPx }}>
+                    {format(currentTime, 'HH:mm')}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

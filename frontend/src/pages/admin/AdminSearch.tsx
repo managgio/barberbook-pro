@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getAdminSearchAppointments, updateAppointment } from '@/data/api/appointments';
 import { getAdminStripeConfig } from '@/data/api/payments';
 import { AdminSearchAppointmentsResponse, Appointment, Barber, PaymentMethod, Service } from '@/data/types';
-import { Search, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Search, Loader2, Pencil, RefreshCcw, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
@@ -31,18 +31,36 @@ const PAGE_SIZE = 25;
 const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_BARBERS: Barber[] = [];
 const EMPTY_SERVICES: Service[] = [];
+const BARBER_FILTER_STORAGE_PREFIX = 'admin:search:barber-filter';
+const DATE_FILTER_STORAGE_PREFIX = 'admin:search:date-filter';
+const readSearchPreference = (key: string) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const writeSearchPreference = (key: string, value: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore storage errors
+  }
+};
+const resolveSearchPreferenceKey = (prefix: string, locationId?: string | null) =>
+  locationId ? `${prefix}:${locationId}` : prefix;
 
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
   const { currentLocationId } = useTenant();
   const queryClient = useQueryClient();
-  const DATE_STORAGE_KEY = 'managgio.adminSearchDate';
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
-    return window.localStorage.getItem(DATE_STORAGE_KEY) ?? '';
-  });
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [hasLoadedFilters, setHasLoadedFilters] = useState(false);
+  const [isRefreshingSearch, setIsRefreshingSearch] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -137,13 +155,51 @@ const AdminSearch: React.FC = () => {
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    const savedBarber = readSearchPreference(
+      resolveSearchPreferenceKey(BARBER_FILTER_STORAGE_PREFIX, currentLocationId),
+    );
+    const savedDate = readSearchPreference(
+      resolveSearchPreferenceKey(DATE_FILTER_STORAGE_PREFIX, currentLocationId),
+    );
+    setSelectedBarberId(savedBarber || 'all');
+    setSelectedDate(savedDate || '');
+    setCurrentPage(1);
+    setHasLoadedFilters(true);
+  }, [currentLocationId]);
+
+  useEffect(() => {
+    if (!hasLoadedFilters) return;
+    writeSearchPreference(
+      resolveSearchPreferenceKey(BARBER_FILTER_STORAGE_PREFIX, currentLocationId),
+      selectedBarberId,
+    );
+  }, [currentLocationId, hasLoadedFilters, selectedBarberId]);
+
+  useEffect(() => {
+    if (!hasLoadedFilters) return;
     if (selectedDate) {
-      window.localStorage.setItem(DATE_STORAGE_KEY, selectedDate);
-    } else {
-      window.localStorage.removeItem(DATE_STORAGE_KEY);
+      writeSearchPreference(
+        resolveSearchPreferenceKey(DATE_FILTER_STORAGE_PREFIX, currentLocationId),
+        selectedDate,
+      );
+      return;
     }
-  }, [selectedDate]);
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(
+        resolveSearchPreferenceKey(DATE_FILTER_STORAGE_PREFIX, currentLocationId),
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [currentLocationId, hasLoadedFilters, selectedDate]);
+
+  useEffect(() => {
+    if (selectedBarberId === 'all') return;
+    if (!barbers.some((barber) => barber.id === selectedBarberId)) {
+      setSelectedBarberId('all');
+    }
+  }, [barbers, selectedBarberId]);
 
   useEffect(() => {
     if (appointments.length === 0) return;
@@ -191,6 +247,27 @@ const AdminSearch: React.FC = () => {
     setSelectedDate('');
     setCurrentPage(1);
   };
+
+  const handleManualRefresh = useCallback(async () => {
+    if (isRefreshingSearch) return;
+    setIsRefreshingSearch(true);
+    try {
+      await Promise.all([
+        appointmentsQuery.refetch(),
+        barbersQuery.refetch(),
+        servicesQuery.refetch(),
+        stripeConfigQuery.refetch(),
+      ]);
+    } finally {
+      setIsRefreshingSearch(false);
+    }
+  }, [
+    appointmentsQuery,
+    barbersQuery,
+    isRefreshingSearch,
+    servicesQuery,
+    stripeConfigQuery,
+  ]);
 
   const applyAppointmentUpdate = useCallback((updated: Appointment) => {
     queryClient.setQueryData<AdminSearchAppointmentsResponse>(appointmentsQueryKey, (previous) => {
@@ -296,7 +373,7 @@ const AdminSearch: React.FC = () => {
       {/* Filters */}
       <Card variant="elevated">
         <CardContent className="p-6">
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid gap-4 md:grid-cols-4">
             <div className="space-y-2">
               <Label>{copy.staff.singular}</Label>
               <Select
@@ -328,6 +405,27 @@ const AdminSearch: React.FC = () => {
                   setCurrentPage(1);
                 }}
               />
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={() => void handleManualRefresh()}
+                className="w-full"
+                disabled={isRefreshingSearch}
+              >
+                {isRefreshingSearch ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Recargando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                    Recargar
+                  </>
+                )}
+              </Button>
             </div>
 
             <div className="flex items-end">

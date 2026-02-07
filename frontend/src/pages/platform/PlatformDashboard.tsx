@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Brain, Building2, ChevronLeft, ChevronRight, Image as ImageIcon, MapPin, PhoneCall, RefreshCcw, Sparkles } from 'lucide-react';
+import { Brain, Building2, ChevronLeft, ChevronRight, ExternalLink, Image as ImageIcon, MapPin, PhoneCall, RefreshCcw, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getPlatformBrands, getPlatformMetrics, refreshPlatformMetrics } from '@/data/api/platform';
 import { PlatformUsageMetrics, PlatformUsageSeriesPoint } from '@/data/types';
@@ -11,9 +11,8 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { cn } from '@/lib/utils';
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -72,6 +71,13 @@ const formatBytes = (bytes: number) => {
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 };
 
+const formatUsagePercentage = (value: number) => `${Math.min(Math.max(value, 0), 100).toFixed(1)}%`;
+const isProductionManaggioHost = () => {
+  if (typeof window === 'undefined') return false;
+  const hostname = window.location.hostname.toLowerCase();
+  return hostname === 'managgio.com' || hostname.endsWith('.managgio.com');
+};
+
 const summarizeSeries = (
   series: PlatformUsageSeriesPoint[],
   key: keyof PlatformUsageSeriesPoint,
@@ -116,6 +122,7 @@ const PlatformDashboard: React.FC = () => {
   const [isRefreshingUsage, setIsRefreshingUsage] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const queryClient = useQueryClient();
+  const showCrmShortcut = import.meta.env.PROD && isProductionManaggioHost();
 
   const brandsQuery = useQuery<PlatformBrandSummary[]>({
     queryKey: queryKeys.platformBrands(),
@@ -279,6 +286,9 @@ const PlatformDashboard: React.FC = () => {
     imagekitLatest.storageLimitBytes > 0
       ? (imagekitLatest.storageUsedBytes / imagekitLatest.storageLimitBytes) * 100
       : 0;
+  const imagekitLimitBytes = imagekitLatest.storageLimitBytes || thresholds?.imagekitStorageBytes || 0;
+  const imagekitAvailableBytes = Math.max(imagekitLimitBytes - imagekitLatest.storageUsedBytes, 0);
+  const imagekitUsagePctClamped = Math.min(Math.max(imagekitUsagePct, 0), 100);
 
   const openaiChartData = useMemo(
     () =>
@@ -301,28 +311,32 @@ const PlatformDashboard: React.FC = () => {
     [twilioSeriesDisplay],
   );
 
-  const imagekitChartData = useMemo(
-    () =>
-      imagekitSeries.map((entry) => ({
-        dateKey: entry.dateKey,
-        label: formatDateLabel(entry.dateKey),
-        storageUsedBytes: entry.storageUsedBytes,
-        storageLimitBytes: entry.storageLimitBytes,
-      })),
-    [imagekitSeries],
-  );
-
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-2">
-        <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-          <Sparkles className="h-4 w-4 text-primary" />
-          Panel principal
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Panel principal
+          </div>
+          <h1 className="text-3xl font-semibold text-foreground">Plataforma Managgio</h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Controla marcas, locales y configuraciones desde un único espacio. Aquí tienes el estado global de la plataforma.
+          </p>
         </div>
-        <h1 className="text-3xl font-semibold text-foreground">Plataforma Managgio</h1>
-        <p className="text-muted-foreground max-w-2xl">
-          Controla marcas, locales y configuraciones desde un único espacio. Aquí tienes el estado global de la plataforma.
-        </p>
+        {showCrmShortcut && (
+          <Button asChild size="sm" variant="outline" className="w-fit md:ml-4 md:mt-1 md:self-start">
+            <a
+              href="https://managgio.com/admin"
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label="Abrir CRM de Managgio"
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Actualizar CRM
+            </a>
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -625,13 +639,13 @@ const PlatformDashboard: React.FC = () => {
 
           <Card className="border border-border/60 bg-card/70">
             <CardHeader className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ImageIcon className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-base">ImageKit · Almacenamiento</CardTitle>
-                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-base">ImageKit · Almacenamiento</CardTitle>
+                  </div>
                 <Badge variant={imagekitUsagePct >= 85 ? 'destructive' : 'secondary'}>
-                  {isUsageLoading ? 'Capacidad —' : `${imagekitUsagePct.toFixed(0)}% usado`}
+                  {isUsageLoading ? 'Capacidad —' : `${formatUsagePercentage(imagekitUsagePct)} usado`}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground">Espacio ocupado y límite disponible.</p>
@@ -649,64 +663,44 @@ const PlatformDashboard: React.FC = () => {
                   <p className="text-lg font-semibold">
                     {isUsageLoading
                       ? '—'
-                      : formatBytes(imagekitLatest.storageLimitBytes || thresholds?.imagekitStorageBytes || 0)}
+                      : formatBytes(imagekitLimitBytes)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Disponible</p>
                   <p className="text-lg font-semibold">
-                    {isUsageLoading
-                      ? '—'
-                      : formatBytes(
-                          Math.max(
-                            (imagekitLatest.storageLimitBytes || thresholds?.imagekitStorageBytes || 0)
-                              - imagekitLatest.storageUsedBytes,
-                            0,
-                          ),
-                        )}
+                    {isUsageLoading ? '—' : formatBytes(imagekitAvailableBytes)}
                   </p>
                 </div>
               </div>
-              <div className="h-72">
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-4 space-y-3">
                 {isUsageLoading ? (
                   <div className="text-sm text-muted-foreground">Cargando métricas...</div>
                 ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={imagekitChartData} margin={{ top: 16, right: 24, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis tickFormatter={(value) => formatBytes(Number(value))} />
-                      <RechartsTooltip
-                        formatter={(value, name) => {
-                          if (name === 'storageUsedBytes') return [formatBytes(Number(value)), 'Usado'];
-                          if (name === 'storageLimitBytes') return [formatBytes(Number(value)), 'Límite'];
-                          return [value, name];
-                        }}
-                        contentStyle={{
-                          background: 'hsl(var(--card))',
-                          color: 'hsl(var(--card-foreground))',
-                          borderRadius: '12px',
-                          border: 'none',
-                        }}
-                        labelStyle={{ color: 'hsl(var(--card-foreground))' }}
+                  <>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Uso actual</span>
+                      <span className="font-semibold text-foreground">{formatUsagePercentage(imagekitUsagePct)}</span>
+                    </div>
+                    <div className="h-4 w-full overflow-hidden rounded-full bg-secondary/70">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-[width] duration-500 ease-out',
+                          imagekitUsagePct >= 85
+                            ? 'bg-gradient-to-r from-amber-500 to-red-500'
+                            : imagekitUsagePct >= 65
+                              ? 'bg-gradient-to-r from-sky-500 to-amber-400'
+                              : 'bg-gradient-to-r from-emerald-500 to-teal-400',
+                        )}
+                        style={{ width: `${imagekitUsagePctClamped}%` }}
                       />
-                      <Area
-                        type="monotone"
-                        dataKey="storageUsedBytes"
-                        stroke="#14b8a6"
-                        fill="rgba(20, 184, 166, 0.2)"
-                        strokeWidth={2}
-                      />
-                      <Line type="monotone" dataKey="storageLimitBytes" stroke="#f97316" strokeWidth={2} dot={false} />
-                      {thresholds?.imagekitStorageBytes ? (
-                        <ReferenceLine
-                          y={thresholds.imagekitStorageBytes}
-                          stroke="#ef4444"
-                          strokeDasharray="4 4"
-                        />
-                      ) : null}
-                    </AreaChart>
-                  </ResponsiveContainer>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>0%</span>
+                      <span>Meta recomendada: &lt; 85%</span>
+                      <span>100%</span>
+                    </div>
+                  </>
                 )}
               </div>
             </CardContent>

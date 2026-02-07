@@ -114,6 +114,8 @@ interface PlatformBranding {
   heroLocationCardEnabled?: boolean;
   heroImagePosition?: HeroImagePositionOption;
   heroNoImageAlign?: HeroNoImageAlignOption;
+  adminSpotlightFloatingEnabled?: boolean;
+  adminAssistantFloatingEnabled?: boolean;
 }
 
 interface PlatformPresentationSection {
@@ -1418,6 +1420,19 @@ const PlatformBrands: React.FC = () => {
   const locationBarberAssignmentEnabled = isLocationBarberAssignmentOverride
     ? locationConfig?.features?.barberServiceAssignmentEnabled !== false
     : brandBarberAssignmentEnabled;
+  const brandSpotlightFloatingEnabled =
+    brandConfig?.branding?.adminSpotlightFloatingEnabled !== false;
+  const brandAssistantFloatingEnabled =
+    brandConfig?.branding?.adminAssistantFloatingEnabled !== false;
+  const isLocationFloatingActionsOverride =
+    typeof locationConfig?.branding?.adminSpotlightFloatingEnabled === 'boolean' ||
+    typeof locationConfig?.branding?.adminAssistantFloatingEnabled === 'boolean';
+  const locationSpotlightFloatingEnabled = isLocationFloatingActionsOverride
+    ? locationConfig?.branding?.adminSpotlightFloatingEnabled !== false
+    : brandSpotlightFloatingEnabled;
+  const locationAssistantFloatingEnabled = isLocationFloatingActionsOverride
+    ? locationConfig?.branding?.adminAssistantFloatingEnabled !== false
+    : brandAssistantFloatingEnabled;
   const hasMultipleLocations = (selectedBrand?.locations?.length || 0) > 1;
   const selectedBusinessType = (brandConfig?.business?.type as string) || 'barbershop';
   const selectedBusinessCopy = getBusinessCopy(selectedBusinessType);
@@ -1501,6 +1516,49 @@ const PlatformBrands: React.FC = () => {
       }
       return next;
     });
+  };
+
+  const clearLocationBrandingFields = (fields: string[]) => {
+    setLocationConfig((prev) => {
+      const next: PlatformConfig = { ...prev };
+      const branding = next.branding;
+      if (!branding || typeof branding !== 'object' || Array.isArray(branding)) {
+        return next;
+      }
+      const cleanedBranding = { ...(branding as JsonRecord) };
+      fields.forEach((field) => {
+        delete cleanedBranding[field];
+      });
+      if (Object.keys(cleanedBranding).length === 0) {
+        delete next.branding;
+      } else {
+        next.branding = cleanedBranding as PlatformBranding;
+      }
+      return next;
+    });
+  };
+
+  const handleLocationFloatingActionsOverride = (checked: boolean) => {
+    if (checked) {
+      setLocationConfig((prev) => {
+        let next = updateNestedValue(
+          prev,
+          ['branding', 'adminSpotlightFloatingEnabled'],
+          brandSpotlightFloatingEnabled,
+        );
+        next = updateNestedValue(
+          next,
+          ['branding', 'adminAssistantFloatingEnabled'],
+          brandAssistantFloatingEnabled,
+        );
+        return next;
+      });
+      return;
+    }
+    clearLocationBrandingFields([
+      'adminSpotlightFloatingEnabled',
+      'adminAssistantFloatingEnabled',
+    ]);
   };
 
   const updateLandingConfig = (
@@ -3583,6 +3641,44 @@ const PlatformBrands: React.FC = () => {
                       </div>
 
                       <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">UI admin (flotantes)</p>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Lupa (Spotlight)</div>
+                              <p className="text-xs text-muted-foreground">
+                                Muestra/oculta el acceso flotante al buscador rápido.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={brandSpotlightFloatingEnabled}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) =>
+                                  updateNestedValue(prev, ['branding', 'adminSpotlightFloatingEnabled'], checked),
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Asistente IA</div>
+                              <p className="text-xs text-muted-foreground">
+                                Muestra/oculta el icono flotante del asistente en admin.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={brandAssistantFloatingEnabled}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) =>
+                                  updateNestedValue(prev, ['branding', 'adminAssistantFloatingEnabled'], checked),
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Stripe (pagos)</p>
                         <div className="space-y-3">
                           <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
@@ -3839,6 +3935,56 @@ const PlatformBrands: React.FC = () => {
                                 )
                               }
                             />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">UI admin (flotantes)</p>
+                              <p className="text-xs text-muted-foreground">
+                                Sobrescribe la visibilidad de lupa y asistente para este local.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">Personalizar</span>
+                              <Switch
+                                checked={isLocationFloatingActionsOverride}
+                                onCheckedChange={handleLocationFloatingActionsOverride}
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">Lupa (Spotlight)</div>
+                                <p className="text-xs text-muted-foreground">Icono flotante del buscador rápido.</p>
+                              </div>
+                              <Switch
+                                checked={locationSpotlightFloatingEnabled}
+                                disabled={!isLocationFloatingActionsOverride}
+                                onCheckedChange={(checked) =>
+                                  setLocationConfig((prev) =>
+                                    updateNestedValue(prev, ['branding', 'adminSpotlightFloatingEnabled'], checked),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">Asistente IA</div>
+                                <p className="text-xs text-muted-foreground">Icono flotante del asistente admin.</p>
+                              </div>
+                              <Switch
+                                checked={locationAssistantFloatingEnabled}
+                                disabled={!isLocationFloatingActionsOverride}
+                                onCheckedChange={(checked) =>
+                                  setLocationConfig((prev) =>
+                                    updateNestedValue(prev, ['branding', 'adminAssistantFloatingEnabled'], checked),
+                                  )
+                                }
+                              />
+                            </div>
                           </div>
                         </div>
 

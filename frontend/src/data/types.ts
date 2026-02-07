@@ -99,6 +99,8 @@ export interface TenantBootstrap {
       heroLocationCardEnabled?: boolean;
       heroImagePosition?: 'left' | 'right';
       heroNoImageAlign?: 'center' | 'right' | 'left';
+      adminSpotlightFloatingEnabled?: boolean;
+      adminAssistantFloatingEnabled?: boolean;
       signImageUrl?: string;
       signImageFileId?: string;
     } | null;

@@ -135,6 +135,8 @@ export type TenantBrandingConfig = {
   heroLocationCardEnabled?: boolean;
   heroImagePosition?: 'left' | 'right';
   heroNoImageAlign?: 'center' | 'right' | 'left';
+  adminSpotlightFloatingEnabled?: boolean;
+  adminAssistantFloatingEnabled?: boolean;
   signImageUrl?: string;
   signImageFileId?: string;
 };

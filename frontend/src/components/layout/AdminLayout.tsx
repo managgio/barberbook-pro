@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import AdminSpotlight from '@/components/admin/AdminSpotlight';
 import AdminSpotlightTrigger from '@/components/admin/AdminSpotlightTrigger';
 import { AdminPermissionsProvider, useAdminPermissions } from '@/context/AdminPermissionsContext';
+import { useTenant } from '@/context/TenantContext';
 import { Button } from '@/components/ui/button';
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { AdminSpotlightProvider } from '@/components/admin/AdminSpotlightContext';
@@ -18,11 +19,16 @@ const AdminLayoutContent: React.FC = () => {
     return window.matchMedia('(max-width: 767px)').matches;
   });
   const { canAccessSection } = useAdminPermissions();
+  const { tenant } = useTenant();
 
   const showFloatingActions =
     canAccessSection('calendar') ||
     canAccessSection('search') ||
     canAccessSection('clients');
+  const spotlightFloatingEnabled =
+    tenant?.config?.branding?.adminSpotlightFloatingEnabled !== false;
+  const assistantFloatingEnabled =
+    tenant?.config?.branding?.adminAssistantFloatingEnabled !== false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -69,9 +75,11 @@ const AdminLayoutContent: React.FC = () => {
       </main>
       {showFloatingActions && (
         <>
-          <AdminSpotlightTrigger />
+          {spotlightFloatingEnabled && (
+            <AdminSpotlightTrigger className={!assistantFloatingEnabled ? 'bottom-24' : undefined} />
+          )}
           <Suspense fallback={null}>
-            <AiAssistantFloatingButton />
+            {assistantFloatingEnabled && <AiAssistantFloatingButton />}
             <QuickAppointmentButton />
           </Suspense>
         </>
