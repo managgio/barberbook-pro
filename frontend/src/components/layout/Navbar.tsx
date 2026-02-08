@@ -28,7 +28,7 @@ const Navbar: React.FC = () => {
     ? '/platform'
     : isAdmin
       ? '/admin'
-      : '/app/profile';
+      : '/app';
   const homeTarget = isAuthenticated ? '/?view=landing' : '/';
   const brandNameClass = cn(
     'text-xl font-bold text-foreground',
