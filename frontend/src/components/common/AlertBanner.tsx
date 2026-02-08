@@ -37,27 +37,27 @@ const AlertBanner: React.FC = () => {
   };
 
   return (
-    <div className="space-y-2 mb-6">
+    <div className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-6">
       {visibleAlerts.map((alert) => {
         const Icon = icons[alert.type];
         return (
           <div
             key={alert.id}
             className={cn(
-              'flex items-start gap-3 p-4 rounded-lg border animate-slide-up',
+              'flex items-start gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-md sm:rounded-lg border animate-slide-up',
               styles[alert.type]
             )}
           >
-            <Icon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <Icon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm">{alert.title}</p>
-              <p className="text-sm opacity-80">{alert.message}</p>
+              <p className="font-medium text-xs sm:text-sm leading-tight">{alert.title}</p>
+              <p className="text-xs sm:text-sm opacity-80 leading-tight">{alert.message}</p>
             </div>
             <button
               onClick={() => dismiss(alert.id)}
-              className="p-1 hover:opacity-70 transition-opacity"
+              className="p-0.5 sm:p-1 hover:opacity-70 transition-opacity"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
         );

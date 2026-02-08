@@ -154,8 +154,8 @@ const AppointmentsPage: React.FC = () => {
     
     return (
       <Card variant={isHistorical ? 'default' : 'elevated'} className={isHistorical ? 'opacity-70' : ''}>
-        <CardContent className="p-6 relative">
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
+        <CardContent className="p-3 sm:p-6 relative">
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 sm:flex sm:flex-row sm:items-center sm:gap-4">
             <img 
               src={barber?.photo || defaultAvatar} 
               alt={barberName}
@@ -163,34 +163,34 @@ const AppointmentsPage: React.FC = () => {
               decoding="async"
               width={64}
               height={64}
-              className="w-16 h-16 rounded-xl object-cover"
+              className="w-10 h-10 sm:w-16 sm:h-16 rounded-xl object-cover"
             />
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground text-lg">{serviceName}</h3>
-              <p className="text-muted-foreground">con {barberName}</p>
-              <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
+              <h3 className="font-semibold text-foreground text-sm sm:text-lg truncate">{serviceName}</h3>
+              <p className="text-xs sm:text-base text-muted-foreground truncate">con {barberName}</p>
+              <div className="flex items-center gap-2 sm:gap-4 mt-1 sm:mt-2 text-[11px] sm:text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />
+                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   {format(date, "EEEE d 'de' MMMM", { locale: es })}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />
+                  <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   {format(date, 'HH:mm')}
                 </span>
                 <a
-                  className="flex items-center gap-1 text-primary hover:underline"
+                  className="hidden sm:flex items-center gap-1 text-primary hover:underline"
                   href={settings.location.mapUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   {settings.location.label}
                 </a>
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
               <span
-                className={`px-3 py-1 rounded-full text-xs font-medium ${getAppointmentStatusBadgeClass(
+                className={`px-1.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium ${getAppointmentStatusBadgeClass(
                   appointment.status,
                 )}`}
               >
@@ -202,39 +202,40 @@ const AppointmentsPage: React.FC = () => {
                     {basePrice.toFixed(2)}€
                   </div>
                 )}
-                <span className="text-xl font-bold text-primary">{paidPrice.toFixed(2)}€</span>
-                {hadOffer && <div className="text-[11px] text-green-600">Precio promocional</div>}
+                <span className="text-lg sm:text-xl font-bold text-primary">{paidPrice.toFixed(2)}€</span>
+                {hadOffer && <div className="hidden sm:block text-[11px] text-green-600">Precio promocional</div>}
               </div>
             </div>
           </div>
           {!isHistorical && (
-            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="mt-3 sm:mt-4 flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between">
               <Button
                 variant="outline"
                 size="sm"
                 asChild
-                className="md:order-1"
+                className="h-8 sm:h-9 text-xs sm:text-sm md:order-1"
               >
                 <a href={generateCalendarLink(appointment)} target="_blank" rel="noopener noreferrer">
-                  <CalendarPlus className="w-4 h-4 mr-1" />
+                  <CalendarPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
                   Añadir al calendario
                 </a>
               </Button>
-              <div className="absolute top-4 right-4 flex gap-2 md:static md:order-2">
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex gap-1.5 sm:gap-2 md:static md:order-2">
                 <Button
                   variant="outline"
                   size="icon"
+                  className="h-8 w-8 sm:h-9 sm:w-9"
                   onClick={() => {
                     setEditingAppointment(appointment);
                     setIsEditorOpen(true);
                   }}
                 >
-                  <Pencil className="w-4 h-4" />
+                  <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-destructive"
+                  className="h-8 w-8 sm:h-9 sm:w-9 text-destructive"
                   onClick={() => {
                     if (!canCancel) return;
                     setDeleteTarget(appointment);
@@ -246,7 +247,7 @@ const AppointmentsPage: React.FC = () => {
                       : undefined
                   }
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </Button>
               </div>
             </div>
@@ -257,29 +258,29 @@ const AppointmentsPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Mis citas</h1>
-        <p className="text-muted-foreground mt-1">
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Mis citas</h1>
+        <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
           Consulta y gestiona todas tus reservas.
         </p>
       </div>
 
       <Tabs defaultValue="upcoming" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="upcoming">
+        <TabsList className="grid w-full max-w-[290px] sm:max-w-md grid-cols-2 h-7 sm:h-10 p-0.5 sm:p-1">
+          <TabsTrigger value="upcoming" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none truncate">
             Próximas ({upcomingAppointments.length})
           </TabsTrigger>
-          <TabsTrigger value="past">
+          <TabsTrigger value="past" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none truncate">
             Pasadas ({pastAppointments.length})
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="upcoming" className="mt-6">
+        <TabsContent value="upcoming" className="mt-4 sm:mt-6">
           {isLoading ? (
             <ListSkeleton count={3} />
           ) : upcomingAppointments.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-2.5 sm:space-y-4">
               {upcomingAppointments.map((appointment) => (
                 <AppointmentCard key={appointment.id} appointment={appointment} />
               ))}
@@ -289,6 +290,7 @@ const AppointmentsPage: React.FC = () => {
               icon={Calendar}
               title="No tienes citas próximas"
               description="Reserva tu próxima cita y mantén tu estilo impecable."
+              compactMobile
               action={{
                 label: 'Reservar ahora',
                 onClick: () => navigate('/app/book'),
@@ -297,11 +299,11 @@ const AppointmentsPage: React.FC = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="past" className="mt-6">
+        <TabsContent value="past" className="mt-4 sm:mt-6">
           {isLoading ? (
             <ListSkeleton count={3} />
           ) : pastAppointments.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-2.5 sm:space-y-4">
               {pastAppointments.map((appointment) => (
                 <AppointmentCard key={appointment.id} appointment={appointment} isPast />
               ))}
@@ -311,6 +313,7 @@ const AppointmentsPage: React.FC = () => {
               icon={Clock}
               title="Sin historial de citas"
               description="Aquí aparecerán tus citas completadas."
+              compactMobile
             />
           )}
        </TabsContent>

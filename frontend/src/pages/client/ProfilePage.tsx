@@ -120,36 +120,36 @@ const ProfilePage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Mi perfil</h1>
-        <p className="text-muted-foreground mt-1">
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Mi perfil</h1>
+        <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
           Actualiza tu información personal y preferencias.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
         {/* Personal Info */}
         <Card variant="elevated">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               Información personal
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="hidden sm:block">
               Actualiza tus datos de contacto.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Nombre completo</Label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="name"
                   type="text"
                   placeholder="Tu nombre"
-                  className="pl-10"
+                  className="h-9 sm:h-10 pl-9 sm:pl-10 text-sm"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -159,12 +159,12 @@ const ProfilePage: React.FC = () => {
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
                   placeholder="tu@email.com"
-                  className="pl-10"
+                  className="h-9 sm:h-10 pl-9 sm:pl-10 text-sm"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
@@ -174,12 +174,12 @@ const ProfilePage: React.FC = () => {
             <div className="space-y-2">
               <Label htmlFor="phone">Teléfono móvil</Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="phone"
                   type="tel"
                   placeholder="+34 600 000 000"
-                  className="pl-10"
+                  className="h-9 sm:h-10 pl-9 sm:pl-10 text-sm"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 />
@@ -191,25 +191,25 @@ const ProfilePage: React.FC = () => {
         {loyaltySummary?.enabled && (
           <Card id="loyalty" variant="elevated">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-primary" />
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Award className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 Fidelización
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="hidden sm:block">
                 Consulta tu progreso y las recompensas disponibles.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4">
               {loyaltySummary.programs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No hay tarjetas activas en este momento.
                 </p>
               ) : (
-                <div className="grid gap-4">
+                <div className="grid gap-3 sm:gap-4">
                   {loyaltySummary.programs.map(({ program, progress, rewards }) => (
-                    <div key={program.id} className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                    <div key={program.id} className="rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
                       <LoyaltyProgressPanel program={program} progress={progress} variant="full" />
-                      <div className="mt-4 border-t border-border/60 pt-3">
+                      <div className="mt-3 sm:mt-4 border-t border-border/60 pt-2.5 sm:pt-3">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             Historial de recompensas
@@ -221,7 +221,7 @@ const ProfilePage: React.FC = () => {
                           )}
                         </div>
                         {rewards.length === 0 ? (
-                          <p className="mt-2 text-xs text-muted-foreground">
+                          <p className="mt-2 text-[11px] sm:text-xs text-muted-foreground">
                             Aún no has canjeado recompensas en esta tarjeta.
                           </p>
                         ) : (
@@ -232,10 +232,10 @@ const ProfilePage: React.FC = () => {
                                 className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2"
                               >
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-foreground">
+                                  <p className="truncate text-xs sm:text-sm font-medium text-foreground">
                                     {reward.serviceName ?? 'Servicio'}
                                   </p>
-                                  <p className="text-xs text-muted-foreground">
+                                  <p className="text-[11px] sm:text-xs text-muted-foreground">
                                     {format(parseISO(reward.startDateTime), 'd MMM yyyy', { locale: es })}
                                   </p>
                                 </div>
@@ -259,20 +259,20 @@ const ProfilePage: React.FC = () => {
         {(allowEmail || allowWhatsapp || allowSms) && (
           <Card variant="elevated">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5 text-primary" />
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 Preferencias de notificación
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="hidden sm:block">
                 Elige cómo quieres recibir recordatorios de tus citas.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-2.5 sm:space-y-4">
               {allowEmail && (
                 <div className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
                     <Label htmlFor="email-notif">Notificaciones por email</Label>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="hidden sm:block text-sm text-muted-foreground">
                       Recibe recordatorios por correo electrónico.
                     </p>
                   </div>
@@ -292,7 +292,7 @@ const ProfilePage: React.FC = () => {
                 <div className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
                     <Label htmlFor="whatsapp-notif">Notificaciones por WhatsApp</Label>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="hidden sm:block text-sm text-muted-foreground">
                       Recibe recordatorios por WhatsApp.
                     </p>
                   </div>
@@ -312,7 +312,7 @@ const ProfilePage: React.FC = () => {
                 <div className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
                     <Label htmlFor="sms-notif">Notificaciones por SMS</Label>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="hidden sm:block text-sm text-muted-foreground">
                       Recibe recordatorios por mensaje de texto.
                     </p>
                   </div>
@@ -331,19 +331,19 @@ const ProfilePage: React.FC = () => {
 
         <Card variant="elevated">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               Preferencias de reserva
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="hidden sm:block">
               Decide si quieres elegir {copy.staff.singularLower} al pedir tu cita.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4">
             <div className="flex items-center justify-between py-2">
               <div className="space-y-0.5">
                 <Label htmlFor="barber-select-pref">Elegir {copy.staff.singularLower}</Label>
-                <p className="text-sm text-muted-foreground">
+                <p className="hidden sm:block text-sm text-muted-foreground">
                   Si lo desactivas, asignaremos automáticamente a {copy.staff.indefiniteSingular} disponible.
                 </p>
               </div>
@@ -353,13 +353,13 @@ const ProfilePage: React.FC = () => {
                 onCheckedChange={setPrefersBarberSelection}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="hidden sm:block text-xs text-muted-foreground">
               Podrás cambiar esta decisión en cada reserva.
             </p>
           </CardContent>
         </Card>
 
-        <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+        <Button type="submit" className="w-full h-9 sm:h-11 text-xs sm:text-base" size="lg" disabled={isLoading}>
           {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
           Guardar cambios
         </Button>
@@ -367,8 +367,8 @@ const ProfilePage: React.FC = () => {
         {/* Danger zone */}
         <Card variant="elevated" className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-destructive">Zona peligrosa</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-destructive text-base sm:text-lg">Zona peligrosa</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
               Eliminar tu perfil borrará también todas tus citas asociadas. Esta acción no se puede deshacer.
             </CardDescription>
           </CardHeader>
@@ -376,6 +376,7 @@ const ProfilePage: React.FC = () => {
             <Button
               variant="destructive"
               type="button"
+              className="h-9 sm:h-10 text-xs sm:text-sm"
               onClick={() => setDeleteDialogOpen(true)}
               disabled={isDeleting}
             >

@@ -172,20 +172,20 @@ const ClientDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-4 sm:space-y-8 animate-fade-in">
       {/* Welcome Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">
+          <h1 className="text-xl sm:text-3xl font-bold text-foreground">
             ¡Hola, {user?.name?.split(' ')[0]}!
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
             Gestiona tus citas y mantén tu estilo impecable.
           </p>
         </div>
-        <Button variant="glow" size="lg" asChild>
+        <Button variant="glow" size="lg" className="h-8 sm:h-11 px-3 sm:px-5 text-xs sm:text-base" asChild>
           <Link to="/app/book">
-            <Calendar className="w-5 h-5 mr-2" />
+            <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
             Reservar ahora
           </Link>
         </Button>
@@ -195,29 +195,29 @@ const ClientDashboard: React.FC = () => {
       <AlertBanner />
 
       {showReferralBanner && (
-        <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="relative rounded-2xl border border-primary/20 bg-primary/5 px-3 sm:px-4 py-2.5 sm:py-3 pr-10 sm:pr-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
           <div>
-            <p className="text-sm font-semibold text-foreground">¿Conoces a alguien? Invítalo y gana.</p>
-            <p className="text-xs text-muted-foreground">Comparte tu enlace y desbloquea recompensas.</p>
+            <p className="text-xs sm:text-sm font-semibold text-foreground">¿Conoces a alguien? Invítalo y gana.</p>
+            <p className="hidden sm:block text-xs text-muted-foreground">Comparte tu enlace y desbloquea recompensas.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="glow" size="sm" asChild>
+            <Button variant="glow" size="sm" className="h-8 text-xs sm:text-sm" asChild>
               <Link to="/app/referrals">Invita y gana</Link>
             </Button>
-            <button
-              type="button"
-              onClick={dismissReferralBanner}
-              className="p-2 rounded-full hover:bg-primary/10 text-muted-foreground"
-              aria-label="Cerrar"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
+          <button
+            type="button"
+            onClick={dismissReferralBanner}
+            className="absolute top-2 right-2 sm:top-3 sm:right-3 p-0.5 sm:p-1 rounded-full hover:bg-primary/10 text-muted-foreground"
+            aria-label="Cerrar"
+          >
+            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
         </div>
       )}
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
         {[
           { label: 'Próximas citas', value: upcomingAppointments.length, icon: Calendar },
           { label: 'Total de visitas', value: completedAppointments.length, icon: User },
@@ -225,13 +225,13 @@ const ClientDashboard: React.FC = () => {
           { label: `${copy.staff.singular} más visitado`, value: favoriteBarberName, icon: Crown },
         ].map((stat, index) => (
           <Card key={stat.label} variant="glass" className="animate-scale-in" style={{ animationDelay: `${index * 0.1}s` }}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <stat.icon className="w-5 h-5 text-primary" />
+            <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <stat.icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                <p className="text-xs text-muted-foreground">{stat.label}</p>
+              <div className="min-w-0">
+                <p className="text-sm sm:text-2xl font-bold text-foreground truncate">{stat.value}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">{stat.label}</p>
               </div>
             </CardContent>
           </Card>
@@ -239,10 +239,10 @@ const ClientDashboard: React.FC = () => {
       </div>
 
       {loyaltySummary?.enabled && loyaltySummary.programs.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold text-foreground">Fidelización</h2>
-            <Link to="/app/profile#loyalty" className="text-sm text-primary hover:underline">
+            <h2 className="text-base sm:text-xl font-semibold text-foreground">Fidelización</h2>
+            <Link to="/app/profile#loyalty" className="text-xs sm:text-sm text-primary hover:underline">
               Ver detalle
             </Link>
           </div>
@@ -261,17 +261,17 @@ const ClientDashboard: React.FC = () => {
       {/* Upcoming Appointments */}
       <Card variant="elevated">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Próximas citas</CardTitle>
-          <Link to="/app/appointments" className="text-sm text-primary hover:underline flex items-center">
+          <CardTitle className="text-base sm:text-lg">Próximas citas</CardTitle>
+          <Link to="/app/appointments" className="text-xs sm:text-sm text-primary hover:underline flex items-center">
             Ver todas
-            <ArrowRight className="w-4 h-4 ml-1" />
+            <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-1" />
           </Link>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <ListSkeleton count={2} />
           ) : upcomingAppointments.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-2.5 sm:space-y-4">
               {upcomingAppointments.slice(0, 3).map((appointment) => {
                 const barber = barbersById.get(appointment.barberId);
                 const service = servicesById.get(appointment.serviceId);
@@ -282,7 +282,7 @@ const ClientDashboard: React.FC = () => {
                 return (
                   <div 
                     key={appointment.id}
-                    className="flex items-center gap-4 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                    className="flex items-center gap-2.5 sm:gap-4 p-2.5 sm:p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
                   >
                     <img 
                       src={barber?.photo || defaultAvatar} 
@@ -291,17 +291,17 @@ const ClientDashboard: React.FC = () => {
                       decoding="async"
                       width={48}
                       height={48}
-                      className="w-12 h-12 rounded-full object-cover"
+                      className="w-9 h-9 sm:w-12 sm:h-12 rounded-full object-cover"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground">{serviceName}</p>
-                      <p className="text-sm text-muted-foreground">con {barberName}</p>
+                      <p className="text-sm sm:text-base font-medium text-foreground truncate">{serviceName}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground truncate">con {barberName}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-primary">
+                      <p className="text-xs sm:text-sm font-medium text-primary">
                         {format(date, 'EEEE d', { locale: es })}
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-xs sm:text-sm text-muted-foreground">
                         {format(date, 'HH:mm')}
                       </p>
                     </div>
@@ -310,12 +310,12 @@ const ClientDashboard: React.FC = () => {
               })}
             </div>
           ) : (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-4">
-                <Calendar className="w-8 h-8 text-muted-foreground" />
+            <div className="text-center py-6 sm:py-8">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground" />
               </div>
-              <p className="text-muted-foreground mb-4">No tienes citas programadas</p>
-              <Button asChild>
+              <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">No tienes citas programadas</p>
+              <Button className="h-8 sm:h-10 text-xs sm:text-sm" asChild>
                 <Link to="/app/book">Reservar mi primera cita</Link>
               </Button>
             </div>

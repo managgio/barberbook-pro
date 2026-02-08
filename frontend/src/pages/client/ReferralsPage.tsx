@@ -35,13 +35,13 @@ const ReferralStatusCard: React.FC<{ item: ReferralAttributionItem }> = ({ item 
       : 'Tu invitación está activa. Se desbloquea cuando complete su primera visita.';
 
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/30 p-4 space-y-2">
+    <div className="rounded-xl border border-border/70 bg-muted/30 p-3 sm:p-4 space-y-1.5 sm:space-y-2">
       <div className="flex items-center justify-between">
-        <p className="font-semibold text-foreground">{referredName}</p>
+        <p className="text-sm sm:text-base font-semibold text-foreground truncate">{referredName}</p>
         <span className="text-xs font-medium uppercase text-muted-foreground">{statusLabel}</span>
       </div>
-      <p className="text-xs text-muted-foreground">{description}</p>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="hidden sm:block text-xs text-muted-foreground">{description}</p>
+      <p className="text-[10px] sm:text-[11px] text-muted-foreground">
         {format(parseISO(item.attributedAt), 'd MMM yyyy', { locale: es })}
       </p>
     </div>
@@ -103,44 +103,44 @@ const ReferralsPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return <div className="text-muted-foreground">Cargando tu programa de referidos...</div>;
+    return <div className="text-sm text-muted-foreground">Cargando tu programa de referidos...</div>;
   }
 
   if (!summary) {
-    return <div className="text-muted-foreground">No pudimos cargar el programa de referidos.</div>;
+    return <div className="text-sm text-muted-foreground">No pudimos cargar el programa de referidos.</div>;
   }
   if (summary.programEnabled === false) {
     return (
-      <div className="text-muted-foreground">
+      <div className="text-sm text-muted-foreground">
         El programa de referidos no está activo en {copy.location.definiteSingular}.
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Invita y gana</h1>
-        <p className="text-muted-foreground mt-1">
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Invita y gana</h1>
+        <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
           Invita a alguien de confianza. Cuando complete su primera visita, ambos ganáis.
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1.2fr,0.8fr]">
         <Card variant="elevated">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Share2 className="w-5 h-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Share2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               Comparte tu invitación
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Comparte tu enlace o muestra el QR en {copy.location.definiteSingular}.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4">
             <div className="flex flex-col sm:flex-row gap-3">
-              <Input value={shareUrl} readOnly />
-              <Button variant="outline" onClick={handleCopy} className="gap-2">
+              <Input value={shareUrl} readOnly className="h-9 sm:h-10 text-xs sm:text-sm" />
+              <Button variant="outline" onClick={handleCopy} className="h-9 sm:h-10 text-xs sm:text-sm gap-2">
                 <Copy className="w-4 h-4" />
                 Copiar enlace
               </Button>
@@ -148,15 +148,15 @@ const ReferralsPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 variant="glow"
-                className="gap-2"
+                className="h-9 sm:h-10 text-xs sm:text-sm gap-2"
                 onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(buildWhatsAppMessage(shareUrl))}`)}
               >
                 Compartir por WhatsApp
               </Button>
             </div>
             {qrUrl && (
-              <div className="rounded-2xl border border-border/60 bg-muted/20 p-4 flex flex-col items-center gap-3">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="rounded-2xl border border-border/60 bg-muted/20 p-3 sm:p-4 flex flex-col items-center gap-2 sm:gap-3">
+                <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
                   <QrCode className="w-4 h-4" />
                   Escanea este QR para reservar con tu recompensa.
                 </div>
@@ -167,7 +167,7 @@ const ReferralsPage: React.FC = () => {
                   decoding="async"
                   width={160}
                   height={160}
-                  className="w-40 h-40"
+                  className="w-28 h-28 sm:w-40 sm:h-40"
                 />
               </div>
             )}
@@ -176,22 +176,22 @@ const ReferralsPage: React.FC = () => {
 
         <Card variant="elevated">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gift className="w-5 h-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Gift className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
               Resumen de recompensas
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Tú ganas: {summary.rewardSummary.referrer.text}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+          <CardContent className="space-y-2.5 sm:space-y-3">
+            <div className="rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
               <p className="text-xs text-muted-foreground">Tú ganas:</p>
-              <p className="text-lg font-semibold text-foreground">{summary.rewardSummary.referrer.text}</p>
+              <p className="text-sm sm:text-lg font-semibold text-foreground">{summary.rewardSummary.referrer.text}</p>
             </div>
-            <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+            <div className="rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
               <p className="text-xs text-muted-foreground">Tu amigo gana:</p>
-              <p className="text-lg font-semibold text-foreground">{summary.rewardSummary.referred.text}</p>
+              <p className="text-sm sm:text-lg font-semibold text-foreground">{summary.rewardSummary.referred.text}</p>
             </div>
           </CardContent>
         </Card>
@@ -199,31 +199,31 @@ const ReferralsPage: React.FC = () => {
 
       <Card variant="elevated">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-primary" />
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Wallet className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
             Recompensas disponibles
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Saldo disponible y cupones activos.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+        <CardContent className="space-y-3 sm:space-y-4">
+          <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-3 sm:px-4 py-2.5 sm:py-3">
             <div>
               <p className="text-xs text-muted-foreground">Saldo disponible</p>
-              <p className="text-xl font-bold text-foreground">{walletAvailable.toFixed(2)}€</p>
+              <p className="text-lg sm:text-xl font-bold text-foreground">{walletAvailable.toFixed(2)}€</p>
             </div>
-            <span className="text-xs text-muted-foreground">Saldo total: {walletBalance.toFixed(2)}€</span>
+            <span className="text-[11px] sm:text-xs text-muted-foreground">Saldo total: {walletBalance.toFixed(2)}€</span>
           </div>
           <div className="space-y-2">
-            <p className="text-sm font-medium text-foreground flex items-center gap-2">
-              <Ticket className="w-4 h-4" />
+            <p className="text-xs sm:text-sm font-medium text-foreground flex items-center gap-2">
+              <Ticket className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Cupones activos
             </p>
             {walletSummary?.coupons.length ? (
               <div className="grid gap-2">
                 {walletSummary.coupons.map((coupon) => (
-                  <div key={coupon.id} className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm">
+                  <div key={coupon.id} className="rounded-xl border border-border/60 bg-muted/20 p-2.5 sm:p-3 text-xs sm:text-sm">
                     {coupon.discountType === 'FREE_SERVICE'
                       ? 'Servicio gratis'
                       : coupon.discountType === 'PERCENT_DISCOUNT'
@@ -240,10 +240,10 @@ const ReferralsPage: React.FC = () => {
       </Card>
 
       <Tabs defaultValue="pending" className="space-y-4">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="pending">Pendientes</TabsTrigger>
-          <TabsTrigger value="confirmed">Confirmados</TabsTrigger>
-          <TabsTrigger value="rewards">Recompensas</TabsTrigger>
+        <TabsList className="grid w-full max-w-md grid-cols-3 h-7 sm:h-10 p-0.5 sm:p-1">
+          <TabsTrigger value="pending" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">Pendientes</TabsTrigger>
+          <TabsTrigger value="confirmed" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">Confirmados</TabsTrigger>
+          <TabsTrigger value="rewards" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">Recompensas</TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="space-y-3">
           {summary.pending.length === 0 ? (

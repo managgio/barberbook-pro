@@ -295,19 +295,19 @@ const LandingPage: React.FC = () => {
     );
     if (visible.length === 0) return null;
     return (
-      <section className="py-20 bg-background">
-        <div className="container px-4 space-y-14">
+      <section className="py-10 sm:py-20 bg-background">
+        <div className="container px-4 space-y-6 sm:space-y-14">
           {visible.map((section, index) => {
             const isImageLeft = section.imagePosition !== 'right';
             return (
               <div
                 key={`presentation-${index}`}
-                className={`flex flex-col gap-10 lg:gap-16 ${
+                className={`flex flex-col gap-4 sm:gap-10 lg:gap-16 ${
                   isImageLeft ? 'lg:flex-row' : 'lg:flex-row-reverse'
                 } items-center`}
               >
                 <div className="w-full lg:w-1/2">
-                  <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-muted/20 shadow-lg">
+                  <div className="relative overflow-hidden rounded-xl sm:rounded-3xl border border-border/60 bg-muted/20 shadow-lg">
                     <div className="aspect-[4/3] w-full">
                       <img
                         src={section.imageUrl || heroImageFallback}
@@ -321,14 +321,14 @@ const LandingPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="w-full lg:w-1/2 space-y-4">
+                <div className="w-full lg:w-1/2 space-y-2.5 sm:space-y-4">
                   {section.title && (
-                    <h3 className="text-3xl md:text-4xl font-semibold text-foreground">
+                    <h3 className="text-xl sm:text-3xl md:text-4xl font-semibold text-foreground">
                       {section.title}
                     </h3>
                   )}
                   {section.body && (
-                    <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
+                    <p className="text-xs sm:text-base md:text-lg text-muted-foreground leading-relaxed">
                       {section.body}
                     </p>
                   )}
@@ -351,10 +351,10 @@ const LandingPage: React.FC = () => {
       <Card
         key={product.id}
         variant="interactive"
-        className="overflow-hidden animate-slide-up h-full flex flex-col min-h-[330px] md:min-h-[300px] lg:min-h-[280px]"
+        className="overflow-hidden animate-slide-up h-full flex flex-col md:min-h-[300px] lg:min-h-[280px]"
         style={{ animationDelay: `${index * 0.1}s` }}
       >
-        <div className="relative aspect-[4/3] bg-secondary/40 shrink-0">
+        <div className="relative aspect-[16/10] sm:aspect-[4/3] bg-secondary/40 shrink-0">
           <img
             src={product.imageUrl || productImageFallback}
             alt={product.name}
@@ -365,36 +365,36 @@ const LandingPage: React.FC = () => {
             className="w-full h-full object-cover"
           />
           {hasOffer && (
-            <div className="absolute top-3 right-3 bg-primary text-primary-foreground text-xs px-3 py-1 rounded-full shadow-lg">
+            <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-primary text-primary-foreground text-[10px] sm:text-xs px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full shadow-lg">
               Oferta
             </div>
           )}
         </div>
-        <CardContent className="p-6 md:p-5 lg:p-4 flex flex-col flex-1 gap-4">
-          <div className="flex justify-between items-start gap-3">
+        <CardContent className="p-2 sm:p-6 md:p-5 lg:p-4 flex flex-col flex-1 gap-1.5 sm:gap-4">
+          <div className="flex justify-between items-start gap-2">
             <div className="flex-1">
-              <h3 className="text-lg md:text-base font-semibold text-foreground">{product.name}</h3>
-              <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
+              <h3 className="text-[11px] sm:text-lg md:text-base font-semibold text-foreground">{product.name}</h3>
+              <p className="text-[10px] sm:text-sm text-muted-foreground line-clamp-1 sm:line-clamp-2 min-h-[1rem] sm:min-h-[2.5rem]">
                 {product.description}
               </p>
             </div>
             <div className="text-right shrink-0">
               {hasOffer && (
-                <div className="text-xs line-through text-muted-foreground">{product.price}€</div>
+                <div className="text-[10px] sm:text-xs line-through text-muted-foreground">{product.price}€</div>
               )}
-              <span className="text-2xl md:text-xl font-bold text-primary">{price.toFixed(2)}€</span>
+              <span className="text-sm sm:text-2xl md:text-xl font-bold text-primary">{price.toFixed(2)}€</span>
             </div>
           </div>
           <div className="mt-auto">
             {settings.products.clientPurchaseEnabled ? (
-              <Button variant="outline" size="sm" className="w-full" asChild>
+              <Button variant="outline" size="sm" className="w-full h-6 sm:h-9 text-[10px] sm:text-sm" asChild>
                 <Link to={productLink}>
-                  <Package className="w-4 h-4 mr-2" />
+                  <Package className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   {isAuthenticated ? 'Añadir a tu cita' : 'Accede para comprar'}
                 </Link>
               </Button>
             ) : (
-              <div className="text-xs text-muted-foreground text-center border border-dashed border-border rounded-lg py-2">
+              <div className="text-[10px] sm:text-xs text-muted-foreground text-center border border-dashed border-border rounded-lg py-1 sm:py-2">
                 Disponible en el local
               </div>
             )}
@@ -430,18 +430,18 @@ const LandingPage: React.FC = () => {
   }, [categoriesEnabled, productCategories, products]);
 
   const servicesSection = (
-    <section className="py-24 bg-card/50">
+    <section className="py-10 sm:py-24 bg-card/50">
       <div className="container px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+        <div className="text-center mb-6 sm:mb-16">
+          <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             Nuestros servicios
           </h2>
-          <p className="text-muted-foreground max-w-lg mx-auto">
+          <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
             Cada servicio incluye una experiencia completa con los mejores productos del mercado.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-6 max-w-5xl mx-auto">
           {services.slice(0, 6).map((service, index) => (
             <Card
               key={service.id}
@@ -449,22 +449,22 @@ const LandingPage: React.FC = () => {
               className="animate-slide-up"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Scissors className="w-6 h-6 text-primary" />
+              <CardContent className="p-2.5 sm:p-6">
+                <div className="flex justify-between items-start mb-2 sm:mb-4">
+                  <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Scissors className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div className="text-right">
                     {service.appliedOffer && service.finalPrice !== undefined && Math.abs(service.price - service.finalPrice) > 0.001 && (
-                      <div className="text-xs line-through text-muted-foreground">{service.price}€</div>
+                      <div className="text-[10px] sm:text-xs line-through text-muted-foreground">{service.price}€</div>
                     )}
-                    <span className="text-2xl font-bold text-primary">
+                    <span className="text-base sm:text-2xl font-bold text-primary">
                       {(service.finalPrice ?? service.price).toFixed(2)}€
                     </span>
                   </div>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">{service.name}</h3>
-                <p className="text-sm text-muted-foreground mb-4">{service.description}</p>
+                <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
+                <p className="text-[11px] sm:text-sm text-muted-foreground line-clamp-2">{service.description}</p>
               </CardContent>
             </Card>
           ))}
@@ -475,11 +475,11 @@ const LandingPage: React.FC = () => {
           )}
         </div>
 
-        <div className="text-center mt-12">
-          <Button variant="outline" size="lg" asChild>
+        <div className="text-center mt-5 sm:mt-12">
+          <Button variant="outline" size="lg" className="h-8 sm:h-11 text-[11px] sm:text-base" asChild>
             <Link to={isAuthenticated ? '/app/book' : '/auth'}>
               Ver todos los servicios
-              <ArrowRight className="w-4 h-4 ml-2" />
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
             </Link>
           </Button>
         </div>
@@ -488,39 +488,39 @@ const LandingPage: React.FC = () => {
   );
 
   const productsSection = showProducts ? (
-    <section className="py-24">
+    <section className="py-10 sm:py-24">
       <div className="container px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+        <div className="text-center mb-6 sm:mb-16">
+          <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             Productos destacados
           </h2>
-          <p className="text-muted-foreground max-w-lg mx-auto">
+          <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
             Selección profesional para cuidar tu estilo en casa.
           </p>
         </div>
 
         {categoriesEnabled ? (
-          <div className="space-y-10 max-w-5xl mx-auto">
+          <div className="space-y-5 sm:space-y-10 max-w-5xl mx-auto">
             {productGroups.map((group) => (
-              <div key={group.key} className="space-y-4">
+              <div key={group.key} className="space-y-2.5 sm:space-y-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <h3 className="text-xl font-semibold text-foreground">
+                    <h3 className="text-sm sm:text-xl font-semibold text-foreground">
                       {group.category?.name ?? 'Otros productos'}
                     </h3>
                     {group.category?.description && (
-                      <p className="text-sm text-muted-foreground">{group.category.description}</p>
+                      <p className="hidden sm:block text-sm text-muted-foreground">{group.category.description}</p>
                     )}
                   </div>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-[11px] sm:text-xs text-muted-foreground">
                     {group.items.length} producto(s)
                   </span>
                 </div>
-                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6">
+                <div className="scrollbar-none flex gap-2.5 sm:gap-4 overflow-x-auto pb-1.5 sm:pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6">
                   {group.items.map((product, index) => (
                     <div
                       key={product.id}
-                      className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-[260px] lg:w-[240px] xl:w-[230px] md:h-full"
+                      className="w-[165px] min-w-[165px] h-[226px] shrink-0 sm:min-w-[280px] md:min-w-0 md:w-[260px] md:h-auto lg:w-[240px] xl:w-[230px] md:h-full"
                     >
                       {renderProductCard(product, index)}
                     </div>
@@ -531,11 +531,11 @@ const LandingPage: React.FC = () => {
           </div>
         ) : (
             <div className="max-w-5xl mx-auto">
-              <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6">
+              <div className="scrollbar-none flex gap-2.5 sm:gap-4 overflow-x-auto pb-1.5 sm:pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6">
                 {products.slice(0, 6).map((product, index) => (
                   <div
                     key={product.id}
-                    className="min-w-[240px] sm:min-w-[280px] md:min-w-0 md:w-[260px] lg:w-[240px] xl:w-[230px] md:h-full"
+                    className="w-[165px] min-w-[165px] h-[226px] shrink-0 sm:min-w-[280px] md:min-w-0 md:w-[260px] md:h-auto lg:w-[240px] xl:w-[230px] md:h-full"
                   >
                     {renderProductCard(product, index)}
                   </div>
@@ -548,26 +548,26 @@ const LandingPage: React.FC = () => {
   ) : null;
 
   const barbersSection = (
-    <section className="py-24">
+    <section className="py-10 sm:py-24">
       <div className="container px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+        <div className="text-center mb-6 sm:mb-16">
+          <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             {copy.staff.plural}
           </h2>
-          <p className="text-muted-foreground max-w-lg mx-auto">
+          <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
             Profesionales apasionados por su oficio, siempre al día con las últimas tendencias.
           </p>
         </div>
 
-        <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 md:gap-6 md:overflow-visible lg:flex lg:flex-wrap lg:justify-center max-w-6xl lg:mx-auto">
+        <div className="scrollbar-none flex gap-2.5 sm:gap-4 overflow-x-auto pb-1.5 sm:pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 md:gap-6 md:overflow-visible lg:flex lg:flex-wrap lg:justify-center max-w-6xl lg:mx-auto">
           {barbers.map((barber, index) => (
-            <div key={barber.id} className="min-w-[220px] sm:min-w-[260px] md:min-w-0 md:w-auto lg:w-[240px]">
+            <div key={barber.id} className="w-[165px] min-w-[165px] h-[226px] shrink-0 sm:min-w-[260px] md:min-w-0 md:w-auto md:h-auto lg:w-[240px]">
               <Card
                 variant="interactive"
                 className="overflow-hidden animate-slide-up h-full"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <div className="aspect-square relative overflow-hidden">
+                <div className="h-[150px] sm:aspect-square relative overflow-hidden">
                   <img
                     src={barber.photo || defaultAvatar}
                     alt={barber.name}
@@ -577,11 +577,11 @@ const LandingPage: React.FC = () => {
                     height={600}
                     className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                   />
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-4" />
+                  <div className="absolute inset-x-0 bottom-0 hidden sm:block bg-gradient-to-t from-background/90 to-transparent p-2.5 sm:p-4" />
                 </div>
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-foreground">{barber.name}</h3>
-                  <p className="text-sm text-muted-foreground">{barber.specialty}</p>
+                <CardContent className="p-2.5 sm:p-4 space-y-1">
+                  <h3 className="text-[11px] sm:text-base font-semibold leading-tight text-foreground line-clamp-1">{barber.name}</h3>
+                  <p className="text-[10px] sm:text-sm text-muted-foreground line-clamp-1">{barber.specialty}</p>
                 </CardContent>
               </Card>
             </div>
@@ -597,7 +597,7 @@ const LandingPage: React.FC = () => {
   );
 
   const ctaSection = (
-    <section className="py-24 bg-card/50 relative overflow-hidden">
+    <section className="py-10 sm:py-24 bg-card/50 relative overflow-hidden">
       <div className="absolute inset-0">
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -609,16 +609,16 @@ const LandingPage: React.FC = () => {
       
       <div className="container px-4 relative z-10">
         <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
+          <h2 className="text-xl sm:text-3xl md:text-5xl font-bold text-foreground mb-2 sm:mb-6">
             ¿Listo para tu<br />
             <span className="text-gradient">nuevo look?</span>
           </h2>
-            <p className="text-xl text-muted-foreground mb-10">
+            <p className="text-xs sm:text-xl text-muted-foreground mb-4 sm:mb-10">
               Reserva tu cita en menos de un minuto y vive la experiencia {settings.branding.name}.
             </p>
-          <Button variant="hero" size="xl" asChild>
+          <Button variant="hero" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
             <Link to={isAuthenticated ? '/app/book' : '/auth?tab=signup'}>
-              <Calendar className="w-5 h-5 mr-2" />
+              <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
               Reservar mi cita
             </Link>
           </Button>
@@ -632,7 +632,7 @@ const LandingPage: React.FC = () => {
       <Navbar />
       
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden">
+      <section className="relative min-h-[88svh] sm:min-h-screen flex items-center justify-center pt-14 sm:pt-16 overflow-hidden">
         <div className="absolute inset-0">
           <div
             className="absolute inset-0 bg-cover bg-center"
@@ -646,48 +646,48 @@ const LandingPage: React.FC = () => {
           )}
         </div>
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-glow" />
-          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-primary/5 rounded-full blur-2xl" />
+          <div className="absolute top-1/4 left-1/4 hidden sm:block w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-glow" />
+          <div className="absolute bottom-1/4 right-1/4 hidden sm:block w-64 h-64 bg-primary/5 rounded-full blur-2xl" />
         </div>
         
-        <div className="container relative z-10 px-4 py-20">
-          <div className={`flex ${heroLayoutClass} ${heroItemsClass} gap-12`}>
+        <div className="container relative z-10 px-4 py-8 sm:py-20">
+          <div className={`flex ${heroLayoutClass} ${heroItemsClass} gap-5 sm:gap-12`}>
             <div className={`flex-1 ${heroTextAlignClass} animate-slide-up`}>
               {heroBadgeEnabled && (
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-8">
-                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-sm text-primary font-medium">Reserva online disponible</span>
+                <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 rounded-full bg-primary/10 border border-primary/20 mb-3 sm:mb-8">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                  <span className="text-[10px] sm:text-sm text-primary font-medium">Reserva online disponible</span>
                 </div>
               )}
               
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
+              <h1 className="text-[1.9rem] sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-2.5 sm:mb-6 leading-tight">
                 <span className={heroTextStyles.title}>{settings.branding.name}</span><br />
                 <span className="text-gradient">{settings.branding.tagline}</span>
               </h1>
               
               <p
-                className={`text-xl max-w-2xl mb-10 ${heroTextStyles.description} ${heroDescriptionAlignClass}`}
+                className={`text-xs sm:text-xl max-w-2xl mb-4 sm:mb-10 ${heroTextStyles.description} ${heroDescriptionAlignClass}`}
               >
                 {settings.branding.description}
               </p>
               
-              <div className={`flex flex-col sm:flex-row gap-4 ${heroActionsClass}`}>
+              <div className={`flex flex-col sm:flex-row gap-2 sm:gap-4 ${heroActionsClass}`}>
                 {isAuthenticated ? (
-                  <Button variant="hero" size="xl" asChild>
+                  <Button variant="hero" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                     <Link to={user?.role === 'admin' ? '/admin' : '/app/book'}>
-                      <Calendar className="w-5 h-5 mr-2" />
+                      <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                       {user?.role === 'admin' ? 'Panel Admin' : 'Reservar ahora'}
                     </Link>
                   </Button>
                 ) : (
                   <>
-                    <Button variant="hero" size="xl" asChild>
+                    <Button variant="hero" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                       <Link to="/auth?tab=signup">
-                        <Calendar className="w-5 h-5 mr-2" />
+                        <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                         Reservar ahora
                       </Link>
                     </Button>
-                    <Button variant="outline" size="xl" asChild>
+                    <Button variant="outline" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                       <Link to="/book">
                         Reserva sin registro
                       </Link>
@@ -700,8 +700,8 @@ const LandingPage: React.FC = () => {
             {heroImageEnabled && (
               <div className="flex-1 w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
                 <div className="relative w-full max-w-xl mx-auto">
-                  <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-[36px]" />
-                  <div className="relative w-full overflow-hidden rounded-[36px] border border-border/60 shadow-2xl">
+                  <div className="absolute -inset-3 sm:-inset-4 bg-primary/20 blur-3xl rounded-[24px] sm:rounded-[36px]" />
+                  <div className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[36px] border border-border/60 shadow-2xl">
                     <div className="aspect-[4/3] w-full">
                       <img
                         src={heroImageUrl}
@@ -715,15 +715,15 @@ const LandingPage: React.FC = () => {
                     </div>
                   </div>
                   {heroLocationCardEnabled && (
-                    <div className="absolute left-6 right-auto bottom-6 bg-background/80 backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl border border-border/60">
-                      <MapPin className="w-5 h-5 text-primary" />
+                  <div className="absolute left-2.5 sm:left-6 right-auto bottom-2.5 sm:bottom-6 bg-background/80 backdrop-blur-xl rounded-xl sm:rounded-2xl px-2 sm:px-4 py-1 sm:py-3 flex items-center gap-1.5 sm:gap-3 shadow-xl border border-border/60">
+                      <MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-primary" />
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
+                        <p className="text-[9px] sm:text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
                         <a
                           href={settings.location.mapUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm font-semibold text-foreground hover:text-primary transition-colors"
+                          className="text-[11px] sm:text-sm font-semibold text-foreground hover:text-primary transition-colors"
                         >
                           {settings.location.label}
                         </a>
@@ -737,16 +737,16 @@ const LandingPage: React.FC = () => {
 
           {statsHighlights.length > 0 && (
             <div
-              className={`mt-20 grid gap-8 max-w-4xl mx-auto animate-fade-in ${statsGridClass}`}
+              className={`mt-10 sm:mt-20 grid gap-4 sm:gap-8 max-w-4xl mx-auto animate-fade-in ${statsGridClass}`}
               style={{ animationDelay: '0.4s' }}
             >
               {statsHighlights.map((stat, index) => (
                 <div key={stat.label} className="text-center" style={{ animationDelay: `${0.5 + index * 0.1}s` }}>
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                    <stat.icon className="w-6 h-6 text-primary" />
+                  <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-1.5 sm:mb-3">
+                    <stat.icon className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
                   </div>
-                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className={`text-sm ${heroTextStyles.stats}`}>{stat.label}</p>
+                  <p className="text-base sm:text-2xl font-bold text-foreground">{stat.value}</p>
+                  <p className={`text-[11px] sm:text-sm ${heroTextStyles.stats}`}>{stat.label}</p>
                 </div>
               ))}
             </div>
@@ -776,11 +776,11 @@ const LandingPage: React.FC = () => {
       })}
 
       {/* Footer */}
-      <footer className="py-12 border-t border-border">
+      <footer className="py-7 sm:py-12 border-t border-border">
         <div className="container px-4">
-          <div className="grid md:grid-cols-4 gap-8">
+          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-5 sm:gap-8">
             <div>
-              <Link to="/" className="flex items-center gap-2 mb-4">
+              <Link to="/" className="flex items-center gap-2 mb-3">
                 <img
                   src={logoUrl}
                   alt={`${settings.branding.shortName} logo`}
@@ -788,18 +788,18 @@ const LandingPage: React.FC = () => {
                   decoding="async"
                   width={40}
                   height={40}
-                  className="w-10 h-10 rounded-lg object-contain shadow-sm"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-contain shadow-sm"
                 />
-                <span className="text-xl font-bold text-foreground">{settings.branding.name}</span>
+                <span className="text-sm sm:text-xl font-bold text-foreground">{settings.branding.name}</span>
               </Link>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-[11px] sm:text-sm text-muted-foreground">
                 Citas rápidas, experiencia premium y un equipo que cuida cada detalle.
               </p>
             </div>
             
             <div>
-              <h4 className="font-semibold text-foreground mb-4">Enlaces</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
+              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Enlaces</h4>
+              <ul className="space-y-1 sm:space-y-2 text-[11px] sm:text-sm text-muted-foreground">
                 <li><Link to="/hours-location" className="hover:text-primary transition-colors">Horario y ubicación</Link></li>
                 <li><Link to="/auth" className="hover:text-primary transition-colors">Iniciar sesión</Link></li>
                 <li><Link to="/legal/notice" className="hover:text-primary transition-colors">Aviso legal</Link></li>
@@ -809,10 +809,10 @@ const LandingPage: React.FC = () => {
             </div>
             
             <div>
-              <h4 className="font-semibold text-foreground mb-4">Contacto</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
+              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Contacto</h4>
+              <ul className="space-y-1 sm:space-y-2 text-[11px] sm:text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
                   <a
                     href={settings.location.mapUrl}
                     target="_blank"
@@ -823,13 +823,13 @@ const LandingPage: React.FC = () => {
                   </a>
                 </li>
                 <li className="flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
+                  <Phone className="w-3 h-3 sm:w-4 sm:h-4" />
                   <a href={whatsappLink} className="hover:text-primary transition-colors">
                   {phoneDisplay}
                   </a>
                 </li>
                 <li className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
+                  <Mail className="w-3 h-3 sm:w-4 sm:h-4" />
                   <a href={`mailto:${settings.contact.email}`} className="hover:text-primary transition-colors">
                     {settings.contact.email}
                   </a>
@@ -838,29 +838,29 @@ const LandingPage: React.FC = () => {
             </div>
             
             <div>
-              <h4 className="font-semibold text-foreground mb-4">Síguenos</h4>
+              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Síguenos</h4>
               {socials.length > 0 ? (
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-1.5 sm:gap-3">
                   {socials.map((social) => (
                     <a
                       key={social.key}
                       href={social.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors gap-2"
+                      className="px-2 sm:px-4 py-1 sm:py-2 rounded-lg bg-secondary flex items-center justify-center text-[11px] sm:text-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors gap-1 sm:gap-2"
                     >
-                      <social.icon className="w-5 h-5" />
+                      <social.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                       {social.label}
                     </a>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Sin redes configuradas.</p>
+                <p className="text-[11px] sm:text-sm text-muted-foreground">Sin redes configuradas.</p>
               )}
             </div>
           </div>
           
-          <div className="mt-12 pt-8 border-t border-border text-center text-sm text-muted-foreground">
+          <div className="mt-6 sm:mt-12 pt-3.5 sm:pt-8 border-t border-border text-center text-[11px] sm:text-sm text-muted-foreground">
             <p>
               © {currentYear} by{' '}
               <a

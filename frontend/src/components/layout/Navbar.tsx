@@ -32,7 +32,7 @@ const Navbar: React.FC = () => {
   );
   const userBadgeClass = cn(
     'flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10',
-    'h-9 w-9 p-0 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1',
+    'h-8 w-8 p-0 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1',
     isLanding && hasMultipleLocations ? 'hidden sm:flex' : 'flex'
   );
 
@@ -55,13 +55,13 @@ const Navbar: React.FC = () => {
           </Link>
 
           {/* Auth Section */}
-          <div className="flex items-center gap-3">
-            <LocationSwitcher />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <LocationSwitcher compact showSingleLocationLabel />
             {isAuthenticated && user ? (
               <>
                 <Link to={userTarget} className={userBadgeClass}>
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="w-4 h-4 text-primary" />
+                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center sm:w-8 sm:h-8">
+                    <User className="w-3.5 h-3.5 text-primary sm:w-4 sm:h-4" />
                   </div>
                   <span className="text-sm font-medium text-foreground hidden sm:inline">{user.name}</span>
                 </Link>

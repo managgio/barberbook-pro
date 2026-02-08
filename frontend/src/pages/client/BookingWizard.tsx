@@ -378,6 +378,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () => barbers.filter((barber) => barber.isActive !== false),
     [barbers],
   );
+  const singleAvailableBarber = useMemo(
+    () => (availableBarbers.length === 1 ? availableBarbers[0] : null),
+    [availableBarbers],
+  );
   const availableBarberIds = useMemo(
     () => availableBarbers.map((barber) => barber.id).sort(),
     [availableBarbers],
@@ -507,6 +511,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     [barbers, booking.barberId],
   );
 
+  useEffect(() => {
+    if (!selectBarber || !singleAvailableBarber) return;
+    if (booking.barberId === singleAvailableBarber.id) return;
+    setBooking((prev) => ({
+      ...prev,
+      barberId: singleAvailableBarber.id,
+      dateTime: null,
+    }));
+  }, [booking.barberId, selectBarber, singleAvailableBarber]);
+
   const handleSelectService = (serviceId: string) => {
     setBooking({
       serviceId,
@@ -539,38 +553,38 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         className="cursor-pointer h-full shadow-sm"
         onClick={() => handleSelectService(service.id)}
       >
-        <CardContent className="p-4 flex flex-col gap-3">
+        <CardContent className="p-3 sm:p-4 flex flex-col gap-2 sm:gap-3">
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Scissors className="w-5 h-5 text-primary" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
             </div>
-            <div className="text-right space-y-1">
+            <div className="text-right space-y-0.5 sm:space-y-1">
               {hasOffer && (
-                <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-primary/10 text-primary text-[11px] border border-primary/30">
+                <div className="inline-flex items-center gap-1 sm:gap-2 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full bg-primary/10 text-primary text-[10px] sm:text-[11px] border border-primary/30">
                   {service.appliedOffer?.name ?? 'Oferta'}
                 </div>
               )}
-              {hasOffer && <div className="text-xs line-through text-muted-foreground">{service.price}€</div>}
-              <span className="text-xl font-bold text-primary">{finalPrice.toFixed(2)}€</span>
+              {hasOffer && <div className="text-[11px] sm:text-xs line-through text-muted-foreground">{service.price}€</div>}
+              <span className="text-lg sm:text-xl font-bold text-primary">{finalPrice.toFixed(2)}€</span>
             </div>
           </div>
-          <div className="space-y-1">
-            <h3 className="font-semibold text-foreground">{service.name}</h3>
-            <p className="text-sm text-muted-foreground line-clamp-2">{service.description}</p>
+          <div className="space-y-0.5 sm:space-y-1">
+            <h3 className="text-sm sm:text-base font-semibold text-foreground leading-tight">{service.name}</h3>
+            <p className="hidden sm:block text-sm text-muted-foreground line-clamp-2">{service.description}</p>
           </div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center justify-between text-xs sm:text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               {service.duration} min
             </div>
           </div>
           {hasOffer && service.appliedOffer && (
-            <div className="text-xs bg-primary/5 border border-primary/20 rounded-xl px-3 py-2 space-y-1">
+            <div className="text-[11px] sm:text-xs bg-primary/5 border border-primary/20 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 space-y-1">
               <div className="flex items-center gap-2 text-primary">
                 {service.appliedOffer.name} · ahorras {service.appliedOffer.amountOff.toFixed(2)}€
               </div>
               {service.appliedOffer.endDate && (
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-[10px] sm:text-[11px] text-muted-foreground">
                   Válida hasta {format(offerEnds as Date, "d 'de' MMMM", { locale: es })}
                   {daysLeft !== null && daysLeft >= 0 ? ` (${daysLeft} día${daysLeft === 1 ? '' : 's'})` : ''}
                 </div>
@@ -979,11 +993,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Reservar cita</h1>
-        <p className="text-muted-foreground mt-1">
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Reservar cita</h1>
+        <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
           {isGuest ? 'Reserva como invitado sin necesidad de crear cuenta.' : 'Completa los pasos para reservar tu cita.'}
         </p>
       </div>
@@ -992,13 +1006,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       <AlertBanner />
 
       {/* Progress Steps */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-1 sm:gap-2">
         {steps.map((step, index) => (
           <React.Fragment key={step}>
             <div className="flex flex-col items-center">
               <div 
                 className={cn(
-                  'w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300',
+                  'w-5 h-5 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-medium transition-all duration-300',
                   index < currentStep 
                     ? 'bg-primary text-primary-foreground' 
                     : index === currentStep
@@ -1006,10 +1020,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     : 'bg-secondary text-muted-foreground'
                 )}
               >
-                {index < currentStep ? <Check className="w-5 h-5" /> : index + 1}
+                {index < currentStep ? <Check className="w-3 h-3 sm:w-4 sm:h-4" /> : index + 1}
               </div>
               <span className={cn(
-                'text-xs mt-2 hidden sm:block',
+                'text-[10px] sm:text-xs mt-1.5 sm:mt-2 hidden sm:block',
                 index <= currentStep ? 'text-foreground' : 'text-muted-foreground'
               )}>
                 {step}
@@ -1017,7 +1031,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             </div>
             {index < steps.length - 1 && (
               <div className={cn(
-                'flex-1 h-0.5 mx-2',
+                'flex-1 h-px mx-1 sm:mx-2',
                 index < currentStep ? 'bg-primary' : 'bg-border'
               )} />
             )}
@@ -1027,25 +1041,25 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
       {/* Step Content */}
       <Card variant="elevated">
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           {/* Step 0: Select Service */}
           {currentStep === 0 && (
-            <div className="space-y-5">
+            <div className="space-y-4 sm:space-y-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-foreground">Elige tu servicio</h2>
-                  <p className="text-sm text-muted-foreground">
+                  <h2 className="text-lg sm:text-xl font-semibold text-foreground">Elige tu servicio</h2>
+                  <p className="hidden sm:block text-xs sm:text-sm text-muted-foreground">
                     Primero selecciona qué necesitas; después elegiremos profesional y horario.
                   </p>
                 </div>
               </div>
               {activeOffers.length > 0 && (
-                <div className="rounded-2xl border border-primary/40 bg-primary/10 p-4 space-y-2">
-                  <p className="text-sm font-semibold text-primary flex items-center gap-2">
+                <div className="rounded-2xl border border-primary/40 bg-primary/10 p-3 sm:p-4 space-y-2">
+                  <p className="text-xs sm:text-sm font-semibold text-primary flex items-center gap-2">
                     <Check className="w-4 h-4" />
                     Hay ofertas activas ahora mismo
                   </p>
-                  <div className="flex flex-wrap gap-2 text-xs text-primary">
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-primary">
                     {activeOffers.map((offer) => {
                       const hasDates = offer.startDate || offer.endDate;
                       const validity = hasDates
@@ -1054,7 +1068,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       return (
                         <span
                           key={offer.id}
-                          className="px-3 py-1 rounded-full bg-primary/15 text-primary border border-primary/20"
+                          className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/15 text-primary border border-primary/20"
                         >
                           {offer.name} · {validity}
                         </span>
@@ -1064,50 +1078,50 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 </div>
               )}
               {isLoading ? (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   {[1, 2, 3, 4].map((i) => <CardSkeleton key={i} />)}
                 </div>
               ) : categoriesEnabled && categorizedServices.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {categorizedServices.map((category) => (
                     <div
                       key={category.id}
-                      className="rounded-3xl border border-border/60 bg-muted/30 p-4 sm:p-5 space-y-3"
+                      className="rounded-3xl border border-border/60 bg-muted/30 p-3 sm:p-5 space-y-2.5 sm:space-y-3"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-lg font-semibold text-foreground">{category.name}</h3>
-                          <p className="text-sm text-muted-foreground">{category.description || 'Servicios de esta familia'}</p>
+                          <h3 className="text-base sm:text-lg font-semibold text-foreground">{category.name}</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground">{category.description || 'Servicios de esta familia'}</p>
                         </div>
-                        <span className="px-3 py-1 rounded-full border border-border text-xs text-muted-foreground">
+                        <span className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-border text-[11px] sm:text-xs text-muted-foreground">
                           {category.services?.length ?? 0} servicios
                         </span>
                       </div>
-                      <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
                         {category.services?.map((service) => renderServiceCard(service))}
                       </div>
                     </div>
                   ))}
                   {uncategorizedServices.length > 0 && (
-                    <div className="rounded-3xl border border-border/60 bg-muted/30 p-4 sm:p-5 space-y-3">
+                    <div className="rounded-3xl border border-border/60 bg-muted/30 p-3 sm:p-5 space-y-2.5 sm:space-y-3">
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Sin categoría</p>
-                          <h3 className="text-lg font-semibold text-foreground">Otros servicios</h3>
-                          <p className="text-sm text-muted-foreground">Aún no agrupados en una categoría.</p>
+                          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Sin categoría</p>
+                          <h3 className="text-base sm:text-lg font-semibold text-foreground">Otros servicios</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground">Aún no agrupados en una categoría.</p>
                         </div>
-                        <span className="px-3 py-1 rounded-full border border-border text-xs text-muted-foreground">
+                        <span className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-border text-[11px] sm:text-xs text-muted-foreground">
                           {uncategorizedServices.length} servicios
                         </span>
                       </div>
-                      <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
                         {uncategorizedServices.map((service) => renderServiceCard(service))}
                       </div>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-2">
                   {services.map((service) => renderServiceCard(service))}
                 </div>
               )}
@@ -1116,35 +1130,39 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
           {/* Step 1: Select Barber & Schedule */}
           {currentStep === 1 && (
-            <div className="space-y-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-foreground mb-1">
+                  <h2 className="text-lg sm:text-xl font-semibold text-foreground mb-0.5 sm:mb-1">
                     {selectBarber
                       ? `Elige tu ${copy.staff.singularLower} y horario`
                       : 'Elige tu horario'}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="hidden sm:block text-sm text-muted-foreground">
                     {selectBarber
                       ? 'Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.'
                       : `Selecciona el día y la hora; asignaremos automáticamente a ${copy.staff.indefiniteSingular} disponible.`}
                   </p>
                 </div>
-                <div className="flex items-center gap-3 rounded-full border border-border bg-secondary/40 px-4 py-2">
-                  <span className="text-xs font-medium text-muted-foreground">
+                <div className="inline-flex w-fit items-center gap-2 sm:gap-3 rounded-full border border-border bg-secondary/40 px-3 sm:px-4 py-1.5 sm:py-2">
+                  <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">
                     Elegir {copy.staff.singularLower}
                   </span>
-                  <Switch checked={selectBarber} onCheckedChange={handleBarberSelectionToggle} />
+                  <Switch
+                    checked={selectBarber}
+                    onCheckedChange={handleBarberSelectionToggle}
+                    className="h-4 w-7 sm:h-6 sm:w-11 [&>span]:h-3 [&>span]:w-3 sm:[&>span]:h-5 sm:[&>span]:w-5 data-[state=checked]:[&>span]:translate-x-3 sm:data-[state=checked]:[&>span]:translate-x-5"
+                  />
                 </div>
               </div>
 
               {!selectBarber && (
-                <div className="rounded-2xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                <div className="rounded-2xl border border-border/60 bg-muted/30 p-3 sm:p-4 text-xs sm:text-sm text-muted-foreground">
                   <p>
                     {copy.staff.singular} asignado: {!assignedBarber?.name ? 'A determinar' : ''}
                   </p>
                   {assignedBarber && booking.dateTime && (
-                    <div className="mt-3 flex items-center gap-3 rounded-xl border border-border/60 bg-background/70 p-3 text-foreground">
+                    <div className="mt-2.5 sm:mt-3 flex items-center gap-2.5 sm:gap-3 rounded-xl border border-border/60 bg-background/70 p-2.5 sm:p-3 text-foreground">
                       <img
                         src={assignedBarber.photo || defaultAvatar}
                         alt={assignedBarber.name}
@@ -1152,31 +1170,64 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         decoding="async"
                         width={48}
                         height={48}
-                        className="w-12 h-12 rounded-xl object-cover"
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover"
                       />
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        <p className="text-[11px] sm:text-xs uppercase tracking-wide text-muted-foreground">
                           {copy.staff.singular} asignado
                         </p>
-                        <p className="font-semibold text-foreground">{assignedBarber.name}</p>
+                        <p className="text-sm sm:text-base font-semibold text-foreground">{assignedBarber.name}</p>
                       </div>
                     </div>
                   )}
                 </div>
               )}
 
-              <div className={cn('grid gap-6', selectBarber && 'lg:grid-cols-[280px,1fr]')}>
+              <div className={cn('grid gap-3 sm:gap-6', selectBarber && 'lg:grid-cols-[280px,1fr]')}>
                 {selectBarber && (
-                  <div className="space-y-4">
-                    <p className="text-sm font-medium text-muted-foreground">Selecciona a tu estilista preferido</p>
-                    <div className="space-y-3 pr-1 max-h-[420px] overflow-y-auto">
-                      {availableBarbers.length > 0 ? (
+                  <div className="space-y-2.5 sm:space-y-4">
+                    {singleAvailableBarber ? (
+                      <div className="inline-flex w-fit max-w-full rounded-xl border border-primary/30 bg-primary/10 p-2 sm:p-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <img
+                            src={singleAvailableBarber.photo || defaultAvatar}
+                            alt={singleAvailableBarber.name}
+                            loading="lazy"
+                            decoding="async"
+                            width={56}
+                            height={56}
+                            className="w-10 h-10 sm:w-14 sm:h-14 rounded-lg sm:rounded-xl object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs sm:text-base font-semibold text-foreground truncate">
+                              {singleAvailableBarber.name}
+                            </p>
+                            <p className="hidden sm:block text-[11px] sm:text-xs uppercase tracking-wide text-muted-foreground truncate">
+                              {singleAvailableBarber.specialty}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-xs sm:text-sm font-medium text-muted-foreground">Selecciona a tu estilista preferido</p>
+                        <div
+                          className={cn(
+                            'sm:space-y-3 sm:pr-1 sm:max-h-[420px] sm:overflow-y-auto',
+                            availableBarbers.length > 1
+                              ? 'flex gap-2 overflow-x-auto pb-1 snap-x sm:block'
+                              : 'space-y-2'
+                          )}
+                        >
+                          {availableBarbers.length > 0 ? (
                         availableBarbers.map((barber) => (
                           <button
                             key={barber.id}
                             onClick={() => handleSelectBarber(barber.id)}
                             className={cn(
-                              'w-full rounded-2xl border p-3 flex items-center gap-3 text-left transition-all',
+                              'inline-flex sm:flex rounded-xl sm:rounded-2xl border p-2 sm:p-3 items-center gap-2 sm:gap-3 text-left transition-all',
+                              availableBarbers.length > 1 && 'min-w-[148px] max-w-[148px] shrink-0 snap-start sm:min-w-0 sm:max-w-none sm:w-full',
+                              availableBarbers.length === 1 && 'w-fit max-w-[220px] sm:max-w-none sm:w-full',
                               booking.barberId === barber.id
                                 ? 'border-primary bg-primary/5 shadow-glow'
                                 : 'border-border bg-card hover:border-primary/40'
@@ -1189,65 +1240,69 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                               decoding="async"
                               width={56}
                               height={56}
-                              className="w-14 h-14 rounded-xl object-cover"
+                              className="w-9 h-9 sm:w-14 sm:h-14 rounded-lg sm:rounded-xl object-cover"
                             />
-                            <div className="flex-1">
-                              <p className="font-semibold text-foreground">{barber.name}</p>
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Disponible desde {new Date(barber.startDate).toLocaleDateString()}
-                                {barber.endDate && ` · hasta ${new Date(barber.endDate).toLocaleDateString()}`}
-                              </p>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs sm:text-base font-semibold text-foreground truncate">{barber.name}</p>
+                              <p className="hidden sm:block text-[11px] sm:text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
+                              {new Date(barber.startDate) > new Date() && (
+                                <p className="hidden sm:block text-[11px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">
+                                  Disponible desde {new Date(barber.startDate).toLocaleDateString()}
+                                  {barber.endDate && ` · hasta ${new Date(barber.endDate).toLocaleDateString()}`}
+                                </p>
+                              )}
                             </div>
                           </button>
                         ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          {booking.serviceId
-                            ? `No hay ${staffActiveAvailabilityLabel} para este servicio.`
-                            : `No hay ${staffActiveAvailabilityLabel}.`}
-                        </p>
-                      )}
-                    </div>
+                          ) : (
+                            <p className="text-xs sm:text-sm text-muted-foreground">
+                              {booking.serviceId
+                                ? `No hay ${staffActiveAvailabilityLabel} para este servicio.`
+                                : `No hay ${staffActiveAvailabilityLabel}.`}
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
-                <div className="space-y-5 rounded-3xl border border-border bg-muted/5 p-3 sm:p-4">
+                <div className="space-y-3 sm:space-y-5 rounded-2xl sm:rounded-3xl border border-border bg-muted/5 p-2.5 sm:p-4">
                   {canPickSlots ? (
                     <>
-                      <div className="space-y-3">
+                      <div className="space-y-2 sm:space-y-3">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-muted-foreground">Selecciona el día</p>
-                          <div className="flex items-center gap-2">
+                          <p className="text-xs sm:text-sm font-medium text-muted-foreground">Selecciona el día</p>
+                          <div className="flex items-center gap-1 sm:gap-2">
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-7 w-7 sm:h-8 sm:w-8"
                               onClick={() => setVisibleMonth((prev) => subMonths(prev, 1))}
                             >
-                              <ChevronLeft className="w-4 h-4" />
+                              <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </Button>
-                            <span className="text-sm font-semibold text-foreground capitalize">
+                            <span className="text-xs sm:text-sm font-semibold text-foreground capitalize">
                               {format(visibleMonth, "MMMM yyyy", { locale: es })}
                             </span>
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-7 w-7 sm:h-8 sm:w-8"
                               onClick={() => setVisibleMonth((prev) => addMonths(prev, 1))}
                             >
-                              <ChevronRight className="w-4 h-4" />
+                              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </Button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-muted-foreground">
+                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-[11px] font-medium text-muted-foreground">
                           {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => (
                             <span key={day}>{day}</span>
                           ))}
                         </div>
-                        <div className="grid grid-cols-7 gap-1.5">
+                        <div className="grid grid-cols-7 gap-1">
                           {calendarDays.map((date) => {
                             const isSelected = isSameDay(date, selectedDate);
                             const isCurrentMonth = isSameMonth(date, visibleMonth);
@@ -1265,7 +1320,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                   }));
                                 }}
                                 className={cn(
-                                  'rounded-lg px-0 py-1.5 text-center text-xs transition-all border flex flex-col items-center justify-center min-h-[52px]',
+                                  'rounded-lg px-0 py-1 text-center text-[11px] sm:text-xs transition-all border flex flex-col items-center justify-center min-h-[44px] sm:min-h-[52px]',
                                   isSelected
                                     ? 'bg-primary text-primary-foreground border-primary shadow-glow'
                                     : isPast
@@ -1275,8 +1330,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                 )}
                               >
                                 <span className="text-[10px] uppercase">{format(date, 'EEE', { locale: es })}</span>
-                                <span className="text-base font-semibold leading-none mt-0.5">{format(date, 'd')}</span>
-                                <span className="text-[9px] text-muted-foreground mt-0.5">{format(date, 'MMM', { locale: es })}</span>
+                                <span className="text-sm sm:text-base font-semibold leading-none mt-0.5">{format(date, 'd')}</span>
+                                <span className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">{format(date, 'MMM', { locale: es })}</span>
                               </button>
                             );
                           })}
@@ -1284,17 +1339,17 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       </div>
 
                       <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-3">Horarios disponibles</p>
+                        <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2 sm:mb-3">Horarios disponibles</p>
                         {isSlotsLoading ? (
-                          <div className="flex items-center justify-center py-6">
-                            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                          <div className="flex items-center justify-center py-4 sm:py-6">
+                            <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-primary" />
                           </div>
                         ) : availableSlots.length > 0 ? (
-                          <div className="space-y-4">
+                          <div className="space-y-3 sm:space-y-4">
                             {slotGroups.morningSlots.length > 0 && (
                               <div>
-                                <p className="text-xs uppercase text-muted-foreground mb-2 tracking-wide">Mañana</p>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                                <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">Mañana</p>
+                                <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-6 gap-1 sm:gap-2">
                                   {slotGroups.morningSlots.map((slot) => {
                                     const [hours, minutes] = slot.split(':');
                                     const slotDate = new Date(selectedDate);
@@ -1305,7 +1360,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                         key={slot}
                                         onClick={() => selectTimeSlot(slot)}
                                         className={cn(
-                                          'rounded-2xl px-3 py-2 text-sm font-semibold border transition-all',
+                                          'rounded-lg sm:rounded-2xl px-1.5 sm:px-3 py-1 sm:py-2 text-[11px] sm:text-sm font-semibold border transition-all',
                                           isSelected
                                             ? 'bg-primary text-primary-foreground border-primary shadow-glow'
                                             : 'bg-card border-border hover:border-primary/40'
@@ -1320,8 +1375,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             )}
                             {slotGroups.afternoonSlots.length > 0 && (
                               <div>
-                                <p className="text-xs uppercase text-muted-foreground mb-2 tracking-wide">Tarde</p>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                                <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">Tarde</p>
+                                <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-6 gap-1 sm:gap-2">
                                   {slotGroups.afternoonSlots.map((slot) => {
                                     const [hours, minutes] = slot.split(':');
                                     const slotDate = new Date(selectedDate);
@@ -1332,7 +1387,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                         key={slot}
                                         onClick={() => selectTimeSlot(slot)}
                                         className={cn(
-                                          'rounded-2xl px-3 py-2 text-sm font-semibold border transition-all',
+                                          'rounded-lg sm:rounded-2xl px-1.5 sm:px-3 py-1 sm:py-2 text-[11px] sm:text-sm font-semibold border transition-all',
                                           isSelected
                                             ? 'bg-primary text-primary-foreground border-primary shadow-glow'
                                             : 'bg-card border-border hover:border-primary/40'
@@ -1347,16 +1402,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             )}
                           </div>
                         ) : (
-                          <div className="rounded-2xl border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                          <div className="rounded-xl sm:rounded-2xl border border-dashed border-border py-4 sm:py-6 text-center text-xs sm:text-sm text-muted-foreground">
                             No hay horarios disponibles para este día
                           </div>
                         )}
                       </div>
                     </>
                   ) : (
-                    <div className="flex flex-col items-center justify-center text-center py-16 gap-3 text-muted-foreground">
-                      <Calendar className="w-10 h-10" />
-                      <p className="text-sm font-medium">
+                    <div className="flex flex-col items-center justify-center text-center py-10 sm:py-16 gap-2 sm:gap-3 text-muted-foreground">
+                      <Calendar className="w-8 h-8 sm:w-10 sm:h-10" />
+                      <p className="text-xs sm:text-sm font-medium">
                         Selecciona primero a {copy.staff.indefiniteSingular} para revisar su agenda.
                       </p>
                     </div>
@@ -1368,18 +1423,18 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
           {/* Step 2: Confirmation */}
           {currentStep === 2 && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Confirma tu reserva</h2>
+            <div className="space-y-4 sm:space-y-6">
+              <h2 className="text-base sm:text-xl font-semibold text-foreground mb-2 sm:mb-4">Confirma tu reserva</h2>
               
-              <div className="bg-secondary/50 rounded-xl p-6 space-y-4">
+              <div className="bg-secondary/50 rounded-xl p-3 sm:p-6 space-y-3 sm:space-y-4">
                 {/* Service */}
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Scissors className="w-6 h-6 text-primary" />
+                <div className="flex items-center gap-2.5 sm:gap-4">
+                  <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Scissors className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm text-muted-foreground">Servicio</p>
-                    <p className="font-semibold text-foreground">{getService()?.name}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Servicio</p>
+                    <p className="text-sm sm:text-base font-semibold text-foreground">{getService()?.name}</p>
                   </div>
                   <div className="text-right">
                     {loyaltyFree ? (
@@ -1387,10 +1442,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         <div className="text-xs line-through text-muted-foreground">
                           {selectedPricing?.finalPrice.toFixed(2)}€
                         </div>
-                        <div className="text-xl font-bold text-primary">
+                        <div className="text-lg sm:text-xl font-bold text-primary">
                           0.00€
                         </div>
-                        <div className="text-[11px] text-primary">
+                        <div className="hidden sm:block text-[11px] text-primary">
                           Cita gratis por fidelización
                         </div>
                       </>
@@ -1399,15 +1454,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         <div className="text-xs line-through text-muted-foreground">
                           {selectedPricing.basePrice.toFixed(2)}€
                         </div>
-                        <div className="text-xl font-bold text-primary">
+                        <div className="text-lg sm:text-xl font-bold text-primary">
                           {selectedPricing.finalPrice.toFixed(2)}€
                         </div>
-                        <div className="text-[11px] text-green-600">
+                        <div className="hidden sm:block text-[11px] text-green-600">
                           Oferta activa ({selectedPricing.appliedOffer.name})
                         </div>
                       </>
                     ) : (
-                      <span className="text-xl font-bold text-primary">
+                      <span className="text-lg sm:text-xl font-bold text-primary">
                         {selectedPricing?.finalPrice.toFixed(2)}€
                       </span>
                     )}
@@ -1429,7 +1484,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </div>
                 )}
                 {selectedPricing?.appliedOffer?.endDate && (
-                  <div className="text-xs text-muted-foreground">
+                  <div className="hidden sm:block text-xs text-muted-foreground">
                     Precio promocional válido para citas hasta{' '}
                     {format(new Date(selectedPricing.appliedOffer.endDate), "d 'de' MMMM", { locale: es })}.
                   </div>
@@ -1441,13 +1496,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-foreground">Productos añadidos</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs sm:text-sm font-medium text-foreground">Productos añadidos</p>
+                          <p className="hidden sm:block text-xs text-muted-foreground">
                             Puedes incluir productos en esta cita.
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-[11px] sm:text-xs text-muted-foreground">
                             Total productos: {selectedProductsTotal.toFixed(2)}€
                           </span>
                           <Button
@@ -1460,13 +1515,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           </Button>
                         </div>
                       </div>
-                      <div className="rounded-xl border border-border/70 bg-muted/30 p-4 space-y-3">
+                      <div className="rounded-xl border border-border/70 bg-muted/30 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
                         {selectedProductDetails.length > 0 ? (
-                          <div className="space-y-3">
+                          <div className="space-y-2.5 sm:space-y-3">
                             {selectedProductDetails.map((item) => (
-                              <div key={item.id} className="flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
+                              <div key={item.id} className="flex items-center justify-between gap-2 sm:gap-4">
+                                <div className="flex items-center gap-2 sm:gap-3">
+                                  <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-muted/60 overflow-hidden flex items-center justify-center">
                                     {item.imageUrl ? (
                                       <img
                                         src={item.imageUrl}
@@ -1481,14 +1536,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                       <span className="text-[11px] text-muted-foreground">Sin foto</span>
                                     )}
                                   </div>
-                                  <div>
-                                    <p className="text-sm font-semibold text-foreground">{item.name}</p>
+                                  <div className="min-w-0">
+                                    <p className="text-xs sm:text-sm font-semibold text-foreground truncate">{item.name}</p>
                                     <p className="text-xs text-muted-foreground">
                                       {item.quantity} x {item.unitPrice.toFixed(2)}€
                                     </p>
                                   </div>
                                 </div>
-                                <span className="text-sm font-medium text-foreground">{item.total.toFixed(2)}€</span>
+                                <span className="text-xs sm:text-sm font-medium text-foreground">{item.total.toFixed(2)}€</span>
                               </div>
                             ))}
                           </div>
@@ -1505,16 +1560,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <hr className="border-border" />
                     <div className="space-y-4">
                       <div>
-                        <p className="text-sm font-medium text-foreground">Recompensas disponibles</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs sm:text-sm font-medium text-foreground">Recompensas disponibles</p>
+                        <p className="hidden sm:block text-xs text-muted-foreground">
                           Aplica tu saldo o un cupón para reducir el total.
                         </p>
                       </div>
                       {walletAvailable > 0 && (
-                        <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+                        <div className="flex items-center justify-between gap-3 sm:gap-4 rounded-xl border border-border/70 bg-muted/30 px-3 sm:px-4 py-2.5 sm:py-3">
                           <div>
-                            <p className="text-sm font-medium text-foreground">Usar saldo disponible</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs sm:text-sm font-medium text-foreground">Usar saldo disponible</p>
+                            <p className="hidden sm:block text-xs text-muted-foreground">
                               Se aplicará automáticamente hasta cubrir el total.
                             </p>
                           </div>
@@ -1551,7 +1606,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             </SelectContent>
                           </Select>
                           {loyaltyFree && (
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="hidden sm:block text-[11px] text-muted-foreground">
                               La cita ya es gratuita por fidelización.
                             </p>
                           )}
@@ -1567,8 +1622,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-foreground">Tu tarjeta de fidelización</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs sm:text-sm font-medium text-foreground">Tu tarjeta de fidelización</p>
+                          <p className="hidden sm:block text-xs text-muted-foreground">
                             {loyaltyFree ? 'Esta cita cuenta como recompensa.' : 'Sigue acumulando visitas.'}
                           </p>
                         </div>
@@ -1592,8 +1647,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <hr className="border-border" />
                     <div className="space-y-3">
                       <div>
-                        <p className="text-sm font-medium text-foreground">Forma de pago</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs sm:text-sm font-medium text-foreground">Forma de pago</p>
+                        <p className="hidden sm:block text-xs text-muted-foreground">
                           Elige cómo quieres pagar tu cita.
                         </p>
                       </div>
@@ -1602,19 +1657,19 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           type="button"
                           onClick={() => setPaymentOption('stripe')}
                           className={cn(
-                            'rounded-2xl border px-4 py-3 text-left transition-all',
+                            'rounded-2xl border px-3 sm:px-4 py-2.5 sm:py-3 text-left transition-all',
                             paymentOption === 'stripe'
                               ? 'border-primary bg-primary/10 shadow-glow'
                               : 'border-border/70 bg-background hover:border-primary/40'
                           )}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                              <CreditCard className="h-5 w-5 text-primary" />
+                            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-foreground">Pagar ahora con tarjeta</p>
-                              <p className="text-xs text-muted-foreground">Reserva confirmada al instante.</p>
+                              <p className="text-xs sm:text-sm font-semibold text-foreground">Pagar ahora con tarjeta</p>
+                              <p className="hidden sm:block text-xs text-muted-foreground">Reserva confirmada al instante.</p>
                             </div>
                           </div>
                         </button>
@@ -1622,26 +1677,26 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           type="button"
                           onClick={() => setPaymentOption('local')}
                           className={cn(
-                            'rounded-2xl border px-4 py-3 text-left transition-all',
+                            'rounded-2xl border px-3 sm:px-4 py-2.5 sm:py-3 text-left transition-all',
                             paymentOption === 'local'
                               ? 'border-primary bg-primary/10 shadow-glow'
                               : 'border-border/70 bg-background hover:border-primary/40'
                           )}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
-                              <CheckCircle className="h-5 w-5 text-muted-foreground" />
+                            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                              <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-foreground">
+                              <p className="text-xs sm:text-sm font-semibold text-foreground">
                                 Pagar en {copy.location.definiteSingular}
                               </p>
-                              <p className="text-xs text-muted-foreground">Pagarás el día de la cita.</p>
+                              <p className="hidden sm:block text-xs text-muted-foreground">Pagarás el día de la cita.</p>
                             </div>
                           </div>
                         </button>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="hidden sm:block text-xs text-muted-foreground">
                         Si pagas ahora, te enviaremos la confirmación inmediatamente.
                       </p>
                     </div>
@@ -1657,39 +1712,39 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </>
                 )}
 
-                <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4 space-y-1.5 sm:space-y-2">
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
                     <span className="text-muted-foreground">Precio servicio</span>
                     <span className="font-medium text-foreground">{(loyaltyFree ? 0 : selectedPricing?.finalPrice ?? 0).toFixed(2)}€</span>
                   </div>
                   {couponDiscount > 0 && (
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
                       <span className="text-muted-foreground">Cupón aplicado</span>
                       <span className="font-medium text-green-600">-{couponDiscount.toFixed(2)}€</span>
                     </div>
                   )}
                   {selectedProductsTotal > 0 && (
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
                       <span className="text-muted-foreground">Productos</span>
                       <span className="font-medium text-foreground">{selectedProductsTotal.toFixed(2)}€</span>
                     </div>
                   )}
                   {walletAppliedAmount > 0 && (
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
                       <span className="text-muted-foreground">Saldo aplicado:</span>
                       <span className="font-medium text-primary">-{walletAppliedAmount.toFixed(2)}€</span>
                     </div>
                   )}
                   <div className="border-t border-border/60 pt-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-foreground">Total:</span>
-                    <span className="text-lg font-bold text-primary">{totalFinal.toFixed(2)}€</span>
+                    <span className="text-xs sm:text-sm font-semibold text-foreground">Total:</span>
+                    <span className="text-base sm:text-lg font-bold text-primary">{totalFinal.toFixed(2)}€</span>
                   </div>
                 </div>
 
                 <hr className="border-border" />
 
                 {/* Barber */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2.5 sm:gap-4">
                   <img 
                     src={getBarber()?.photo || defaultAvatar} 
                     alt={getBarber()?.name}
@@ -1697,24 +1752,24 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     decoding="async"
                     width={48}
                     height={48}
-                    className="w-12 h-12 rounded-lg object-cover"
+                    className="w-9 h-9 sm:w-12 sm:h-12 rounded-lg object-cover"
                   />
                   <div>
-                    <p className="text-sm text-muted-foreground">{copy.staff.singular}</p>
-                    <p className="font-semibold text-foreground">{getBarber()?.name}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">{copy.staff.singular}</p>
+                    <p className="text-sm sm:text-base font-semibold text-foreground">{getBarber()?.name}</p>
                   </div>
                 </div>
 
                 <hr className="border-border" />
 
                 {/* Date & Time */}
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Calendar className="w-6 h-6 text-primary" />
+                <div className="flex items-center gap-2.5 sm:gap-4">
+                  <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Fecha y hora</p>
-                    <p className="font-semibold text-foreground">
+                    <p className="text-xs sm:text-sm text-muted-foreground">Fecha y hora</p>
+                    <p className="text-sm sm:text-base font-semibold text-foreground">
                       {booking.dateTime && format(new Date(booking.dateTime), "EEEE d 'de' MMMM, HH:mm", { locale: es })}
                     </p>
                   </div>
@@ -1734,9 +1789,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     maxLength={250}
                     value={appointmentNote}
                     onChange={(e) => setAppointmentNote(e.target.value)}
-                    className="min-h-[110px] resize-none"
+                    className="min-h-[88px] sm:min-h-[110px] resize-none"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="hidden sm:block text-xs text-muted-foreground">
                     El comentario lo verá tu {copy.staff.singularLower} para preparar la cita.
                   </p>
                 </div>
@@ -1778,7 +1833,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         onChange={(e) => setGuestInfo((prev) => ({ ...prev, phone: e.target.value }))}
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="hidden sm:block text-xs text-muted-foreground">
                       Para cambios o cancelaciones, contacta directamente con {copy.location.definiteSingular}.
                     </p>
                     <hr className="border-border" />
@@ -1805,7 +1860,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         </a>
                         .
                       </Label>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="hidden sm:block text-xs text-muted-foreground">
                         Necesitamos tu consentimiento para gestionar la reserva.
                       </p>
                     </div>
@@ -1824,29 +1879,35 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           <Button
             variant="outline"
             onClick={handleBack}
+            className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
           >
-            <ChevronLeft className="w-4 h-4 mr-1" />
+            <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
             Atrás
           </Button>
         )}
 
         <div className={currentStep === 0 ? "ml-auto" : ""}>
           {currentStep < steps.length - 1 ? (
-            <Button onClick={handleNext} disabled={!canProceed()}>
+            <Button
+              onClick={handleNext}
+              disabled={!canProceed()}
+              className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
+            >
               Siguiente
-              <ChevronRight className="w-4 h-4 ml-1" />
+              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-1" />
             </Button>
           ) : (
             <Button 
               variant="glow" 
               onClick={handleConfirm} 
+              className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
               disabled={
                 isSubmitting ||
                 !privacyConsent ||
                 (isGuest && (guestInfo.name.trim().length === 0 || guestInfo.email.trim().length === 0))
               }
             >
-              {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {isSubmitting && <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 animate-spin" />}
               {stripeAvailability?.enabled && paymentOption === 'stripe' && totalFinal > 0
                 ? 'Pagar ahora'
                 : 'Confirmar reserva'}
