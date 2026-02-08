@@ -52,6 +52,7 @@ import MarkdownContent from '@/components/common/MarkdownContent';
 const PLATFORM_BRAND_STORAGE_KEY = 'platform:brands:selected';
 const PLATFORM_TAB_STORAGE_KEY = 'platform:brands:tab';
 const PLATFORM_BRAND_TABS = ['datos', 'locales', 'admins', 'sidebar', 'landing', 'config', 'legal'] as const;
+const LOCATION_SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 type PlatformBrandTab = (typeof PLATFORM_BRAND_TABS)[number];
 type JsonRecord = Record<string, unknown>;
 
@@ -2666,6 +2667,15 @@ const PlatformBrands: React.FC = () => {
                           <div className="text-xs text-muted-foreground">{location.slug || 'sin slug'}</div>
                         </div>
                         <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full ${
+                              location.isActive
+                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-muted text-muted-foreground border border-border/60'
+                            }`}
+                          >
+                            {location.isActive ? 'Activo' : 'Inactivo'}
+                          </span>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -4588,11 +4598,41 @@ const PlatformBrands: React.FC = () => {
               disabled={isLocationSaving}
               onClick={() => {
                 if (!editingLocationId) return;
-                handleUpdateLocation(editingLocationId, {
-                  name: editLocationForm.name,
-                  slug: editLocationForm.slug || null,
-                  isActive: editLocationForm.isActive,
-                });
+                const existingLocation = selectedBrand?.locations?.find((location) => location.id === editingLocationId);
+                if (!existingLocation) return;
+
+                const payload: { name?: string; slug?: string | null; isActive?: boolean } = {};
+                const nextName = editLocationForm.name.trim();
+                const currentName = (existingLocation.name || '').trim();
+                if (nextName && nextName !== currentName) {
+                  payload.name = nextName;
+                }
+
+                const nextSlugRaw = editLocationForm.slug.trim().toLowerCase();
+                const nextSlug = nextSlugRaw.length > 0 ? nextSlugRaw : null;
+                const currentSlug = existingLocation.slug ? existingLocation.slug.trim().toLowerCase() : null;
+                if (nextSlug !== currentSlug) {
+                  if (nextSlug && !LOCATION_SLUG_REGEX.test(nextSlug)) {
+                    toast({
+                      title: 'Slug inválido',
+                      description: 'Usa solo minúsculas, números y guiones (ej: mi-local-1).',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+                  payload.slug = nextSlug;
+                }
+
+                if (editLocationForm.isActive !== existingLocation.isActive) {
+                  payload.isActive = editLocationForm.isActive;
+                }
+
+                if (Object.keys(payload).length === 0) {
+                  setEditLocationOpen(false);
+                  return;
+                }
+
+                handleUpdateLocation(editingLocationId, payload);
                 setEditLocationOpen(false);
               }}
             >
