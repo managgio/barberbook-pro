@@ -20,7 +20,8 @@ const Navbar: React.FC = () => {
   const isClientApp = location.pathname.startsWith('/app');
   const isGuestBookRoute = location.pathname === '/book' || location.pathname.startsWith('/book/');
   const hasMultipleLocations = locations.length > 1;
-  const showUserNameOnMobile = !hasMultipleLocations;
+  const showLocationSwitcherOnMobile = hasMultipleLocations && !isGuestBookRoute;
+  const showUserNameOnMobile = !showLocationSwitcherOnMobile;
   const isAdmin =
     user?.role === 'admin' || user?.isLocalAdmin || user?.isSuperAdmin;
   const userTarget = tenant?.isPlatform
@@ -33,11 +34,11 @@ const Navbar: React.FC = () => {
     isLanding || isClientApp || isGuestBookRoute ? 'hidden sm:inline' : 'inline'
   );
   const userBadgeClass = cn(
-    'flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10',
+    'inline-flex items-center rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10 shrink-0',
     showUserNameOnMobile
-      ? 'h-8 px-2.5 gap-1.5 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1'
-      : 'h-8 w-8 p-0 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1',
-    isLanding && hasMultipleLocations ? 'hidden sm:flex' : 'flex'
+      ? 'h-8 justify-start gap-1.5 pl-0.5 pr-2 max-w-[52vw]'
+      : 'h-8 w-8 justify-center p-0',
+    'sm:h-auto sm:w-auto sm:justify-start sm:gap-2 sm:px-2 sm:py-1 sm:max-w-none'
   );
 
   return (
@@ -64,20 +65,22 @@ const Navbar: React.FC = () => {
             {isAuthenticated && user ? (
               <>
                 <Link to={userTarget} className={userBadgeClass}>
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center sm:w-8 sm:h-8">
+                  <div className="w-7 h-7 shrink-0 rounded-full bg-primary/10 flex items-center justify-center sm:w-8 sm:h-8">
                     <User className="w-3.5 h-3.5 text-primary sm:w-4 sm:h-4" />
                   </div>
                   <span
                     className={cn(
-                      'font-medium text-foreground',
-                      showUserNameOnMobile ? 'inline text-xs sm:text-sm' : 'hidden sm:inline text-sm'
+                      'font-medium text-foreground leading-none',
+                      showUserNameOnMobile
+                        ? 'inline text-xs sm:text-sm truncate max-w-[34vw] sm:max-w-none'
+                        : 'hidden sm:inline text-sm',
                     )}
                   >
                     {user.name}
                   </span>
                 </Link>
                 <Button variant="ghost" size="sm" onClick={logout} className="flex items-center gap-2">
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="h-2.5 w-2.5 sm:h-4 sm:w-4" />
                   <span className="hidden sm:inline">Salir</span>
                 </Button>
               </>
