@@ -23,15 +23,15 @@ const LocationSwitcher: React.FC<{ compact?: boolean; className?: string; showSi
       <div
         className={cn(
           compact
-            ? 'h-7 sm:h-8 w-[162px] sm:w-[190px] text-[11px] sm:text-sm border-border/60 bg-background/55 backdrop-blur-md'
-            : 'h-8 sm:h-9 w-[150px] sm:w-[200px] text-xs sm:text-sm',
-          'inline-flex items-center rounded-md border border-input bg-background px-2.5 sm:px-3 text-foreground',
+            ? 'h-7 sm:h-8 !w-auto text-[11px] sm:text-sm border-border/60 bg-background/55 backdrop-blur-md max-w-[56vw] sm:max-w-[320px]'
+            : 'h-8 sm:h-9 !w-auto text-xs sm:text-sm max-w-[56vw] sm:max-w-[320px]',
+          'inline-flex items-center rounded-md border border-input bg-background px-2.5 sm:px-3 text-foreground whitespace-nowrap',
           className,
         )}
         title={currentLocation.name}
       >
         <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
-        <span className="ml-1.5 sm:ml-2 truncate whitespace-nowrap">{currentLocation.name}</span>
+        <span className="ml-1.5 sm:ml-2 truncate max-w-[42vw] sm:max-w-[260px]">{currentLocation.name}</span>
       </div>
     );
   }
@@ -45,12 +45,12 @@ const LocationSwitcher: React.FC<{ compact?: boolean; className?: string; showSi
       <SelectTrigger
         className={cn(
           compact
-            ? 'h-7 sm:h-8 w-[162px] sm:w-[190px] text-[11px] sm:text-sm whitespace-nowrap border-border/60 bg-background/55 backdrop-blur-md'
-            : 'h-8 sm:h-9 w-[150px] sm:w-[200px] text-xs sm:text-sm',
+            ? 'h-7 sm:h-8 !w-auto text-[11px] sm:text-sm whitespace-nowrap border-border/60 bg-background/55 backdrop-blur-md max-w-[56vw] sm:max-w-[320px]'
+            : 'h-8 sm:h-9 !w-auto text-xs sm:text-sm max-w-[56vw] sm:max-w-[320px]',
           className,
         )}
       >
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="mr-1 sm:mr-1.5 flex items-center gap-1.5 sm:gap-2">
           <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
           <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
         </div>

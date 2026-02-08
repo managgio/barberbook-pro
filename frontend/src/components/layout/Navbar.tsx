@@ -72,10 +72,10 @@ const Navbar: React.FC = () => {
               </>
             ) : (
               <>
-                <Button variant="ghost" asChild>
+                <Button variant="ghost" className="h-8 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" asChild>
                   <Link to="/auth">Iniciar sesión</Link>
                 </Button>
-                <Button asChild>
+                <Button className="hidden sm:inline-flex" asChild>
                   <Link to="/auth?tab=signup">Reservar</Link>
                 </Button>
               </>
