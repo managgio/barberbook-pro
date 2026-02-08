@@ -282,10 +282,10 @@ const AuthPage: React.FC = () => {
       </div>
 
       {/* Right Panel - Auth Form */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+        <div className="w-full max-w-sm sm:max-w-md">
           {/* Mobile Logo */}
-          <Link to="/" className="lg:hidden flex items-center gap-2 justify-center mb-8">
+          <Link to="/" className="lg:hidden flex items-center gap-2 justify-center mb-5 sm:mb-8">
             {isPlatform ? (
               <picture>
                 <source type="image/avif" srcSet={platformLogoAvifSrcSet} sizes="40px" />
@@ -297,7 +297,7 @@ const AuthPage: React.FC = () => {
                   height={40}
                   loading="eager"
                   decoding="async"
-                  className="w-10 h-10 rounded-lg object-contain shadow-sm"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-contain shadow-sm"
                 />
               </picture>
             ) : (
@@ -308,17 +308,17 @@ const AuthPage: React.FC = () => {
                 height={40}
                 loading="eager"
                 decoding="async"
-                className="w-10 h-10 rounded-lg object-contain shadow-sm"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-contain shadow-sm"
               />
             )}
-            <span className="text-xl font-bold text-foreground">
+            <span className="text-lg sm:text-xl font-bold text-foreground">
               {isPlatform ? 'Managgio' : settings.branding.shortName}
             </span>
           </Link>
 
           {!isPlatform && (
-            <div className="flex justify-end mb-4">
-              <Link to="/" className="text-xs uppercase tracking-wide text-primary hover:underline">
+            <div className="flex justify-end mb-3 sm:mb-4">
+              <Link to="/" className="text-[10px] sm:text-xs uppercase tracking-wide text-primary hover:underline">
                 ← Volver al inicio
               </Link>
             </div>
@@ -326,10 +326,10 @@ const AuthPage: React.FC = () => {
 
           {/* Tab Switcher */}
           {!isPlatform && (
-            <div className="flex bg-secondary rounded-lg p-1 mb-8">
+            <div className="flex bg-secondary rounded-lg p-0.5 sm:p-1 mb-5 sm:mb-8">
               <button
                 onClick={() => setActiveTab('login')}
-                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-medium transition-all duration-200 ${
+                className={`flex-1 py-2 px-2.5 sm:py-2.5 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 ${
                   activeTab === 'login'
                     ? 'bg-card text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
@@ -339,7 +339,7 @@ const AuthPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setActiveTab('signup')}
-                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-medium transition-all duration-200 ${
+                className={`flex-1 py-2 px-2.5 sm:py-2.5 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 ${
                   activeTab === 'signup'
                     ? 'bg-card text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
@@ -353,11 +353,11 @@ const AuthPage: React.FC = () => {
           {/* Google Login */}
           <Button
             variant="outline"
-            className="w-full mb-6 h-12"
+            className="w-full mb-5 sm:mb-6 h-10 sm:h-12 text-xs sm:text-sm"
             onClick={handleGoogleLogin}
             disabled={isLoading}
           >
-            <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -378,29 +378,29 @@ const AuthPage: React.FC = () => {
             Continuar con Google
           </Button>
 
-          <div className="relative mb-6">
+          <div className="relative mb-5 sm:mb-6">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-border" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
+            <div className="relative flex justify-center text-[10px] sm:text-xs uppercase">
+              <span className="bg-background px-1.5 sm:px-2 text-muted-foreground">
                 O continúa con email
               </span>
             </div>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
             {isSignup && (
               <div className="space-y-2">
-                <Label htmlFor="name">Nombre completo</Label>
+                <Label htmlFor="name" className="text-xs sm:text-sm">Nombre completo</Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                   <Input
                     id="name"
                     type="text"
                     placeholder="Tu nombre"
-                    className="pl-10 h-12"
+                    className="pl-10 h-10 sm:h-12 text-sm"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     required={activeTab === 'signup'}
@@ -410,14 +410,14 @@ const AuthPage: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-xs sm:text-sm">Email</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
                   placeholder="tu@email.com"
-                  className="pl-10 h-12"
+                  className="pl-10 h-10 sm:h-12 text-sm"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
@@ -426,14 +426,14 @@ const AuthPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="text-xs sm:text-sm">Contraseña</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="password"
                   type="password"
                   placeholder="••••••••"
-                  className="pl-10 h-12"
+                  className="pl-10 h-10 sm:h-12 text-sm"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required
@@ -441,7 +441,7 @@ const AuthPage: React.FC = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-12" disabled={isLoading}>
+            <Button type="submit" className="w-full h-10 sm:h-12 text-xs sm:text-sm" disabled={isLoading}>
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isSignup ? 'Crear cuenta' : 'Iniciar sesión'}
             </Button>
@@ -449,11 +449,11 @@ const AuthPage: React.FC = () => {
 
           {/* Demo hint */}
           {!isPlatform && (
-            <div className="mt-6 space-y-3">
+            <div className="mt-5 sm:mt-6 space-y-2.5 sm:space-y-3">
               <div className="flex flex-col gap-4 text-center">
                 <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">¿Solo quieres una cita rápida?</p>
-                  <Button variant="outline" asChild>
+                  <p className="text-xs sm:text-sm text-muted-foreground">¿Solo quieres una cita rápida?</p>
+                  <Button variant="outline" className="h-9 sm:h-10 text-xs sm:text-sm" asChild>
                     <Link to="/book">Reserva sin registrarte</Link>
                   </Button>
                 </div>
@@ -462,9 +462,9 @@ const AuthPage: React.FC = () => {
           )}
 
           {!isPlatform && isLocalEnv && (
-            <div className="mt-6 space-y-3">
-              <div className="p-4 rounded-lg bg-secondary/50 border border-border">
-                <p className="text-xs text-muted-foreground text-center">
+            <div className="mt-5 sm:mt-6 space-y-2.5 sm:space-y-3">
+              <div className="p-3 sm:p-4 rounded-lg bg-secondary/50 border border-border">
+                <p className="text-[11px] sm:text-xs text-muted-foreground text-center">
                   Autenticación real con Firebase. Inicia sesión con Google o crea tu cuenta con email y contraseña.
                   Si usas <code className="text-primary">admin@negocio.com</code> se asignará el rol de administrador automáticamente.
                 </p>

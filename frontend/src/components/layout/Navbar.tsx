@@ -18,7 +18,9 @@ const Navbar: React.FC = () => {
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const isLanding = location.pathname === '/';
   const isClientApp = location.pathname.startsWith('/app');
+  const isGuestBookRoute = location.pathname === '/book' || location.pathname.startsWith('/book/');
   const hasMultipleLocations = locations.length > 1;
+  const showUserNameOnMobile = !hasMultipleLocations;
   const isAdmin =
     user?.role === 'admin' || user?.isLocalAdmin || user?.isSuperAdmin;
   const userTarget = tenant?.isPlatform
@@ -28,11 +30,13 @@ const Navbar: React.FC = () => {
       : '/app/profile';
   const brandNameClass = cn(
     'text-xl font-bold text-foreground',
-    isLanding || isClientApp ? 'hidden sm:inline' : 'inline'
+    isLanding || isClientApp || isGuestBookRoute ? 'hidden sm:inline' : 'inline'
   );
   const userBadgeClass = cn(
     'flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10',
-    'h-8 w-8 p-0 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1',
+    showUserNameOnMobile
+      ? 'h-8 px-2.5 gap-1.5 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1'
+      : 'h-8 w-8 p-0 sm:h-auto sm:w-auto sm:gap-2 sm:px-2 sm:py-1',
     isLanding && hasMultipleLocations ? 'hidden sm:flex' : 'flex'
   );
 
@@ -56,14 +60,21 @@ const Navbar: React.FC = () => {
 
           {/* Auth Section */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <LocationSwitcher compact />
+            <LocationSwitcher compact className={isGuestBookRoute ? 'hidden sm:inline-flex' : undefined} />
             {isAuthenticated && user ? (
               <>
                 <Link to={userTarget} className={userBadgeClass}>
                   <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center sm:w-8 sm:h-8">
                     <User className="w-3.5 h-3.5 text-primary sm:w-4 sm:h-4" />
                   </div>
-                  <span className="text-sm font-medium text-foreground hidden sm:inline">{user.name}</span>
+                  <span
+                    className={cn(
+                      'font-medium text-foreground',
+                      showUserNameOnMobile ? 'inline text-xs sm:text-sm' : 'hidden sm:inline text-sm'
+                    )}
+                  >
+                    {user.name}
+                  </span>
                 </Link>
                 <Button variant="ghost" size="sm" onClick={logout} className="flex items-center gap-2">
                   <LogOut className="w-4 h-4" />
