@@ -729,15 +729,15 @@ const LandingPage: React.FC = () => {
                     </div>
                   </div>
                   {heroLocationCardEnabled && (
-                  <div className="absolute left-2.5 sm:left-6 right-auto bottom-2.5 sm:bottom-6 bg-background/80 backdrop-blur-xl rounded-xl sm:rounded-2xl px-2 sm:px-4 py-1 sm:py-3 flex items-center gap-1.5 sm:gap-3 shadow-xl border border-border/60">
+                  <div className="absolute left-2.5 sm:left-6 right-auto bottom-2.5 sm:bottom-6 bg-background/80 backdrop-blur-xl rounded-xl sm:rounded-2xl p-2 sm:p-4 flex items-center gap-1.5 sm:gap-3 shadow-xl border border-border/60">
                       <MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-primary" />
-                      <div>
-                        <p className="text-[9px] sm:text-xs uppercase tracking-wide text-muted-foreground">Visítanos</p>
+                      <div className="flex flex-col gap-0 sm:gap-0.5">
+                        <p className="text-[8px] sm:text-xs leading-none uppercase tracking-wide text-muted-foreground">Visítanos</p>
                         <a
                           href={settings.location.mapUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[11px] sm:text-sm font-semibold text-foreground hover:text-primary transition-colors"
+                          className="text-[10px] sm:text-sm leading-tight font-semibold text-foreground hover:text-primary transition-colors"
                         >
                           {settings.location.label}
                         </a>
