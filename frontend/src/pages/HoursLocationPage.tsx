@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clock, MapPin, Phone, Instagram, Mail, Twitter, Linkedin, Youtube, Music2 } from 'lucide-react';
 import { DayKey, DaySchedule, ShopSchedule } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
-import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
+import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay, normalizePhoneParts } from '@/lib/siteSettings';
 
 const dayNames: Record<string, string> = {
   monday: 'Lunes',
@@ -57,11 +57,14 @@ const formatDaySchedule = (schedule?: Partial<DaySchedule> | null) => {
 const HoursLocationPage: React.FC = () => {
   const { settings, isLoading } = useSiteSettings();
   const schedule = settings.openingHours;
-  const whatsappLink = buildWhatsappLink(settings.contact.phone) || '#';
-  const phoneHref = settings.contact.phone
-    ? `tel:${settings.contact.phone.replace(/\s+/g, '')}`
-    : '#';
-  const phoneDisplay = formatPhoneDisplay(settings.contact.phone) || settings.contact.phone;
+  const contactPhone = settings.contact.phone?.trim() || '';
+  const contactEmail = settings.contact.email?.trim() || '';
+  const contactPhoneParts = normalizePhoneParts(contactPhone);
+  const hasContactPhone = Boolean(contactPhoneParts.number);
+  const hasContactEmail = Boolean(contactEmail);
+  const whatsappLink = buildWhatsappLink(contactPhone);
+  const phoneHref = hasContactPhone ? `tel:${contactPhone.replace(/\s+/g, '')}` : '#';
+  const phoneDisplay = formatPhoneDisplay(contactPhone) || contactPhone;
   const formatHandle = (value?: string) => {
     if (!value) return '';
     if (/^https?:\/\//i.test(value)) {
@@ -107,6 +110,7 @@ const HoursLocationPage: React.FC = () => {
       handle: settings.socials.linkedin,
     },
   ].filter((social) => social.url && social.label);
+  const hasSocials = socials.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -197,40 +201,48 @@ const HoursLocationPage: React.FC = () => {
                     </div>
                   </div>
                   
-                      <div className="flex items-start gap-2.5 sm:gap-3">
-                        <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm sm:text-base font-medium text-foreground">Contacto</p>
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-                            <a
-                              href={phoneHref}
-                              className="text-sm sm:text-base text-primary hover:underline"
-                            >
-                              Llamar · {phoneDisplay || settings.contact.phone}
-                            </a>
-                            <span className="hidden sm:block text-muted-foreground">·</span>
-                            <a href={whatsappLink} className="text-sm sm:text-base text-primary hover:underline">
-                              WhatsApp directo
-                            </a>
+                  {hasContactPhone && (
+                    <div className="flex items-start gap-2.5 sm:gap-3">
+                      <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="text-sm sm:text-base font-medium text-foreground">Contacto</p>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                          <a
+                            href={phoneHref}
+                            className="text-sm sm:text-base text-primary hover:underline"
+                          >
+                            Llamar · {phoneDisplay}
+                          </a>
+                          {whatsappLink && (
+                            <>
+                              <span className="hidden sm:block text-muted-foreground">·</span>
+                              <a href={whatsappLink} className="text-sm sm:text-base text-primary hover:underline">
+                                WhatsApp directo
+                              </a>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="flex items-start gap-2.5 sm:gap-3">
-                    <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm sm:text-base font-medium text-foreground">Correo</p>
-                      <a href={`mailto:${settings.contact.email}`} className="text-sm sm:text-base text-primary hover:underline">
-                        {settings.contact.email}
-                      </a>
+                  {hasContactEmail && (
+                    <div className="flex items-start gap-2.5 sm:gap-3">
+                      <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="text-sm sm:text-base font-medium text-foreground">Correo</p>
+                        <a href={`mailto:${contactEmail}`} className="text-sm sm:text-base text-primary hover:underline">
+                          {contactEmail}
+                        </a>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <hr className="border-border" />
-
-                  <div>
-                    <p className="text-sm sm:text-base font-medium text-foreground mb-2 sm:mb-3">Síguenos</p>
-                    {socials.length > 0 ? (
+                  {hasSocials && (
+                    <>
+                      <hr className="border-border" />
+                      <div>
+                        <p className="text-sm sm:text-base font-medium text-foreground mb-2 sm:mb-3">Síguenos</p>
                       <div className="grid sm:grid-cols-2 gap-2 sm:gap-3">
                         {socials.map((social) => (
                           <a 
@@ -245,10 +257,9 @@ const HoursLocationPage: React.FC = () => {
                           </a>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Sin redes configuradas.</p>
-                    )}
-                  </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
