@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { TenantProvider, useTenant } from "./context/TenantContext";
 import { Loader2 } from "lucide-react";
 import { queryClient } from "./lib/queryClient";
@@ -80,6 +80,23 @@ const AppRoutes: React.FC = () => {
   const { tenant } = useTenant();
   const isPlatform = Boolean(tenant?.isPlatform);
 
+  const HomeRoute: React.FC = () => {
+    const { isAuthenticated, isLoading, user } = useAuth();
+
+    if (isLoading) {
+      return <RouteLoader />;
+    }
+
+    if (!isAuthenticated || !user) {
+      return <LandingPage />;
+    }
+
+    const hasAdminAccess = Boolean(
+      user.isSuperAdmin || user.isLocalAdmin || user.role === "admin" || user.isPlatformAdmin,
+    );
+    return <Navigate to={hasAdminAccess ? "/admin" : "/app/book"} replace />;
+  };
+
   if (isPlatform) {
     return (
       <Routes>
@@ -105,7 +122,7 @@ const AppRoutes: React.FC = () => {
   return (
     <Routes>
       {/* Public Routes */}
-      <Route path="/" element={withSuspense(<LandingPage />)} />
+      <Route path="/" element={withSuspense(<HomeRoute />)} />
       <Route path="/auth" element={withSuspense(<AuthPage />)} />
       <Route path="/book" element={withSuspense(<GuestBookingPage />)} />
       <Route path="/ref/:code" element={withSuspense(<ReferralLandingPage />)} />
