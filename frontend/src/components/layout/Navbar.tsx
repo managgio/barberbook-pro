@@ -56,7 +56,7 @@ const Navbar: React.FC = () => {
 
           {/* Auth Section */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <LocationSwitcher compact showSingleLocationLabel />
+            <LocationSwitcher compact />
             {isAuthenticated && user ? (
               <>
                 <Link to={userTarget} className={userBadgeClass}>
