@@ -90,7 +90,7 @@ const AuthPage: React.FC = () => {
         return;
       }
       const hasAdminAccess = Boolean(user.isSuperAdmin || user.isLocalAdmin || user.role === 'admin' || user.isPlatformAdmin);
-      navigate(hasAdminAccess ? '/admin' : '/app', { replace: true });
+      navigate(hasAdminAccess ? '/admin' : '/app/book', { replace: true });
     }
   }, [isAuthenticated, user, navigate, isPlatform, redirectTarget, fromPath]);
 
