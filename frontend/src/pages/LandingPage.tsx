@@ -24,7 +24,7 @@ import {
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { Barber, Product, ProductCategory, Service } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
-import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay } from '@/lib/siteSettings';
+import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay, normalizePhoneParts } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useBusinessCopy } from '@/lib/businessCopy';
@@ -34,6 +34,7 @@ import { getProductCategories } from '@/data/api/product-categories';
 import { getProducts } from '@/data/api/products';
 import { getServices } from '@/data/api/services';
 import { queryKeys } from '@/lib/queryKeys';
+import { cn } from '@/lib/utils';
 
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
@@ -137,8 +138,13 @@ const LandingPage: React.FC = () => {
     if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
     return value.toString();
   };
-  const whatsappLink = buildWhatsappLink(settings.contact.phone) || '#';
-  const phoneDisplay = formatPhoneDisplay(settings.contact.phone) || settings.contact.phone;
+  const contactPhone = settings.contact.phone?.trim() || '';
+  const contactEmail = settings.contact.email?.trim() || '';
+  const contactPhoneParts = normalizePhoneParts(contactPhone);
+  const whatsappLink = buildWhatsappLink(contactPhone);
+  const phoneDisplay = formatPhoneDisplay(contactPhone) || contactPhone;
+  const hasContactPhone = Boolean(contactPhoneParts.number && whatsappLink);
+  const hasContactEmail = Boolean(contactEmail);
   const formatHandle = (value?: string) => {
     if (!value) return '';
     if (/^https?:\/\//i.test(value)) {
@@ -160,6 +166,11 @@ const LandingPage: React.FC = () => {
     { key: 'youtube', label: formatHandle(settings.socials.youtube), icon: Youtube, url: buildSocialUrl('youtube', settings.socials.youtube) },
     { key: 'linkedin', label: formatHandle(settings.socials.linkedin), icon: Linkedin, url: buildSocialUrl('linkedin', settings.socials.linkedin) },
   ].filter((item) => item.url && item.label);
+  const hasSocials = socials.length > 0;
+  const footerGridClass = cn(
+    'grid sm:grid-cols-2 gap-5 sm:gap-8',
+    hasSocials ? 'md:grid-cols-4' : 'md:grid-cols-3',
+  );
   const categoriesEnabled = settings.products.categoriesEnabled;
   const landingConfig = tenant?.config?.landing || null;
   const productsModuleEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
@@ -559,15 +570,18 @@ const LandingPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="scrollbar-none flex gap-2.5 sm:gap-4 overflow-x-auto pb-1.5 sm:pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 md:gap-6 md:overflow-visible lg:flex lg:flex-wrap lg:justify-center max-w-6xl lg:mx-auto">
+        <div className="scrollbar-none flex gap-2.5 sm:gap-4 overflow-x-auto pb-1.5 sm:pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6 md:overflow-visible max-w-6xl md:mx-auto">
           {barbers.map((barber, index) => (
-            <div key={barber.id} className="w-[165px] min-w-[165px] h-[226px] shrink-0 sm:min-w-[260px] md:min-w-0 md:w-auto md:h-auto lg:w-[240px]">
+            <div
+              key={barber.id}
+              className="w-[165px] min-w-[165px] h-[226px] shrink-0 sm:w-[220px] sm:min-w-[220px] sm:h-[250px] md:w-[240px] md:min-w-[240px] md:h-auto"
+            >
               <Card
                 variant="interactive"
                 className="overflow-hidden animate-slide-up h-full"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <div className="h-[150px] sm:aspect-square relative overflow-hidden">
+                <div className="h-[150px] sm:h-auto sm:aspect-square relative overflow-hidden">
                   <img
                     src={barber.photo || defaultAvatar}
                     alt={barber.name}
@@ -587,7 +601,7 @@ const LandingPage: React.FC = () => {
             </div>
           ))}
           {barbers.length === 0 && (
-            <div className="md:col-span-2 lg:col-span-4 text-center text-muted-foreground">
+            <div className="w-full text-center text-muted-foreground">
               Cargando {copy.staff.pluralLower}...
             </div>
           )}
@@ -778,7 +792,7 @@ const LandingPage: React.FC = () => {
       {/* Footer */}
       <footer className="py-7 sm:py-12 border-t border-border">
         <div className="container px-4">
-          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-5 sm:gap-8">
+          <div className={footerGridClass}>
             <div>
               <Link to="/" className="flex items-center gap-2 mb-3">
                 <img
@@ -822,42 +836,44 @@ const LandingPage: React.FC = () => {
                     {settings.location.label}
                   </a>
                 </li>
-                <li className="flex items-center gap-2">
-                  <Phone className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <a href={whatsappLink} className="hover:text-primary transition-colors">
-                  {phoneDisplay}
-                  </a>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Mail className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <a href={`mailto:${settings.contact.email}`} className="hover:text-primary transition-colors">
-                    {settings.contact.email}
-                  </a>
-                </li>
+                {hasContactPhone && (
+                  <li className="flex items-center gap-2">
+                    <Phone className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <a href={whatsappLink ?? undefined} className="hover:text-primary transition-colors">
+                      {phoneDisplay}
+                    </a>
+                  </li>
+                )}
+                {hasContactEmail && (
+                  <li className="flex items-center gap-2">
+                    <Mail className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <a href={`mailto:${contactEmail}`} className="hover:text-primary transition-colors">
+                      {contactEmail}
+                    </a>
+                  </li>
+                )}
               </ul>
             </div>
-            
-            <div>
+
+            {hasSocials && (
+              <div>
               <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Síguenos</h4>
-              {socials.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 sm:gap-3">
-                  {socials.map((social) => (
-                    <a
-                      key={social.key}
-                      href={social.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2 sm:px-4 py-1 sm:py-2 rounded-lg bg-secondary flex items-center justify-center text-[11px] sm:text-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors gap-1 sm:gap-2"
-                    >
-                      <social.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
-                      {social.label}
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[11px] sm:text-sm text-muted-foreground">Sin redes configuradas.</p>
-              )}
+              <div className="flex flex-wrap gap-1.5 sm:gap-3">
+                {socials.map((social) => (
+                  <a
+                    key={social.key}
+                    href={social.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 sm:px-4 py-1 sm:py-2 rounded-lg bg-secondary flex items-center justify-center text-[11px] sm:text-sm text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors gap-1 sm:gap-2"
+                  >
+                    <social.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+                    {social.label}
+                  </a>
+                ))}
+              </div>
             </div>
+            )}
           </div>
           
           <div className="mt-6 sm:mt-12 pt-3.5 sm:pt-8 border-t border-border text-center text-[11px] sm:text-sm text-muted-foreground">

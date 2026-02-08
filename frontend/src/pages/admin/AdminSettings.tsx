@@ -58,6 +58,7 @@ const cloneSettings = (data: SiteSettings): SiteSettings => JSON.parse(JSON.stri
 const DEFAULT_BREAK_RANGE: BreakRange = { start: '13:30', end: '14:00' };
 const SETTINGS_TAB_STORAGE_KEY = 'admin-settings-active-tab';
 const SETTINGS_TABS: SettingsTab[] = ['identity', 'operations', 'availability'];
+const PHONE_PREFIX = '+34';
 
 const AdminSettings: React.FC = () => {
   const XBrandIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -90,9 +91,10 @@ const AdminSettings: React.FC = () => {
     const saved = window.sessionStorage.getItem(SETTINGS_TAB_STORAGE_KEY);
     return SETTINGS_TABS.includes(saved as SettingsTab) ? (saved as SettingsTab) : 'identity';
   });
-  const [{ prefix: phonePrefix, number: phoneNumber }, setPhoneParts] = useState(() =>
-    normalizePhoneParts(DEFAULT_SITE_SETTINGS.contact.phone)
-  );
+  const [{ number: phoneNumber }, setPhoneParts] = useState(() => ({
+    prefix: PHONE_PREFIX,
+    number: normalizePhoneParts(DEFAULT_SITE_SETTINGS.contact.phone).number,
+  }));
   const settingsQuery = useQuery({
     queryKey: queryKeys.siteSettings(currentLocationId),
     enabled: Boolean(currentLocationId),
@@ -116,7 +118,10 @@ const AdminSettings: React.FC = () => {
   useEffect(() => {
     if (!settingsQuery.data) return;
     setSettings(cloneSettings(settingsQuery.data));
-    setPhoneParts(normalizePhoneParts(settingsQuery.data.contact.phone));
+    setPhoneParts({
+      prefix: PHONE_PREFIX,
+      number: normalizePhoneParts(settingsQuery.data.contact.phone).number,
+    });
   }, [settingsQuery.data]);
 
   useEffect(() => {
@@ -157,7 +162,8 @@ const AdminSettings: React.FC = () => {
   }, [activeTab]);
 
   const buildSettingsPayload = (nextSettings: SiteSettings) => {
-    const phone = composePhone(phonePrefix, phoneNumber);
+    const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
+    const phone = cleanPhoneNumber ? composePhone(PHONE_PREFIX, cleanPhoneNumber) : '';
     const payload: SiteSettings = {
       ...nextSettings,
       contact: { ...nextSettings.contact, phone },
@@ -175,7 +181,10 @@ const AdminSettings: React.FC = () => {
       const payload = buildSettingsPayload(settings);
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
-      setPhoneParts(normalizePhoneParts(updated.contact.phone));
+      setPhoneParts({
+        prefix: PHONE_PREFIX,
+        number: normalizePhoneParts(updated.contact.phone).number,
+      });
       dispatchSiteSettingsUpdated(updated);
       toast({
         title: 'Configuración actualizada',
@@ -202,7 +211,10 @@ const AdminSettings: React.FC = () => {
       const payload = buildSettingsPayload(nextSettings);
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
-      setPhoneParts(normalizePhoneParts(updated.contact.phone));
+      setPhoneParts({
+        prefix: PHONE_PREFIX,
+        number: normalizePhoneParts(updated.contact.phone).number,
+      });
       dispatchSiteSettingsUpdated(updated);
       toast({
         title: 'Preferencias actualizadas',
@@ -515,7 +527,10 @@ const AdminSettings: React.FC = () => {
       ]);
       setShopSchedule(updatedSchedule);
       setSettings(updatedSettings);
-      setPhoneParts(normalizePhoneParts(updatedSettings.contact.phone));
+      setPhoneParts({
+        prefix: PHONE_PREFIX,
+        number: normalizePhoneParts(updatedSettings.contact.phone).number,
+      });
       await scheduleQuery.refetch();
       dispatchSchedulesUpdated({ source: 'admin-settings' });
       dispatchSiteSettingsUpdated(updatedSettings);
@@ -762,10 +777,11 @@ const AdminSettings: React.FC = () => {
                 <Label>Teléfono</Label>
                 <div className="grid grid-cols-3 gap-2">
                   <Input
-                    value={phonePrefix}
-                    onChange={(e) => setPhoneParts((prev) => ({ ...prev, prefix: e.target.value }))}
+                    value={PHONE_PREFIX}
                     placeholder="+34"
-                    disabled={isLoading}
+                    readOnly
+                    disabled
+                    aria-readonly="true"
                   />
                   <Input
                     className="col-span-2"

@@ -19,8 +19,12 @@ const Navbar: React.FC = () => {
   const isLanding = location.pathname === '/';
   const isClientApp = location.pathname.startsWith('/app');
   const isGuestBookRoute = location.pathname === '/book' || location.pathname.startsWith('/book/');
+  const isHoursLocationRoute =
+    location.pathname === '/hours-location' || location.pathname.startsWith('/hours-location/');
+  const hideLocalNameOnMobile = isLanding || isClientApp || isGuestBookRoute || isHoursLocationRoute;
+  const hideLocationSwitcherOnMobile = isGuestBookRoute || isHoursLocationRoute;
   const hasMultipleLocations = locations.length > 1;
-  const showLocationSwitcherOnMobile = hasMultipleLocations && !isGuestBookRoute;
+  const showLocationSwitcherOnMobile = hasMultipleLocations && !hideLocationSwitcherOnMobile;
   const showUserNameOnMobile = !showLocationSwitcherOnMobile;
   const isAdmin =
     user?.role === 'admin' || user?.isLocalAdmin || user?.isSuperAdmin;
@@ -32,7 +36,7 @@ const Navbar: React.FC = () => {
   const homeTarget = isAuthenticated ? '/?view=landing' : '/';
   const brandNameClass = cn(
     'text-xl font-bold text-foreground',
-    isLanding || isClientApp || isGuestBookRoute ? 'hidden sm:inline' : 'inline'
+    hideLocalNameOnMobile ? 'hidden sm:inline' : 'inline'
   );
   const userBadgeClass = cn(
     'inline-flex items-center rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10 shrink-0',
@@ -62,7 +66,7 @@ const Navbar: React.FC = () => {
 
           {/* Auth Section */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <LocationSwitcher compact className={isGuestBookRoute ? 'hidden sm:inline-flex' : undefined} />
+            <LocationSwitcher compact className={hideLocationSwitcherOnMobile ? 'hidden sm:inline-flex' : undefined} />
             {isAuthenticated && user ? (
               <>
                 <Link to={userTarget} className={userBadgeClass}>
