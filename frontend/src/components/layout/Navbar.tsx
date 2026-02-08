@@ -18,8 +18,10 @@ const Navbar: React.FC = () => {
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const isLanding = location.pathname === '/';
   const isClientApp = location.pathname.startsWith('/app');
+  const isGuestBookRoute = location.pathname === '/book' || location.pathname.startsWith('/book/');
   const hasMultipleLocations = locations.length > 1;
-  const showUserNameOnMobile = !hasMultipleLocations;
+  const showLocationSwitcherOnMobile = hasMultipleLocations && !isGuestBookRoute;
+  const showUserNameOnMobile = !showLocationSwitcherOnMobile;
   const isAdmin =
     user?.role === 'admin' || user?.isLocalAdmin || user?.isSuperAdmin;
   const userTarget = tenant?.isPlatform
@@ -27,9 +29,10 @@ const Navbar: React.FC = () => {
     : isAdmin
       ? '/admin'
       : '/app/profile';
+  const homeTarget = isAuthenticated ? '/?view=landing' : '/';
   const brandNameClass = cn(
     'text-xl font-bold text-foreground',
-    isLanding || isClientApp ? 'hidden sm:inline' : 'inline'
+    isLanding || isClientApp || isGuestBookRoute ? 'hidden sm:inline' : 'inline'
   );
   const userBadgeClass = cn(
     'inline-flex items-center rounded-full border border-primary/20 bg-primary/5 transition-colors hover:border-primary/40 hover:bg-primary/10 shrink-0',
@@ -44,7 +47,7 @@ const Navbar: React.FC = () => {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group shrink-0 min-w-[2.5rem]">
+          <Link to={homeTarget} className="flex items-center gap-2 group shrink-0 min-w-[2.5rem]">
             <img
               src={logoUrl}
               alt={`${settings.branding.shortName} logo`}
@@ -59,7 +62,7 @@ const Navbar: React.FC = () => {
 
           {/* Auth Section */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <LocationSwitcher compact />
+            <LocationSwitcher compact className={isGuestBookRoute ? 'hidden sm:inline-flex' : undefined} />
             {isAuthenticated && user ? (
               <>
                 <Link to={userTarget} className={userBadgeClass}>

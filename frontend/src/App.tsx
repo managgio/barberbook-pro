@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { TenantProvider, useTenant } from "./context/TenantContext";
 import { Loader2 } from "lucide-react";
@@ -82,12 +82,18 @@ const AppRoutes: React.FC = () => {
 
   const HomeRoute: React.FC = () => {
     const { isAuthenticated, isLoading, user } = useAuth();
+    const location = useLocation();
 
     if (isLoading) {
       return <RouteLoader />;
     }
 
     if (!isAuthenticated || !user) {
+      return <LandingPage />;
+    }
+
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get("view") === "landing") {
       return <LandingPage />;
     }
 

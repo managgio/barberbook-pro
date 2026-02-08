@@ -68,7 +68,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           collapsed ? 'justify-center p-4' : 'p-4'
         )}
       >
-        <Link to="/" className={cn('flex items-center gap-3 group', collapsed && 'justify-center')}>
+        <Link to="/?view=landing" className={cn('flex items-center gap-3 group', collapsed && 'justify-center')}>
           <img
             src={logoUrl}
             alt={`${settings.branding.shortName} logo`}
@@ -170,7 +170,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
             className={cn('flex-1', collapsed && 'px-0 justify-center')}
             asChild
           >
-            <Link to="/">
+            <Link to="/?view=landing">
               <ChevronLeft className="w-4 h-4 mr-1" />
               {!collapsed && 'Volver'}
             </Link>
