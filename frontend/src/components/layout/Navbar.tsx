@@ -29,6 +29,7 @@ const Navbar: React.FC = () => {
     : isAdmin
       ? '/admin'
       : '/app/profile';
+  const homeTarget = isAuthenticated ? '/?view=landing' : '/';
   const brandNameClass = cn(
     'text-xl font-bold text-foreground',
     isLanding || isClientApp || isGuestBookRoute ? 'hidden sm:inline' : 'inline'
@@ -46,7 +47,7 @@ const Navbar: React.FC = () => {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group shrink-0 min-w-[2.5rem]">
+          <Link to={homeTarget} className="flex items-center gap-2 group shrink-0 min-w-[2.5rem]">
             <img
               src={logoUrl}
               alt={`${settings.branding.shortName} logo`}
