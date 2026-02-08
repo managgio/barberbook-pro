@@ -470,6 +470,7 @@ Frontend (`frontend/.env*`):
 - Endpoint operativo de salud por marca en plataforma: `GET /api/platform/brands/:id/health` devuelve estado agregado por local e integración (`email`, `twilio`, `stripe`, `imagekit`, `ai`) para detectar credenciales/fuentes degradadas antes de impacto en clientes.
 - Resolucion puntual de usuarios para listados paginados: `GET /api/users?ids=<id1,id2,...>` devuelve solo los usuarios solicitados (acotado al tenant actual).
 - Configuración plataforma (`PATCH /api/platform/brands/:id/config` y `PATCH /api/platform/locations/:id/config`) acepta `data` objeto, incluyendo `{}` para limpiar overrides sin romper el guardado de marca/local.
+- Borrado de marca en plataforma (`DELETE /api/platform/brands/:id`) ejecuta limpieza transaccional de datos brand/local antes del `brand.delete` (roles, staff, citas, caja, catálogo, referral/reviews/loyalty, observabilidad y logs) para evitar fallos por FKs `brandId/localId`; la limpieza de assets en ImageKit se ejecuta después del commit DB.
 - El formato legacy de lista completa para `/users` y `/appointments` queda retirado del contrato backend.
 - `UsersService` normaliza emails sensibles (`trim + lowercase`) al resolver superadmin por marca (`superAdminEmail`) para evitar desalineaciones por espacios/case en primer login.
 - Gate automático de aislamiento tenant en CI: `npm run tenant:scope:check` valida que consultas Prisma masivas en modelos tenant-scoped incluyan `localId`/`brandId` (workflow `backend-hardening.yml`).

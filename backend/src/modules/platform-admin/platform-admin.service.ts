@@ -390,8 +390,78 @@ export class PlatformAdminService {
       if (product.imageFileId) fileIds.add(product.imageFileId);
     }
 
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.brand.update({
+          where: { id },
+          data: { defaultLocationId: null },
+        });
+
+        await tx.auditLog.deleteMany({ where: { brandId: id } });
+        await tx.consentRecord.deleteMany({ where: { brandId: id } });
+        await tx.providerUsageDaily.deleteMany({ where: { brandId: id } });
+        await tx.webVitalEvent.deleteMany({ where: { brandId: id } });
+        await tx.apiMetricEvent.deleteMany({ where: { brandId: id } });
+        await tx.brandUser.deleteMany({ where: { brandId: id } });
+        await tx.referralConfigTemplate.deleteMany({ where: { brandId: id } });
+        await tx.brandLegalSettings.deleteMany({ where: { brandId: id } });
+        await tx.brandConfig.deleteMany({ where: { brandId: id } });
+
+        if (locationIds.length > 0) {
+          await tx.reviewRequest.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.rewardTransaction.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.referralAttribution.updateMany({
+            where: { localId: { in: locationIds }, firstAppointmentId: { not: null } },
+            data: { firstAppointmentId: null },
+          });
+          await tx.appointment.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.referralAttribution.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.referralCode.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.rewardWallet.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.coupon.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.cashMovement.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.referralProgramConfig.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.reviewProgramConfig.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.offer.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.loyaltyProgram.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.barberHoliday.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.barberSchedule.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.clientNote.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.alert.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.generalHoliday.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.aiChatSession.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.aiBusinessFact.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.locationStaff.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.user.updateMany({
+            where: { adminRole: { localId: { in: locationIds } } },
+            data: { adminRoleId: null },
+          });
+          await tx.adminRole.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.locationConfig.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.shopSchedule.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.siteSettings.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.product.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.service.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.productCategory.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.serviceCategory.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.barber.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.location.deleteMany({ where: { id: { in: locationIds } } });
+        }
+
+        await tx.brand.delete({ where: { id } });
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new BadRequestException(
+          `No se pudo eliminar la marca porque quedan datos relacionados (${String(
+            error.meta?.field_name ?? 'FK',
+          )}).`,
+        );
+      }
+      throw error;
+    }
+
     await this.deleteImageKitFiles(id, fileIds);
-    await this.prisma.brand.delete({ where: { id } });
     return { success: true };
   }
 
