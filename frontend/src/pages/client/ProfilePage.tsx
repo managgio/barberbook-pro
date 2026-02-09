@@ -11,14 +11,11 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getLoyaltySummary } from '@/data/api/loyalty';
 import { deleteUser } from '@/data/api/users';
-import { fetchBarbersCached } from '@/lib/catalogQuery';
-import { queryKeys } from '@/lib/queryKeys';
 import { LoyaltySummary } from '@/data/types';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useBusinessCopy } from '@/lib/businessCopy';
-import { useQuery } from '@tanstack/react-query';
 
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
@@ -46,16 +43,6 @@ const ProfilePage: React.FC = () => {
   const allowEmail = notificationConfig?.email !== false;
   const allowWhatsapp = notificationConfig?.whatsapp !== false;
   const allowSms = notificationConfig?.sms !== false;
-  const barbersQuery = useQuery({
-    queryKey: queryKeys.barbers(currentLocationId),
-    enabled: Boolean(currentLocationId),
-    staleTime: 60_000,
-    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
-  });
-  const hasMultipleBarbers =
-    barbersQuery.data === undefined
-      ? true
-      : barbersQuery.data.filter((barber) => barber.isActive !== false).length > 1;
 
   useEffect(() => {
     if (!user) return;
@@ -357,37 +344,35 @@ const ProfilePage: React.FC = () => {
           </Card>
         )}
 
-        {hasMultipleBarbers && (
-          <Card variant="elevated">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                Preferencias de reserva
-              </CardTitle>
-              <CardDescription className="hidden sm:block">
-                Decide si quieres elegir {copy.staff.singularLower} al pedir tu cita.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 sm:space-y-4">
-              <div className="flex items-center justify-between py-2">
-                <div className="space-y-0.5">
-                  <Label htmlFor="barber-select-pref">Elegir {copy.staff.singularLower}</Label>
-                  <p className="hidden sm:block text-sm text-muted-foreground">
-                    Si lo desactivas, asignaremos automáticamente a {copy.staff.indefiniteSingular} disponible.
-                  </p>
-                </div>
-                <Switch
-                  id="barber-select-pref"
-                  checked={prefersBarberSelection}
-                  onCheckedChange={setPrefersBarberSelection}
-                />
+        <Card variant="elevated">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              Preferencias de reserva
+            </CardTitle>
+            <CardDescription className="hidden sm:block">
+              Decide si quieres elegir {copy.staff.singularLower} al pedir tu cita.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 sm:space-y-4">
+            <div className="flex items-center justify-between py-2">
+              <div className="space-y-0.5">
+                <Label htmlFor="barber-select-pref">Elegir {copy.staff.singularLower}</Label>
+                <p className="hidden sm:block text-sm text-muted-foreground">
+                  Si lo desactivas, asignaremos automáticamente a {copy.staff.indefiniteSingular} disponible.
+                </p>
               </div>
-              <p className="hidden sm:block text-xs text-muted-foreground">
-                Podrás cambiar esta decisión en cada reserva.
-              </p>
-            </CardContent>
-          </Card>
-        )}
+              <Switch
+                id="barber-select-pref"
+                checked={prefersBarberSelection}
+                onCheckedChange={setPrefersBarberSelection}
+              />
+            </div>
+            <p className="hidden sm:block text-xs text-muted-foreground">
+              Podrás cambiar esta decisión en cada reserva.
+            </p>
+          </CardContent>
+        </Card>
 
         <Button type="submit" className="w-full h-9 sm:h-11 text-xs sm:text-base" size="lg" disabled={isLoading}>
           {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
