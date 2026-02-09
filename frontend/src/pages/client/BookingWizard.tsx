@@ -514,14 +514,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   );
 
   useEffect(() => {
-    if (!shouldSelectBarberManually || !singleAvailableBarber) return;
+    if (!singleAvailableBarber || !selectBarber) return;
     if (booking.barberId === singleAvailableBarber.id) return;
     setBooking((prev) => ({
       ...prev,
       barberId: singleAvailableBarber.id,
       dateTime: null,
     }));
-  }, [booking.barberId, shouldSelectBarberManually, singleAvailableBarber]);
+  }, [booking.barberId, selectBarber, singleAvailableBarber]);
 
   const handleSelectService = (serviceId: string) => {
     setBooking({
@@ -1165,10 +1165,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               {!shouldSelectBarberManually && (
                 <div className="rounded-2xl border border-border/60 bg-muted/30 p-3 sm:p-4 text-xs sm:text-sm text-muted-foreground">
                   <p>
-                    {copy.staff.singular} asignado: {!assignedBarber?.name ? 'A determinar' : ''}
+                    {copy.staff.singular} asignado: {selectBarber ? (assignedBarber?.name || 'A determinar') : 'A determinar'}
                   </p>
-                  {assignedBarber && booking.dateTime && (
-                    <div className="mt-2.5 sm:mt-3 flex items-center gap-2.5 sm:gap-3 rounded-xl border border-border/60 bg-background/70 p-2.5 sm:p-3 text-foreground">
+                  {selectBarber && assignedBarber && (
+                    <div
+                      className={cn(
+                        'mt-2.5 sm:mt-3 flex items-center gap-2.5 sm:gap-3 rounded-xl border bg-background/70 p-2.5 sm:p-3 text-foreground',
+                        !hasMultipleBarbers ? 'border-primary bg-primary/5 shadow-glow' : 'border-border/60',
+                      )}
+                    >
                       <img
                         src={assignedBarber.photo || defaultAvatar}
                         alt={assignedBarber.name}
@@ -1179,10 +1184,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover"
                       />
                       <div>
-                        <p className="text-[11px] sm:text-xs uppercase tracking-wide text-muted-foreground">
-                          {copy.staff.singular} asignado
-                        </p>
                         <p className="text-sm sm:text-base font-semibold text-foreground">{assignedBarber.name}</p>
+                        {assignedBarber.specialty ? (
+                          <p className="text-[11px] sm:text-xs text-muted-foreground">{assignedBarber.specialty}</p>
+                        ) : null}
                       </div>
                     </div>
                   )}
