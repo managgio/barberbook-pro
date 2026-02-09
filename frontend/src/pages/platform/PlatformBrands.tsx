@@ -203,6 +203,28 @@ const writeStorageValue = (key: string, value: string | null) => {
   }
 };
 
+const normalizeSlugCandidate = (value?: string | null) =>
+  (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const buildSuggestedLocationSlug = (brand: PlatformBrand | null) => {
+  const base = normalizeSlugCandidate(brand?.subdomain);
+  if (!base) return '';
+  const used = new Set(
+    (brand?.locations || [])
+      .map((location) => normalizeSlugCandidate(location.slug))
+      .filter(Boolean),
+  );
+  if (!used.has(base)) return base;
+  let suffix = 2;
+  while (used.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+};
+
 const updateNestedValue = <T extends JsonRecord>(source: T, path: string[], value: unknown): T => {
   const result: JsonRecord = { ...source };
   let cursor: JsonRecord = result;
@@ -221,6 +243,81 @@ const updateNestedValue = <T extends JsonRecord>(source: T, path: string[], valu
   });
   return result as T;
 };
+
+const LOCAL_OVERRIDE_DRAFTS_KEY = '__localOverrideDrafts';
+const LANDING_BRANDING_OVERRIDE_FIELDS = [
+  'heroBackgroundUrl',
+  'heroBackgroundFileId',
+  'heroImageUrl',
+  'heroImageFileId',
+  'heroImage2Url',
+  'heroImage2FileId',
+  'heroImage3Url',
+  'heroImage3FileId',
+  'heroImage4Url',
+  'heroImage4FileId',
+  'heroImage5Url',
+  'heroImage5FileId',
+  'heroBackgroundDimmed',
+  'heroBackgroundOpacity',
+  'heroBadgeEnabled',
+  'heroImageEnabled',
+  'heroTextColor',
+  'heroLocationCardEnabled',
+  'heroImagePosition',
+  'heroNoImageAlign',
+  'signImageUrl',
+  'signImageFileId',
+] as const;
+
+type LocalOverrideDraftKey =
+  | 'adminSidebar'
+  | 'notificationPrefs'
+  | 'barberAssignment'
+  | 'landing'
+  | 'landingBranding'
+  | 'floatingActions';
+
+const getLocalOverrideDrafts = (config: PlatformConfig): Record<string, unknown> => {
+  const raw = config?.[LOCAL_OVERRIDE_DRAFTS_KEY];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return raw as Record<string, unknown>;
+};
+
+const readLocalOverrideDraft = (config: PlatformConfig, key: LocalOverrideDraftKey) =>
+  getLocalOverrideDrafts(config)[key];
+
+const withLocalOverrideDraft = (
+  config: PlatformConfig,
+  key: LocalOverrideDraftKey,
+  value: unknown,
+): PlatformConfig => {
+  const next: PlatformConfig = { ...config };
+  const drafts = { ...getLocalOverrideDrafts(config) };
+  if (value === undefined || value === null) {
+    delete drafts[key];
+  } else {
+    drafts[key] = value;
+  }
+  if (Object.keys(drafts).length === 0) {
+    delete next[LOCAL_OVERRIDE_DRAFTS_KEY];
+  } else {
+    next[LOCAL_OVERRIDE_DRAFTS_KEY] = drafts;
+  }
+  return next;
+};
+
+const pickBrandingFields = (branding: PlatformBranding | undefined, fields: readonly string[]) => {
+  if (!branding || typeof branding !== 'object' || Array.isArray(branding)) return {};
+  return fields.reduce<Record<string, unknown>>((acc, field) => {
+    const value = (branding as Record<string, unknown>)[field];
+    if (value !== undefined) acc[field] = value;
+    return acc;
+  }, {});
+};
+
+const hasLandingBrandingOverride = (config: PlatformConfig) =>
+  Object.keys(pickBrandingFields(config?.branding, LANDING_BRANDING_OVERRIDE_FIELDS)).length > 0;
 
 const normalizeHexInput = (value: string) => {
   const raw = value.trim().toLowerCase();
@@ -257,6 +354,21 @@ const stripEmptyTheme = <T extends { theme?: JsonRecord }>(config: T): T => {
   }
   return next;
 };
+
+const normalizeForComparison = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map((item) => normalizeForComparison(item));
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+    return entries.reduce<Record<string, unknown>>((acc, [key, nested]) => {
+      acc[key] = normalizeForComparison(nested);
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
+const areConfigsEqual = (left: Record<string, unknown>, right: Record<string, unknown>) =>
+  JSON.stringify(normalizeForComparison(left)) === JSON.stringify(normalizeForComparison(right));
 
 const normalizeImagekitFolder = (value?: string, subdomain?: string | null) => {
   const normalized = value?.trim().replace(/^\/+|\/+$/g, '');
@@ -638,6 +750,7 @@ const PlatformBrands: React.FC = () => {
   const [brandConfig, setBrandConfig] = useState<PlatformConfig>({});
   const [persistedBrandConfig, setPersistedBrandConfig] = useState<PlatformConfig>({});
   const [locationConfig, setLocationConfig] = useState<PlatformConfig>({});
+  const [persistedLocationConfig, setPersistedLocationConfig] = useState<PlatformConfig>({});
   const [legalSettings, setLegalSettings] = useState<LegalSettings | null>(null);
   const [dpaContent, setDpaContent] = useState<LegalPolicyResponse | null>(null);
   const [aiProvidersInput, setAiProvidersInput] = useState('');
@@ -836,6 +949,7 @@ const PlatformBrands: React.FC = () => {
       applyToAll: false,
     }));
     setLocationConfig({});
+    setPersistedLocationConfig({});
     setPersistedLocationFileIds({
       heroBackgroundFileId: null,
       heroImageFileId: null,
@@ -902,6 +1016,7 @@ const PlatformBrands: React.FC = () => {
   useEffect(() => {
     if (!selectedLocationId) {
       setLocationConfig({});
+      setPersistedLocationConfig({});
       setPersistedLocationFileIds({
         heroBackgroundFileId: null,
         heroImageFileId: null,
@@ -924,6 +1039,7 @@ const PlatformBrands: React.FC = () => {
       };
     }
     setLocationConfig(normalizedConfig);
+    setPersistedLocationConfig(JSON.parse(JSON.stringify(normalizedConfig)));
     setPersistedLocationFileIds({
       heroBackgroundFileId: config?.branding?.heroBackgroundFileId || null,
       heroImageFileId: config?.branding?.heroImageFileId || null,
@@ -944,6 +1060,7 @@ const PlatformBrands: React.FC = () => {
     setDpaContent(null);
     setAdminOverview(null);
     setSelectedLocationId(null);
+    setPersistedLocationConfig({});
   }, [selectedBrandId]);
 
   useEffect(() => {
@@ -980,6 +1097,7 @@ const PlatformBrands: React.FC = () => {
   useEffect(() => {
     if (!locationConfigQuery.isError) return;
     setLocationConfig({});
+    setPersistedLocationConfig({});
     setPersistedLocationFileIds({
       heroBackgroundFileId: null,
       heroImageFileId: null,
@@ -999,6 +1117,14 @@ const PlatformBrands: React.FC = () => {
       setAdminForm((prev) => ({ ...prev, localId: fallback }));
     }
   }, [adminForm.applyToAll, adminForm.localId, adminLocations, selectedLocationId]);
+
+  useEffect(() => {
+    if (!createLocationOpen || !selectedBrand) return;
+    setNewLocationForm((prev) => {
+      if (prev.slug.trim()) return prev;
+      return { ...prev, slug: buildSuggestedLocationSlug(selectedBrand) };
+    });
+  }, [createLocationOpen, selectedBrand]);
 
   const refetchBrands = async () => {
     await brandsQuery.refetch();
@@ -1035,6 +1161,9 @@ const PlatformBrands: React.FC = () => {
         delete cleanedBrandConfig.twilio;
       }
       const sanitizedLocationConfig = stripEmptyTheme(locationConfig);
+      const sanitizedPersistedLocationConfig = stripEmptyTheme(persistedLocationConfig);
+      const hasLocationConfigChanges =
+        Boolean(selectedLocationId) && !areConfigsEqual(sanitizedLocationConfig, sanitizedPersistedLocationConfig);
       await updatePlatformBrand(selectedBrand.id, {
         name: brandForm.name,
         subdomain: brandForm.subdomain,
@@ -1043,7 +1172,7 @@ const PlatformBrands: React.FC = () => {
         defaultLocationId: selectedLocationId,
       });
       await updatePlatformBrandConfig(selectedBrand.id, cleanedBrandConfig);
-      if (selectedLocationId) {
+      if (selectedLocationId && hasLocationConfigChanges) {
         await updatePlatformLocationConfig(selectedLocationId, sanitizedLocationConfig);
       }
       const shouldSyncBrandTheme =
@@ -1132,6 +1261,7 @@ const PlatformBrands: React.FC = () => {
       setPersistedBrandConfig(JSON.parse(JSON.stringify(sanitizedBrandConfig)));
       setBrandConfig(sanitizedBrandConfig);
       setLocationConfig(sanitizedLocationConfig);
+      setPersistedLocationConfig(JSON.parse(JSON.stringify(sanitizedLocationConfig)));
       await refetchBrands();
       await refetchSelectedBrandCore();
       await refetchSelectedLocationConfig();
@@ -1342,7 +1472,7 @@ const PlatformBrands: React.FC = () => {
   const locationStripe = readStripeConfig(locationConfig);
   const brandStripeReady = brandStripe.chargesEnabled && brandStripe.detailsSubmitted;
   const locationStripeReady = locationStripe.chargesEnabled && locationStripe.detailsSubmitted;
-  const isLocationBrandingOverride = Boolean(locationConfig?.branding);
+  const isLocationBrandingOverride = hasLandingBrandingOverride(locationConfig);
   const resolveThemeMode = (value?: string) => (value === 'light' || value === 'dark' ? value : 'dark');
   const resolveHeroFlag = (value?: boolean) => value !== false;
   const resolveHeroBackgroundOpacity = (value?: number) => {
@@ -1473,38 +1603,77 @@ const PlatformBrands: React.FC = () => {
 
   const handleLocationSidebarOverride = (checked: boolean) => {
     if (checked) {
-      const baseHidden = getAdminSidebarHiddenSections(brandConfig);
-      setLocationConfig((prev) => updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], baseHidden));
+      setLocationConfig((prev) => {
+        const draft = readLocalOverrideDraft(prev, 'adminSidebar');
+        const draftHidden =
+          draft && typeof draft === 'object' && !Array.isArray(draft)
+            ? (draft as Record<string, unknown>).hiddenSections
+            : undefined;
+        const baseHidden = Array.isArray(draftHidden)
+          ? draftHidden
+          : getAdminSidebarHiddenSections(brandConfig);
+        let next = updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], baseHidden);
+        next = withLocalOverrideDraft(next, 'adminSidebar', undefined);
+        return next;
+      });
       return;
     }
     setLocationConfig((prev) => {
-      if (!prev.adminSidebar) return prev;
-      const { adminSidebar, ...rest } = prev;
+      const adminSidebarValue =
+        prev.adminSidebar && typeof prev.adminSidebar === 'object' && !Array.isArray(prev.adminSidebar)
+          ? prev.adminSidebar
+          : undefined;
+      let next = withLocalOverrideDraft(prev, 'adminSidebar', adminSidebarValue);
+      if (!next.adminSidebar) return next;
+      const { adminSidebar, ...rest } = next;
       return rest;
     });
   };
 
   const handleLocationNotificationOverride = (checked: boolean) => {
     if (checked) {
-      setLocationConfig((prev) => updateNestedValue(prev, ['notificationPrefs'], { ...brandNotificationPrefs }));
+      setLocationConfig((prev) => {
+        const draft = readLocalOverrideDraft(prev, 'notificationPrefs');
+        const nextPrefs =
+          draft && typeof draft === 'object' && !Array.isArray(draft)
+            ? (draft as Record<string, unknown>)
+            : { ...brandNotificationPrefs };
+        let next = updateNestedValue(prev, ['notificationPrefs'], nextPrefs);
+        next = withLocalOverrideDraft(next, 'notificationPrefs', undefined);
+        return next;
+      });
       return;
     }
     setLocationConfig((prev) => {
-      if (!prev.notificationPrefs) return prev;
-      const { notificationPrefs, ...rest } = prev;
+      const notificationPrefsValue =
+        prev.notificationPrefs && typeof prev.notificationPrefs === 'object' && !Array.isArray(prev.notificationPrefs)
+          ? prev.notificationPrefs
+          : undefined;
+      let next = withLocalOverrideDraft(prev, 'notificationPrefs', notificationPrefsValue);
+      if (!next.notificationPrefs) return next;
+      const { notificationPrefs, ...rest } = next;
       return rest;
     });
   };
 
   const handleLocationBarberAssignmentOverride = (checked: boolean) => {
     if (checked) {
-      setLocationConfig((prev) =>
-        updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], brandBarberAssignmentEnabled),
-      );
+      setLocationConfig((prev) => {
+        const draft = readLocalOverrideDraft(prev, 'barberAssignment');
+        const nextValue = typeof draft === 'boolean' ? draft : brandBarberAssignmentEnabled;
+        let next = updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], nextValue);
+        next = withLocalOverrideDraft(next, 'barberAssignment', undefined);
+        return next;
+      });
       return;
     }
     setLocationConfig((prev) => {
-      const next: PlatformConfig = { ...prev };
+      const currentValue = prev?.features?.barberServiceAssignmentEnabled;
+      let next: PlatformConfig = withLocalOverrideDraft(
+        prev,
+        'barberAssignment',
+        typeof currentValue === 'boolean' ? currentValue : undefined,
+      );
       if (!next.features || typeof next.features !== 'object' || Array.isArray(next.features)) {
         return next;
       }
@@ -1542,20 +1711,47 @@ const PlatformBrands: React.FC = () => {
   const handleLocationFloatingActionsOverride = (checked: boolean) => {
     if (checked) {
       setLocationConfig((prev) => {
+        const draft = readLocalOverrideDraft(prev, 'floatingActions');
+        const draftConfig =
+          draft && typeof draft === 'object' && !Array.isArray(draft)
+            ? (draft as Record<string, unknown>)
+            : {};
+        const spotlightValue =
+          typeof draftConfig.adminSpotlightFloatingEnabled === 'boolean'
+            ? draftConfig.adminSpotlightFloatingEnabled
+            : brandSpotlightFloatingEnabled;
+        const assistantValue =
+          typeof draftConfig.adminAssistantFloatingEnabled === 'boolean'
+            ? draftConfig.adminAssistantFloatingEnabled
+            : brandAssistantFloatingEnabled;
         let next = updateNestedValue(
           prev,
           ['branding', 'adminSpotlightFloatingEnabled'],
-          brandSpotlightFloatingEnabled,
+          spotlightValue,
         );
         next = updateNestedValue(
           next,
           ['branding', 'adminAssistantFloatingEnabled'],
-          brandAssistantFloatingEnabled,
+          assistantValue,
         );
+        next = withLocalOverrideDraft(next, 'floatingActions', undefined);
         return next;
       });
       return;
     }
+    setLocationConfig((prev) => {
+      const snapshot = {
+        adminSpotlightFloatingEnabled:
+          typeof prev?.branding?.adminSpotlightFloatingEnabled === 'boolean'
+            ? prev.branding.adminSpotlightFloatingEnabled
+            : undefined,
+        adminAssistantFloatingEnabled:
+          typeof prev?.branding?.adminAssistantFloatingEnabled === 'boolean'
+            ? prev.branding.adminAssistantFloatingEnabled
+            : undefined,
+      };
+      return withLocalOverrideDraft(prev, 'floatingActions', snapshot);
+    });
     clearLocationBrandingFields([
       'adminSpotlightFloatingEnabled',
       'adminAssistantFloatingEnabled',
@@ -1857,17 +2053,32 @@ const PlatformBrands: React.FC = () => {
 
   const handleLocationLandingOverride = (checked: boolean) => {
     if (checked) {
-      const baseLanding =
-        brandConfig?.landing && typeof brandConfig.landing === 'object' && !Array.isArray(brandConfig.landing)
-          ? brandConfig.landing
-          : {};
-      const nextLanding = { ...baseLanding, ...buildLandingConfigValue(brandLandingItems) };
-      setLocationConfig((prev) => updateNestedValue(prev, ['landing'], nextLanding));
+      setLocationConfig((prev) => {
+        const draft = readLocalOverrideDraft(prev, 'landing');
+        const draftLanding =
+          draft && typeof draft === 'object' && !Array.isArray(draft)
+            ? (draft as Record<string, unknown>)
+            : null;
+        const baseLanding =
+          draftLanding ||
+          (brandConfig?.landing && typeof brandConfig.landing === 'object' && !Array.isArray(brandConfig.landing)
+            ? brandConfig.landing
+            : {});
+        const nextLanding = draftLanding || { ...baseLanding, ...buildLandingConfigValue(brandLandingItems) };
+        let next = updateNestedValue(prev, ['landing'], nextLanding);
+        next = withLocalOverrideDraft(next, 'landing', undefined);
+        return next;
+      });
       return;
     }
     setLocationConfig((prev) => {
-      if (!prev.landing) return prev;
-      const { landing, ...rest } = prev;
+      const landingValue =
+        prev.landing && typeof prev.landing === 'object' && !Array.isArray(prev.landing)
+          ? prev.landing
+          : undefined;
+      let next = withLocalOverrideDraft(prev, 'landing', landingValue);
+      if (!next.landing) return next;
+      const { landing, ...rest } = next;
       return rest;
     });
   };
@@ -1875,8 +2086,13 @@ const PlatformBrands: React.FC = () => {
   const handleLocationLandingImagesOverride = (checked: boolean) => {
     if (checked) {
       const baseBranding = brandConfig?.branding || {};
-      setLocationConfig((prev) =>
-        updateNestedValue(prev, ['branding'], {
+      setLocationConfig((prev) => {
+        const draft = readLocalOverrideDraft(prev, 'landingBranding');
+        const draftBranding =
+          draft && typeof draft === 'object' && !Array.isArray(draft)
+            ? (draft as Record<string, unknown>)
+            : null;
+        const nextBranding = draftBranding || {
           heroBackgroundUrl: baseBranding.heroBackgroundUrl || '',
           heroBackgroundFileId: baseBranding.heroBackgroundFileId || '',
           heroImageUrl: baseBranding.heroImageUrl || '',
@@ -1899,14 +2115,39 @@ const PlatformBrands: React.FC = () => {
           heroNoImageAlign: baseBranding.heroNoImageAlign || 'center',
           signImageUrl: baseBranding.signImageUrl || '',
           signImageFileId: baseBranding.signImageFileId || '',
-        }),
-      );
+        };
+        let next = updateNestedValue(prev, ['branding'], {
+          ...(prev.branding && typeof prev.branding === 'object' && !Array.isArray(prev.branding)
+            ? prev.branding
+            : {}),
+          ...nextBranding,
+        });
+        next = withLocalOverrideDraft(next, 'landingBranding', undefined);
+        return next;
+      });
       return;
     }
     setLocationConfig((prev) => {
-      if (!prev.branding) return prev;
-      const { branding, ...rest } = prev;
-      return rest;
+      const landingBrandingDraft = pickBrandingFields(prev.branding, LANDING_BRANDING_OVERRIDE_FIELDS);
+      let next = withLocalOverrideDraft(
+        prev,
+        'landingBranding',
+        Object.keys(landingBrandingDraft).length ? landingBrandingDraft : undefined,
+      );
+      const branding = next.branding;
+      if (!branding || typeof branding !== 'object' || Array.isArray(branding)) {
+        return next;
+      }
+      const cleanedBranding = { ...(branding as Record<string, unknown>) };
+      LANDING_BRANDING_OVERRIDE_FIELDS.forEach((field) => {
+        delete cleanedBranding[field];
+      });
+      if (Object.keys(cleanedBranding).length === 0) {
+        delete next.branding;
+      } else {
+        next.branding = cleanedBranding as PlatformBranding;
+      }
+      return next;
     });
   };
 
@@ -3574,15 +3815,15 @@ const PlatformBrands: React.FC = () => {
                           </div>
                           <div className="space-y-3 md:col-span-2">
                             <p className="text-xs uppercase tracking-widest text-muted-foreground">Logo del cliente</p>
-                            <div className="grid gap-4">
-                              {renderBrandAssetInput(
-                                brandThemeMode === 'light' ? 'logoLight' : 'logoDark',
-                                '',
-                                {
-                                  label: `Logo (${brandThemeMode === 'light' ? 'modo claro' : 'modo oscuro'})`,
-                                  description: 'Cambia el modo visual para subir el logo del otro tema.',
-                                },
-                              )}
+                            <div className="grid gap-4 lg:grid-cols-2">
+                              {renderBrandAssetInput('logoLight', '', {
+                                label: 'Logo modo claro',
+                                description: 'Se muestra cuando la marca está en modo claro.',
+                              })}
+                              {renderBrandAssetInput('logoDark', '', {
+                                label: 'Logo modo oscuro',
+                                description: 'Se muestra cuando la marca está en modo oscuro.',
+                              })}
                             </div>
                           </div>
                         </div>

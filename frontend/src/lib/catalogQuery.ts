@@ -13,6 +13,8 @@ const hasFreshCatalogData = (queryKey: readonly unknown[], staleTime: number) =>
   if (staleTime <= 0) return false;
   const state = queryClient.getQueryState(queryKey);
   if (!state || state.data === undefined) return false;
+  if (state.fetchStatus === "fetching") return false;
+  if (state.isInvalidated) return false;
   return Date.now() - state.dataUpdatedAt < staleTime;
 };
 

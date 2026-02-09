@@ -378,6 +378,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () => barbers.filter((barber) => barber.isActive !== false),
     [barbers],
   );
+  const hasMultipleBarbers = availableBarbers.length > 1;
+  const shouldSelectBarberManually = hasMultipleBarbers && selectBarber;
   const singleAvailableBarber = useMemo(
     () => (availableBarbers.length === 1 ? availableBarbers[0] : null),
     [availableBarbers],
@@ -397,14 +399,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const slotsQueryEnabled =
     Boolean(booking.serviceId) &&
     currentStep === 1 &&
-    (!selectBarber || Boolean(booking.barberId));
+    (!shouldSelectBarberManually || Boolean(booking.barberId));
   const slotsQuery = useQuery<BookingSlotsData>({
     queryKey: queryKeys.bookingSlots(
       currentLocationId,
       booking.serviceId,
       selectedDateKey,
-      selectBarber ? 'single' : 'auto',
-      selectBarber ? booking.barberId : null,
+      shouldSelectBarberManually ? 'single' : 'auto',
+      shouldSelectBarberManually ? booking.barberId : null,
       availableBarberIdsKey,
     ),
     enabled: slotsQueryEnabled,
@@ -414,7 +416,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         return { availableSlots: [], slotsByBarber: {} };
       }
       try {
-        if (selectBarber) {
+        if (shouldSelectBarberManually) {
           if (!booking.barberId) {
             return { availableSlots: [], slotsByBarber: {} };
           }
@@ -460,7 +462,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     ),
     enabled:
       currentStep === 1 &&
-      !selectBarber &&
+      !shouldSelectBarberManually &&
       Boolean(booking.serviceId) &&
       availableBarberIds.length > 0,
     staleTime: 30_000,
@@ -505,21 +507,21 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     });
     return { morningSlots: morning, afternoonSlots: afternoon };
   }, [availableSlots]);
-  const canPickSlots = selectBarber ? !!booking.barberId : true;
+  const canPickSlots = shouldSelectBarberManually ? !!booking.barberId : true;
   const assignedBarber = useMemo(
     () => barbers.find((barber) => barber.id === booking.barberId) || null,
     [barbers, booking.barberId],
   );
 
   useEffect(() => {
-    if (!selectBarber || !singleAvailableBarber) return;
+    if (!shouldSelectBarberManually || !singleAvailableBarber) return;
     if (booking.barberId === singleAvailableBarber.id) return;
     setBooking((prev) => ({
       ...prev,
       barberId: singleAvailableBarber.id,
       dateTime: null,
     }));
-  }, [booking.barberId, selectBarber, singleAvailableBarber]);
+  }, [booking.barberId, shouldSelectBarberManually, singleAvailableBarber]);
 
   const handleSelectService = (serviceId: string) => {
     setBooking({
@@ -946,7 +948,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     const [hours, minutes] = slot.split(':');
     const dateTime = new Date(selectedDate);
     dateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    if (!selectBarber) {
+    if (!shouldSelectBarberManually) {
       const eligibleBarbers = availableBarbers.filter((barber) =>
         slotsByBarber[barber.id]?.includes(slot),
       );
@@ -968,9 +970,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         barberId: chosen.id,
         dateTime: dateTime.toISOString(),
       }));
+      setCurrentStep(2);
       return;
     }
     setBooking((prev) => ({ ...prev, dateTime: dateTime.toISOString() }));
+    setCurrentStep(2);
   };
 
   // Success Animation
@@ -1134,29 +1138,31 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-lg sm:text-xl font-semibold text-foreground mb-0.5 sm:mb-1">
-                    {selectBarber
+                    {shouldSelectBarberManually
                       ? `Elige tu ${copy.staff.singularLower} y horario`
                       : 'Elige tu horario'}
                   </h2>
                   <p className="hidden sm:block text-sm text-muted-foreground">
-                    {selectBarber
+                    {shouldSelectBarberManually
                       ? 'Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.'
                       : `Selecciona el día y la hora; asignaremos automáticamente a ${copy.staff.indefiniteSingular} disponible.`}
                   </p>
                 </div>
-                <div className="inline-flex w-fit items-center gap-2 sm:gap-3 rounded-full border border-border bg-secondary/40 px-3 sm:px-4 py-1.5 sm:py-2">
-                  <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">
-                    Elegir {copy.staff.singularLower}
-                  </span>
-                  <Switch
-                    checked={selectBarber}
-                    onCheckedChange={handleBarberSelectionToggle}
-                    className="h-4 w-7 sm:h-6 sm:w-11 [&>span]:h-3 [&>span]:w-3 sm:[&>span]:h-5 sm:[&>span]:w-5 data-[state=checked]:[&>span]:translate-x-3 sm:data-[state=checked]:[&>span]:translate-x-5"
-                  />
-                </div>
+                {hasMultipleBarbers && (
+                  <div className="inline-flex w-fit items-center gap-2 sm:gap-3 rounded-full border border-border bg-secondary/40 px-3 sm:px-4 py-1.5 sm:py-2">
+                    <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">
+                      Elegir {copy.staff.singularLower}
+                    </span>
+                    <Switch
+                      checked={selectBarber}
+                      onCheckedChange={handleBarberSelectionToggle}
+                      className="h-4 w-7 sm:h-6 sm:w-11 [&>span]:h-3 [&>span]:w-3 sm:[&>span]:h-5 sm:[&>span]:w-5 data-[state=checked]:[&>span]:translate-x-3 sm:data-[state=checked]:[&>span]:translate-x-5"
+                    />
+                  </div>
+                )}
               </div>
 
-              {!selectBarber && (
+              {!shouldSelectBarberManually && (
                 <div className="rounded-2xl border border-border/60 bg-muted/30 p-3 sm:p-4 text-xs sm:text-sm text-muted-foreground">
                   <p>
                     {copy.staff.singular} asignado: {!assignedBarber?.name ? 'A determinar' : ''}
@@ -1183,8 +1189,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 </div>
               )}
 
-              <div className={cn('grid gap-3 sm:gap-6', selectBarber && 'lg:grid-cols-[280px,1fr]')}>
-                {selectBarber && (
+              <div className={cn('grid gap-3 sm:gap-6', shouldSelectBarberManually && 'lg:grid-cols-[280px,1fr]')}>
+                {shouldSelectBarberManually && (
                   <div className="space-y-2.5 sm:space-y-4">
                     {singleAvailableBarber ? (
                       <div className="inline-flex w-fit max-w-full rounded-xl border border-primary/30 bg-primary/10 p-2 sm:p-3">
@@ -1316,7 +1322,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                   setBooking((prev) => ({
                                     ...prev,
                                     dateTime: null,
-                                    barberId: selectBarber ? prev.barberId : null,
+                                    barberId: shouldSelectBarberManually ? prev.barberId : null,
                                   }));
                                 }}
                                 className={cn(

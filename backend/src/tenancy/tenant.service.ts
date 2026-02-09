@@ -57,19 +57,11 @@ export class TenantService {
   }): Promise<TenantResolution> {
     const hostname = normalizeHost(params.host);
     const subdomain = params.subdomainOverride?.trim().toLowerCase() || resolveSubdomain(hostname);
+    const isPlatform = Boolean(subdomain && subdomain === PLATFORM_SUBDOMAIN);
     const requireSubdomain = TENANT_REQUIRE_SUBDOMAIN;
 
-    if (subdomain && subdomain === PLATFORM_SUBDOMAIN) {
-      return {
-        brandId: DEFAULT_BRAND_ID,
-        localId: DEFAULT_LOCAL_ID,
-        subdomain,
-        isPlatform: true,
-      };
-    }
-
     let brand =
-      (subdomain
+      (!isPlatform && subdomain
         ? await this.prisma.brand.findFirst({
             where: { subdomain },
             select: { id: true, defaultLocationId: true },
@@ -82,7 +74,7 @@ export class TenantService {
           })
         : null);
 
-    if (requireSubdomain) {
+    if (!isPlatform && requireSubdomain) {
       if (subdomain && !brand) {
         throw new TenantResolutionError('TENANT_NOT_FOUND', 404);
       }
@@ -103,12 +95,16 @@ export class TenantService {
         }));
     }
 
-    const brandId = brand?.id || DEFAULT_BRAND_ID;
+    if (!brand) {
+      throw new TenantResolutionError('TENANT_NOT_BOOTSTRAPPED', 500);
+    }
+
+    const brandId = brand.id;
     const localOverride = params.localIdOverride?.trim() || null;
 
     const preferredLocalId =
       localOverride ||
-      brand?.defaultLocationId ||
+      brand.defaultLocationId ||
       DEFAULT_LOCAL_ID;
 
     const location =
@@ -122,12 +118,22 @@ export class TenantService {
         where: { brandId, isActive: true },
         orderBy: { createdAt: 'asc' },
         select: { id: true },
+      })) ||
+      (await this.prisma.location.findFirst({
+        where: { brandId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
       }));
+
+    if (!location) {
+      throw new TenantResolutionError('TENANT_LOCATION_NOT_FOUND', 500);
+    }
 
     return {
       brandId,
-      localId: location?.id || DEFAULT_LOCAL_ID,
+      localId: location.id,
       subdomain,
+      isPlatform,
     };
   }
 }

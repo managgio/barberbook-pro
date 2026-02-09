@@ -5,10 +5,16 @@ import { MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBusinessCopy } from '@/lib/businessCopy';
 
-const LocationSwitcher: React.FC<{ compact?: boolean; className?: string; showSingleLocationLabel?: boolean }> = ({
+const LocationSwitcher: React.FC<{
+  compact?: boolean;
+  className?: string;
+  showSingleLocationLabel?: boolean;
+  fullWidth?: boolean;
+}> = ({
   compact,
   className,
   showSingleLocationLabel = false,
+  fullWidth = false,
 }) => {
   const { locations, currentLocationId, selectLocation } = useTenant();
   const copy = useBusinessCopy();
@@ -23,8 +29,9 @@ const LocationSwitcher: React.FC<{ compact?: boolean; className?: string; showSi
       <div
         className={cn(
           compact
-            ? 'h-7 sm:h-8 !w-auto text-[11px] sm:text-sm border-border/60 bg-background/55 backdrop-blur-md max-w-[56vw] sm:max-w-[320px]'
-            : 'h-8 sm:h-9 !w-auto text-xs sm:text-sm max-w-[56vw] sm:max-w-[320px]',
+            ? 'h-7 sm:h-8 text-[11px] sm:text-sm border-border/60 bg-background/55 backdrop-blur-md'
+            : 'h-8 sm:h-9 text-xs sm:text-sm',
+          fullWidth ? 'w-full max-w-none' : '!w-auto max-w-[56vw] sm:max-w-[320px]',
           'inline-flex items-center rounded-md border border-input bg-background px-2.5 sm:px-3 text-foreground whitespace-nowrap',
           className,
         )}
@@ -45,8 +52,9 @@ const LocationSwitcher: React.FC<{ compact?: boolean; className?: string; showSi
       <SelectTrigger
         className={cn(
           compact
-            ? 'h-7 sm:h-8 !w-auto text-[11px] sm:text-sm whitespace-nowrap border-border/60 bg-background/55 backdrop-blur-md max-w-[56vw] sm:max-w-[320px]'
-            : 'h-8 sm:h-9 !w-auto text-xs sm:text-sm max-w-[56vw] sm:max-w-[320px]',
+            ? 'h-7 sm:h-8 text-[11px] sm:text-sm whitespace-nowrap border-border/60 bg-background/55 backdrop-blur-md'
+            : 'h-8 sm:h-9 text-xs sm:text-sm',
+          fullWidth ? 'w-full max-w-none' : '!w-auto max-w-[56vw] sm:max-w-[320px]',
           className,
         )}
       >

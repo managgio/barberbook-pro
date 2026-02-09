@@ -21,8 +21,10 @@ const Navbar: React.FC = () => {
   const isGuestBookRoute = location.pathname === '/book' || location.pathname.startsWith('/book/');
   const isHoursLocationRoute =
     location.pathname === '/hours-location' || location.pathname.startsWith('/hours-location/');
-  const hideLocalNameOnMobile = isLanding || isClientApp || isGuestBookRoute || isHoursLocationRoute;
-  const hideLocationSwitcherOnMobile = isGuestBookRoute || isHoursLocationRoute;
+  const isLegalRoute = location.pathname.startsWith('/legal/');
+  const hideLocalNameOnMobile =
+    isLanding || isClientApp || isGuestBookRoute || isHoursLocationRoute || isLegalRoute;
+  const hideLocationSwitcherOnMobile = isGuestBookRoute || isHoursLocationRoute || isLegalRoute;
   const hasMultipleLocations = locations.length > 1;
   const showLocationSwitcherOnMobile = hasMultipleLocations && !hideLocationSwitcherOnMobile;
   const showUserNameOnMobile = !showLocationSwitcherOnMobile;

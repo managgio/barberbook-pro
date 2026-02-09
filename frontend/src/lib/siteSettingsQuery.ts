@@ -11,6 +11,8 @@ export const fetchSiteSettingsCached = async (localId = getStoredLocalId()) => {
   const state = queryClient.getQueryState(queryKey);
   const hasFreshData =
     Boolean(state?.data !== undefined) &&
+    state?.fetchStatus !== "fetching" &&
+    !state?.isInvalidated &&
     Date.now() - (state?.dataUpdatedAt ?? 0) < SITE_SETTINGS_STALE_TIME;
   if (hasFreshData) {
     const cached = queryClient.getQueryData<SiteSettings>(queryKey);

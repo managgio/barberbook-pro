@@ -26,7 +26,8 @@ const AuthPage: React.FC = () => {
   const redirectTarget =
     rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : null;
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -102,7 +103,7 @@ const AuthPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setIsSubmittingForm(true);
 
     try {
       let result;
@@ -131,12 +132,12 @@ const AuthPage: React.FC = () => {
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmittingForm(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    setIsLoading(true);
+    setIsGoogleLoading(true);
     try {
       const result = await loginWithGoogle();
       if (result.success) {
@@ -158,7 +159,7 @@ const AuthPage: React.FC = () => {
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsGoogleLoading(false);
     }
   };
 
@@ -355,8 +356,9 @@ const AuthPage: React.FC = () => {
             variant="outline"
             className="w-full mb-5 sm:mb-6 h-10 sm:h-12 text-xs sm:text-sm"
             onClick={handleGoogleLogin}
-            disabled={isLoading}
+            disabled={isSubmittingForm || isGoogleLoading}
           >
+            {isGoogleLoading && <Loader2 className="w-4 h-4 mr-1.5 sm:mr-2 animate-spin" />}
             <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
@@ -441,8 +443,12 @@ const AuthPage: React.FC = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-10 sm:h-12 text-xs sm:text-sm" disabled={isLoading}>
-              {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button
+              type="submit"
+              className="w-full h-10 sm:h-12 text-xs sm:text-sm"
+              disabled={isSubmittingForm || isGoogleLoading}
+            >
+              {isSubmittingForm && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isSignup ? 'Crear cuenta' : 'Iniciar sesión'}
             </Button>
           </form>

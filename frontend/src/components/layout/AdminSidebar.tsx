@@ -96,7 +96,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
       </div>
       {!collapsed && (
         <div className="px-4 pt-3">
-          <LocationSwitcher compact className="w-full" />
+          <LocationSwitcher compact fullWidth className="w-full" />
         </div>
       )}
 

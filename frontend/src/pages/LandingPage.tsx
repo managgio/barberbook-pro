@@ -630,7 +630,7 @@ const LandingPage: React.FC = () => {
             <p className="text-xs sm:text-xl text-muted-foreground mb-4 sm:mb-10">
               Reserva tu cita en menos de un minuto y vive la experiencia {settings.branding.name}.
             </p>
-          <Button variant="hero" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
+          <Button variant="hero" size="xl" className="h-7 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
             <Link to={isAuthenticated ? '/app/book' : '/auth?tab=signup'}>
               <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
               Reservar mi cita
@@ -687,7 +687,7 @@ const LandingPage: React.FC = () => {
               
               <div className={`flex flex-col sm:flex-row gap-2 sm:gap-4 ${heroActionsClass}`}>
                 {isAuthenticated ? (
-                  <Button variant="hero" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
+                  <Button variant="hero" size="xl" className="h-7 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                     <Link to={user?.role === 'admin' ? '/admin' : '/app/book'}>
                       <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                       {user?.role === 'admin' ? 'Panel Admin' : 'Reservar ahora'}
@@ -695,7 +695,7 @@ const LandingPage: React.FC = () => {
                   </Button>
                 ) : (
                   <>
-                    <Button variant="hero" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
+                    <Button variant="hero" size="xl" className="h-7 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                       <Link to="/auth?tab=signup">
                         <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                         Reservar ahora
@@ -716,7 +716,7 @@ const LandingPage: React.FC = () => {
                 <div className="relative w-full max-w-xl mx-auto">
                   <div className="absolute -inset-3 sm:-inset-4 bg-primary/20 blur-3xl rounded-[24px] sm:rounded-[36px]" />
                   <div className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[36px] border border-border/60 shadow-2xl">
-                    <div className="aspect-[4/3] w-full">
+                    <div className="aspect-[16/10] sm:aspect-[4/3] w-full">
                       <img
                         src={heroImageUrl}
                         alt={`Experiencia premium en ${settings.branding.name}`}
