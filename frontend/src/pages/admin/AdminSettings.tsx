@@ -986,25 +986,31 @@ const AdminSettings: React.FC = () => {
             </div>
           </div>
           <div className="grid md:grid-cols-4 gap-3">
-            {statsPreviewItems
-              .filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false)
-              .map((stat) => (
+            {statsPreviewItems.map((stat) => {
+              const isVisible = statsVisibility[stat.key as keyof typeof statsVisibility] !== false;
+
+              return (
                 <div
                   key={stat.label}
-                  className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 flex items-center gap-3"
+                  className={`rounded-xl border border-border/80 px-3 py-3 flex items-center gap-3 transition ${
+                    isVisible ? 'bg-muted/40' : 'bg-muted/20 opacity-70'
+                  }`}
                 >
                   <stat.icon className="w-4 h-4 text-primary" />
                   <div>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-muted-foreground">{stat.label}</p>
+                      {!isVisible && (
+                        <span className="rounded-md border border-border/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Oculta en landing
+                        </span>
+                      )}
+                    </div>
                     <p className="text-lg font-semibold text-foreground leading-tight">{stat.value}</p>
                   </div>
                 </div>
-              ))}
-            {statsPreviewItems.filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false).length === 0 && (
-              <div className="rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm text-muted-foreground md:col-span-4">
-                No hay estadísticas visibles en la landing.
-              </div>
-            )}
+              );
+            })}
           </div>
         </CardContent>
       </Card>

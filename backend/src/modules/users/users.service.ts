@@ -10,7 +10,7 @@ import { PLATFORM_ADMIN_EMAILS } from '../../tenancy/tenant.constants';
 import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
 
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
+const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'c.lopemonre@gmail.com').toLowerCase();
 type UserWithAccessRelations = User & {
   brandMemberships: Array<{ isBlocked: boolean }>;
   localStaffRoles: Array<{ adminRoleId: string | null }>;
@@ -97,6 +97,16 @@ export class UsersService {
 
   private async ensureBrandMembership(userId: string) {
     const brandId = getCurrentBrandId();
+    const brandExists = await this.prisma.brand.findUnique({
+      where: { id: brandId },
+      select: { id: true },
+    });
+    if (!brandExists) {
+      this.logger.warn(
+        `Skipping brand membership sync for user ${userId}: brand ${brandId} does not exist.`,
+      );
+      return;
+    }
     await this.prisma.brandUser.upsert({
       where: {
         brandId_userId: {

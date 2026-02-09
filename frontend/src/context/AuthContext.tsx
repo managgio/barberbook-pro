@@ -5,10 +5,14 @@ import {
   getFirebaseAuth,
   initFirebase,
   onFirebaseAuthStateChanged,
+  reauthenticateFirebaseWithGooglePopup,
+  reauthenticateFirebaseWithPassword,
+  sendFirebasePasswordResetEmail,
   signInFirebaseWithEmailAndPassword,
   signInFirebaseWithGooglePopup,
   signOutFirebase,
   updateFirebaseUserProfile,
+  verifyFirebaseBeforeUpdateEmail,
   FirebaseUser,
 } from '@/lib/firebaseConfig';
 import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api/users';
@@ -21,6 +25,11 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  requestEmailChange: (
+    newEmail: string,
+    currentPassword?: string,
+  ) => Promise<{ success: boolean; error?: string; requiresPassword?: boolean }>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
 }
@@ -124,6 +133,14 @@ const getFriendlyError = (error: unknown) => {
       return 'La ventana de inicio de sesión se cerró antes de completar el proceso.';
     case 'auth/email-already-in-use':
       return 'Ya existe una cuenta con ese email.';
+    case 'auth/invalid-email':
+      return 'Introduce un email válido.';
+    case 'auth/requires-recent-login':
+      return 'Por seguridad, vuelve a iniciar sesión y repite la acción.';
+    case 'auth/invalid-continue-uri':
+    case 'auth/missing-continue-uri':
+    case 'auth/unauthorized-continue-uri':
+      return 'El dominio de recuperación no está autorizado en Firebase Auth.';
     case 'auth/too-many-requests':
       return 'Demasiados intentos. Inténtalo más tarde.';
     default:
@@ -132,6 +149,33 @@ const getFriendlyError = (error: unknown) => {
       }
       return 'No se pudo completar la autenticación. Inténtalo de nuevo.';
   }
+};
+
+const getProviderIds = (firebaseUser: FirebaseUser | null) =>
+  new Set((firebaseUser?.providerData || []).map((item) => item.providerId).filter(Boolean));
+
+const getErrorCode = (error: unknown) =>
+  (typeof error === 'object' && error !== null && 'code' in error
+    ? (error as { code?: string }).code || ''
+    : '');
+
+const isContinueUrlError = (code: string) =>
+  code === 'auth/invalid-continue-uri' ||
+  code === 'auth/missing-continue-uri' ||
+  code === 'auth/unauthorized-continue-uri';
+
+const buildActionCodeSettings = (path: string) => {
+  if (typeof window === 'undefined') return undefined;
+  const host = window.location.hostname.toLowerCase();
+  const isLocalLike =
+    host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+  const baseOrigin = isLocalLike
+    ? `http://localhost:${window.location.port || '8080'}`
+    : window.location.origin;
+  return {
+    url: `${baseOrigin}${path}`,
+    handleCodeInApp: false,
+  };
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -303,6 +347,134 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [authenticateAndSync, ensureFirebaseReady]);
 
+  const forgotPassword = useCallback(
+    async (email: string): Promise<{ success: boolean; error?: string }> => {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail) {
+        return { success: false, error: 'Introduce un email válido.' };
+      }
+      try {
+        await ensureFirebaseReady();
+        try {
+          await sendFirebasePasswordResetEmail(
+            normalizedEmail,
+            buildActionCodeSettings('/auth?tab=login'),
+          );
+        } catch (error) {
+          const code = getErrorCode(error);
+          if (isContinueUrlError(code)) {
+            // Fallback to Firebase default handler when local/custom domains are not authorized.
+            await sendFirebasePasswordResetEmail(normalizedEmail);
+          } else {
+            throw error;
+          }
+        }
+        return { success: true };
+      } catch (error) {
+        const code = getErrorCode(error);
+        if (code === 'auth/user-not-found') {
+          // Avoid user enumeration leaks.
+          return { success: true };
+        }
+        return { success: false, error: getFriendlyError(error) };
+      }
+    },
+    [ensureFirebaseReady],
+  );
+
+  const requestEmailChange = useCallback(
+    async (
+      newEmail: string,
+      currentPassword?: string,
+    ): Promise<{ success: boolean; error?: string; requiresPassword?: boolean }> => {
+      if (!user) {
+        return { success: false, error: 'Debes iniciar sesión para cambiar el correo.' };
+      }
+
+      const normalizedEmail = newEmail.trim().toLowerCase();
+      if (!normalizedEmail) {
+        return { success: false, error: 'Introduce un email válido.' };
+      }
+
+      try {
+        const auth = await ensureFirebaseReady();
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          return { success: false, error: 'Tu sesión ha caducado. Vuelve a iniciar sesión.' };
+        }
+        if (user.firebaseUid && currentUser.uid !== user.firebaseUid) {
+          return { success: false, error: 'La sesión actual no coincide con tu perfil.' };
+        }
+
+        const currentEmail = (currentUser.email || user.email || '').toLowerCase();
+        if (normalizedEmail === currentEmail) {
+          return { success: false, error: 'Ese correo ya es tu correo actual.' };
+        }
+
+        const providerIds = getProviderIds(currentUser);
+        const hasPasswordProvider = providerIds.has('password');
+        const hasGoogleProvider = providerIds.has('google.com');
+
+        if (hasPasswordProvider && currentPassword?.trim()) {
+          await reauthenticateFirebaseWithPassword(
+            currentUser,
+            currentUser.email || user.email,
+            currentPassword.trim(),
+          );
+        }
+
+        const runVerifyBeforeUpdateEmail = async () => {
+          try {
+            await verifyFirebaseBeforeUpdateEmail(
+              currentUser,
+              normalizedEmail,
+              buildActionCodeSettings('/app/profile'),
+            );
+          } catch (error) {
+            const code = getErrorCode(error);
+            if (isContinueUrlError(code)) {
+              await verifyFirebaseBeforeUpdateEmail(currentUser, normalizedEmail);
+              return;
+            }
+            throw error;
+          }
+        };
+
+        try {
+          await runVerifyBeforeUpdateEmail();
+          return { success: true };
+        } catch (error) {
+          const code = getErrorCode(error);
+
+          if (code === 'auth/requires-recent-login') {
+            if (hasPasswordProvider && !currentPassword?.trim()) {
+              return {
+                success: false,
+                requiresPassword: true,
+                error: 'Por seguridad, confirma tu contraseña actual para cambiar el correo.',
+              };
+            }
+
+            if (hasGoogleProvider && !hasPasswordProvider) {
+              try {
+                await reauthenticateFirebaseWithGooglePopup(currentUser);
+                await runVerifyBeforeUpdateEmail();
+                return { success: true };
+              } catch (reauthError) {
+                return { success: false, error: getFriendlyError(reauthError) };
+              }
+            }
+          }
+
+          return { success: false, error: getFriendlyError(error) };
+        }
+      } catch (error) {
+        return { success: false, error: getFriendlyError(error) };
+      }
+    },
+    [ensureFirebaseReady, user],
+  );
+
   const logout = useCallback(async () => {
     await ensureFirebaseReady();
     await signOutFirebase();
@@ -318,7 +490,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       notificationSms?: boolean;
     } = {
       name: data.name,
-      email: data.email,
       phone: data.phone,
     };
 
@@ -347,10 +518,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       login,
       loginWithGoogle,
       signup,
+      forgotPassword,
+      requestEmailChange,
       logout,
       updateProfile,
     }),
-    [user, isLoading, login, loginWithGoogle, signup, logout, updateProfile],
+    [
+      user,
+      isLoading,
+      login,
+      loginWithGoogle,
+      signup,
+      forgotPassword,
+      requestEmailChange,
+      logout,
+      updateProfile,
+    ],
   );
 
   return (

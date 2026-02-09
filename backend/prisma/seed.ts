@@ -1,10 +1,12 @@
+/// <reference types="node" />
+
 import { PrismaClient } from '@prisma/client';
 import { DEFAULT_SHOP_SCHEDULE } from '../src/modules/schedules/schedule.types';
 import { DEFAULT_BRAND_ID, DEFAULT_LOCAL_ID, DEFAULT_BRAND_SUBDOMAIN, PLATFORM_ADMIN_EMAILS } from '../src/tenancy/tenant.constants';
 import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from '../src/tenancy/tenant-config.defaults';
 
 const prisma = new PrismaClient();
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@barberia.com').toLowerCase();
+const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'c.lopemonre@gmail.com').toLowerCase();
 
 const adminRoles = [
   {

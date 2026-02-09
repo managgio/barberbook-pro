@@ -148,6 +148,7 @@ const AdminDashboard: React.FC = () => {
   const isLoading = dashboardQuery.isLoading;
   const dashboardSummary = dashboardQuery.data ?? null;
   const barbers = dashboardSummary?.barbers ?? [];
+  const hasMultipleBarbers = barbers.length > 1;
   const stats = dashboardSummary?.stats;
   const todayAppointments = dashboardSummary?.todayAppointments ?? [];
   const revenueToday = stats?.revenueToday ?? 0;
@@ -201,6 +202,13 @@ const AdminDashboard: React.FC = () => {
     currency: 'EUR',
     maximumFractionDigits: 0,
   });
+
+  useEffect(() => {
+    if (hasMultipleBarbers) return;
+    if (selectedBarberId !== 'all') {
+      setSelectedBarberId('all');
+    }
+  }, [hasMultipleBarbers, selectedBarberId]);
 
   const buildQrFileName = () => {
     const base = settings.branding.shortName || settings.branding.name || 'negocio';
@@ -410,19 +418,21 @@ const AdminDashboard: React.FC = () => {
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
-            <SelectTrigger className="h-9 w-full sm:w-[210px]">
-              <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
-              {barbers.map((barber) => (
-                <SelectItem key={barber.id} value={barber.id}>
-                  {barber.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {hasMultipleBarbers && (
+            <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
+              <SelectTrigger className="h-9 w-full sm:w-[210px]">
+                <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
+                {barbers.map((barber) => (
+                  <SelectItem key={barber.id} value={barber.id}>
+                    {barber.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Dialog open={isQrDialogOpen} onOpenChange={setIsQrDialogOpen}>
             <TooltipProvider>
               <Tooltip>

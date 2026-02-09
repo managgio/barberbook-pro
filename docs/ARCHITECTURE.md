@@ -125,6 +125,7 @@ Contextos principales:
 
 Caching y sincronizacion frontend:
 - **React Query como cache de dominio**: catalogos y settings usan claves por dominio y por `localId` (evita mezcla de datos entre locales).
+- **Wrappers de cache compatibles con `refetch`/`invalidate`**: `catalogQuery`, `platformQuery`, `operationalQuery` y `siteSettingsQuery` no reutilizan cache cuando la query está `fetching` o `isInvalidated`, evitando listas congeladas tras altas/ediciones en admin/plataforma.
 - **Capa API modular por dominio**: los consumidores frontend importan desde `frontend/src/data/api/<dominio>.ts` (ej. `appointments`, `platform`, `payments`, `referrals`, `reviews`, `users`) sobre `frontend/src/data/api/request.ts`; `frontend/src/data/api.ts` queda solo como compatibilidad temporal para no romper migraciones.
 - **CatalogQuery** (`frontend/src/lib/catalogQuery.ts`): acceso cacheado para servicios, barberos, categorias y productos (publico/admin), con `staleTime` corto para UX fluida.
 - **OperationalQuery** (`frontend/src/lib/operationalQuery.ts`): cache compartida para consultas operativas acotadas (`appointments` por rango y `users` por `ids`) en vistas admin de alta frecuencia (dashboard, calendar, search, clients, quick appointment).
@@ -256,6 +257,8 @@ Flujos:
 
 2) **Login y sincronizacion**
    - Firebase Auth maneja login/registro.
+   - Recuperación de contraseña: implementada en `AuthContext` con `sendPasswordResetEmail` (respuesta genérica anti-enumeración), pero **oculta temporalmente en UI** (`/auth`) hasta migrar a experiencia 100% tenant-brand.
+   - Cambio de correo en cliente: implementado en `AuthContext` con `verifyBeforeUpdateEmail` + reautenticación, pero **oculto temporalmente en UI** (`/app/profile`) por la misma política de fricción mínima y consistencia de marca.
    - Inicializacion Firebase en frontend es lazy (dynamic import) cuando `AuthContext` entra en funcionamiento.
    - Front crea/actualiza User en backend.
    - El resultado de login en frontend se considera exitoso solo cuando termina la sincronizacion con backend (perfil/rol); si falla la sincronizacion se cancela la sesion local para evitar quedarse en `/auth` con toast de exito inconsistente.
@@ -382,7 +385,9 @@ Flujos:
    - `AdminReviews` carga configuración/métricas/feedback con `useQuery` (`adminReviewConfig`, `adminReviewMetrics`, `adminReviewFeedback`) y el cierre de feedback actualiza cache de la lista activa sin recargar toda la pantalla.
    - `AdminDashboard` usa un endpoint agregado (`GET /api/appointments/dashboard-summary?window=30[&barberId=...]`) que devuelve KPIs/series/listado diario ya procesados, evitando descargar citas + usuarios + servicios completos para construir gráficas en cliente.
    - `BookingWizard` inicializa catalogo/configuracion de reserva via `useQuery` (`booking-bootstrap`), resuelve disponibilidad de slots (single/batch) y carga semanal por barbero con claves dedicadas (`booking-slots`, `booking-weekly-load`), y mantiene fidelizacion/wallet/consentimiento bajo cache (`booking-loyalty-preview`, `rewards-wallet`, `privacy-consent-status`), evitando sobrecarga de `useEffect` manual.
+   - UX de `BookingWizard` (cliente/guest): al seleccionar un horario en el paso 2, el flujo avanza automaticamente al paso 3 (confirmación), eliminando el clic manual en `Siguiente` y reduciendo fricción en móvil.
    - UX móvil de `LandingPage`: secciones hero/presentación/servicios/productos/barberos/CTA/footer usan tipografía, spacing y densidad más compactos solo en `<sm` para reducir scroll y ruido visual sin alterar la composición desktop.
+   - UX móvil de rutas legales (`/legal/*`): el `Navbar` oculta nombre de local y selector de local para evitar ruido visual y mantener foco en contenido legal.
    - `AdminRoles` opera con `useQuery` (`admin-roles`, `admin-role-users`, `admin-role-search`) y deja de cargar todos los usuarios del local en cada cambio: carga administradores por paginacion (`GET /api/users?page=...&pageSize=...&role=admin`) y el buscador usa consulta paginada (`q`) bajo demanda con debounce.
    - UX de `AdminRoles`: el modal de crear/editar rol mantiene altura estable con scroll interno, y la matriz de permisos se limita a secciones realmente visibles en el sidebar del local (no muestra secciones ocultas por configuración de tenant).
    - `QuickAppointmentButton` deja de precargar clientes completos: el selector de cliente hace busqueda server-side paginada (`GET /api/users?page=1&pageSize=25&role=client&q=...`) con debounce.
@@ -406,6 +411,7 @@ Backend (`backend/.env`):
 - DB: `DATABASE_URL`.
 - Tenant defaults: `DEFAULT_BRAND_ID`, `DEFAULT_LOCAL_ID`, `DEFAULT_BRAND_SUBDOMAIN`, `TENANT_BASE_DOMAIN`, `PLATFORM_SUBDOMAIN`, `TENANT_REQUIRE_SUBDOMAIN`, `PLATFORM_ADMIN_EMAILS`.
 - Hardening tenant resolution: `TENANT_ALLOW_HEADER_OVERRIDES`, `TENANT_TRUST_X_FORWARDED_HOST`.
+- Resolucion de tenant fail-fast: si no existe `brand` o `location` valido para el contexto resuelto, la API corta con error de tenant controlado (`TENANT_NOT_BOOTSTRAPPED` / `TENANT_LOCATION_NOT_FOUND`) y evita propagar `brandId/localId` fantasma hasta Prisma.
 - Runtime guard tenant en Prisma: `TENANT_SCOPE_RUNTIME_GUARD` (por defecto activo; desactivar solo en escenarios controlados de mantenimiento).
 - CORS: `CORS_ALLOWED_ORIGINS` (lista separada por comas para allowlist explícita en despliegue).
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`, `IMAGEKIT_FOLDER`.
@@ -428,7 +434,8 @@ Frontend (`frontend/.env*`):
 ## Operativa y desarrollo
 - MySQL local con Docker: `docker compose up -d`.
 - Runtime recomendado: `nvm use` (lee `.nvmrc` = Node 22).
-- Backend: `npm install`, `npx prisma generate`, `npx prisma migrate dev`, `npm run prisma:seed`, `npm run start:dev`.
+- Backend: `npm install`, `npx prisma generate`, `npm run prisma:deploy`, `npm run prisma:seed`, `npm run start:dev`.
+- Nota Prisma local: `prisma:migrate` (`migrate dev`) requiere permisos para crear shadow DB; con el usuario local `prisma` se usa `prisma:deploy` para aplicar migraciones existentes sin elevar privilegios.
 - Frontend: `npm install`, `npm run dev`.
 - Scripts DB: `scripts/db_dump.sh` y `scripts/db_restore.sh`.
 
@@ -475,6 +482,9 @@ Frontend (`frontend/.env*`):
 - Endpoint operativo de salud por marca en plataforma: `GET /api/platform/brands/:id/health` devuelve estado agregado por local e integración (`email`, `twilio`, `stripe`, `imagekit`, `ai`) para detectar credenciales/fuentes degradadas antes de impacto en clientes.
 - Resolucion puntual de usuarios para listados paginados: `GET /api/users?ids=<id1,id2,...>` devuelve solo los usuarios solicitados (acotado al tenant actual).
 - Configuración plataforma (`PATCH /api/platform/brands/:id/config` y `PATCH /api/platform/locations/:id/config`) acepta `data` objeto, incluyendo `{}` para limpiar overrides sin romper el guardado de marca/local.
+- Guardado seguro en `Platform > Clientes > Config`: al guardar cambios de marca, el frontend solo persiste `locationConfig` si detecta diferencias reales frente al último estado cargado del local; esto evita sobrescrituras accidentales de overrides locales (`landing`, `sidebar`, `config`) al tocar ajustes de marca.
+- Overrides por local sin pérdida de datos: al desactivar toggles de personalización local (sidebar, notificaciones, landing, imágenes de landing, acciones flotantes y asignación por staff), el sistema vuelve a heredar marca pero conserva un borrador persistente por local (`__localOverrideDrafts`) para restaurar exactamente la configuración previa al reactivar el toggle.
+- Alta de locales en plataforma: el formulario sugiere `slug` automáticamente desde el subdominio de la marca (con sufijo incremental si ya existe dentro de la misma marca) para reducir errores manuales de creación.
 - Borrado de marca en plataforma (`DELETE /api/platform/brands/:id`) ejecuta limpieza transaccional de datos brand/local antes del `brand.delete` (roles, staff, citas, caja, catálogo, referral/reviews/loyalty, observabilidad y logs) para evitar fallos por FKs `brandId/localId`; la limpieza de assets en ImageKit se ejecuta después del commit DB.
 - El formato legacy de lista completa para `/users` y `/appointments` queda retirado del contrato backend.
 - `UsersService` normaliza emails sensibles (`trim + lowercase`) al resolver superadmin por marca (`superAdminEmail`) para evitar desalineaciones por espacios/case en primer login.

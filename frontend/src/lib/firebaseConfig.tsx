@@ -1,5 +1,11 @@
 import type { FirebaseApp } from 'firebase/app';
-import type { Auth, GithubAuthProvider, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth';
+import type {
+  ActionCodeSettings,
+  Auth,
+  GithubAuthProvider,
+  GoogleAuthProvider,
+  User as FirebaseUser,
+} from 'firebase/auth';
 import { FirebaseWebConfig } from '@/data/types';
 
 type FirebaseAppModule = typeof import('firebase/app');
@@ -73,6 +79,39 @@ export const signInFirebaseWithGooglePopup = async () => {
 export const createFirebaseUserWithEmailAndPassword = async (email: string, password: string) => {
   const authModule = await loadAuthModule();
   return authModule.createUserWithEmailAndPassword(requireAuth(), email, password);
+};
+
+export const sendFirebasePasswordResetEmail = async (
+  email: string,
+  actionCodeSettings?: ActionCodeSettings,
+) => {
+  const authModule = await loadAuthModule();
+  return authModule.sendPasswordResetEmail(requireAuth(), email, actionCodeSettings);
+};
+
+export const verifyFirebaseBeforeUpdateEmail = async (
+  user: FirebaseUser,
+  newEmail: string,
+  actionCodeSettings?: ActionCodeSettings,
+) => {
+  const authModule = await loadAuthModule();
+  return authModule.verifyBeforeUpdateEmail(user, newEmail, actionCodeSettings);
+};
+
+export const reauthenticateFirebaseWithPassword = async (
+  user: FirebaseUser,
+  email: string,
+  password: string,
+) => {
+  const authModule = await loadAuthModule();
+  const credential = authModule.EmailAuthProvider.credential(email, password);
+  return authModule.reauthenticateWithCredential(user, credential);
+};
+
+export const reauthenticateFirebaseWithGooglePopup = async (user: FirebaseUser) => {
+  const authModule = await loadAuthModule();
+  ensureProviders(authModule);
+  return authModule.reauthenticateWithPopup(user, googleProvider as GoogleAuthProvider);
 };
 
 export const signOutFirebase = async () => {

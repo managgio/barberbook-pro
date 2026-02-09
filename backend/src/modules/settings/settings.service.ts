@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { SiteSettings, normalizeSettings, cloneSettings } from './settings.types';
 
@@ -24,7 +24,7 @@ export class SettingsService {
   }
 
   private async ensureSettings(): Promise<SiteSettings> {
-    const localId = getCurrentLocalId();
+    const localId = await this.resolveScopedLocalId();
     const existing = await this.prisma.siteSettings.findUnique({ where: { localId } });
     if (!existing) {
       const shopSchedule = await this.prisma.shopSchedule.findUnique({ where: { localId } });
@@ -35,6 +35,34 @@ export class SettingsService {
       return defaults;
     }
     return normalizeSettings(existing.data as Partial<SiteSettings>);
+  }
+
+  private async resolveScopedLocalId(): Promise<string> {
+    const localId = getCurrentLocalId();
+    const brandId = getCurrentBrandId();
+
+    const scoped = await this.prisma.location.findFirst({
+      where: { id: localId, brandId },
+      select: { id: true },
+    });
+    if (scoped) return scoped.id;
+
+    const fallback =
+      (await this.prisma.location.findFirst({
+        where: { brandId, isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })) ||
+      (await this.prisma.location.findFirst({
+        where: { brandId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      }));
+
+    if (!fallback) {
+      throw new BadRequestException('No hay un local disponible para este tenant.');
+    }
+    return fallback.id;
   }
 
   async getSettings(): Promise<SiteSettings> {
@@ -56,7 +84,7 @@ export class SettingsService {
   }
 
   async updateSettings(settings: SiteSettings): Promise<SiteSettings> {
-    const localId = getCurrentLocalId();
+    const localId = await this.resolveScopedLocalId();
     const normalized = normalizeSettings(settings);
     const runtimeFlags = await this.resolveRuntimeFlags();
     normalized.products.enabled = runtimeFlags.productsEnabled;

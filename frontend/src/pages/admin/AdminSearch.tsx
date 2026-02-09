@@ -104,6 +104,7 @@ const AdminSearch: React.FC = () => {
   const appointments = appointmentsQuery.data?.items ?? EMPTY_APPOINTMENTS;
   const totalAppointments = appointmentsQuery.data?.total ?? 0;
   const barbers = barbersQuery.data ?? EMPTY_BARBERS;
+  const hasMultipleBarbers = barbers.length > 1;
   const services = servicesQuery.data ?? EMPTY_SERVICES;
   const clients = appointmentsQuery.data?.clients ?? [];
   const stripeEnabled = Boolean(
@@ -200,6 +201,13 @@ const AdminSearch: React.FC = () => {
       setSelectedBarberId('all');
     }
   }, [barbers, selectedBarberId]);
+
+  useEffect(() => {
+    if (hasMultipleBarbers) return;
+    if (selectedBarberId !== 'all') {
+      setSelectedBarberId('all');
+    }
+  }, [hasMultipleBarbers, selectedBarberId]);
 
   useEffect(() => {
     if (appointments.length === 0) return;
@@ -374,26 +382,28 @@ const AdminSearch: React.FC = () => {
       <Card variant="elevated">
         <CardContent className="p-6">
           <div className="grid gap-4 md:grid-cols-4">
-            <div className="space-y-2">
-              <Label>{copy.staff.singular}</Label>
-              <Select
-                value={selectedBarberId}
-                onValueChange={(value) => {
-                  setSelectedBarberId(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={`Seleccionar ${copy.staff.singularLower}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
-                  {barbers.map(barber => (
-                    <SelectItem key={barber.id} value={barber.id}>{barber.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {hasMultipleBarbers && (
+              <div className="space-y-2">
+                <Label>{copy.staff.singular}</Label>
+                <Select
+                  value={selectedBarberId}
+                  onValueChange={(value) => {
+                    setSelectedBarberId(value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={`Seleccionar ${copy.staff.singularLower}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
+                    {barbers.map(barber => (
+                      <SelectItem key={barber.id} value={barber.id}>{barber.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Fecha</Label>

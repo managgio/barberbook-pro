@@ -147,6 +147,7 @@ const AdminCalendar: React.FC = () => {
   const calendarData = appointmentsQuery.data ?? EMPTY_CALENDAR_RESPONSE;
   const appointments = calendarData.items ?? EMPTY_APPOINTMENTS;
   const barbers = barbersQuery.data ?? EMPTY_BARBERS;
+  const hasMultipleBarbers = barbers.length > 1;
   const services = servicesQuery.data ?? EMPTY_SERVICES;
   const clients = calendarData.clients ?? EMPTY_CLIENTS;
   const stripeEnabled = Boolean(
@@ -370,6 +371,13 @@ const AdminCalendar: React.FC = () => {
     }
   }, [barbers, selectedBarberId]);
 
+  useEffect(() => {
+    if (hasMultipleBarbers) return;
+    if (selectedBarberId !== 'all') {
+      setSelectedBarberId('all');
+    }
+  }, [hasMultipleBarbers, selectedBarberId]);
+
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshingCalendar(true);
     try {
@@ -488,17 +496,19 @@ const AdminCalendar: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Select value={selectedBarberId} onValueChange={setSelectedBarberId}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
-              {barbers.map(barber => (
-                <SelectItem key={barber.id} value={barber.id}>{barber.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {hasMultipleBarbers && (
+            <Select value={selectedBarberId} onValueChange={setSelectedBarberId}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
+                {barbers.map(barber => (
+                  <SelectItem key={barber.id} value={barber.id}>{barber.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <label className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-2 text-sm text-muted-foreground">
             <Switch
               checked={isCurrentTimeIndicatorEnabled}
