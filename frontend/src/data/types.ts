@@ -150,6 +150,7 @@ export interface Barber {
   startDate: string;
   endDate?: string | null;
   isActive?: boolean;
+  calendarColor?: string | null;
   assignedServiceIds?: string[];
   assignedCategoryIds?: string[];
   hasAnyServiceAssignment?: boolean;

@@ -14,6 +14,12 @@ export class BarbersController {
     return this.barbersService.findAll(serviceId);
   }
 
+  @Get('admin')
+  @AdminEndpoint()
+  findAllForAdmin(@Query('serviceId') serviceId?: string) {
+    return this.barbersService.findAll(serviceId, { includeInactive: true });
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.barbersService.findOne(id);

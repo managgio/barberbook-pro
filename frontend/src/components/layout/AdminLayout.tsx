@@ -64,7 +64,7 @@ const AdminLayoutContent: React.FC = () => {
         />
       )}
       <AdminSidebar collapsed={collapsed} onToggle={() => setCollapsed((prev) => !prev)} />
-      <AdminSpotlight />
+      {spotlightFloatingEnabled && <AdminSpotlight />}
       <main
         className={cn(
           'p-4 sm:p-6 md:p-8 transition-all duration-300 ml-0',

@@ -32,7 +32,6 @@ const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_BARBERS: Barber[] = [];
 const EMPTY_SERVICES: Service[] = [];
 const BARBER_FILTER_STORAGE_PREFIX = 'admin:search:barber-filter';
-const DATE_FILTER_STORAGE_PREFIX = 'admin:search:date-filter';
 const readSearchPreference = (key: string) => {
   if (typeof window === 'undefined') return null;
   try {
@@ -51,6 +50,7 @@ const writeSearchPreference = (key: string, value: string) => {
 };
 const resolveSearchPreferenceKey = (prefix: string, locationId?: string | null) =>
   locationId ? `${prefix}:${locationId}` : prefix;
+const getTodayIsoDate = () => format(new Date(), 'yyyy-MM-dd');
 
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
@@ -90,8 +90,8 @@ const AdminSearch: React.FC = () => {
       }),
   });
   const barbersQuery = useQuery({
-    queryKey: queryKeys.barbers(currentLocationId),
-    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+    queryKey: queryKeys.barbers(currentLocationId, undefined, true),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId, includeInactive: true }),
   });
   const servicesQuery = useQuery({
     queryKey: queryKeys.services(currentLocationId, true),
@@ -159,11 +159,8 @@ const AdminSearch: React.FC = () => {
     const savedBarber = readSearchPreference(
       resolveSearchPreferenceKey(BARBER_FILTER_STORAGE_PREFIX, currentLocationId),
     );
-    const savedDate = readSearchPreference(
-      resolveSearchPreferenceKey(DATE_FILTER_STORAGE_PREFIX, currentLocationId),
-    );
     setSelectedBarberId(savedBarber || 'all');
-    setSelectedDate(savedDate || '');
+    setSelectedDate(getTodayIsoDate());
     setCurrentPage(1);
     setHasLoadedFilters(true);
   }, [currentLocationId]);
@@ -175,25 +172,6 @@ const AdminSearch: React.FC = () => {
       selectedBarberId,
     );
   }, [currentLocationId, hasLoadedFilters, selectedBarberId]);
-
-  useEffect(() => {
-    if (!hasLoadedFilters) return;
-    if (selectedDate) {
-      writeSearchPreference(
-        resolveSearchPreferenceKey(DATE_FILTER_STORAGE_PREFIX, currentLocationId),
-        selectedDate,
-      );
-      return;
-    }
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.removeItem(
-        resolveSearchPreferenceKey(DATE_FILTER_STORAGE_PREFIX, currentLocationId),
-      );
-    } catch {
-      // ignore storage errors
-    }
-  }, [currentLocationId, hasLoadedFilters, selectedDate]);
 
   useEffect(() => {
     if (selectedBarberId === 'all') return;
@@ -241,6 +219,10 @@ const AdminSearch: React.FC = () => {
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
+  const resolveBarberName = (appointment: Appointment) =>
+    getBarber(appointment.barberId)?.name ||
+    appointment.barberNameSnapshot ||
+    `${copy.staff.singular} eliminado`;
   const getClientInfo = (appointment: Appointment) => {
     const user = clients.find((client) => client.id === appointment.userId);
     return {
@@ -252,7 +234,7 @@ const AdminSearch: React.FC = () => {
 
   const clearFilters = () => {
     setSelectedBarberId('all');
-    setSelectedDate('');
+    setSelectedDate(getTodayIsoDate());
     setCurrentPage(1);
   };
 
@@ -518,7 +500,7 @@ const AdminSearch: React.FC = () => {
                             height={32}
                             className="w-8 h-8 rounded-full object-cover"
                           />
-                          <span className="text-foreground">{getBarber(apt.barberId)?.name}</span>
+                          <span className="text-foreground">{resolveBarberName(apt)}</span>
                         </div>
                       </td>
                       <td className="py-3 px-4">

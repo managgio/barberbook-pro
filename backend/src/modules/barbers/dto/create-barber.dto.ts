@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, Matches } from 'class-validator';
 import { BarberRole } from '@prisma/client';
 
 export class CreateBarberDto {
@@ -34,6 +34,11 @@ export class CreateBarberDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'calendarColor must be a valid hex color' })
+  calendarColor?: string;
 
   @IsOptional()
   @IsString()

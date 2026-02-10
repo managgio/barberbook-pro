@@ -24,6 +24,7 @@ export const mapBarber = (barber: BarberWithAssignments) => ({
   startDate: barber.startDate.toISOString().split('T')[0],
   endDate: barber.endDate ? barber.endDate.toISOString().split('T')[0] : null,
   isActive: barber.isActive,
+  calendarColor: barber.calendarColor || null,
   userId: barber.userId || null,
   assignedServiceIds: barber.serviceAssignments?.map((item) => item.serviceId) || [],
   assignedCategoryIds: barber.serviceCategoryAssignments?.map((item) => item.categoryId) || [],

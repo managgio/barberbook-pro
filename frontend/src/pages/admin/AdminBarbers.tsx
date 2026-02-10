@@ -34,6 +34,7 @@ import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import { fetchBarbersCached, fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalogQuery';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { resolveBarberAccentColor } from '@/lib/barberColors';
 
 const DAY_LABELS: { key: DayKey; label: string; short: string }[] = [
   { key: 'monday', label: 'Lunes', short: 'Lun' },
@@ -99,6 +100,7 @@ const AdminBarbers: React.FC = () => {
     categoryIds: [],
   });
   const [isAssignmentSaving, setIsAssignmentSaving] = useState(false);
+  const [savingColorByBarber, setSavingColorByBarber] = useState<Record<string, boolean>>({});
   const [scheduleCache, setScheduleCache] = useState<Record<string, ShopSchedule>>({});
   const [copiedSchedule, setCopiedSchedule] = useState<ShopSchedule | null>(null);
   const [copySource, setCopySource] = useState(0);
@@ -119,9 +121,9 @@ const AdminBarbers: React.FC = () => {
     isActive: true,
   });
   const barbersQuery = useQuery({
-    queryKey: queryKeys.barbers(currentLocationId),
+    queryKey: queryKeys.barbers(currentLocationId, undefined, true),
     enabled: Boolean(currentLocationId),
-    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId, includeInactive: true }),
   });
   const servicesQuery = useQuery({
     queryKey: queryKeys.services(currentLocationId),
@@ -218,6 +220,25 @@ const AdminBarbers: React.FC = () => {
   const openDeleteDialog = (id: string) => {
     setDeletingBarberId(id);
     setIsDeleteDialogOpen(true);
+  };
+
+  const handleBarberCalendarColorChange = async (barber: Barber, nextColor: string) => {
+    const normalized = nextColor.toLowerCase();
+    if (barber.calendarColor?.toLowerCase() === normalized) return;
+    setSavingColorByBarber((prev) => ({ ...prev, [barber.id]: true }));
+    try {
+      await updateBarber(barber.id, { calendarColor: normalized });
+      await barbersQuery.refetch();
+      dispatchBarbersUpdated({ source: 'admin-barbers' });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el color del calendario.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingColorByBarber((prev) => ({ ...prev, [barber.id]: false }));
+    }
   };
 
   const openScheduleDialog = async (barber: Barber) => {
@@ -718,7 +739,29 @@ const AdminBarbers: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="font-semibold text-foreground text-lg">{barber.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="h-4 w-4 rounded-full border border-white/30 shadow-sm transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                            style={{ backgroundColor: resolveBarberAccentColor(barber.id, barber.calendarColor) }}
+                            onClick={() => {
+                              const input = document.getElementById(`barber-calendar-color-${barber.id}`) as HTMLInputElement | null;
+                              input?.click();
+                            }}
+                            title="Color del calendario"
+                            aria-label={`Editar color del calendario de ${barber.name}`}
+                          />
+                          <input
+                            id={`barber-calendar-color-${barber.id}`}
+                            type="color"
+                            className="sr-only"
+                            value={resolveBarberAccentColor(barber.id, barber.calendarColor)}
+                            onChange={(event) => void handleBarberCalendarColorChange(barber, event.target.value)}
+                            disabled={Boolean(savingColorByBarber[barber.id])}
+                          />
+                          <h3 className="font-semibold text-foreground text-lg">{barber.name}</h3>
+                          {savingColorByBarber[barber.id] && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                        </div>
                         <p className="text-sm text-primary">{barber.specialty}</p>
                       </div>
                       <div className="flex gap-1">

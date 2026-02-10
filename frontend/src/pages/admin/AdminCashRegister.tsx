@@ -173,7 +173,7 @@ const AdminCashRegister: React.FC = () => {
 
       const [appointmentsData, barbersData, movementsData, productsData, productCategoriesData] = await Promise.all([
         getAppointmentsByDate(selectedDate),
-        fetchBarbersCached({ localId: currentLocationId }),
+        fetchBarbersCached({ localId: currentLocationId, includeInactive: true }),
         getCashMovements(selectedDate),
         productsPromise,
         categoriesPromise,
@@ -233,6 +233,7 @@ const AdminCashRegister: React.FC = () => {
     () => cashRegisterQuery.data?.barbers ?? EMPTY_BARBERS,
     [cashRegisterQuery.data?.barbers],
   );
+  const hasMultipleBarbers = barbers.length > 1;
   const movements = useMemo(
     () => cashRegisterQuery.data?.movements ?? EMPTY_MOVEMENTS,
     [cashRegisterQuery.data?.movements],
@@ -288,6 +289,13 @@ const AdminCashRegister: React.FC = () => {
   }, [stripeEnabled, barberPaymentMethodFilter, movementDraft.method, productMovementDraft.method]);
 
   useEffect(() => {
+    if (hasMultipleBarbers) return;
+    if (paymentBarberFilter !== 'all') {
+      setPaymentBarberFilter('all');
+    }
+  }, [hasMultipleBarbers, paymentBarberFilter]);
+
+  useEffect(() => {
     if (productsEnabled) return;
     setMovementMode('manual');
   }, [productsEnabled]);
@@ -329,7 +337,11 @@ const AdminCashRegister: React.FC = () => {
   const netTotal = totalIncome - manualOut;
   const effectiveNetTotal = netAllLocations ?? netTotal;
   const ticketAverage = completedAppointments.length ? appointmentIncome / completedAppointments.length : 0;
-  const hasMultipleLocations = locations.length > 1;
+  const locationsForTotalsCount = useMemo(() => {
+    const activeLocations = locations.filter((location) => location.isActive !== false);
+    return activeLocations.length > 0 ? activeLocations.length : locations.length;
+  }, [locations]);
+  const hasMultipleLocations = locationsForTotalsCount > 1;
 
   const paymentFilteredAppointments = useMemo(() => {
     if (paymentBarberFilter === 'all') return completedAppointments;
@@ -664,9 +676,11 @@ const AdminCashRegister: React.FC = () => {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold text-foreground">{currencyFormatter.format(netTotal)}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Solo incluye {copy.location.definiteSingular} actual.
-            </p>
+            {hasMultipleLocations && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Solo incluye {copy.location.definiteSingular} actual.
+              </p>
+            )}
           </CardContent>
         </Card>
         {hasMultipleLocations && (
@@ -680,7 +694,7 @@ const AdminCashRegister: React.FC = () => {
                 {currencyFormatter.format(effectiveNetTotal)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Suma {locations.length} {copy.location.pluralLower}.
+                Suma {locationsForTotalsCount} {copy.location.pluralLower}.
               </p>
             </CardContent>
           </Card>
@@ -704,19 +718,21 @@ const AdminCashRegister: React.FC = () => {
           <CardHeader className="space-y-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Fuentes de pago</CardTitle>
-              <Select value={paymentBarberFilter} onValueChange={setPaymentBarberFilter}>
-                <SelectTrigger className="w-[210px]">
-                  <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
-                  {barbers.map((barber) => (
-                    <SelectItem key={barber.id} value={barber.id}>
-                      {barber.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {hasMultipleBarbers && (
+                <Select value={paymentBarberFilter} onValueChange={setPaymentBarberFilter}>
+                  <SelectTrigger className="w-[210px]">
+                    <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
+                    {barbers.map((barber) => (
+                      <SelectItem key={barber.id} value={barber.id}>
+                        {barber.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">
               Distribución de ingresos confirmados por citas completadas

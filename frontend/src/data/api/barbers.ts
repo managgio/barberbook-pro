@@ -2,8 +2,15 @@ import { Barber, ShopSchedule } from '@/data/types';
 
 import { apiRequest } from './request';
 
-export const getBarbers = async (options?: { serviceId?: string }): Promise<Barber[]> =>
+type GetBarbersOptions = {
+  serviceId?: string;
+};
+
+export const getBarbers = async (options?: GetBarbersOptions): Promise<Barber[]> =>
   apiRequest('/barbers', { query: { serviceId: options?.serviceId } });
+
+export const getAdminBarbers = async (options?: GetBarbersOptions): Promise<Barber[]> =>
+  apiRequest('/barbers/admin', { query: { serviceId: options?.serviceId } });
 
 export const getBarberById = async (id: string): Promise<Barber | undefined> =>
   apiRequest(`/barbers/${id}`);

@@ -105,8 +105,8 @@ const AdminClients: React.FC = () => {
       }),
   });
   const barbersQuery = useQuery({
-    queryKey: queryKeys.barbers(currentLocationId),
-    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+    queryKey: queryKeys.barbers(currentLocationId, undefined, true),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId, includeInactive: true }),
   });
   const servicesQuery = useQuery({
     queryKey: queryKeys.services(currentLocationId, true),
@@ -259,6 +259,10 @@ const AdminClients: React.FC = () => {
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
+  const getAppointmentBarberName = (appointment: Appointment) =>
+    getBarber(appointment.barberId)?.name ||
+    appointment.barberNameSnapshot ||
+    `${copy.staff.singular} eliminado`;
 
   const applyAppointmentUpdate = useCallback((updated: Appointment) => {
     queryClient.setQueryData<PaginatedResponse<Appointment>>(appointmentsQueryKey, (previous) => {
@@ -823,7 +827,7 @@ const AdminClients: React.FC = () => {
                                 <AppointmentNoteIndicator note={apt.notes} variant="icon" />
                               </div>
                               <p className="text-sm text-muted-foreground">
-                                {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: es })} · {getBarber(apt.barberId)?.name}
+                                {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: es })} · {getAppointmentBarberName(apt)}
                               </p>
                             </div>
                             <div className="flex flex-wrap items-center justify-end gap-2">

@@ -93,8 +93,11 @@ export const queryKeys = {
     ["offers", localId || "default", target] as const,
   loyaltyPrograms: (localId: string | null | undefined) =>
     ["loyalty-programs", localId || "default"] as const,
-  barbers: (localId: string | null | undefined, serviceId?: string) =>
-    ["barbers", localId || "default", serviceId || "all"] as const,
+  barbers: (
+    localId: string | null | undefined,
+    serviceId?: string,
+    includeInactive = false,
+  ) => ["barbers", localId || "default", serviceId || "all", includeInactive ? "with-inactive" : "active-only"] as const,
   serviceCategories: (localId: string | null | undefined, withServices = true) =>
     ["service-categories", localId || "default", withServices ? "with-services" : "plain"] as const,
   products: (

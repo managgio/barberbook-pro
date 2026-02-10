@@ -38,8 +38,8 @@ const AdminHolidays: React.FC = () => {
   const [selectedBarber, setSelectedBarber] = useState<string>('');
 
   const barbersQuery = useQuery({
-    queryKey: queryKeys.barbers(currentLocationId),
-    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+    queryKey: queryKeys.barbers(currentLocationId, undefined, true),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId, includeInactive: true }),
   });
   const generalHolidaysQuery = useQuery({
     queryKey: queryKeys.adminGeneralHolidays(currentLocationId),

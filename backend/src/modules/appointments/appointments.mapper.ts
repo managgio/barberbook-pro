@@ -1,14 +1,18 @@
 import { Appointment, AppointmentProduct, Product } from '@prisma/client';
 
-type AppointmentWithProducts = Appointment & { products?: (AppointmentProduct & { product?: Product | null })[] };
+type AppointmentWithProducts = Appointment & {
+  products?: (AppointmentProduct & { product?: Product | null })[];
+  barber?: { name: string } | null;
+  service?: { name: string } | null;
+};
 
 export const mapAppointment = (appointment: AppointmentWithProducts) => ({
   id: appointment.id,
   userId: appointment.userId || null,
   barberId: appointment.barberId,
-  barberNameSnapshot: appointment.barberNameSnapshot || null,
+  barberNameSnapshot: appointment.barberNameSnapshot || appointment.barber?.name || null,
   serviceId: appointment.serviceId,
-  serviceNameSnapshot: appointment.serviceNameSnapshot || null,
+  serviceNameSnapshot: appointment.serviceNameSnapshot || appointment.service?.name || null,
   loyaltyProgramId: appointment.loyaltyProgramId || null,
   loyaltyRewardApplied: appointment.loyaltyRewardApplied ?? false,
   referralAttributionId: appointment.referralAttributionId || null,

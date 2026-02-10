@@ -1,4 +1,4 @@
-import { getBarbers } from "@/data/api/barbers";
+import { getAdminBarbers, getBarbers } from "@/data/api/barbers";
 import { getProductCategories } from "@/data/api/product-categories";
 import { getAdminProducts, getProducts } from "@/data/api/products";
 import { getServiceCategories } from "@/data/api/service-categories";
@@ -48,13 +48,16 @@ export const fetchServicesCached = (options?: {
 export const fetchBarbersCached = (options?: {
   serviceId?: string;
   localId?: string | null;
+  includeInactive?: boolean;
   force?: boolean;
 }) => {
   const localId = options?.localId ?? getStoredLocalId();
   const serviceId = options?.serviceId;
+  const includeInactive = options?.includeInactive ?? false;
   const staleTime = options?.force ? 0 : CATALOG_STALE_TIME;
-  const queryKey = queryKeys.barbers(localId, serviceId);
-  return resolveCatalogQuery(queryKey, () => getBarbers(serviceId ? { serviceId } : undefined), staleTime);
+  const queryKey = queryKeys.barbers(localId, serviceId, includeInactive);
+  const fetcher = includeInactive ? getAdminBarbers : getBarbers;
+  return resolveCatalogQuery(queryKey, () => fetcher(serviceId ? { serviceId } : undefined), staleTime);
 };
 
 export const fetchServiceCategoriesCached = (options?: {

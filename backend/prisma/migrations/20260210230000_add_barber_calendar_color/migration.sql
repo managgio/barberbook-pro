@@ -1,0 +1,2 @@
+ALTER TABLE `Barber`
+ADD COLUMN `calendarColor` VARCHAR(7) NULL;

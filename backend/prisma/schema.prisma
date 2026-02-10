@@ -344,6 +344,7 @@ model Barber {
   endDate     DateTime?
   isActive    Boolean          @default(true)
   isArchived  Boolean          @default(false)
+  calendarColor String?
   userId      String?          @unique
   user        User?            @relation(fields: [userId], references: [id])
   appointments Appointment[]

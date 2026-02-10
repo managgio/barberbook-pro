@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, OfferTarget, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
@@ -101,6 +101,8 @@ type AppointmentSlotRecord = {
 
 @Injectable()
 export class AppointmentsService {
+  private readonly logger = new Logger(AppointmentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly holidaysService: HolidaysService,
@@ -326,7 +328,7 @@ export class AppointmentsService {
 
     const [barbers, appointments] = await Promise.all([
       this.prisma.barber.findMany({
-        where: { localId },
+        where: { localId, isArchived: false },
         orderBy: { name: 'asc' },
         select: { id: true, name: true },
       }),
@@ -552,7 +554,7 @@ export class AppointmentsService {
       this.prisma.appointment.findMany({
         where,
         orderBy: this.buildListOrder(params),
-        include: { service: true, products: { include: { product: true } } },
+        include: { barber: { select: { name: true } }, service: true, products: { include: { product: true } } },
         skip: (params.page - 1) * params.pageSize,
         take: params.pageSize,
       }),
@@ -575,6 +577,7 @@ export class AppointmentsService {
         where,
         orderBy: this.buildListOrder(params),
         include: {
+          barber: { select: { name: true } },
           service: true,
           products: { include: { product: true } },
           user: {
@@ -619,6 +622,7 @@ export class AppointmentsService {
       where,
       orderBy: this.buildListOrder(params),
       include: {
+        barber: { select: { name: true } },
         service: true,
         products: { include: { product: true } },
         user: {
@@ -654,7 +658,7 @@ export class AppointmentsService {
     const localId = getCurrentLocalId();
     const appointment = await this.prisma.appointment.findFirst({
       where: { id, localId },
-      include: { service: true, products: { include: { product: true } } },
+      include: { barber: { select: { name: true } }, service: true, products: { include: { product: true } } },
     });
     if (!appointment) throw new NotFoundException('Appointment not found');
     await this.syncAppointmentStatuses([appointment]);
@@ -1291,17 +1295,7 @@ export class AppointmentsService {
     }
 
     if (statusChanged) {
-      if (nextStatus === 'completed') {
-        await this.rewardsService.confirmWalletHold(updated.id);
-        await this.rewardsService.confirmCouponUsage(updated.id);
-        await this.referralAttributionService.handleAppointmentCompleted(updated.id);
-        await this.reviewRequestService.handleAppointmentCompleted(updated.id);
-      }
-      if (nextStatus === 'cancelled' || nextStatus === 'no_show') {
-        await this.rewardsService.releaseWalletHold(updated.id);
-        await this.rewardsService.cancelCouponUsage(updated.id);
-        await this.referralAttributionService.handleAppointmentCancelled(updated.id);
-      }
+      await this.runStatusSideEffects(updated.id, nextStatus);
     }
 
     const shouldNotify = serviceChanged || barberChanged || startChanged;
@@ -1309,6 +1303,45 @@ export class AppointmentsService {
       await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
     }
     return mapAppointment(updated);
+  }
+
+  private async runStatusSideEffects(appointmentId: string, nextStatus: AppointmentStatus) {
+    const effects: Array<{ name: string; run: () => Promise<unknown> }> = [];
+    if (nextStatus === 'completed') {
+      effects.push(
+        { name: 'confirmWalletHold', run: () => this.rewardsService.confirmWalletHold(appointmentId) },
+        { name: 'confirmCouponUsage', run: () => this.rewardsService.confirmCouponUsage(appointmentId) },
+        {
+          name: 'handleReferralCompleted',
+          run: () => this.referralAttributionService.handleAppointmentCompleted(appointmentId),
+        },
+        {
+          name: 'handleReviewCompleted',
+          run: () => this.reviewRequestService.handleAppointmentCompleted(appointmentId),
+        },
+      );
+    }
+    if (nextStatus === 'cancelled' || nextStatus === 'no_show') {
+      effects.push(
+        { name: 'releaseWalletHold', run: () => this.rewardsService.releaseWalletHold(appointmentId) },
+        { name: 'cancelCouponUsage', run: () => this.rewardsService.cancelCouponUsage(appointmentId) },
+        {
+          name: 'handleReferralCancelled',
+          run: () => this.referralAttributionService.handleAppointmentCancelled(appointmentId),
+        },
+      );
+    }
+
+    for (const effect of effects) {
+      try {
+        await effect.run();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Post-status side effect failed (${effect.name}) for appointment ${appointmentId}: ${message}`,
+        );
+      }
+    }
   }
 
   async remove(id: string) {

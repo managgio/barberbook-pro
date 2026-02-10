@@ -47,6 +47,7 @@ import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
+import { resolveBarberAccentColor } from '@/lib/barberColors';
 
 const START_HOUR = 9;
 const END_HOUR = 20;
@@ -132,8 +133,8 @@ const AdminCalendar: React.FC = () => {
       }),
   });
   const barbersQuery = useQuery({
-    queryKey: queryKeys.barbers(currentLocationId),
-    queryFn: () => fetchBarbersCached({ localId: currentLocationId }),
+    queryKey: queryKeys.barbers(currentLocationId, undefined, true),
+    queryFn: () => fetchBarbersCached({ localId: currentLocationId, includeInactive: true }),
   });
   const servicesQuery = useQuery({
     queryKey: queryKeys.services(currentLocationId, true),
@@ -224,6 +225,10 @@ const AdminCalendar: React.FC = () => {
 
   const getBarber = (id: string) => barbers.find(b => b.id === id);
   const getService = (id: string) => services.find(s => s.id === id);
+  const getAppointmentBarberName = (appointment: Appointment) =>
+    getBarber(appointment.barberId)?.name ||
+    appointment.barberNameSnapshot ||
+    `${copy.staff.singular} eliminado`;
   const getClientInfo = (appointment: Appointment) => {
     const user = clients.find((client) => client.id === appointment.userId);
     const isGuest = !user;
@@ -474,15 +479,12 @@ const AdminCalendar: React.FC = () => {
     });
   };
 
-  const barberPalette = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ec4899', '#14b8a6'];
-  const getBarberAccentColor = (barberId: string) => {
-    let hash = 0;
-    for (let i = 0; i < barberId.length; i += 1) {
-      hash = (hash << 5) - hash + barberId.charCodeAt(i);
-      hash |= 0;
-    }
-    return barberPalette[Math.abs(hash) % barberPalette.length];
-  };
+  const barberColorsById = useMemo(
+    () => new Map(barbers.map((barber) => [barber.id, barber.calendarColor ?? null])),
+    [barbers],
+  );
+  const getBarberAccentColor = (barberId: string) =>
+    resolveBarberAccentColor(barberId, barberColorsById.get(barberId));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -759,7 +761,7 @@ const AdminCalendar: React.FC = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">{copy.staff.singular}</p>
                   <p className="font-medium text-foreground">
-                    {getBarber(selectedAppointment.barberId)?.name}
+                    {getAppointmentBarberName(selectedAppointment)}
                   </p>
                 </div>
               </div>

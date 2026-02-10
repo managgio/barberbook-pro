@@ -105,9 +105,11 @@ export class RewardsService {
   }
 
   async confirmWalletHold(appointmentId: string, tx?: Prisma.TransactionClient) {
+    const localId = getCurrentLocalId();
     const client = this.getClient(tx);
     const holds = await client.rewardTransaction.findMany({
       where: {
+        localId,
         appointmentId,
         type: RewardTxType.HOLD,
         status: RewardTxStatus.PENDING,
@@ -139,9 +141,11 @@ export class RewardsService {
   }
 
   async releaseWalletHold(appointmentId: string, tx?: Prisma.TransactionClient) {
+    const localId = getCurrentLocalId();
     const client = this.getClient(tx);
     const holds = await client.rewardTransaction.findMany({
       where: {
+        localId,
         appointmentId,
         type: RewardTxType.HOLD,
         status: RewardTxStatus.PENDING,
@@ -246,21 +250,23 @@ export class RewardsService {
   }
 
   async confirmCouponUsage(appointmentId: string, tx?: Prisma.TransactionClient) {
+    const localId = getCurrentLocalId();
     const client = this.getClient(tx);
     await client.rewardTransaction.updateMany({
-      where: { appointmentId, type: RewardTxType.COUPON_USED, status: RewardTxStatus.PENDING },
+      where: { localId, appointmentId, type: RewardTxType.COUPON_USED, status: RewardTxStatus.PENDING },
       data: { status: RewardTxStatus.CONFIRMED },
     });
   }
 
   async cancelCouponUsage(appointmentId: string, tx?: Prisma.TransactionClient) {
+    const localId = getCurrentLocalId();
     const client = this.getClient(tx);
     const txs = await client.rewardTransaction.findMany({
-      where: { appointmentId, type: RewardTxType.COUPON_USED, status: RewardTxStatus.PENDING },
+      where: { localId, appointmentId, type: RewardTxType.COUPON_USED, status: RewardTxStatus.PENDING },
     });
     for (const entry of txs) {
       if (entry.couponId) {
-        const coupon = await client.coupon.findFirst({ where: { id: entry.couponId } });
+        const coupon = await client.coupon.findFirst({ where: { id: entry.couponId, localId } });
         if (coupon && coupon.usedCount > 0) {
           await client.coupon.update({
             where: { id: entry.couponId },
@@ -338,9 +344,10 @@ export class RewardsService {
   }
 
   async voidReferralRewards(referralAttributionId: string, reason: string, tx?: Prisma.TransactionClient) {
+    const localId = getCurrentLocalId();
     const client = this.getClient(tx);
     const transactions = await client.rewardTransaction.findMany({
-      where: { referralAttributionId, status: RewardTxStatus.CONFIRMED },
+      where: { localId, referralAttributionId, status: RewardTxStatus.CONFIRMED },
     });
     for (const entry of transactions) {
       if (entry.type === RewardTxType.CREDIT && entry.amount) {

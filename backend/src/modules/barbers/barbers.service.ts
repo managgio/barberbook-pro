@@ -12,6 +12,9 @@ import { UpdateBarberServiceAssignmentDto } from './dto/update-barber-service-as
 import { mapBarber } from './barbers.mapper';
 
 const parseDate = (value?: string | null) => (value ? new Date(value) : null);
+type FindAllBarbersOptions = {
+  includeInactive?: boolean;
+};
 
 @Injectable()
 export class BarbersService {
@@ -67,15 +70,23 @@ export class BarbersService {
     };
   }
 
-  async findAll(serviceId?: string) {
+  async findAll(serviceId?: string, options?: FindAllBarbersOptions) {
     const localId = getCurrentLocalId();
+    const includeInactive = options?.includeInactive === true;
     const eligibilityFilter = serviceId
       ? await this.getServiceEligibilityFilter(localId, serviceId)
       : {};
     if (eligibilityFilter === null) return [];
 
+    const where: Prisma.BarberWhereInput = {
+      localId,
+      isArchived: false,
+      ...eligibilityFilter,
+      ...(includeInactive ? {} : { isActive: true }),
+    };
+
     const barbers = await this.prisma.barber.findMany({
-      where: { localId, isArchived: false, ...eligibilityFilter },
+      where,
       orderBy: { name: 'asc' },
       include: {
         serviceAssignments: { select: { serviceId: true } },
@@ -160,6 +171,7 @@ export class BarbersService {
         startDate: parseDate(data.startDate) || new Date(),
         endDate: parseDate(data.endDate),
         isActive: data.isActive ?? true,
+        calendarColor: data.calendarColor,
         userId: data.userId,
       },
     });
@@ -185,6 +197,7 @@ export class BarbersService {
         startDate: data.startDate ? parseDate(data.startDate) || undefined : undefined,
         endDate: data.endDate === '' ? null : parseDate(data.endDate),
         isActive: data.isActive,
+        calendarColor: data.calendarColor,
         userId: data.userId ?? undefined,
       },
     });
