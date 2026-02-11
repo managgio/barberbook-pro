@@ -507,7 +507,7 @@ const AdminAiAssistant: React.FC = () => {
           </div>
           <div>
             <CardTitle>Asistente IA</CardTitle>
-            <p className="text-sm text-muted-foreground">Citas y festivos en segundos.</p>
+            <p className="text-sm text-muted-foreground">Habla normal y crea gestiones en segundos.</p>
           </div>
         </div>
         <Button
@@ -540,7 +540,7 @@ const AdminAiAssistant: React.FC = () => {
                 <div>
                   <CardTitle className="text-lg">Guia rapida del asistente</CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    Ejemplos, variantes y funciones para sacarle todo el partido.
+                    Como pedir tareas de forma simple, sin tecnicismos.
                   </p>
                 </div>
               </div>
@@ -574,14 +574,19 @@ const AdminAiAssistant: React.FC = () => {
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Pide citas nuevas con fecha, hora, servicio y {staffSingularLabel}. Si falta algo, el asistente te lo pide.
+                      Puedes escribir como hablas normalmente. No necesitas frases exactas.
+                      El servicio es obligatorio. Si no indicas {staffSingularLabel}, se asigna automaticamente
+                      el menos ocupado. Si el cliente no existe, se crea como invitado.
                     </p>
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea una cita para Marta Sancho el viernes a las 18:30 con servicio corte clasico y {staffNameExample}
+                        Crea una cita para Marta Sancho manana por la tarde con corte clasico y {staffNameExample}
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Reserva para el cliente Luis Martínez el 12 de enero a las 10:00 con corte clásico y {staffNameExampleAlt}
+                        Reserva para Carlos Lopez lo antes posible con arreglo de barba.
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                        Cita para el cliente Luis Martinez este martes a las 10:00 con corte clasico y {staffNameExampleAlt}.
                       </div>
                     </div>
                   </div>
@@ -594,8 +599,9 @@ const AdminAiAssistant: React.FC = () => {
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Puedes crear festivos para {copy.location.definiteSingular} o para uno o varios {staffPluralLabel}. Si no dices el alcance,
-                      se entiende {copy.location.singularLower}. Tambien puedes mezclar varios festivos en un solo mensaje.
+                      Puedes crear festivos para {copy.location.definiteSingular} o para uno o varios {staffPluralLabel}.
+                      Si no dices el alcance, se entiende {copy.location.singularLower}. Puedes usar fechas sueltas,
+                      rangos y varios festivos en el mismo mensaje.
                     </p>
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
@@ -617,8 +623,9 @@ const AdminAiAssistant: React.FC = () => {
                   <AccordionContent>
                     <div className="space-y-3">
                       <p className="text-sm text-muted-foreground">
-                        Describe el tema de la alerta y el asistente redacta el titulo y el mensaje con el tono adecuado.
-                        Clasifica automaticamente si es exito, advertencia o informacion.
+                        Describe el tema y el asistente redacta titulo y mensaje automaticamente.
+                        Si no indicas fechas, la alerta queda activa desde ahora.
+                        Si indicas tiempo o rango, se programa sola.
                       </p>
                       <div className="space-y-2 text-xs text-muted-foreground">
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
@@ -629,6 +636,9 @@ const AdminAiAssistant: React.FC = () => {
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
                           Alerta informativa para felicitar San Valentin a los clientes.
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                          Activa una alerta de aviso durante dos dias desde manana.
                         </div>
                       </div>
                     </div>

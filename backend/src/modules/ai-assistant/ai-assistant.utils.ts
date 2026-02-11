@@ -240,7 +240,11 @@ export const parseDateFromText = (input: string, now: Date, timeZone = AI_TIME_Z
   if (/\bpasado\s+manana\b/.test(text)) {
     return getDateStringInTimeZone(addDays(now, 2), timeZone);
   }
-  if (/\bmanana\b/.test(text)) {
+  if (/\besta\s+manana\b/.test(text) || /\bhoy\s+(?:por|de)\s+la\s+manana\b/.test(text)) {
+    return getDateStringInTimeZone(now, timeZone);
+  }
+  const textWithoutMorningPeriod = text.replace(/\b(?:por|de)\s+la\s+manana\b/g, ' ').trim();
+  if (/\bmanana\b/.test(textWithoutMorningPeriod)) {
     return getDateStringInTimeZone(addDays(now, 1), timeZone);
   }
   if (/\bhoy\b/.test(text)) {

@@ -319,6 +319,12 @@ Flujos:
    - `/api/admin/ai-assistant/chat` con tools para crear citas, alertas festivos.
    - Guarda sesiones/mensajes y resumen para contexto.
    - Transcripcion de audio con OpenAI (whisper-1).
+   - Flujo robusto: el modelo interpreta la intencion (no depende de palabras literales exactas) y backend valida/ejecuta con reglas de negocio.
+   - Creación de citas más flexible en backend: si no se indica barbero, asigna automáticamente el de menor carga de citas en la semana actual (lunes-domingo) dentro del local.
+   - Interpretación de preferencias horarias naturales para citas: "lo antes posible", "primer hueco", "mañana por la tarde/mañana/noche", "este martes", "pasado mañana"; con búsqueda real de disponibilidad y respuesta de indisponibilidad cuando no hay huecos.
+   - Si el cliente no existe, la cita se crea como invitado (sin requerir email/teléfono); si hay múltiples coincidencias por nombre, el asistente solicita desambiguación.
+   - Alertas: soporta programacion natural de fechas/rangos (ej: "una semana a partir de mañana", "desde el martes hasta el viernes").
+   - Alertas sin fecha/rango: se crean activas de inmediato (sin programacion temporal).
    - Frontend persiste `sessionId` del asistente por `localId` (`ai-assistant-session-id:<localId>`) para evitar mezclar historiales entre locales.
    - Si `GET /api/admin/ai-assistant/session/:id` devuelve `404`, el frontend limpia la sesión persistida y continúa con chat nuevo (fallback silencioso).
  

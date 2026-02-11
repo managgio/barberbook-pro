@@ -13,6 +13,9 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 1) create_appointment
    - Crea citas nuevas tras validar disponibilidad y horario
    - Si falta un dato, lo solicita antes de crear
+   - Si no se indica barbero, asigna el menos cargado de la semana actual
+   - Soporta "lo antes posible" y franjas como "mañana por la tarde" buscando el primer hueco real
+   - Si el cliente no existe, crea cita como invitado; si hay varias coincidencias, pide desambiguar
 
 2) add_shop_holiday
    - Añade festivos generales del negocio
@@ -22,6 +25,8 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 
 4) create_alert
    - Crea alertas informativas/advertencia/exito con titulo y mensaje
+   - Soporta programación por lenguaje natural (ej: "activa una semana a partir de mañana")
+   - Si no se indica fecha/rango, la alerta queda activa de inmediato
 
 ## Ejemplos de preguntas válidas
 - "Crea una cita para Marta mañana a las 18:00 con corte clásico y barbero Juan"
@@ -32,6 +37,7 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 - "Crea una alerta para anunciar un nuevo servicio de color"
 - "Avisa del cierre del salon este viernes por la tarde"
 - "Alerta informativa por San Valentin para felicitar a los clientes"
+- "Activa una alerta de aviso por mantenimiento durante dos dias desde mañana"
 
 ## Reglas de seguridad
 - Sin acceso directo a MySQL desde el modelo
