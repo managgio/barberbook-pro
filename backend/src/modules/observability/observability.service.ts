@@ -72,6 +72,18 @@ const parseRecipients = (raw?: string) => {
   return parsed.length > 0 ? parsed : fallback;
 };
 
+const resolveDefaultSmtpHost = (email?: string) => {
+  const normalized = (email || '').trim().toLowerCase();
+  const domain = normalized.includes('@') ? normalized.split('@')[1] : '';
+  const isOutlookFamily =
+    domain === 'outlook.com' ||
+    domain === 'hotmail.com' ||
+    domain === 'live.com' ||
+    domain === 'msn.com' ||
+    domain.startsWith('outlook.');
+  return isOutlookFamily ? 'smtp.office365.com' : 'smtp.gmail.com';
+};
+
 const percentile = (values: number[], target: number) => {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -194,7 +206,7 @@ export class ObservabilityService implements OnModuleInit, OnModuleDestroy {
       this.alertTransporter = null;
       return this.alertTransporter;
     }
-    const host = process.env.EMAIL_HOST?.trim() || 'smtp.gmail.com';
+    const host = process.env.EMAIL_HOST?.trim() || resolveDefaultSmtpHost(user);
     const port = parseNumber(process.env.EMAIL_PORT, 587);
     this.alertTransporter = nodemailer.createTransport({
       host,

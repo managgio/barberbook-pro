@@ -4013,6 +4013,7 @@ const PlatformBrands: React.FC = () => {
                           <div className="space-y-2">
                             <Label>Usuario</Label>
                             <Input
+                              placeholder="cuenta@outlook.com o cuenta@gmail.com"
                               value={brandConfig.email?.user || ''}
                               onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'user'], e.target.value))}
                             />
@@ -4047,6 +4048,11 @@ const PlatformBrands: React.FC = () => {
                             />
                           </div>
                         </div>
+                        <p className="text-xs text-muted-foreground">
+                          Acepta cuentas Outlook y Gmail. Si dejas Host vacío, se detecta automáticamente:
+                          Outlook/Hotmail/Live/MSN usa <span className="font-mono">smtp.office365.com</span> y el resto{' '}
+                          <span className="font-mono">smtp.gmail.com</span>.
+                        </p>
                       </div>
 
                       <div className="space-y-3">

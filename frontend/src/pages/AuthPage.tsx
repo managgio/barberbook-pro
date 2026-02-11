@@ -28,13 +28,14 @@ const AuthPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
   });
 
-  const { login, loginWithGoogle, signup, isAuthenticated, user } = useAuth();
+  const { login, loginWithGoogle, loginWithMicrosoft, signup, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -160,6 +161,33 @@ const AuthPage: React.FC = () => {
       });
     } finally {
       setIsGoogleLoading(false);
+    }
+  };
+
+  const handleMicrosoftLogin = async () => {
+    setIsMicrosoftLoading(true);
+    try {
+      const result = await loginWithMicrosoft();
+      if (result.success) {
+        toast({
+          title: '¡Bienvenido!',
+          description: 'Has iniciado sesión con Microsoft.',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: result.error,
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Error al conectar con Microsoft.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsMicrosoftLoading(false);
     }
   };
 
@@ -356,7 +384,7 @@ const AuthPage: React.FC = () => {
             variant="outline"
             className="w-full mb-5 sm:mb-6 h-10 sm:h-12 text-xs sm:text-sm"
             onClick={handleGoogleLogin}
-            disabled={isSubmittingForm || isGoogleLoading}
+            disabled={isSubmittingForm || isGoogleLoading || isMicrosoftLoading}
           >
             {isGoogleLoading && <Loader2 className="w-4 h-4 mr-1.5 sm:mr-2 animate-spin" />}
             <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" viewBox="0 0 24 24">
@@ -378,6 +406,22 @@ const AuthPage: React.FC = () => {
               />
             </svg>
             Continuar con Google
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full mb-5 sm:mb-6 h-10 sm:h-12 text-xs sm:text-sm"
+            onClick={handleMicrosoftLogin}
+            disabled={isSubmittingForm || isGoogleLoading || isMicrosoftLoading}
+          >
+            {isMicrosoftLoading && <Loader2 className="w-4 h-4 mr-1.5 sm:mr-2 animate-spin" />}
+            <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#f25022" d="M1 1h10.5v10.5H1z" />
+              <path fill="#00a4ef" d="M12.5 1H23v10.5H12.5z" />
+              <path fill="#7fba00" d="M1 12.5h10.5V23H1z" />
+              <path fill="#ffb900" d="M12.5 12.5H23V23H12.5z" />
+            </svg>
+            Continuar con Microsoft
           </Button>
 
           <div className="relative mb-5 sm:mb-6">
@@ -446,7 +490,7 @@ const AuthPage: React.FC = () => {
             <Button
               type="submit"
               className="w-full h-10 sm:h-12 text-xs sm:text-sm"
-              disabled={isSubmittingForm || isGoogleLoading}
+              disabled={isSubmittingForm || isGoogleLoading || isMicrosoftLoading}
             >
               {isSubmittingForm && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isSignup ? 'Crear cuenta' : 'Iniciar sesión'}

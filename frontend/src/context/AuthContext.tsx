@@ -6,10 +6,12 @@ import {
   initFirebase,
   onFirebaseAuthStateChanged,
   reauthenticateFirebaseWithGooglePopup,
+  reauthenticateFirebaseWithMicrosoftPopup,
   reauthenticateFirebaseWithPassword,
   sendFirebasePasswordResetEmail,
   signInFirebaseWithEmailAndPassword,
   signInFirebaseWithGooglePopup,
+  signInFirebaseWithMicrosoftPopup,
   signOutFirebase,
   updateFirebaseUserProfile,
   verifyFirebaseBeforeUpdateEmail,
@@ -24,6 +26,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  loginWithMicrosoft: () => Promise<{ success: boolean; error?: string }>;
   signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   requestEmailChange: (
@@ -333,6 +336,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [authenticateAndSync, ensureFirebaseReady]);
 
+  const loginWithMicrosoft = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await ensureFirebaseReady();
+      const credentials = await signInFirebaseWithMicrosoftPopup();
+      return await authenticateAndSync(credentials.user);
+    } catch (error) {
+      return { success: false, error: getFriendlyError(error) };
+    }
+  }, [authenticateAndSync, ensureFirebaseReady]);
+
   const signup = useCallback(async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const auth = await ensureFirebaseReady();
@@ -414,6 +427,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const providerIds = getProviderIds(currentUser);
         const hasPasswordProvider = providerIds.has('password');
         const hasGoogleProvider = providerIds.has('google.com');
+        const hasMicrosoftProvider = providerIds.has('microsoft.com');
 
         if (hasPasswordProvider && currentPassword?.trim()) {
           await reauthenticateFirebaseWithPassword(
@@ -458,6 +472,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (hasGoogleProvider && !hasPasswordProvider) {
               try {
                 await reauthenticateFirebaseWithGooglePopup(currentUser);
+                await runVerifyBeforeUpdateEmail();
+                return { success: true };
+              } catch (reauthError) {
+                return { success: false, error: getFriendlyError(reauthError) };
+              }
+            }
+
+            if (hasMicrosoftProvider && !hasPasswordProvider && !hasGoogleProvider) {
+              try {
+                await reauthenticateFirebaseWithMicrosoftPopup(currentUser);
                 await runVerifyBeforeUpdateEmail();
                 return { success: true };
               } catch (reauthError) {
@@ -517,6 +541,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isLoading,
       login,
       loginWithGoogle,
+      loginWithMicrosoft,
       signup,
       forgotPassword,
       requestEmailChange,
@@ -528,6 +553,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isLoading,
       login,
       loginWithGoogle,
+      loginWithMicrosoft,
       signup,
       forgotPassword,
       requestEmailChange,

@@ -4,6 +4,7 @@ import type {
   Auth,
   GithubAuthProvider,
   GoogleAuthProvider,
+  OAuthProvider,
   User as FirebaseUser,
 } from 'firebase/auth';
 import { FirebaseWebConfig } from '@/data/types';
@@ -15,6 +16,7 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let googleProvider: GoogleAuthProvider | null = null;
 let githubProvider: GithubAuthProvider | null = null;
+let microsoftProvider: OAuthProvider | null = null;
 
 let appModulePromise: Promise<FirebaseAppModule> | null = null;
 let authModulePromise: Promise<FirebaseAuthModule> | null = null;
@@ -35,6 +37,9 @@ const ensureProviders = (authModule: FirebaseAuthModule) => {
   }
   if (!githubProvider) {
     githubProvider = new authModule.GithubAuthProvider();
+  }
+  if (!microsoftProvider) {
+    microsoftProvider = new authModule.OAuthProvider('microsoft.com');
   }
 };
 
@@ -76,6 +81,12 @@ export const signInFirebaseWithGooglePopup = async () => {
   return authModule.signInWithPopup(requireAuth(), googleProvider as GoogleAuthProvider);
 };
 
+export const signInFirebaseWithMicrosoftPopup = async () => {
+  const authModule = await loadAuthModule();
+  ensureProviders(authModule);
+  return authModule.signInWithPopup(requireAuth(), microsoftProvider as OAuthProvider);
+};
+
 export const createFirebaseUserWithEmailAndPassword = async (email: string, password: string) => {
   const authModule = await loadAuthModule();
   return authModule.createUserWithEmailAndPassword(requireAuth(), email, password);
@@ -112,6 +123,12 @@ export const reauthenticateFirebaseWithGooglePopup = async (user: FirebaseUser) 
   const authModule = await loadAuthModule();
   ensureProviders(authModule);
   return authModule.reauthenticateWithPopup(user, googleProvider as GoogleAuthProvider);
+};
+
+export const reauthenticateFirebaseWithMicrosoftPopup = async (user: FirebaseUser) => {
+  const authModule = await loadAuthModule();
+  ensureProviders(authModule);
+  return authModule.reauthenticateWithPopup(user, microsoftProvider as OAuthProvider);
 };
 
 export const signOutFirebase = async () => {

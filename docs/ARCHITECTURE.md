@@ -23,7 +23,7 @@ Frontend:
 - Vite + React 18 + TypeScript.
 - Tailwind CSS + shadcn-ui (Radix UI).
 - React Router, React Query.
-- Firebase Web SDK (Auth).
+- Firebase Web SDK (Auth: email/password + OAuth Google/Microsoft).
 - Otros: lucide-react, date-fns, recharts, sonner.
 
 Backend:
@@ -261,6 +261,7 @@ Flujos:
 
 2) **Login y sincronizacion**
    - Firebase Auth maneja login/registro.
+   - OAuth social habilitado en frontend: Google y Microsoft (`microsoft.com`) para cuentas Outlook/Office 365.
    - Recuperación de contraseña: implementada en `AuthContext` con `sendPasswordResetEmail` (respuesta genérica anti-enumeración), pero **oculta temporalmente en UI** (`/auth`) hasta migrar a experiencia 100% tenant-brand.
    - Cambio de correo en cliente: implementado en `AuthContext` con `verifyBeforeUpdateEmail` + reautenticación, pero **oculto temporalmente en UI** (`/app/profile`) por la misma política de fricción mínima y consistencia de marca.
    - Inicializacion Firebase en frontend es lazy (dynamic import) cuando `AuthContext` entra en funcionamiento.
@@ -422,6 +423,9 @@ Backend (`backend/.env`):
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`, `IMAGEKIT_FOLDER`.
 - Twilio: `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_SID`, `TWILIO_ACCOUNT_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_WHATSAPP_FROM`, `TWILIO_WHATSAPP_TEMPLATE_SID`, `TWILIO_SMS_COST_USD` (opcional).
 - Email: `EMAIL`, `PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_FROM_NAME`.
+  - Si `EMAIL_HOST` no está definido, backend aplica fallback automático por dominio del remitente:
+    - Outlook/Hotmail/Live/MSN -> `smtp.office365.com`
+    - resto -> `smtp.gmail.com`
 - Observability alerts: `OBSERVABILITY_ALERT_EMAILS` (comma-separated, default `executive.managgio@gmail.com`), `OBSERVABILITY_ALERT_COOLDOWN_MINUTES`, `OBSERVABILITY_ALERT_API_WINDOW_MINUTES`, `OBSERVABILITY_ALERT_API_MIN_SAMPLES`, `OBSERVABILITY_ALERT_API_ERROR_RATE_PERCENT`, `OBSERVABILITY_ALERT_API_ERROR_MIN_COUNT`, `OBSERVABILITY_ALERT_API_P95_MS`.
 - Observability persistence: `OBSERVABILITY_PERSIST_FLUSH_MS`, `OBSERVABILITY_PERSIST_BATCH_SIZE`, `OBSERVABILITY_PERSIST_BUFFER_LIMIT`, `OBSERVABILITY_PERSIST_RETENTION_DAYS`, `OBSERVABILITY_SUMMARY_QUERY_CAP`.
 - Distributed locks: `DISTRIBUTED_LOCK_PREFIX` (namespace de locks compartidos entre instancias).

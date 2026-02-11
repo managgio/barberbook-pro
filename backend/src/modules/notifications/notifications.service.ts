@@ -22,6 +22,18 @@ interface AppointmentInfo {
   location?: string;
 }
 
+const resolveDefaultSmtpHost = (email?: string) => {
+  const normalized = (email || '').trim().toLowerCase();
+  const domain = normalized.includes('@') ? normalized.split('@')[1] : '';
+  const isOutlookFamily =
+    domain === 'outlook.com' ||
+    domain === 'hotmail.com' ||
+    domain === 'live.com' ||
+    domain === 'msn.com' ||
+    domain.startsWith('outlook.');
+  return isOutlookFamily ? 'smtp.office365.com' : 'smtp.gmail.com';
+};
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -55,7 +67,7 @@ export class NotificationsService {
       return null;
     }
 
-    const host = emailConfig.host || 'smtp.gmail.com';
+    const host = emailConfig.host || resolveDefaultSmtpHost(emailConfig.user);
     const port = emailConfig.port || 587;
     const transporter = nodemailer.createTransport({
       host,
