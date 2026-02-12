@@ -3,6 +3,7 @@ import { AppointmentStatus, LoyaltyProgram, LoyaltyScope } from '@prisma/client'
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateLoyaltyProgramDto } from './dto/create-loyalty-program.dto';
 import { UpdateLoyaltyProgramDto } from './dto/update-loyalty-program.dto';
 
@@ -33,6 +34,7 @@ export class LoyaltyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantConfig: TenantConfigService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   private async isEnabled() {
@@ -349,6 +351,10 @@ export class LoyaltyService {
     if (!userId) {
       throw new BadRequestException('userId is required');
     }
+    const hasSubscription = await this.subscriptionsService.hasUsableActiveSubscription(userId, new Date());
+    if (hasSubscription) {
+      return { enabled: false, blockedBySubscription: true, programs: [] };
+    }
     const localId = getCurrentLocalId();
     const programs = await this.prisma.loyaltyProgram.findMany({
       where: { localId, isActive: true },
@@ -383,6 +389,17 @@ export class LoyaltyService {
     if (!userId || !serviceId) {
       throw new BadRequestException('userId and serviceId are required');
     }
+    const hasSubscription = await this.subscriptionsService.hasUsableActiveSubscription(userId, new Date());
+    if (hasSubscription) {
+      return {
+        enabled: false,
+        blockedBySubscription: true,
+        program: null,
+        progress: null,
+        isFreeNext: false,
+        nextIndex: null,
+      };
+    }
     const program = await this.resolveProgramForService(serviceId, userId);
     if (!program) {
       return { enabled: true, program: null, progress: null, isFreeNext: false, nextIndex: null };
@@ -404,6 +421,9 @@ export class LoyaltyService {
   async resolveRewardDecision(userId: string | null | undefined, serviceId: string) {
     if (!userId) return null;
     if (!(await this.isEnabled())) return null;
+    if (await this.subscriptionsService.hasUsableActiveSubscription(userId, new Date())) {
+      return null;
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },

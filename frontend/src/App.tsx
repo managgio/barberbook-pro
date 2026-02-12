@@ -27,6 +27,7 @@ const BookingWizard = lazy(() => import("./pages/client/BookingWizard"));
 const AppointmentsPage = lazy(() => import("./pages/client/AppointmentsPage"));
 const ProfilePage = lazy(() => import("./pages/client/ProfilePage"));
 const ReferralsPage = lazy(() => import("./pages/client/ReferralsPage"));
+const SubscriptionsPage = lazy(() => import("./pages/client/SubscriptionsPage"));
 const ReferralLandingPage = lazy(() => import("./pages/ReferralLandingPage"));
 const StripePaymentResultPage = lazy(() => import("./pages/StripePaymentResultPage"));
 const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
@@ -39,6 +40,7 @@ const AdminServices = lazy(() => import("./pages/admin/AdminServices"));
 const AdminOffers = lazy(() => import("./pages/admin/AdminOffers"));
 const AdminStock = lazy(() => import("./pages/admin/AdminStock"));
 const AdminBarbers = lazy(() => import("./pages/admin/AdminBarbers"));
+const AdminSubscriptions = lazy(() => import("./pages/admin/AdminSubscriptions"));
 const AdminAlerts = lazy(() => import("./pages/admin/AdminAlerts"));
 const AdminHolidays = lazy(() => import("./pages/admin/AdminHolidays"));
 const AdminRoles = lazy(() => import("./pages/admin/AdminRoles"));
@@ -151,6 +153,7 @@ const AppRoutes: React.FC = () => {
         <Route index element={withSuspense(<ClientDashboard />)} />
         <Route path="book" element={withSuspense(<BookingWizard />)} />
         <Route path="appointments" element={withSuspense(<AppointmentsPage />)} />
+        <Route path="subscriptions" element={withSuspense(<SubscriptionsPage />)} />
         <Route path="referrals" element={withSuspense(<ReferralsPage />)} />
         <Route path="profile" element={withSuspense(<ProfilePage />)} />
       </Route>
@@ -173,6 +176,7 @@ const AppRoutes: React.FC = () => {
         <Route path="clients" element={withSuspense(<AdminClients />)} />
         <Route path="services" element={withSuspense(<AdminServices />)} />
         <Route path="barbers" element={withSuspense(<AdminBarbers />)} />
+        <Route path="subscriptions" element={withSuspense(<AdminSubscriptions />)} />
         <Route path="loyalty" element={withSuspense(<AdminLoyalty />)} />
         <Route path="referrals" element={withSuspense(<AdminReferrals />)} />
         <Route path="reviews" element={withSuspense(<AdminReviews />)} />

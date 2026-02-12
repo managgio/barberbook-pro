@@ -14,6 +14,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
 import { ReviewsModule } from '../reviews/reviews.module';
 import { AuthModule } from '../../auth/auth.module';
 import { BarbersModule } from '../barbers/barbers.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { BarbersModule } from '../barbers/barbers.module';
     ReviewsModule,
     AuthModule,
     BarbersModule,
+    SubscriptionsModule,
   ],
   controllers: [AppointmentsController],
   providers: [AppointmentsService, AppointmentsStatusSyncService, AppointmentsRetentionService],

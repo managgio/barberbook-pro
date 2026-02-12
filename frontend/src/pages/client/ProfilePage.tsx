@@ -47,13 +47,19 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     let isMounted = true;
-    getLoyaltySummary(user.id)
-      .then((data) => {
-        if (isMounted) setLoyaltySummary(data);
-      })
-      .catch(() => {
-        if (isMounted) setLoyaltySummary(null);
-      });
+
+    const loadExtraData = async () => {
+      const [loyaltyResult] = await Promise.allSettled([getLoyaltySummary(user.id)]);
+
+      if (!isMounted) return;
+
+      setLoyaltySummary(
+        loyaltyResult.status === 'fulfilled' ? loyaltyResult.value : null,
+      );
+    };
+
+    void loadExtraData();
+
     return () => {
       isMounted = false;
     };

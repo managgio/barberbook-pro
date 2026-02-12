@@ -20,6 +20,7 @@ import { ReferralAttributionService } from '../referrals/referral-attribution.se
 import { RewardsService } from '../referrals/rewards.service';
 import { ReviewRequestService } from '../reviews/review-request.service';
 import { BarbersService } from '../barbers/barbers.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import {
   APP_TIMEZONE,
   endOfDayInTimeZone,
@@ -116,6 +117,7 @@ export class AppointmentsService {
     private readonly rewardsService: RewardsService,
     private readonly reviewRequestService: ReviewRequestService,
     private readonly barbersService: BarbersService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   private async getServiceDuration(serviceId?: string) {
@@ -773,17 +775,30 @@ export class AppointmentsService {
     const serviceName = pricing.serviceName;
     let servicePrice = pricing.price;
     const barberNameSnapshot = await this.getBarberNameSnapshot(data.barberId);
-    const loyaltyDecision = await this.loyaltyService.resolveRewardDecision(data.userId, data.serviceId);
-    const loyaltyProgramId = loyaltyDecision?.program.id ?? null;
-    const loyaltyRewardApplied = loyaltyDecision?.isFreeNext ?? false;
-    if (loyaltyRewardApplied) {
+    const activeSubscription = await this.subscriptionsService.resolveActiveSubscriptionForAppointment(
+      data.userId,
+      startDateTime,
+    );
+    const subscriptionApplied = Boolean(activeSubscription);
+    const subscriptionPlanId = activeSubscription?.planId ?? null;
+    const subscriptionId = activeSubscription?.subscriptionId ?? null;
+    let loyaltyProgramId: string | null = null;
+    let loyaltyRewardApplied = false;
+    if (!subscriptionApplied) {
+      const loyaltyDecision = await this.loyaltyService.resolveRewardDecision(data.userId, data.serviceId);
+      loyaltyProgramId = loyaltyDecision?.program.id ?? null;
+      loyaltyRewardApplied = loyaltyDecision?.isFreeNext ?? false;
+    }
+    if (loyaltyRewardApplied || subscriptionApplied) {
       servicePrice = 0;
     }
-    const referralAttribution = await this.referralAttributionService.resolveAttributionForBooking({
-      referralAttributionId: data.referralAttributionId ?? null,
-      userId: data.userId ?? null,
-      guestContact: data.guestContact ?? null,
-    });
+    const referralAttribution = subscriptionApplied
+      ? null
+      : await this.referralAttributionService.resolveAttributionForBooking({
+          referralAttributionId: data.referralAttributionId ?? null,
+          userId: data.userId ?? null,
+          guestContact: data.guestContact ?? null,
+        });
     const productSelection = await this.resolveProductSelection(requestedProducts, {
       allowInactive: isAdminActor,
       allowPrivate: isAdminActor,
@@ -791,11 +806,11 @@ export class AppointmentsService {
     });
     let appliedCouponId: string | null = null;
     let couponDiscount = 0;
-    if (data.appliedCouponId) {
+    if (data.appliedCouponId && !subscriptionApplied) {
       if (!data.userId) {
         throw new BadRequestException('Debes iniciar sesión para usar un cupón.');
       }
-      if (loyaltyRewardApplied) {
+      if (loyaltyRewardApplied || subscriptionApplied) {
         throw new BadRequestException('No puedes aplicar un cupón en una cita gratis.');
       }
       const coupon = await this.rewardsService.validateCoupon({
@@ -815,7 +830,7 @@ export class AppointmentsService {
 
     const totalBeforeWallet = servicePrice + productSelection.total;
     let walletAppliedAmount = 0;
-    if (data.useWallet && data.userId) {
+    if (data.useWallet && data.userId && !subscriptionApplied) {
       const available = await this.rewardsService.getAvailableBalance(data.userId);
       walletAppliedAmount = Math.min(available, totalBeforeWallet);
     }
@@ -864,6 +879,9 @@ export class AppointmentsService {
               serviceNameSnapshot: serviceName,
               loyaltyProgramId,
               loyaltyRewardApplied,
+              subscriptionApplied,
+              subscriptionPlanId,
+              subscriptionId,
               referralAttributionId: shouldHoldStock ? referralAttribution?.id ?? null : null,
               appliedCouponId: shouldHoldStock ? appliedCouponId : null,
               walletAppliedAmount: new Prisma.Decimal(shouldHoldStock ? walletAppliedAmount : 0),
@@ -944,6 +962,10 @@ export class AppointmentsService {
       await this.rewardsService.confirmWalletHold(appointment.id);
       await this.rewardsService.confirmCouponUsage(appointment.id);
       await this.referralAttributionService.handleAppointmentCompleted(appointment.id);
+      await this.subscriptionsService.settlePendingInPersonPaymentFromAppointment({
+        subscriptionId: appointment.subscriptionId,
+        paymentMethod: appointment.paymentMethod,
+      });
       await this.reviewRequestService.handleAppointmentCompleted(appointment.id);
     }
 
@@ -1074,13 +1096,33 @@ export class AppointmentsService {
       }
     }
 
-    const shouldRecalculateLoyalty = serviceChanged || userChanged;
+    const shouldRecalculatePricingSignals =
+      data.serviceId !== undefined || data.startDateTime !== undefined || data.userId !== undefined;
+    let subscriptionApplied = current.subscriptionApplied ?? false;
+    let subscriptionPlanId = current.subscriptionPlanId ?? null;
+    let subscriptionId = current.subscriptionId ?? null;
+    if (shouldRecalculatePricingSignals) {
+      const activeSubscription = await this.subscriptionsService.resolveActiveSubscriptionForAppointment(
+        nextUserId,
+        nextStartDateTime,
+      );
+      subscriptionApplied = Boolean(activeSubscription);
+      subscriptionPlanId = activeSubscription?.planId ?? null;
+      subscriptionId = activeSubscription?.subscriptionId ?? null;
+    }
+
+    const shouldRecalculateLoyalty = shouldRecalculatePricingSignals;
     let loyaltyProgramId = current.loyaltyProgramId ?? null;
     let loyaltyRewardApplied = current.loyaltyRewardApplied ?? false;
     if (shouldRecalculateLoyalty) {
-      const loyaltyDecision = await this.loyaltyService.resolveRewardDecision(nextUserId, nextServiceId);
-      loyaltyProgramId = loyaltyDecision?.program.id ?? null;
-      loyaltyRewardApplied = loyaltyDecision?.isFreeNext ?? false;
+      if (subscriptionApplied) {
+        loyaltyProgramId = null;
+        loyaltyRewardApplied = false;
+      } else {
+        const loyaltyDecision = await this.loyaltyService.resolveRewardDecision(nextUserId, nextServiceId);
+        loyaltyProgramId = loyaltyDecision?.program.id ?? null;
+        loyaltyRewardApplied = loyaltyDecision?.isFreeNext ?? false;
+      }
     }
 
     const currentProducts = current.products ?? [];
@@ -1130,15 +1172,14 @@ export class AppointmentsService {
       throw new ForbiddenException('Solo un admin puede modificar recompensas.');
     }
 
-    const shouldRecalculatePrice =
-      data.serviceId !== undefined || data.startDateTime !== undefined || data.userId !== undefined;
+    const shouldRecalculatePrice = shouldRecalculatePricingSignals;
     let price: Prisma.Decimal | undefined;
     let resolvedServiceName: string | null = null;
     let resolvedServicePrice: number | null = null;
     if (shouldRecalculatePrice) {
       const pricing = await this.calculateAppointmentPrice(nextServiceId, nextStartDateTime);
       resolvedServiceName = pricing.serviceName;
-      resolvedServicePrice = loyaltyRewardApplied ? 0 : pricing.price;
+      resolvedServicePrice = subscriptionApplied || loyaltyRewardApplied ? 0 : pricing.price;
     }
     if (data.price !== undefined) {
       price = new Prisma.Decimal(data.price);
@@ -1146,8 +1187,11 @@ export class AppointmentsService {
       const baseServicePrice = shouldRecalculatePrice
         ? resolvedServicePrice ?? 0
         : Math.max(0, Number(current.price) - currentProductsTotal);
-      const walletAmount =
-        data.walletAppliedAmount === undefined ? Number(current.walletAppliedAmount ?? 0) : data.walletAppliedAmount;
+      const walletAmount = subscriptionApplied
+        ? 0
+        : data.walletAppliedAmount === undefined
+          ? Number(current.walletAppliedAmount ?? 0)
+          : data.walletAppliedAmount;
       const recalculatedTotal = Math.max(0, baseServicePrice + nextProductSelection.total - Math.max(0, walletAmount));
       price = new Prisma.Decimal(recalculatedTotal);
     }
@@ -1256,13 +1300,25 @@ export class AppointmentsService {
               ...snapshotUpdates,
               loyaltyProgramId,
               loyaltyRewardApplied,
-              referralAttributionId:
-                data.referralAttributionId === undefined ? undefined : data.referralAttributionId,
-              appliedCouponId: data.appliedCouponId === undefined ? undefined : data.appliedCouponId,
-              walletAppliedAmount:
-                data.walletAppliedAmount === undefined
+              subscriptionApplied,
+              subscriptionPlanId,
+              subscriptionId,
+              referralAttributionId: subscriptionApplied
+                ? null
+                : data.referralAttributionId === undefined
                   ? undefined
-                  : new Prisma.Decimal(data.walletAppliedAmount),
+                  : data.referralAttributionId,
+              appliedCouponId: subscriptionApplied
+                ? null
+                : data.appliedCouponId === undefined
+                  ? undefined
+                  : data.appliedCouponId,
+              walletAppliedAmount:
+                subscriptionApplied
+                  ? new Prisma.Decimal(0)
+                  : data.walletAppliedAmount === undefined
+                    ? undefined
+                    : new Prisma.Decimal(data.walletAppliedAmount),
               startDateTime: data.startDateTime ? new Date(data.startDateTime) : undefined,
               price,
               paymentMethod: data.paymentMethod === undefined ? undefined : data.paymentMethod,
@@ -1314,6 +1370,20 @@ export class AppointmentsService {
         {
           name: 'handleReferralCompleted',
           run: () => this.referralAttributionService.handleAppointmentCompleted(appointmentId),
+        },
+        {
+          name: 'settleSubscriptionInPersonPayment',
+          run: async () => {
+            const appointment = await this.prisma.appointment.findFirst({
+              where: { id: appointmentId, localId: getCurrentLocalId() },
+              select: { subscriptionId: true, paymentMethod: true },
+            });
+            if (!appointment) return null;
+            return this.subscriptionsService.settlePendingInPersonPaymentFromAppointment({
+              subscriptionId: appointment.subscriptionId,
+              paymentMethod: appointment.paymentMethod,
+            });
+          },
         },
         {
           name: 'handleReviewCompleted',

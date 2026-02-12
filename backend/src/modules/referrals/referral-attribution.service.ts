@@ -7,6 +7,7 @@ import { ReferralCodeService } from './referral-code.service';
 import { ReferralConfigService } from './referral-config.service';
 import { RewardsService } from './rewards.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { formatRewardText, normalizeAntiFraud, parseContactTokens, startOfMonth, endOfMonth } from './referral.utils';
 
 const ALLOWED_PENDING_STATUSES: ReferralAttributionStatus[] = [
@@ -32,6 +33,7 @@ export class ReferralAttributionService {
     private readonly codeService: ReferralCodeService,
     private readonly rewardsService: RewardsService,
     private readonly notificationsService: NotificationsService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   private async getActiveConfig() {
@@ -79,6 +81,10 @@ export class ReferralAttributionService {
     const localId = getCurrentLocalId();
     const config = await this.configService.getConfig();
     const moduleEnabled = await this.configService.isModuleEnabled();
+    const blockedBySubscription = await this.subscriptionsService.hasUsableActiveSubscription(
+      userId,
+      new Date(),
+    );
     const code = await this.codeService.getOrCreateCode(userId);
     const rewardSummary = await this.getRewardSummary();
     const attributions = await this.prisma.referralAttribution.findMany({
@@ -101,7 +107,8 @@ export class ReferralAttributionService {
 
     return {
       code: code.code,
-      programEnabled: moduleEnabled && config.enabled,
+      programEnabled: moduleEnabled && config.enabled && !blockedBySubscription,
+      blockedBySubscription,
       rewardSummary,
       pending: attributions.filter((item) => item.status === ReferralAttributionStatus.ATTRIBUTED || item.status === ReferralAttributionStatus.BOOKED).map(mapItem),
       confirmed: attributions.filter((item) => item.status === ReferralAttributionStatus.REWARDED || item.status === ReferralAttributionStatus.COMPLETED).map(mapItem),

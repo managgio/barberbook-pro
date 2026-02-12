@@ -21,7 +21,8 @@ import { getPrivacyConsentStatus } from '@/data/api/legal';
 import { getLoyaltyPreview } from '@/data/api/loyalty';
 import { getStripeAvailability, createStripeCheckout } from '@/data/api/payments';
 import { getRewardsWallet } from '@/data/api/referrals';
-import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon, StripeAvailability } from '@/data/types';
+import { getMyActiveSubscription } from '@/data/api/subscriptions';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon, StripeAvailability, UserSubscription } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -159,9 +160,34 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     staleTime: 60_000,
     queryFn: () => getBarbers(booking.serviceId ? { serviceId: booking.serviceId } : undefined),
   });
+  const subscriptionReferenceDate = useMemo(() => {
+    if (booking.dateTime) return booking.dateTime;
+    const middayReference = new Date(selectedDate);
+    middayReference.setHours(12, 0, 0, 0);
+    return middayReference.toISOString();
+  }, [booking.dateTime, selectedDate]);
+  const activeSubscriptionQuery = useQuery<UserSubscription | null>({
+    queryKey: [
+      'booking-active-subscription',
+      currentLocationId || 'default',
+      user?.id || 'anonymous',
+      subscriptionReferenceDate,
+    ],
+    enabled: !isGuest && Boolean(user?.id),
+    staleTime: 30_000,
+    queryFn: async () => {
+      try {
+        return await getMyActiveSubscription(subscriptionReferenceDate);
+      } catch {
+        return null;
+      }
+    },
+  });
+  const activeSubscriptionForBooking = activeSubscriptionQuery.data ?? null;
+  const subscriptionFree = Boolean(activeSubscriptionForBooking?.isUsableNow);
   const loyaltyPreviewQuery = useQuery<LoyaltyPreview | null>({
     queryKey: queryKeys.bookingLoyaltyPreview(currentLocationId, user?.id, booking.serviceId),
-    enabled: !isGuest && Boolean(user?.id && booking.serviceId),
+    enabled: !isGuest && Boolean(user?.id && booking.serviceId) && !subscriptionFree,
     staleTime: 30_000,
     queryFn: async () => {
       try {
@@ -173,7 +199,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   });
   const rewardsWalletQuery = useQuery<RewardWalletSummary | null>({
     queryKey: queryKeys.rewardsWallet(currentLocationId, user?.id),
-    enabled: !isGuest && Boolean(user?.id),
+    enabled: !isGuest && Boolean(user?.id) && !subscriptionFree,
     staleTime: 30_000,
     queryFn: async () => {
       try {
@@ -213,9 +239,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () => barbersQuery.data ?? EMPTY_BARBERS,
     [barbersQuery.data],
   );
-  const loyaltyPreview = loyaltyPreviewQuery.data ?? null;
+  const loyaltyPreview = subscriptionFree ? null : loyaltyPreviewQuery.data ?? null;
   const isLoyaltyLoading = loyaltyPreviewQuery.isFetching;
-  const walletSummary = rewardsWalletQuery.data ?? null;
+  const walletSummary = subscriptionFree ? null : rewardsWalletQuery.data ?? null;
   const privacyConsentRequired = isGuest ? true : (privacyConsentStatusQuery.data?.required ?? true);
   const isLoading = catalogQuery.isLoading;
   const allowProductSelection = !isGuest && Boolean(user?.id) && productsEnabled && clientPurchaseEnabled;
@@ -678,6 +704,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }, [loyaltyFree, selectedCouponId]);
 
   useEffect(() => {
+    if (!subscriptionFree) return;
+    if (selectedCouponId) setSelectedCouponId(null);
+    if (useWalletBalance) setUseWalletBalance(false);
+  }, [subscriptionFree, selectedCouponId, useWalletBalance]);
+
+  useEffect(() => {
     if (selectedCouponId && !selectedCoupon) {
       setSelectedCouponId(null);
     }
@@ -691,7 +723,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
   const couponDiscount = useMemo(() => {
     if (!selectedCoupon || !selectedPricing) return 0;
-    if (loyaltyFree) return 0;
+    if (loyaltyFree || subscriptionFree) return 0;
     const basePrice = selectedPricing.finalPrice;
     if (basePrice <= 0) return 0;
     if (selectedCoupon.discountType === 'FREE_SERVICE') return basePrice;
@@ -704,13 +736,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       return Math.min(basePrice, value);
     }
     return 0;
-  }, [selectedCoupon, selectedPricing, loyaltyFree]);
+  }, [selectedCoupon, selectedPricing, loyaltyFree, subscriptionFree]);
 
   const serviceSubtotal = useMemo(() => {
     if (!selectedPricing) return 0;
-    const base = loyaltyFree ? 0 : selectedPricing.finalPrice;
+    const base = loyaltyFree || subscriptionFree ? 0 : selectedPricing.finalPrice;
     return Math.max(0, base - couponDiscount);
-  }, [selectedPricing, loyaltyFree, couponDiscount]);
+  }, [selectedPricing, loyaltyFree, subscriptionFree, couponDiscount]);
 
   const totalBeforeWallet = useMemo(
     () => serviceSubtotal + selectedProductsTotal,
@@ -718,9 +750,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   );
 
   const walletAppliedAmount = useMemo(() => {
-    if (!useWalletBalance) return 0;
+    if (!useWalletBalance || subscriptionFree) return 0;
     return Math.min(walletAvailable, totalBeforeWallet);
-  }, [useWalletBalance, walletAvailable, totalBeforeWallet]);
+  }, [useWalletBalance, walletAvailable, totalBeforeWallet, subscriptionFree]);
 
   const totalFinal = useMemo(
     () => Math.max(0, totalBeforeWallet - walletAppliedAmount),
@@ -834,6 +866,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       const userId = isGuest ? null : (user as User).id;
       const productsPayload = allowProductSelection ? selectedProducts : undefined;
       const storedReferral = getStoredReferralAttribution();
+      const referralAttributionId = subscriptionFree ? undefined : storedReferral?.id;
       const payload = {
         userId,
         serviceId: booking.serviceId,
@@ -844,9 +877,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
         privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
-        referralAttributionId: storedReferral?.id,
-        appliedCouponId: selectedCouponId ?? undefined,
-        useWallet: useWalletBalance || undefined,
+        referralAttributionId,
+        appliedCouponId: subscriptionFree ? undefined : selectedCouponId ?? undefined,
+        useWallet: subscriptionFree ? undefined : useWalletBalance || undefined,
         ...(productsPayload ? { products: productsPayload } : {}),
       };
 
@@ -1500,6 +1533,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     {format(new Date(selectedPricing.appliedOffer.endDate), "d 'de' MMMM", { locale: es })}.
                   </div>
                 )}
+                {activeSubscriptionForBooking && (
+                  <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+                    {subscriptionFree
+                      ? `Tu suscripción (${activeSubscriptionForBooking.plan.name}) aplica en esta cita: el servicio se cobra a 0€.`
+                      : `Tienes una suscripción activa (${activeSubscriptionForBooking.plan.name}), pero aún no está habilitada para aplicar en citas hasta completar el pago.`}
+                  </div>
+                )}
 
                 {allowProductSelection && productsEnabled && (
                   <>
@@ -1566,7 +1606,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </>
                 )}
 
-                {!isGuest && (walletAvailable > 0 || eligibleCoupons.length > 0) && (
+                {!isGuest && !subscriptionFree && (walletAvailable > 0 || eligibleCoupons.length > 0) && (
                   <>
                     <hr className="border-border" />
                     <div className="space-y-4">
@@ -1598,7 +1638,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           <Select
                             value={selectedCouponId ?? 'none'}
                             onValueChange={(value) => setSelectedCouponId(value === 'none' ? null : value)}
-                            disabled={loyaltyFree}
+                            disabled={loyaltyFree || subscriptionFree}
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Selecciona un cupón" />
@@ -1627,7 +1667,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </>
                 )}
 
-                {loyaltyEligible && loyaltyPreview?.program && loyaltyPreview.progress && (
+                {!subscriptionFree && loyaltyEligible && loyaltyPreview?.program && loyaltyPreview.progress && (
                   <>
                     <hr className="border-border" />
                     <div className="space-y-3">
@@ -1726,7 +1766,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4 space-y-1.5 sm:space-y-2">
                   <div className="flex items-center justify-between text-xs sm:text-sm">
                     <span className="text-muted-foreground">Precio servicio</span>
-                    <span className="font-medium text-foreground">{(loyaltyFree ? 0 : selectedPricing?.finalPrice ?? 0).toFixed(2)}€</span>
+                    <span className="font-medium text-foreground">
+                      {(subscriptionFree || loyaltyFree ? 0 : selectedPricing?.finalPrice ?? 0).toFixed(2)}€
+                    </span>
                   </div>
                   {couponDiscount > 0 && (
                     <div className="flex items-center justify-between text-xs sm:text-sm">

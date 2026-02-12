@@ -415,6 +415,8 @@ export class PlatformAdminService {
             data: { firstAppointmentId: null },
           });
           await tx.appointment.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.userSubscription.deleteMany({ where: { localId: { in: locationIds } } });
+          await tx.subscriptionPlan.deleteMany({ where: { localId: { in: locationIds } } });
           await tx.referralAttribution.deleteMany({ where: { localId: { in: locationIds } } });
           await tx.referralCode.deleteMany({ where: { localId: { in: locationIds } } });
           await tx.rewardWallet.deleteMany({ where: { localId: { in: locationIds } } });

@@ -82,6 +82,7 @@ Modulos principales:
 - **Product Categories**: categorias de productos (configurable).
 - **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
 - **Loyalty**: tarjetas de fidelizacion (global/servicio/categoria), recompensas y progreso por cliente.
+- **Subscriptions**: planes por local, altas de suscripción (admin/cliente), vigencia y aplicación automática en precio de cita.
 - **Referrals**: programa de referidos (config local, codigos, atribuciones, wallet/cupones, analitica).
 - **Reviews**: reseñas inteligentes in-app (config local, requests, feedback privado y métricas).
 - **Schedules**: horario del local y horarios por barbero (JSON), con descansos/buffer entre citas y tolerancia de cierre con overrides por dia/fecha.
@@ -136,6 +137,7 @@ Caching y sincronizacion frontend:
 - **Landing query-driven**: `LandingPage` consume `useQuery` para `barbers`, `services`, `products(landing)` y `product-categories`, eliminando `loadData` imperativo y compartiendo cache de catalogo por `localId`.
 - **Booking cacheado por dominio**: `BookingWizard` usa `useQuery` para bootstrap de reserva (`booking-bootstrap`), staff por servicio (`barbers(localId, serviceId)`), disponibilidad por fecha (`booking-slots`, single/batch), carga semanal (`booking-weekly-load`), preview de fidelizacion (`booking-loyalty-preview`), wallet (`rewards-wallet`) y estado de consentimiento (`privacy-consent-status`), reduciendo `useEffect + fetch` repetitivos.
 - **Admin catalogos con React Query real**: `AdminServices`, `AdminOffers`, `AdminLoyalty` y `AdminStock` eliminan `loadData` manual y cargan con `useQuery` por `localId`/`target` (`services`, `service-categories`, `offers`, `loyalty-programs`, `products-admin`, `product-categories`, `site-settings`); tras mutaciones refrescan via `refetch` selectivo e invalidacion por dominio (`dispatchServicesUpdated` / `dispatchProductsUpdated`) para mantener coherencia de precios y catalogos.
+- **Suscripciones admin query-driven**: `AdminSubscriptions` consume `useQuery` para planes (`subscription-plans`) y estado de cliente (`user-subscriptions`, `user-active-subscription`), y refresca de forma selectiva tras CRUD/asignaciones sin recarga completa.
 - **Equipo admin query-driven**: `AdminBarbers` carga equipo y metadatos (`barbers`, `services`, `service-categories`, `site-settings`) con `useQuery`; tras CRUD/asignaciones refuerza consistencia con `refetch` del catálogo de barberos + eventos de dominio. La edición de horarios individuales mantiene carga on-demand por `barberId`.
 - **Catálogo de barberos con scope operativo**: `GET /api/barbers` expone solo barberos activos (y nunca archivados) para flujos públicos/cliente; las vistas admin con selectores de staff (`Dashboard`, `Calendar`, `Search`, `Clients`, `Cash Register`, `Holidays`, `AdminBarbers`) consumen `GET /api/barbers/admin` (protegido con `@AdminEndpoint`) para incluir activos + inactivos sin mostrar archivados/eliminados.
 - **Buscador de citas query-driven**: `AdminSearch` consume `useQuery` para citas paginadas agregadas (`GET /api/appointments/admin-search`, incluye `items + clients`), catálogo (`barbers`, `services`) y configuración Stripe (`admin-stripe-config`); elimina `loadData` manual y se sincroniza por invalidación de dominio + `refetch` en foco.
@@ -151,6 +153,7 @@ Caching y sincronizacion frontend:
 - **PlatformBrands query-driven**: `PlatformBrands` consume `useQuery` con claves dedicadas (`platform-brands`, `platform-brand*`, `platform-location-config`) y `useMutation` para escrituras críticas (guardar marca/legal, CRUD de marca/local, asignación de admins), eliminando `load*` imperativos y centralizando refresco con `refetch` + `setQueryData`.
 - **Acceso directo a web del cliente (Platform > Clientes > Datos)**: la pestaña `Datos` calcula y expone un enlace "Abrir web" para la marca seleccionada (prioriza `customDomain`; fallback a `{subdomain}.{baseDomain}` según entorno), permitiendo validar rápidamente la web pública sin salir del flujo de plataforma.
 - **Controles flotantes por tenant (marca/local)**: `PlatformBrands` permite activar/desactivar por marca y con override por local la visibilidad de los iconos flotantes de admin (`Spotlight`/lupa y `Asistente IA`); `AdminLayout` consume los flags públicos `branding.adminSpotlightFloatingEnabled` y `branding.adminAssistantFloatingEnabled` (default visible).
+- **Orden resiliente del sidebar admin**: `resolveAdminNavOrder` inserta secciones nuevas faltantes respetando orden base y, en migraciones con orden guardado antiguo, recoloca `subscriptions` antes de `loyalty` para mantener una jerarquía operativa coherente por defecto.
 - **Tipado fuerte en PlatformBrands**: se retiraron `any` explícitos en `PlatformBrands.tsx` para estado/config/modelos de marca/local/admin, reduciendo riesgo de errores silenciosos y mejorando mantenibilidad del flujo de plataforma.
 - **Higiene de tipado en vistas clave**: se retiraron `any` explícitos en `AdminAiAssistant` (speech recognition tipado), `LandingPage` (secciones de presentacion) y `ReferralLandingPage` (payload de referidos), consolidando contratos fuertes en superficies de alto trafico.
 - **Contratos API sin `any` (platform/referrals/payments)**: los modulos de dominio en `frontend/src/data/api/*.ts` consumen tipos explicitos de `frontend/src/data/types.ts` para marcas/locales/config/admins, codigos de referidos y respuestas Stripe (checkout/sesion/config/onboarding), reduciendo deuda tecnica y errores por contratos ambiguos.
@@ -183,8 +186,8 @@ Observabilidad UX:
 
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
-- Cliente: Dashboard, Booking Wizard, Appointments, Profile, Referrals.
-- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register, Loyalty, Referrals.
+- Cliente: Dashboard, Booking Wizard, Appointments, Subscriptions, Profile, Referrals.
+- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register, Subscriptions, Loyalty, Referrals.
 - Plataforma: Dashboard, Brands (gestion multi-tenant, landing reordenable por drag & drop y overrides por local), Observability (salud UX/API en tiempo casi real).
 
 ## Modelo de datos (Prisma / MySQL)
@@ -205,6 +208,8 @@ BarberServiceAssignment | Asignacion directa barbero-servicio | Servicios concre
 BarberServiceCategoryAssignment | Asignacion por categoria | Categorias de servicios permitidas por barbero
 Offer | Ofertas | Descuento por scope (all/categories/services/products) y target (service/product)
 LoyaltyProgram | Fidelizacion | Scope (global/servicio/categoria), visitas requeridas, prioridad, activo
+SubscriptionPlan | Plan de suscripcion | Nombre, precio, duración (valor+unidad), estado/orden por local
+UserSubscription | Suscripcion de cliente | Usuario, plan, vigencia (start/end), estado y origen (admin/cliente)
 ReferralProgramConfig | Referidos local | Configuracion (recompensas, anti-fraude, expiracion, limites)
 ReferralConfigTemplate | Referidos plantilla | Config base por marca (aplicable a locales)
 ReferralCode | Codigo referido | Codigo unico por usuario+local
@@ -217,7 +222,7 @@ Coupon | Cupon personal | Descuento %/fijo/servicio gratis por usuario
 ProductCategory | Categoria producto | Orden y descripcion de productos
 Product | Producto | Precio, stock, imagen, visibilidad y categoria
 AppointmentProduct | Linea producto | Productos agregados a la cita (qty + precio unitario)
-Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, referidos, cupon, wallet, pagos Stripe (status/ids)
+Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, suscripción aplicada (`subscriptionApplied`, `subscriptionPlanId`, `subscriptionId`), referidos, cupon, wallet, pagos Stripe (status/ids)
 ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
 CashMovement | Movimiento de caja | Entradas/salidas manuales y operaciones de compra/venta de productos
 CashMovementProductItem | Linea de movimiento de caja | Productos y cantidades asociados a una compra/venta de caja, con snapshot de nombre y precio unitario
@@ -297,7 +302,10 @@ Flujos:
 4) **Pricing y ofertas**
    - Price base del servicio y productos añadidos.
    - Se aplica la mejor oferta activa por target (service/product).
+   - Si el cliente tiene suscripción activa en la fecha/hora de la cita, el precio del servicio pasa a `0` (los productos se cobran aparte).
+   - Si aplica suscripción, no aplica recompensa de fidelización para esa cita (precedencia suscripción > fidelización).
    - Se aplican cupones personales y wallet (si el cliente lo usa).
+   - No se permite cupón en citas ya gratuitas por suscripción o fidelización.
    - Wallet usa HOLD al confirmar y DEBIT al completar; si se cancela se libera.
    - Stripe: el cliente puede pagar online o en el local (si está habilitado).
    - Si el total es 0, se crea la cita sin cobrar online.
@@ -357,7 +365,7 @@ Flujos:
    - Logos por modo: se guarda logo para modo claro/oscuro y se usa segun `theme.mode`.
    - Estadisticas destacadas se pueden mostrar/ocultar desde admin settings.
 
-11) **Fidelizacion**
+12) **Fidelizacion**
    - Programas por local con scope: global, categoria o servicio (prioridad y orden).
    - Solo cuentan citas `completed` para el progreso; el resto no suma.
    - La recompensa aplica solo al precio del servicio (productos se cobran).
@@ -365,7 +373,18 @@ Flujos:
    - Se guarda `loyaltyProgramId` y `loyaltyRewardApplied` en la cita.
    - El historial de recompensas se construye desde citas completadas con recompensa aplicada.
 
-12) **Referidos**
+13) **Suscripciones**
+   - Planes por local con precio y vigencia configurable (dias/semanas/meses), archivables sin perder histórico.
+   - Ventana de alta programable por plan (inicio/fin): fuera de esa ventana el cliente ya no ve ni puede auto-suscribirse, pero las suscripciones ya activas siguen vigentes hasta su fecha de fin.
+   - En autoservicio cliente y en asignación admin solo se permite **1 suscripción activa a la vez**; para cambiar de plan debe esperar a que finalice la actual.
+   - Alta de suscripción desde admin (`assign`) o desde cliente (`subscribe`) usando el mismo motor de vigencia.
+   - Cobro configurable por suscripción: `stripe` (pendiente hasta webhook) o `next_appointment` (pendiente de cobro presencial en la próxima cita); admin puede marcar manualmente una suscripción como pagada.
+   - Mientras una suscripción esté activa y usable para reserva, el servicio de la cita se aplica a `0` y se bloquea el uso de fidelización/referidos (saldo, cupones y atribución de referido) en esa reserva.
+   - Una cita de cliente con suscripción activa queda con servicio a `0` y guarda trazabilidad (`subscriptionApplied`, `subscriptionPlanId`, `subscriptionId`).
+   - En admin, la ficha del cliente y listados de citas muestran indicador sutil de suscripción activa/aplicada.
+   - Si la sección `subscriptions` está oculta en el sidebar por configuración tenant/local, el módulo se considera deshabilitado operativamente.
+
+14) **Referidos**
    - Codigos por usuario+local (`/ref/:code`) y atribucion con expiracion.
    - Estados: ATTRIBUTED → BOOKED → COMPLETED → REWARDED (o EXPIRED/VOIDED).
    - Solo cuenta la primera cita completada del referido (no cancelada/no-show).
@@ -373,7 +392,7 @@ Flujos:
    - Recompensas: wallet y/o cupon personal (%/fijo/servicio gratis).
    - Wallet usa HOLD/RELEASE/DEBIT para preparar pago real.
 
-13) **Sincronizacion de cache UI (React Query + eventos admin)**
+15) **Sincronizacion de cache UI (React Query + eventos admin)**
    - Cambios de citas disparan `dispatchAppointmentsUpdated` e invalidan `appointments` para refresco coherente en dashboard/calendar/search/clients.
    - Cambios de usuarios (bloqueos/rol admin/asignacion de rol) disparan `dispatchUsersUpdated` e invalidan `users` para sincronizar selectores y listados admin.
    - Cambios de servicios/categorias disparan `dispatchServicesUpdated` y se invalidan claves `services` + `service-categories`.
@@ -489,6 +508,11 @@ Frontend (`frontend/.env*`):
 - Endpoint agregado para dashboard admin: `GET /api/appointments/dashboard-summary?window=<n>[&barberId=<id>]` devuelve KPIs, series de ingresos/ticket, mix de servicios, ocupacion y citas de hoy ya agregadas.
 - Endpoint agregado para búsqueda admin: `GET /api/appointments/admin-search?page=<n>&pageSize=<m>[&barberId=<id>][&date=<yyyy-mm-dd>]` devuelve `{ total, page, pageSize, hasMore, items, clients }`.
 - Endpoint agregado para calendario admin: `GET /api/appointments/admin-calendar?dateFrom=...&dateTo=...[&barberId=<id>][&sort=asc|desc]` devuelve `{ items, clients }` (sin segunda consulta a `/users`).
+- Endpoints de suscripciones:
+  - Admin: `GET /api/subscriptions/plans`, `POST /api/subscriptions/plans`, `PATCH /api/subscriptions/plans/:id`, `DELETE /api/subscriptions/plans/:id`.
+  - Público autenticado: `GET /api/subscriptions/plans/active`.
+  - Admin sobre cliente: `GET /api/subscriptions/users/:userId?page=<n>&pageSize=<m>` (paginado), `GET /api/subscriptions/users/:userId/active`, `POST /api/subscriptions/users/:userId/assign`, `POST /api/subscriptions/users/:userId/:subscriptionId/mark-paid`.
+  - Cliente autenticado: `GET /api/subscriptions/me`, `GET /api/subscriptions/me/active`, `POST /api/subscriptions/subscribe` (modo `stripe` o `next_appointment`).
 - Guardrails de entrada (anti abuso/sobrecarga):
   - `GET /api/users`: `q` max 120 caracteres, `ids` max 200, `page` acotada a 10.000.
   - `GET /api/appointments` + `admin-search` + `admin-calendar` + `weekly-load`: rango `dateFrom/dateTo` max 62 dias y `page` acotada a 10.000.
@@ -503,7 +527,7 @@ Frontend (`frontend/.env*`):
 - Guardado seguro en `Platform > Clientes > Config`: al guardar cambios de marca, el frontend solo persiste `locationConfig` si detecta diferencias reales frente al último estado cargado del local; esto evita sobrescrituras accidentales de overrides locales (`landing`, `sidebar`, `config`) al tocar ajustes de marca.
 - Overrides por local sin pérdida de datos: al desactivar toggles de personalización local (sidebar, notificaciones, landing, imágenes de landing, acciones flotantes y asignación por staff), el sistema vuelve a heredar marca pero conserva un borrador persistente por local (`__localOverrideDrafts`) para restaurar exactamente la configuración previa al reactivar el toggle.
 - Alta de locales en plataforma: el formulario sugiere `slug` automáticamente desde el subdominio de la marca (con sufijo incremental si ya existe dentro de la misma marca) para reducir errores manuales de creación.
-- Borrado de marca en plataforma (`DELETE /api/platform/brands/:id`) ejecuta limpieza transaccional de datos brand/local antes del `brand.delete` (roles, staff, citas, caja, catálogo, referral/reviews/loyalty, observabilidad y logs) para evitar fallos por FKs `brandId/localId`; la limpieza de assets en ImageKit se ejecuta después del commit DB.
+- Borrado de marca en plataforma (`DELETE /api/platform/brands/:id`) ejecuta limpieza transaccional de datos brand/local antes del `brand.delete` (roles, staff, citas, caja, catálogo, subscriptions/referral/reviews/loyalty, observabilidad y logs) para evitar fallos por FKs `brandId/localId`; la limpieza de assets en ImageKit se ejecuta después del commit DB.
 - El formato legacy de lista completa para `/users` y `/appointments` queda retirado del contrato backend.
 - `UsersService` normaliza emails sensibles (`trim + lowercase`) al resolver superadmin por marca (`superAdminEmail`) para evitar desalineaciones por espacios/case en primer login.
 - Gate automático de aislamiento tenant en CI: `npm run tenant:scope:check` valida que consultas Prisma masivas en modelos tenant-scoped incluyan `localId`/`brandId` (workflow `backend-hardening.yml`).

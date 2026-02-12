@@ -2,12 +2,16 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, RewardTxStatus, RewardTxType, RewardType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const DEFAULT_TX_LIMIT = 12;
 
 @Injectable()
 export class RewardsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly subscriptionsService: SubscriptionsService,
+  ) {}
 
   private getClient(tx?: Prisma.TransactionClient) {
     return tx ?? this.prisma;
@@ -31,19 +35,28 @@ export class RewardsService {
 
   async getWalletSummary(userId: string) {
     const localId = getCurrentLocalId();
+    const blockedBySubscription = await this.subscriptionsService.hasUsableActiveSubscription(
+      userId,
+      new Date(),
+    );
     const wallet = await this.ensureWallet(userId, localId);
     const pendingHolds = await this.getPendingHoldsTotal(userId, localId);
-    const availableBalance = Math.max(0, Number(wallet.balance) - pendingHolds);
+    const availableBalance = blockedBySubscription
+      ? 0
+      : Math.max(0, Number(wallet.balance) - pendingHolds);
     const transactions = await this.prisma.rewardTransaction.findMany({
       where: { userId, localId },
       orderBy: { createdAt: 'desc' },
       take: DEFAULT_TX_LIMIT,
     });
-    const coupons = await this.prisma.coupon.findMany({
-      where: { localId, userId, isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const coupons = blockedBySubscription
+      ? []
+      : await this.prisma.coupon.findMany({
+          where: { localId, userId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        });
     return {
+      blockedBySubscription,
       wallet: {
         balance: Number(wallet.balance),
         availableBalance,

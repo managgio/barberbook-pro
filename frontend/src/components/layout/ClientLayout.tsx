@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useTenant } from '@/context/TenantContext';
 import Navbar from './Navbar';
 import LegalFooter from './LegalFooter';
-import { Calendar, User, LayoutDashboard, Users } from 'lucide-react';
+import { Calendar, User, LayoutDashboard, Users, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getReferralSummary } from '@/data/api/referrals';
 import ReviewPromptModal from '@/components/reviews/ReviewPromptModal';
@@ -11,6 +12,7 @@ import ReviewPromptModal from '@/components/reviews/ReviewPromptModal';
 const clientNavItems = [
   { href: '/app', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/app/appointments', label: 'Mis Citas', icon: Calendar },
+  { href: '/app/subscriptions', label: 'Suscripciones', icon: Repeat },
   { href: '/app/referrals', label: 'Invita y gana', icon: Users },
   { href: '/app/profile', label: 'Mi Perfil', icon: User },
 ];
@@ -18,7 +20,9 @@ const clientNavItems = [
 const ClientLayout: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
+  const { tenant } = useTenant();
   const [referralsEnabled, setReferralsEnabled] = useState<boolean | null>(null);
+  const subscriptionsEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('subscriptions');
 
   useEffect(() => {
     if (!user?.id) return;
@@ -38,11 +42,19 @@ const ClientLayout: React.FC = () => {
   }, [user?.id]);
 
   const visibleNavItems = useMemo(() => {
+    if (referralsEnabled === false && !subscriptionsEnabled) {
+      return clientNavItems.filter(
+        (item) => item.href !== '/app/referrals' && item.href !== '/app/subscriptions',
+      );
+    }
     if (referralsEnabled === false) {
       return clientNavItems.filter((item) => item.href !== '/app/referrals');
     }
+    if (!subscriptionsEnabled) {
+      return clientNavItems.filter((item) => item.href !== '/app/subscriptions');
+    }
     return clientNavItems;
-  }, [referralsEnabled]);
+  }, [referralsEnabled, subscriptionsEnabled]);
 
   const isActive = (path: string, exact?: boolean) => {
     if (exact) return location.pathname === path;

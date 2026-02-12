@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import { TenancyModule } from '../../tenancy/tenancy.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { ReferralConfigService } from './referral-config.service';
 import { ReferralTemplatesService } from './referral-templates.service';
 import { ReferralCodeService } from './referral-code.service';
@@ -14,7 +15,7 @@ import { RewardsPublicController } from './rewards.public.controller';
 import { ReferralsSchedulerService } from './referrals.scheduler';
 
 @Module({
-  imports: [TenancyModule, NotificationsModule, AuthModule],
+  imports: [TenancyModule, NotificationsModule, AuthModule, SubscriptionsModule],
   controllers: [
     ReferralsPublicController,
     RewardsPublicController,

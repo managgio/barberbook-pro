@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { getAdminCalendarData, updateAppointment } from '@/data/api/appointments';
 import { getAdminStripeConfig } from '@/data/api/payments';
 import { AdminCalendarResponse, Appointment, Barber, PaymentMethod, Service } from '@/data/types';
@@ -649,6 +650,11 @@ const AdminCalendar: React.FC = () => {
                             <div className={cn('truncate font-medium text-white/95', isCompact && 'text-[10px]')}>
                               {service?.name || 'Servicio'}
                             </div>
+                            {!isCompact && event.appointment.subscriptionApplied && (
+                              <div className="mt-0.5 inline-flex rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-100">
+                                Susc
+                              </div>
+                            )}
                             {showClient && (
                               <div className="truncate text-[10px] text-white/75">
                                 {getAppointmentClientName(event.appointment)}
@@ -695,9 +701,14 @@ const AdminCalendar: React.FC = () => {
                 <Scissors className="w-5 h-5 text-primary" />
                 <div>
                   <p className="text-sm text-muted-foreground">Servicio</p>
-                  <p className="font-medium text-foreground">
-                    {getService(selectedAppointment.serviceId)?.name}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-foreground">
+                      {getService(selectedAppointment.serviceId)?.name}
+                    </p>
+                    {selectedAppointment.subscriptionApplied && (
+                      <Badge variant="secondary">Suscripción</Badge>
+                    )}
+                  </div>
                 </div>
               </div>
 

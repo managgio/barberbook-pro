@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import Stripe from 'stripe';
-import { Prisma, PaymentMethod, PaymentStatus } from '@prisma/client';
+import { Prisma, PaymentMethod, PaymentStatus, UserSubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { getCurrentBrandId, getCurrentLocalId, runWithTenantContextAsync } from '../../tenancy/tenant.context';
@@ -479,37 +479,66 @@ export class PaymentsService {
   }
 
   private async handleCheckoutCompleted(session: Stripe.Checkout.Session) {
-    const appointmentId = session.metadata?.appointmentId || session.client_reference_id;
-    if (!appointmentId) return;
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      select: { id: true, localId: true, status: true, local: { select: { brandId: true } } },
-    });
-    if (!appointment || appointment.status === 'cancelled') return;
-
-    const amountTotal = session.amount_total ? session.amount_total / 100 : null;
-    await runWithTenantContextAsync(
-      { localId: appointment.localId, brandId: appointment.local.brandId },
-      async () => {
-      await this.prisma.appointment.update({
-        where: { id: appointment.id },
-        data: {
-          paymentStatus: PaymentStatus.paid,
-          paymentPaidAt: new Date(),
-          paymentMethod: PaymentMethod.stripe,
-          paymentAmount: amountTotal !== null ? new Prisma.Decimal(amountTotal) : undefined,
-          paymentCurrency: session.currency || DEFAULT_CURRENCY,
-          paymentExpiresAt: null,
-        },
+    const appointmentId = session.metadata?.appointmentId;
+    if (appointmentId) {
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { id: true, localId: true, status: true, local: { select: { brandId: true } } },
       });
-      await this.appointmentsService.sendPaymentConfirmation(appointment.id);
+      if (!appointment || appointment.status === 'cancelled') return;
+
+      const amountTotal = session.amount_total ? session.amount_total / 100 : null;
+      await runWithTenantContextAsync(
+        { localId: appointment.localId, brandId: appointment.local.brandId },
+        async () => {
+          await this.prisma.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              paymentStatus: PaymentStatus.paid,
+              paymentPaidAt: new Date(),
+              paymentMethod: PaymentMethod.stripe,
+              paymentAmount: amountTotal !== null ? new Prisma.Decimal(amountTotal) : undefined,
+              paymentCurrency: session.currency || DEFAULT_CURRENCY,
+              paymentExpiresAt: null,
+            },
+          });
+          await this.appointmentsService.sendPaymentConfirmation(appointment.id);
+        },
+      );
+      return;
+    }
+
+    const subscriptionId = session.metadata?.subscriptionId || session.client_reference_id;
+    if (!subscriptionId) return;
+    const amountTotal = session.amount_total ? session.amount_total / 100 : null;
+    await this.prisma.userSubscription.updateMany({
+      where: { id: subscriptionId, paymentStatus: PaymentStatus.pending },
+      data: {
+        paymentStatus: PaymentStatus.paid,
+        paymentPaidAt: new Date(),
+        paymentMethod: PaymentMethod.stripe,
+        paymentAmount: amountTotal !== null ? new Prisma.Decimal(amountTotal) : undefined,
+        paymentCurrency: session.currency || DEFAULT_CURRENCY,
+      },
     });
   }
 
   private async handleCheckoutExpired(session: Stripe.Checkout.Session) {
-    const appointmentId = session.metadata?.appointmentId || session.client_reference_id;
-    if (!appointmentId) return;
-    await this.cancelPendingAppointment(appointmentId, 'stripe_expired');
+    const appointmentId = session.metadata?.appointmentId;
+    if (appointmentId) {
+      await this.cancelPendingAppointment(appointmentId, 'stripe_expired');
+      return;
+    }
+    const subscriptionId = session.metadata?.subscriptionId || session.client_reference_id;
+    if (!subscriptionId) return;
+    await this.prisma.userSubscription.updateMany({
+      where: { id: subscriptionId, paymentStatus: PaymentStatus.pending },
+      data: {
+        paymentStatus: PaymentStatus.cancelled,
+        status: UserSubscriptionStatus.cancelled,
+        cancelledAt: new Date(),
+      },
+    });
   }
 
   private async handlePaymentFailed(intent: Stripe.PaymentIntent) {
@@ -517,8 +546,18 @@ export class PaymentsService {
       where: { stripePaymentIntentId: intent.id },
       select: { id: true },
     });
-    if (!appointment) return;
-    await this.cancelPendingAppointment(appointment.id, 'stripe_payment_failed');
+    if (appointment) {
+      await this.cancelPendingAppointment(appointment.id, 'stripe_payment_failed');
+      return;
+    }
+    await this.prisma.userSubscription.updateMany({
+      where: { stripePaymentIntentId: intent.id, paymentStatus: PaymentStatus.pending },
+      data: {
+        paymentStatus: PaymentStatus.failed,
+        status: UserSubscriptionStatus.cancelled,
+        cancelledAt: new Date(),
+      },
+    });
   }
 
   private async handlePaymentSucceeded(intent: Stripe.PaymentIntent) {
@@ -526,25 +565,39 @@ export class PaymentsService {
       where: { stripePaymentIntentId: intent.id },
       select: { id: true, localId: true, paymentStatus: true, local: { select: { brandId: true } } },
     });
-    if (!appointment || appointment.paymentStatus === PaymentStatus.paid) return;
+    if (appointment && appointment.paymentStatus !== PaymentStatus.paid) {
+      const amountTotal = typeof intent.amount_received === 'number' ? intent.amount_received / 100 : null;
+      await runWithTenantContextAsync(
+        { localId: appointment.localId, brandId: appointment.local.brandId },
+        async () => {
+          await this.prisma.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              paymentStatus: PaymentStatus.paid,
+              paymentPaidAt: new Date(),
+              paymentMethod: PaymentMethod.stripe,
+              paymentAmount: amountTotal !== null ? new Prisma.Decimal(amountTotal) : undefined,
+              paymentCurrency: intent.currency || DEFAULT_CURRENCY,
+              paymentExpiresAt: null,
+            },
+          });
+          await this.appointmentsService.sendPaymentConfirmation(appointment.id);
+        },
+      );
+      return;
+    }
+
     const amountTotal = typeof intent.amount_received === 'number' ? intent.amount_received / 100 : null;
-    await runWithTenantContextAsync(
-      { localId: appointment.localId, brandId: appointment.local.brandId },
-      async () => {
-        await this.prisma.appointment.update({
-          where: { id: appointment.id },
-          data: {
-            paymentStatus: PaymentStatus.paid,
-            paymentPaidAt: new Date(),
-            paymentMethod: PaymentMethod.stripe,
-            paymentAmount: amountTotal !== null ? new Prisma.Decimal(amountTotal) : undefined,
-            paymentCurrency: intent.currency || DEFAULT_CURRENCY,
-            paymentExpiresAt: null,
-          },
-        });
-        await this.appointmentsService.sendPaymentConfirmation(appointment.id);
+    await this.prisma.userSubscription.updateMany({
+      where: { stripePaymentIntentId: intent.id, paymentStatus: { in: [PaymentStatus.pending, PaymentStatus.failed] } },
+      data: {
+        paymentStatus: PaymentStatus.paid,
+        paymentPaidAt: new Date(),
+        paymentMethod: PaymentMethod.stripe,
+        paymentAmount: amountTotal !== null ? new Prisma.Decimal(amountTotal) : undefined,
+        paymentCurrency: intent.currency || DEFAULT_CURRENCY,
       },
-    );
+    });
   }
 
   private async cancelPendingAppointment(appointmentId: string, reason: string) {

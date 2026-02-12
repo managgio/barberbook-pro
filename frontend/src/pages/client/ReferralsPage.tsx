@@ -112,7 +112,9 @@ const ReferralsPage: React.FC = () => {
   if (summary.programEnabled === false) {
     return (
       <div className="text-sm text-muted-foreground">
-        El programa de referidos no está activo en {copy.location.definiteSingular}.
+        {summary.blockedBySubscription
+          ? 'Mientras tengas una suscripción activa, el programa de referidos queda pausado para tu cuenta.'
+          : `El programa de referidos no está activo en ${copy.location.definiteSingular}.`}
       </div>
     );
   }

@@ -216,6 +216,9 @@ export interface Appointment {
   referralAttributionId?: string | null;
   appliedCouponId?: string | null;
   walletAppliedAmount?: number;
+  subscriptionApplied?: boolean;
+  subscriptionPlanId?: string | null;
+  subscriptionId?: string | null;
   startDateTime: string; // ISO string
   price: number;
   paymentMethod?: PaymentMethod | null;
@@ -642,6 +645,7 @@ export interface ReferralAttributionItem {
 export interface ReferralSummaryResponse {
   code: string;
   programEnabled?: boolean;
+  blockedBySubscription?: boolean;
   shareUrl?: string | null;
   qrUrlPayload?: string | null;
   rewardSummary: ReferralRewardSummary;
@@ -725,6 +729,7 @@ export interface ReviewFeedbackItem {
 }
 
 export interface RewardWalletSummary {
+  blockedBySubscription?: boolean;
   wallet: {
     balance: number;
     availableBalance: number;
@@ -793,6 +798,7 @@ export interface LoyaltyRewardHistoryItem {
 
 export interface LoyaltySummary {
   enabled: boolean;
+  blockedBySubscription?: boolean;
   programs: Array<{
     program: LoyaltyProgram;
     progress: LoyaltyProgramProgress;
@@ -802,10 +808,88 @@ export interface LoyaltySummary {
 
 export interface LoyaltyPreview {
   enabled: boolean;
+  blockedBySubscription?: boolean;
   program: LoyaltyProgram | null;
   progress: LoyaltyProgramProgress | null;
   isFreeNext: boolean;
   nextIndex: number | null;
+}
+
+export type SubscriptionDurationUnit = 'days' | 'weeks' | 'months';
+export type UserSubscriptionStatus = 'active' | 'cancelled' | 'expired';
+export type UserSubscriptionSource = 'admin' | 'client';
+export type SubscriptionCheckoutMode = 'stripe' | 'next_appointment';
+
+export interface SubscriptionPlan {
+  id: string;
+  localId: string;
+  name: string;
+  description?: string | null;
+  price: number;
+  durationValue: number;
+  durationUnit: SubscriptionDurationUnit;
+  isActive: boolean;
+  isArchived: boolean;
+  availabilityStartDate?: string | null;
+  availabilityEndDate?: string | null;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSubscription {
+  id: string;
+  localId: string;
+  userId: string;
+  planId: string;
+  status: UserSubscriptionStatus;
+  source: UserSubscriptionSource;
+  startDate: string;
+  endDate: string;
+  paymentStatus: PaymentStatus;
+  paymentMethod?: PaymentMethod | null;
+  paymentAmount?: number | null;
+  paymentCurrency?: string | null;
+  paymentPaidAt?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeCheckoutSessionId?: string | null;
+  cancelledAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  isActiveNow: boolean;
+  isUsableNow: boolean;
+  isPaymentSettled: boolean;
+  plan: SubscriptionPlan;
+}
+
+export interface CreateSubscriptionPlanPayload {
+  name: string;
+  description?: string | null;
+  price: number;
+  durationValue: number;
+  durationUnit: SubscriptionDurationUnit;
+  isActive?: boolean;
+  availabilityStartDate?: string | null;
+  availabilityEndDate?: string | null;
+  displayOrder?: number;
+}
+
+export interface AssignUserSubscriptionPayload {
+  planId: string;
+  startDate?: string;
+  notes?: string | null;
+}
+
+export interface SubscribePlanPayload {
+  planId: string;
+  paymentMode?: SubscriptionCheckoutMode;
+}
+
+export interface SubscribePlanResponse {
+  mode: SubscriptionCheckoutMode;
+  checkoutUrl?: string | null;
+  subscription: UserSubscription;
 }
 
 export interface CreateLoyaltyProgramPayload {
@@ -830,6 +914,7 @@ export type AdminSectionKey =
   | 'clients'
   | 'services'
   | 'barbers'
+  | 'subscriptions'
   | 'loyalty'
   | 'referrals'
   | 'reviews'

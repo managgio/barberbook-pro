@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getAdminSearchAppointments, updateAppointment } from '@/data/api/appointments';
 import { getAdminStripeConfig } from '@/data/api/payments';
@@ -486,6 +487,11 @@ const AdminSearch: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2 text-foreground">
                           <span>{getService(apt.serviceId)?.name}</span>
+                          {apt.subscriptionApplied && (
+                            <Badge variant="secondary" className="h-5 px-2 text-[10px]">
+                              Suscripción
+                            </Badge>
+                          )}
                           <AppointmentNoteIndicator note={apt.notes} variant="icon" />
                         </div>
                       </td>

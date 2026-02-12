@@ -93,6 +93,20 @@ export const queryKeys = {
     ["offers", localId || "default", target] as const,
   loyaltyPrograms: (localId: string | null | undefined) =>
     ["loyalty-programs", localId || "default"] as const,
+  subscriptionPlans: (
+    localId: string | null | undefined,
+    includeArchived = false,
+  ) => ["subscription-plans", localId || "default", includeArchived ? "all" : "active-admin"] as const,
+  activeSubscriptionPlans: (localId: string | null | undefined) =>
+    ["subscription-plans", localId || "default", "public-active"] as const,
+  userSubscriptions: (
+    localId: string | null | undefined,
+    userId: string | null | undefined,
+    page = 1,
+    pageSize = 10,
+  ) => ["user-subscriptions", localId || "default", userId || "none", page, pageSize] as const,
+  userActiveSubscription: (localId: string | null | undefined, userId: string | null | undefined) =>
+    ["user-active-subscription", localId || "default", userId || "none"] as const,
   barbers: (
     localId: string | null | undefined,
     serviceId?: string,

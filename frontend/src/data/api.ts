@@ -26,5 +26,6 @@ export * from './api/schedules';
 export * from './api/service-categories';
 export * from './api/services';
 export * from './api/settings';
+export * from './api/subscriptions';
 export * from './api/tenant';
 export * from './api/users';
