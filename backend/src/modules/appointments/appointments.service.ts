@@ -550,7 +550,8 @@ export class AppointmentsService {
   }
 
   async findPage(params: AppointmentListFilters & { page: number; pageSize: number }) {
-    const where = this.buildListWhere(params);
+    const localId = getCurrentLocalId();
+    const where: Prisma.AppointmentWhereInput = { ...this.buildListWhere(params), localId };
     const [total, appointments] = await this.prisma.$transaction([
       this.prisma.appointment.count({ where }),
       this.prisma.appointment.findMany({
@@ -572,7 +573,8 @@ export class AppointmentsService {
   }
 
   async findPageWithClients(params: AppointmentListFilters & { page: number; pageSize: number }) {
-    const where = this.buildListWhere(params);
+    const localId = getCurrentLocalId();
+    const where: Prisma.AppointmentWhereInput = { ...this.buildListWhere(params), localId };
     const [total, appointments] = await this.prisma.$transaction([
       this.prisma.appointment.count({ where }),
       this.prisma.appointment.findMany({
@@ -619,7 +621,8 @@ export class AppointmentsService {
   }
 
   async findRangeWithClients(params: AppointmentListFilters) {
-    const where = this.buildListWhere(params);
+    const localId = getCurrentLocalId();
+    const where: Prisma.AppointmentWhereInput = { ...this.buildListWhere(params), localId };
     const appointments = await this.prisma.appointment.findMany({
       where,
       orderBy: this.buildListOrder(params),
