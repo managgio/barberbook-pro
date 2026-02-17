@@ -10,7 +10,7 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": "(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|meta-externalagent)"
+          "value": ".*(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|Meta-ExternalFetcher|meta-externalagent|meta-externalfetcher).*"
         }
       ],
       "destination": "https://barberbook-pro-production.up.railway.app/api/tenant/preview?path=/"
@@ -21,7 +21,7 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": "(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|meta-externalagent)"
+          "value": ".*(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|Meta-ExternalFetcher|meta-externalagent|meta-externalfetcher).*"
         }
       ],
       "destination": "https://barberbook-pro-production.up.railway.app/api/tenant/preview?path=/:path*"
