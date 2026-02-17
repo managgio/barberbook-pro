@@ -240,7 +240,12 @@ export class TenantController {
         );
     const imageSource = isPlatform
       ? DEFAULT_IMAGE_PATH
-      : resolveText(publicConfig.branding?.logoUrl, DEFAULT_IMAGE_PATH);
+      : resolveText(
+          publicConfig.branding?.logoUrl,
+          publicConfig.branding?.logoLightUrl,
+          publicConfig.branding?.logoDarkUrl,
+          DEFAULT_IMAGE_PATH,
+        );
     const title = isPlatform
       ? PLATFORM_TITLE
       : tagline
@@ -265,6 +270,9 @@ export class TenantController {
             brandId,
             localId,
             tenantHost: tenantHost || '',
+            logoUrl: publicConfig.branding?.logoUrl || '',
+            logoLightUrl: publicConfig.branding?.logoLightUrl || '',
+            logoDarkUrl: publicConfig.branding?.logoDarkUrl || '',
             title,
             description,
             imageUrl,

@@ -3,6 +3,7 @@ import { Location, SiteSettings, TenantBootstrap } from '@/data/types';
 import { getTenantBootstrap } from '@/data/api/tenant';
 import { getStoredLocalId, setStoredLocalId } from '@/lib/tenant';
 import { applyTheme, applyThemeMode, MANAGGIO_PRIMARY } from '@/lib/theme';
+import { resolveBrandLogo } from '@/lib/branding';
 import managgioLogo from '@/assets/img/managgio/logo.webp';
 import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import { SITE_SETTINGS_UPDATED_EVENT } from '@/lib/adminEvents';
@@ -176,7 +177,7 @@ const buildTenantMeta = (bootstrap: TenantBootstrap, settings?: SiteSettings | n
   const brandName = resolveMetaText(branding?.name, bootstrap.config?.branding?.name, bootstrap.brand?.name, 'Managgio');
   const tagline = resolveMetaText(branding?.tagline);
   const description = resolveMetaText(branding?.description, tagline, `${brandName} · Gestión de citas y servicios.`);
-  const imageUrl = resolveMetaText(bootstrap.config?.branding?.logoUrl, DEFAULT_FAVICON);
+  const imageUrl = resolveBrandLogo(bootstrap, DEFAULT_FAVICON);
   const title = tagline ? `${brandName} | ${tagline}` : brandName;
   const twitterSite = resolveTwitterHandle(settings?.socials?.x);
 
