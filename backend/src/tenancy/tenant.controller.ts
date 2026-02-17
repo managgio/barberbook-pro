@@ -31,8 +31,24 @@ const resolveText = (...values: Array<string | null | undefined>) => {
 const readHeader = (value: string | string[] | undefined) =>
   (Array.isArray(value) ? value[0] : value)?.split(',')[0]?.trim();
 
-const resolveOrigin = (req: Request) => {
-  const host = resolveText(readHeader(req.headers['x-forwarded-host']), readHeader(req.headers.host), 'localhost');
+const normalizeHost = (value?: string) => value?.split(':')[0]?.trim().toLowerCase() || '';
+
+const resolveHostFromUnknown = (value?: string) => {
+  if (!value) return '';
+  try {
+    return normalizeHost(new URL(value).hostname);
+  } catch {
+    return normalizeHost(value);
+  }
+};
+
+const resolveOrigin = (req: Request, hostOverride?: string) => {
+  const host = resolveText(
+    resolveHostFromUnknown(hostOverride),
+    resolveHostFromUnknown(readHeader(req.headers['x-forwarded-host'])),
+    resolveHostFromUnknown(readHeader(req.headers.host)),
+    'localhost',
+  );
   const protocol = resolveText(readHeader(req.headers['x-forwarded-proto']), req.protocol || 'https');
   return `${protocol}://${host}`;
 };
@@ -54,7 +70,7 @@ const normalizePath = (rawPath?: string) => {
 const buildSearchFromQuery = (query: Request['query']) => {
   const search = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (key === 'path' || value === undefined) return;
+    if (key === 'path' || key === 'tenantHost' || value === undefined) return;
     if (Array.isArray(value)) {
       value.forEach((entry) => {
         search.append(key, String(entry));
@@ -170,11 +186,12 @@ export class TenantController {
   async getPreviewMeta(
     @Req() req: Request,
     @Query('path') requestedPath?: string,
+    @Query('tenantHost') tenantHost?: string,
   ) {
     const brandId = getCurrentBrandId();
     const localId = getCurrentLocalId();
     const isPlatform = isPlatformRequest();
-    const origin = resolveOrigin(req);
+    const origin = resolveOrigin(req, tenantHost);
 
     const [brand, publicConfig, siteSettings] = await Promise.all([
       this.prisma.brand.findUnique({
