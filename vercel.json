@@ -1,0 +1,34 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://barberbook-pro-production.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|Meta-ExternalFetcher|meta-externalagent|meta-externalfetcher).*"
+        }
+      ],
+      "destination": "https://barberbook-pro-production.up.railway.app/api/tenant/preview?path=/"
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|Meta-ExternalFetcher|meta-externalagent|meta-externalfetcher).*"
+        }
+      ],
+      "destination": "https://barberbook-pro-production.up.railway.app/api/tenant/preview?path=/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
+}
