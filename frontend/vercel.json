@@ -9,13 +9,8 @@
       "has": [
         {
           "type": "header",
-          "key": "accept",
-          "value": "text/html"
-        },
-        {
-          "type": "header",
           "key": "user-agent",
-          "value": "(facebookexternalhit|Facebot|WhatsApp|Twitterbot|LinkedInBot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot)"
+          "value": "(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|meta-externalagent)"
         }
       ],
       "destination": "https://barberbook-pro-production.up.railway.app/api/tenant/preview?path=/:path*"
