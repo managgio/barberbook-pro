@@ -16,6 +16,15 @@ const firstHeaderValue = (value?: string | string[]) => {
   return raw.split(',')[0]?.trim() || undefined;
 };
 
+const firstQueryValue = (value: unknown) => {
+  if (typeof value === 'string') return value.trim() || undefined;
+  if (Array.isArray(value)) {
+    const first = value.find((entry) => typeof entry === 'string');
+    return typeof first === 'string' ? first.trim() || undefined : undefined;
+  }
+  return undefined;
+};
+
 const normalizeHost = (value?: string) => value?.split(':')[0]?.trim().toLowerCase() || '';
 
 const normalizeBaseDomain = (value: string) =>
@@ -57,6 +66,9 @@ const getHostnameFromUrlHeader = (value?: string) => {
   }
 };
 
+const getHostnameFromUnknown = (value?: string) =>
+  getHostnameFromUrlHeader(value) || normalizeHost(value);
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantService: TenantService) {}
@@ -85,12 +97,21 @@ export class TenantMiddleware implements NestMiddleware {
     }
     const directHost = firstHeaderValue(req.headers.host);
     const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
+    const previewHostOverride = req.originalUrl?.startsWith('/api/tenant/preview')
+      ? firstQueryValue((req.query as Record<string, unknown> | undefined)?.tenantHost)
+      : undefined;
     const directHostname = normalizeHost(directHost);
     const forwardedHostname = normalizeHost(forwardedHost);
+    const previewHostname = getHostnameFromUnknown(previewHostOverride);
+    const canUsePreviewHostOverride =
+      Boolean(previewHostname) && !isLikelyInternalHost(previewHostname);
 
     // In production behind reverse proxies, host can be internal (api/backend service name).
     // Fall back to x-forwarded-host when direct host is internal or doesn't belong to tenant base domain.
     const host =
+      (canUsePreviewHostOverride
+        ? previewHostname
+        :
       (TENANT_TRUST_X_FORWARDED_HOST
         ? forwardedHost || directHost
         : forwardedHost &&
@@ -98,7 +119,7 @@ export class TenantMiddleware implements NestMiddleware {
               (!belongsToConfiguredBaseDomain(directHostname) &&
                 belongsToConfiguredBaseDomain(forwardedHostname)))
           ? forwardedHost
-          : directHost) || undefined;
+          : directHost)) || undefined;
     const headerSubdomain =
       typeof req.headers['x-tenant-subdomain'] === 'string'
         ? req.headers['x-tenant-subdomain'].trim().toLowerCase()

@@ -488,7 +488,7 @@ Frontend (`frontend/.env*`):
   - chunks dedicados solo para pesos altos/estables: `vendor-firebase`, `vendor-charts`, `vendor-date`, `vendor-query`, `vendor-icons`, `vendor-ui-utils`;
   - React/Router/Radix se consolidan dentro de `vendor-misc` para eliminar referencias cruzadas entre chunks tipo `vendor-router`/`vendor-radix`/`vendor-react` que pueden romper `forwardRef` o lanzar `Cannot access uninitialized variable`.
 - Despliegue frontend debe ser atomico (`index.html` + `assets/*` del mismo build) y con invalidacion de cache/CDN para evitar mezclar chunks de builds distintos.
-- Social previews de SPA en Vercel: bots conocidos (WhatsApp/Facebook/X/LinkedIn/Slack/Discord/Telegram/Google/Bing) se reescriben a `GET /api/tenant/preview?path=...` para servir metadatos OG/Twitter server-side por host sin penalizar navegación humana.
+- Social previews de SPA en Vercel: bots conocidos (WhatsApp/Facebook/X/LinkedIn/Slack/Discord/Telegram/Google/Bing) se reescriben a `GET /api/tenant/preview?path=...&tenantHost=...` para servir metadatos OG/Twitter server-side por host sin penalizar navegación humana.
 - Carga de fuentes optimizada en `frontend/index.html` con `preconnect` + `preload`/`stylesheet` (sin `@import` bloqueante en CSS).
 - Higiene de imagenes en rutas criticas: logos/avatares/QR y miniaturas usan `loading`, `decoding` y dimensiones explicitas para reducir CLS y trabajo de render en navegacion.
 - Branding estático responsive en puntos críticos (`AuthPage`, `PlatformSidebar`) con `<picture>` + `AVIF/WebP` + `srcSet/sizes`:
