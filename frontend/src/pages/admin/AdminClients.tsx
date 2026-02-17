@@ -53,7 +53,7 @@ const EMPTY_NOTES: ClientNote[] = [];
 
 const AdminClients: React.FC = () => {
   const { toast } = useToast();
-  const { currentLocationId } = useTenant();
+  const { currentLocationId, tenant } = useTenant();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
@@ -75,6 +75,7 @@ const AdminClients: React.FC = () => {
   const [savingPayment, setSavingPayment] = useState<Record<string, boolean>>({});
   const [savingPrice, setSavingPrice] = useState<Record<string, boolean>>({});
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const subscriptionsEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('subscriptions');
   const clientsQueryKey = queryKeys.adminClients(
     currentLocationId,
     clientsPage,
@@ -133,7 +134,7 @@ const AdminClients: React.FC = () => {
   const activeSubscriptionQuery = useQuery({
     queryKey: queryKeys.userActiveSubscription(currentLocationId, selectedClientId),
     queryFn: () => getUserActiveSubscription(selectedClientId as string),
-    enabled: Boolean(selectedClientId),
+    enabled: Boolean(selectedClientId) && subscriptionsEnabled,
   });
   const stripeConfigQuery = useQuery({
     queryKey: queryKeys.adminStripeConfig(currentLocationId),
@@ -222,7 +223,7 @@ const AdminClients: React.FC = () => {
       stripeConfigQuery.refetch(),
       selectedClientId ? appointmentsQuery.refetch() : Promise.resolve(),
       selectedClientId ? notesQuery.refetch() : Promise.resolve(),
-      selectedClientId ? activeSubscriptionQuery.refetch() : Promise.resolve(),
+      selectedClientId && subscriptionsEnabled ? activeSubscriptionQuery.refetch() : Promise.resolve(),
     ]);
   });
 
@@ -765,20 +766,22 @@ const AdminClients: React.FC = () => {
                           Sin teléfono
                         </div>
                       )}
-                      <div className="sm:col-span-2">
-                        {activeSubscriptionQuery.isLoading ? (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Comprobando suscripción activa...
-                          </div>
-                        ) : activeSubscriptionQuery.data ? (
-                          <Badge variant="secondary">
-                            Suscripción activa: {activeSubscriptionQuery.data.plan.name}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Sin suscripción activa</Badge>
-                        )}
-                      </div>
+                      {subscriptionsEnabled && (
+                        <div className="sm:col-span-2">
+                          {activeSubscriptionQuery.isLoading ? (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Comprobando suscripción activa...
+                            </div>
+                          ) : activeSubscriptionQuery.data ? (
+                            <Badge variant="secondary">
+                              Suscripción activa: {activeSubscriptionQuery.data.plan.name}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">Sin suscripción activa</Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex justify-start sm:justify-end">
                       <AlertDialog open={isBlockDialogOpen} onOpenChange={setIsBlockDialogOpen}>
