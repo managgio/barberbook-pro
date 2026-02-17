@@ -97,12 +97,16 @@ export class TenantMiddleware implements NestMiddleware {
     }
     const directHost = firstHeaderValue(req.headers.host);
     const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
-    const previewHostOverride = req.originalUrl?.startsWith('/api/tenant/preview')
+    const isPreviewMetaRequest = req.originalUrl?.startsWith('/api/tenant/preview');
+    const previewHostOverride = isPreviewMetaRequest
       ? firstQueryValue((req.query as Record<string, unknown> | undefined)?.tenantHost)
       : undefined;
     const directHostname = normalizeHost(directHost);
     const forwardedHostname = normalizeHost(forwardedHost);
     const previewHostname = getHostnameFromUnknown(previewHostOverride);
+    const previewSubdomainOverride = isPreviewMetaRequest
+      ? getSubdomainFromHostname(previewHostname)
+      : null;
     const canUsePreviewHostOverride =
       Boolean(previewHostname) && !isLikelyInternalHost(previewHostname);
 
@@ -132,11 +136,13 @@ export class TenantMiddleware implements NestMiddleware {
 
     // Safe fallback:
     // when overrides are disabled, trust x-tenant-subdomain only if it matches browser Origin/Referer hostname.
-    const subdomainOverride = TENANT_ALLOW_HEADER_OVERRIDES
-      ? headerSubdomain
-      : headerSubdomain && publicRequestSubdomain === headerSubdomain
+    const subdomainOverride = previewSubdomainOverride
+      ? previewSubdomainOverride
+      : TENANT_ALLOW_HEADER_OVERRIDES
         ? headerSubdomain
-        : null;
+        : headerSubdomain && publicRequestSubdomain === headerSubdomain
+          ? headerSubdomain
+          : null;
     const localIdOverride =
       TENANT_ALLOW_HEADER_OVERRIDES &&
       typeof req.headers['x-local-id'] === 'string'

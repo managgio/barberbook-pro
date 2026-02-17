@@ -70,7 +70,7 @@ const normalizePath = (rawPath?: string) => {
 const buildSearchFromQuery = (query: Request['query']) => {
   const search = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (key === 'path' || key === 'tenantHost' || value === undefined) return;
+    if (key === 'path' || key === 'tenantHost' || key === 'tenantSubdomain' || key === 'debug' || value === undefined) return;
     if (Array.isArray(value)) {
       value.forEach((entry) => {
         search.append(key, String(entry));
@@ -102,6 +102,7 @@ const buildPreviewHtml = (payload: {
   imageUrl: string;
   pageUrl: string;
   author: string;
+  withRedirect: boolean;
 }) => {
   const title = escapeHtml(payload.title);
   const description = escapeHtml(payload.description);
@@ -109,6 +110,12 @@ const buildPreviewHtml = (payload: {
   const pageUrl = escapeHtml(payload.pageUrl);
   const author = escapeHtml(payload.author);
   const redirectScriptTarget = JSON.stringify(payload.pageUrl);
+
+  const redirectMeta = payload.withRedirect ? `    <meta http-equiv="refresh" content="0;url=${pageUrl}" />` : '';
+  const redirectScript = payload.withRedirect
+    ? `    <script>window.location.replace(${redirectScriptTarget});</script>`
+    : '';
+  const redirectBody = payload.withRedirect ? `    <p>${escapeHtml(PREVIEW_BOT_REDIRECT_LABEL)}</p>` : '';
 
   return `<!doctype html>
 <html lang="es">
@@ -129,11 +136,11 @@ const buildPreviewHtml = (payload: {
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${description}" />
     <meta name="twitter:image" content="${imageUrl}" />
-    <meta http-equiv="refresh" content="0;url=${pageUrl}" />
+${redirectMeta}
   </head>
   <body>
-    <p>${escapeHtml(PREVIEW_BOT_REDIRECT_LABEL)}</p>
-    <script>window.location.replace(${redirectScriptTarget});</script>
+${redirectBody}
+${redirectScript}
   </body>
 </html>`;
 };
@@ -182,11 +189,12 @@ export class TenantController {
 
   @Get('preview')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  @Header('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400')
+  @Header('Cache-Control', 'no-store, max-age=0')
   async getPreviewMeta(
     @Req() req: Request,
     @Query('path') requestedPath?: string,
     @Query('tenantHost') tenantHost?: string,
+    @Query('debug') debug?: string,
   ) {
     const brandId = getCurrentBrandId();
     const localId = getCurrentLocalId();
@@ -229,6 +237,7 @@ export class TenantController {
     const pageQuery = buildSearchFromQuery(req.query);
     const pageUrl = new URL(`${pagePath}${pageQuery}`, origin).toString();
     const imageUrl = resolveAbsoluteUrl(origin, imageSource);
+    const debugEnabled = ['1', 'true', 'yes'].includes((debug || '').trim().toLowerCase());
 
     return buildPreviewHtml({
       title,
@@ -236,6 +245,7 @@ export class TenantController {
       imageUrl,
       pageUrl,
       author: isPlatform ? 'Managgio' : tenantName,
+      withRedirect: !debugEnabled,
     });
   }
 }
