@@ -1,8 +1,28 @@
 {
-    "rewrites": [
-      { "source": "/api/:path*", "destination": "https://barberbook-pro-production.up.railway.app/api/:path*" },
-      { "source": "/api/:path*", "destination": "https://barberbook-pro-staging.up.railway.app/api/:path*" },
-      { "source": "/(.*)", "destination": "/" }
-    ]
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://barberbook-pro-production.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "header",
+          "key": "accept",
+          "value": "text/html"
+        },
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(facebookexternalhit|Facebot|WhatsApp|Twitterbot|LinkedInBot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot)"
+        }
+      ],
+      "destination": "https://barberbook-pro-production.up.railway.app/api/tenant/preview?path=/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
 }
-  
