@@ -5,6 +5,17 @@
       "destination": "https://barberbook-pro-production.up.railway.app/api/:path*"
     },
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(facebookexternalhit|Facebot|[Ww]hats[Aa]pp|Twitterbot|[Ll]inked[Ii]n[Bb]ot|Slackbot|Discordbot|TelegramBot|SkypeUriPreview|Googlebot|bingbot|Meta-ExternalAgent|meta-externalagent)"
+        }
+      ],
+      "destination": "https://barberbook-pro-production.up.railway.app/api/tenant/preview?path=/"
+    },
+    {
       "source": "/:path*",
       "has": [
         {
