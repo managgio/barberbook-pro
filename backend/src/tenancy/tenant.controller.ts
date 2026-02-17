@@ -103,6 +103,7 @@ const buildPreviewHtml = (payload: {
   pageUrl: string;
   author: string;
   withRedirect: boolean;
+  debugInfo?: Record<string, string>;
 }) => {
   const title = escapeHtml(payload.title);
   const description = escapeHtml(payload.description);
@@ -116,6 +117,17 @@ const buildPreviewHtml = (payload: {
     ? `    <script>window.location.replace(${redirectScriptTarget});</script>`
     : '';
   const redirectBody = payload.withRedirect ? `    <p>${escapeHtml(PREVIEW_BOT_REDIRECT_LABEL)}</p>` : '';
+  const debugBody = payload.debugInfo
+    ? `    <main style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:16px;line-height:1.45;">
+      <h1 style="font-size:16px;margin:0 0 12px;">Tenant Preview Debug</h1>
+      ${Object.entries(payload.debugInfo)
+        .map(
+          ([key, value]) =>
+            `<div style="margin:6px 0;"><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</div>`,
+        )
+        .join('')}
+    </main>`
+    : '';
 
   return `<!doctype html>
 <html lang="es">
@@ -141,6 +153,7 @@ ${redirectMeta}
   <body>
 ${redirectBody}
 ${redirectScript}
+${debugBody}
   </body>
 </html>`;
 };
@@ -246,6 +259,18 @@ export class TenantController {
       pageUrl,
       author: isPlatform ? 'Managgio' : tenantName,
       withRedirect: !debugEnabled,
+      debugInfo: debugEnabled
+        ? {
+            isPlatform: String(isPlatform),
+            brandId,
+            localId,
+            tenantHost: tenantHost || '',
+            title,
+            description,
+            imageUrl,
+            pageUrl,
+          }
+        : undefined,
     });
   }
 }
