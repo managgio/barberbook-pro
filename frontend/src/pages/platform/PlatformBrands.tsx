@@ -2588,7 +2588,9 @@ const PlatformBrands: React.FC = () => {
   }
 
   return (
-    <div className={`flex flex-col gap-6 lg:grid lg:gap-6 ${brandListLayoutClass} items-start lg:items-stretch animate-fade-in h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-3rem)] md:h-[calc(100dvh-4rem)] overflow-hidden`}>
+    <div
+      className={`flex flex-col gap-6 lg:grid lg:gap-6 ${brandListLayoutClass} items-start lg:items-stretch animate-fade-in h-[calc(100dvh-2rem)] sm:h-[calc(100dvh-3rem)] md:h-[calc(100dvh-4rem)] overflow-hidden lg:transition-[grid-template-columns] lg:duration-300 lg:ease-in-out`}
+    >
       <Card
         className={`border border-border/60 bg-card/70 flex flex-col overflow-visible ${brandListCardHeightClass} lg:h-full transition-[max-height] duration-300 ease-out shrink-0 relative w-full`}
       >
