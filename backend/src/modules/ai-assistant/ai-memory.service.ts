@@ -62,7 +62,7 @@ export class AiMemoryService {
     });
   }
 
-  async getDailyUserMessageCount(timeZone = AI_TIME_ZONE) {
+  async getDailyUserMessageCount(adminUserId: string, timeZone = AI_TIME_ZONE) {
     await this.ensureDailyCleanup(timeZone);
     const dayKey = getDateStringInTimeZone(new Date(), timeZone);
     const { start, end } = getDayBoundsInTimeZone(dayKey, timeZone);
@@ -70,6 +70,7 @@ export class AiMemoryService {
       where: {
         localId: getCurrentLocalId(),
         role: 'user',
+        session: { adminUserId },
         createdAt: { gte: start, lte: end },
       },
     });

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type OpenAI from 'openai';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
+import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { HolidaysService } from '../holidays/holidays.service';
 import { AlertsService } from '../alerts/alerts.service';
@@ -156,6 +156,9 @@ export class AiToolsRegistry {
   private shouldPreferParsedRange(text: string) {
     if (!text) return false;
     const normalized = this.normalizeText(text);
+    const hasExplicitBounds = /\b(desde|hasta|del?|al|entre|a partir de)\b/.test(normalized);
+    const hasExplicitWeekday = /\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(normalized);
+    if (hasExplicitBounds || hasExplicitWeekday) return false;
     return /\b(toda?\s+la\s+semana|semana\s+que\s+viene|proxima\s+semana|siguiente\s+semana|esta\s+semana)\b/.test(
       normalized,
     );
@@ -410,40 +413,9 @@ export class AiToolsRegistry {
       const timeText = typeof args.timeText === 'string' ? args.timeText.trim() : '';
       const rawText = typeof args.rawText === 'string' ? args.rawText.trim() : '';
 
-      if (rawText) {
-        const namePattern = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’.-]+";
-        const multiNamePattern = `${namePattern}(?:\\s+${namePattern}){0,3}`;
-        if (typeof args.barberName !== 'string' || !args.barberName.trim()) {
-          const barberMatch = rawText.match(
-            new RegExp(`\\b(?:barber[oa]|peluquer[oa]|trabajador(?:a)?)\\s+(${multiNamePattern})`, 'i'),
-          );
-          if (barberMatch?.[1]) {
-            args.barberName = barberMatch[1].trim();
-          }
-        }
-        if (typeof args.serviceName !== 'string' || !args.serviceName.trim()) {
-          const serviceMatch = rawText.match(
-            new RegExp(
-              `\\bcon\\s+(${multiNamePattern})(?=\\s+y\\s+(?:barber[oa]|peluquer[oa]|trabajador(?:a)?)\\b|\\s+y\\b|\\s*$)`,
-              'i',
-            ),
-          );
-          if (serviceMatch?.[1]) {
-            args.serviceName = serviceMatch[1].trim();
-          }
-        }
-        if (typeof args.userName !== 'string' || !args.userName.trim()) {
-          const userMatch = rawText.match(
-            new RegExp(
-              `\\bpara\\s+(${multiNamePattern})(?=\\s+el\\b|\\s+a\\s+las\\b|\\s+con\\b|\\s+y\\b|\\s*$)`,
-              'i',
-            ),
-          );
-          if (userMatch?.[1]) {
-            args.userName = userMatch[1].trim();
-          }
-        }
-      }
+      this.applyEntityInferenceFromRawText(args, rawText);
+      await this.sanitizeUntrustedBarberSelection(args, rawText);
+      await this.sanitizeUntrustedServiceSelection(args, rawText);
 
       const serviceResult = await this.resolveService(args);
       if (serviceResult.status !== 'ok') {
@@ -493,6 +465,10 @@ export class AiToolsRegistry {
       }
       if (time && !/^\d{2}:\d{2}$/.test(time)) {
         return { status: 'needs_info', missing: ['time'] };
+      }
+
+      if (date && (await this.isGeneralHolidayDate(date))) {
+        return { status: 'unavailable', reason: 'shop_holiday' };
       }
 
       const normalizedIntent = this.normalizeIntentText([rawText, dateText, timeText].filter(Boolean).join(' '));
@@ -579,6 +555,168 @@ export class AiToolsRegistry {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .trim();
+  }
+
+  private normalizeEntityText(value: string) {
+    return this.normalizeIntentText(value)
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private extractImplicitBarberName(rawText: string) {
+    if (!rawText) return '';
+    const namePattern = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’.-]+";
+    const multiNamePattern = `${namePattern}(?:\\s+${namePattern}){0,3}`;
+
+    const explicitRoleMatch = rawText.match(
+      new RegExp(`\\b(?:barber[oa]|peluquer[oa]|trabajador(?:a)?)\\s+(${multiNamePattern})`, 'i'),
+    );
+    if (explicitRoleMatch?.[1]) {
+      return explicitRoleMatch[1].trim();
+    }
+
+    const conBeforeServiceMatch = rawText.match(
+      new RegExp(`\\bcon\\s+(${multiNamePattern})(?=\\s+para\\s+(?:un|una|el|la)\\b)`, 'i'),
+    );
+    if (conBeforeServiceMatch?.[1]) {
+      return conBeforeServiceMatch[1].trim();
+    }
+
+    return '';
+  }
+
+  private extractImplicitServiceName(rawText: string) {
+    if (!rawText) return '';
+    const namePattern = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’.-]+";
+    const multiNamePattern = `${namePattern}(?:\\s+${namePattern}){0,3}`;
+
+    const withConPatternMatch = rawText.match(
+      new RegExp(
+        `\\bcon\\s+(${multiNamePattern})(?=\\s+y\\s+(?:barber[oa]|peluquer[oa]|trabajador(?:a)?)\\b|\\s+y\\b|\\s*$)`,
+        'i',
+      ),
+    );
+    if (withConPatternMatch?.[1]) {
+      return withConPatternMatch[1].trim();
+    }
+
+    const withParaArticleMatch = rawText.match(/\bpara\s+(?:un|una|el|la)\s+(.+?)(?:[.,;!?]|$)/i);
+    if (withParaArticleMatch?.[1]) {
+      return withParaArticleMatch[1].trim();
+    }
+
+    return '';
+  }
+
+  private extractImplicitUserName(rawText: string) {
+    if (!rawText) return '';
+    const personTokenPattern =
+      "(?!(?:para|manana|hoy|pasado|este|esta|con|y|el|la|los|las|un|una)\\b)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’.-]+";
+    const userNamePattern = `${personTokenPattern}(?:\\s+${personTokenPattern}){0,3}`;
+    const userMatch = rawText.match(
+      new RegExp(
+        `\\bpara\\s+(${userNamePattern})(?=\\s+(?:para|el|la|los|las|a\\s+las|con|y|hoy|manana|pasado|este|esta)\\b|\\s*$)`,
+        'i',
+      ),
+    );
+    return userMatch?.[1]?.trim() || '';
+  }
+
+  private applyEntityInferenceFromRawText(args: Record<string, unknown>, rawText: string) {
+    if (!rawText) return;
+
+    const inferredUserName = this.extractImplicitUserName(rawText);
+    const inferredBarberName = this.extractImplicitBarberName(rawText);
+    const inferredServiceName = this.extractImplicitServiceName(rawText);
+
+    const hasExplicitServiceId = typeof args.serviceId === 'string' && args.serviceId.trim().length > 0;
+    const currentUserName = typeof args.userName === 'string' ? args.userName.trim() : '';
+
+    if (inferredUserName && !currentUserName) {
+      args.userName = inferredUserName;
+    }
+    if (inferredBarberName) {
+      args.barberName = inferredBarberName;
+    }
+    if (!hasExplicitServiceId && inferredServiceName) {
+      args.serviceName = inferredServiceName;
+    }
+  }
+
+  private isOverlappingNormalizedEntity(left: string, right: string) {
+    if (!left || !right) return false;
+    return left === right || left.includes(right) || right.includes(left);
+  }
+
+  private async sanitizeUntrustedBarberSelection(args: Record<string, unknown>, rawText: string) {
+    const normalizedRawText = this.normalizeEntityText(rawText || '');
+    if (!normalizedRawText) return;
+
+    const userName = typeof args.userName === 'string' ? args.userName.trim() : '';
+    const normalizedUserName = this.normalizeEntityText(userName);
+    const hasStaffKeyword = /\b(barber[oa]?|barbero|barbera|peluquer[oa]|trabajador(?:a)?|emplead(?:o|a))\b/.test(
+      normalizedRawText,
+    );
+    const isTrustedBarberMention = (name: string) => {
+      const normalizedBarberName = this.normalizeEntityText(name);
+      if (!normalizedBarberName) return false;
+      const mentionedByCon = normalizedRawText.includes(`con ${normalizedBarberName}`);
+      const mentionedByKeyword = hasStaffKeyword && normalizedRawText.includes(normalizedBarberName);
+      const mentionedByPara = normalizedRawText.includes(`para ${normalizedBarberName}`);
+      const nameMentioned = normalizedRawText.includes(normalizedBarberName);
+      const sameAsUser = Boolean(normalizedUserName) && normalizedUserName === normalizedBarberName;
+      const looksLikeClientMention = mentionedByPara || sameAsUser;
+      const barberSelectionTrusted = mentionedByCon || mentionedByKeyword;
+      return barberSelectionTrusted && nameMentioned && !looksLikeClientMention;
+    };
+
+    const barberId = typeof args.barberId === 'string' ? args.barberId.trim() : '';
+    if (barberId) {
+      const barber = await this.prisma.barber.findFirst({
+        where: { id: barberId, localId: getCurrentLocalId(), isArchived: false },
+        select: { name: true },
+      });
+      if (!barber || !isTrustedBarberMention(barber.name)) {
+        delete args.barberId;
+      }
+    }
+
+    const barberName = typeof args.barberName === 'string' ? args.barberName.trim() : '';
+    if (barberName && !isTrustedBarberMention(barberName)) {
+      delete args.barberName;
+    }
+  }
+
+  private async sanitizeUntrustedServiceSelection(args: Record<string, unknown>, rawText: string) {
+    const inferredServiceName = this.extractImplicitServiceName(rawText || '');
+    const normalizedInferredServiceName = this.normalizeEntityText(inferredServiceName);
+
+    const serviceId = typeof args.serviceId === 'string' ? args.serviceId.trim() : '';
+    if (serviceId) {
+      const service = await this.prisma.service.findFirst({
+        where: { id: serviceId, localId: getCurrentLocalId(), isArchived: false },
+        select: { id: true, name: true },
+      });
+      if (!service) {
+        delete args.serviceId;
+      } else if (normalizedInferredServiceName) {
+        const normalizedServiceName = this.normalizeEntityText(service.name);
+        if (!this.isOverlappingNormalizedEntity(normalizedServiceName, normalizedInferredServiceName)) {
+          delete args.serviceId;
+        }
+      }
+    }
+
+    if (normalizedInferredServiceName) {
+      const currentServiceName = typeof args.serviceName === 'string' ? args.serviceName.trim() : '';
+      const normalizedCurrentServiceName = this.normalizeEntityText(currentServiceName);
+      if (!normalizedCurrentServiceName) {
+        args.serviceName = inferredServiceName;
+      } else if (!this.isOverlappingNormalizedEntity(normalizedCurrentServiceName, normalizedInferredServiceName)) {
+        args.serviceName = inferredServiceName;
+      }
+    }
   }
 
   private extractDayPeriod(normalizedText: string): DayPeriod | null {
@@ -745,26 +883,30 @@ export class AiToolsRegistry {
       if (candidates.length === 0) {
         continue;
       }
-      const earliestSlotMinutes = Math.min(
-        ...candidates.map((candidate) => this.timeToMinutes(candidate.slot)),
-      );
-      const earliestBarbers = candidates
-        .filter((candidate) => this.timeToMinutes(candidate.slot) === earliestSlotMinutes)
-        .map((candidate) => barberById.get(candidate.barberId))
-        .filter((barber): barber is { id: string; name: string } => Boolean(barber));
-      if (earliestBarbers.length === 0) {
-        continue;
-      }
-      const chosen = this.pickLeastLoadedBarber(earliestBarbers, loadByBarber);
-      const chosenSlot = candidates.find((candidate) => candidate.barberId === chosen.id)?.slot;
-      if (!chosenSlot) {
+      const rankedCandidates = candidates
+        .map((candidate) => {
+          const barber = barberById.get(candidate.barberId);
+          if (!barber) return null;
+          return { barber, slot: candidate.slot };
+        })
+        .filter((candidate): candidate is { barber: { id: string; name: string }; slot: string } => Boolean(candidate))
+        .sort((a, b) => {
+          const loadA = loadByBarber[a.barber.id] ?? 0;
+          const loadB = loadByBarber[b.barber.id] ?? 0;
+          if (loadA !== loadB) return loadA - loadB;
+          const timeDiff = this.timeToMinutes(a.slot) - this.timeToMinutes(b.slot);
+          if (timeDiff !== 0) return timeDiff;
+          return a.barber.name.localeCompare(b.barber.name, 'es');
+        });
+      const chosen = rankedCandidates[0];
+      if (!chosen) {
         continue;
       }
       return {
         status: 'ok',
-        barber: chosen,
+        barber: chosen.barber,
         date: dateCandidate,
-        time: chosenSlot,
+        time: chosen.slot,
       };
     }
 
@@ -775,6 +917,17 @@ export class AiToolsRegistry {
         reason: wantsSoonest || dayPeriod || !time ? 'slot_window_unavailable' : 'slot_unavailable',
       },
     };
+  }
+
+  private async isGeneralHolidayDate(date: string) {
+    try {
+      const holidays = await this.holidaysService.getGeneralHolidays();
+      return holidays.some((holiday) => date >= holiday.start && date <= holiday.end);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`No se pudo validar festivos generales para ${date}: ${message}`);
+      return false;
+    }
   }
 
   private buildDateRange(startDate: string, endDate: string, timeZone: string) {
@@ -923,12 +1076,10 @@ export class AiToolsRegistry {
         select: { id: true, name: true, duration: true },
       });
       if (!service) {
-        return {
-          status: 'needs_info',
-          result: { status: 'needs_info', missing: ['serviceId'] },
-        };
+        delete args.serviceId;
+      } else {
+        return { status: 'ok', service };
       }
-      return { status: 'ok', service };
     }
 
     if (!serviceName) {
@@ -1000,6 +1151,7 @@ export class AiToolsRegistry {
       }
     | { status: 'needs_info'; result: AiCreateAppointmentResult }
   > {
+    const brandId = getCurrentBrandId();
     const userEmail = typeof args.userEmail === 'string' ? args.userEmail.trim().toLowerCase() : '';
     const userPhone = typeof args.userPhone === 'string' ? args.userPhone.trim() : '';
     const userName = typeof args.userName === 'string' ? args.userName.trim() : '';
@@ -1013,8 +1165,12 @@ export class AiToolsRegistry {
         .trim();
 
     if (userEmail) {
-      const user = await this.prisma.user.findUnique({
-        where: { email: userEmail },
+      const user = await this.prisma.user.findFirst({
+        where: {
+          email: userEmail,
+          role: 'client',
+          brandMemberships: { some: { brandId, isBlocked: false } },
+        },
         select: { id: true, name: true },
       });
       if (user) {
@@ -1030,7 +1186,11 @@ export class AiToolsRegistry {
 
     if (userPhone) {
       const user = await this.prisma.user.findFirst({
-        where: { phone: userPhone },
+        where: {
+          phone: userPhone,
+          role: 'client',
+          brandMemberships: { some: { brandId, isBlocked: false } },
+        },
         select: { id: true, name: true },
       });
       if (user) {
@@ -1051,38 +1211,54 @@ export class AiToolsRegistry {
       };
     }
 
+    const normalizedInputName = normalizePersonName(userName);
+    const normalizedTokens = normalizedInputName.split(' ').filter(Boolean);
+    const broadLookupName = normalizedTokens.slice(0, Math.min(2, normalizedTokens.length)).join(' ');
+    const lookupTerms = Array.from(new Set([userName, broadLookupName].map((value) => value.trim()).filter(Boolean)));
+    const nameFilters = lookupTerms.map((term) => ({ name: { contains: term } }));
     const users = await this.prisma.user.findMany({
       where: {
-        name: { contains: userName },
         role: 'client',
+        brandMemberships: { some: { brandId, isBlocked: false } },
+        ...(nameFilters.length === 1 ? nameFilters[0] : { OR: nameFilters }),
       },
       select: { id: true, name: true, email: true },
-      take: 10,
+      take: 15,
+      orderBy: { name: 'asc' },
     });
 
-    const normalizedInputName = normalizePersonName(userName);
-    const exactNameMatches = users.filter((user) => normalizePersonName(user.name) === normalizedInputName);
+    const isOverlappingNameMatch = (candidateName: string) => {
+      const normalizedCandidateName = normalizePersonName(candidateName);
+      if (!normalizedCandidateName) return false;
+      if (normalizedCandidateName === normalizedInputName) return true;
+      return (
+        normalizedCandidateName.startsWith(normalizedInputName)
+        || normalizedInputName.startsWith(normalizedCandidateName)
+      );
+    };
 
-    if (exactNameMatches.length === 1) {
-      return { status: 'ok', userId: exactNameMatches[0].id, clientName: exactNameMatches[0].name };
-    }
+    const overlappingNameMatches = users.filter((user) => isOverlappingNameMatch(user.name));
 
-    if (exactNameMatches.length > 1) {
+    if (overlappingNameMatches.length > 1) {
       return {
         status: 'needs_info',
         result: {
           status: 'needs_info',
           missing: ['userEmail'],
           reason: 'user_ambiguous',
-          matchCount: exactNameMatches.length,
+          matchCount: overlappingNameMatches.length,
           options: {
-            users: exactNameMatches.slice(0, 3),
+            users: overlappingNameMatches.slice(0, 5),
           },
         },
       };
     }
 
-    if (users.length === 0 || exactNameMatches.length === 0) {
+    if (overlappingNameMatches.length === 1) {
+      return { status: 'ok', userId: overlappingNameMatches[0].id, clientName: overlappingNameMatches[0].name };
+    }
+
+    if (users.length === 0) {
       return {
         status: 'ok',
         guestName: userName,

@@ -47,10 +47,12 @@ export const getUserSubscriptions = async (
 export const getUserActiveSubscription = async (
   userId: string,
   referenceDate?: string,
-): Promise<UserSubscription | null> =>
-  apiRequest(`/subscriptions/users/${userId}/active`, {
+): Promise<UserSubscription | null> => {
+  const response = await apiRequest<UserSubscription | null | undefined>(`/subscriptions/users/${userId}/active`, {
     query: { referenceDate },
   });
+  return response ?? null;
+};
 
 export const assignUserSubscription = async (
   userId: string,
@@ -61,10 +63,12 @@ export const assignUserSubscription = async (
 export const getMySubscriptions = async (): Promise<UserSubscription[]> =>
   apiRequest('/subscriptions/me');
 
-export const getMyActiveSubscription = async (referenceDate?: string): Promise<UserSubscription | null> =>
-  apiRequest('/subscriptions/me/active', {
+export const getMyActiveSubscription = async (referenceDate?: string): Promise<UserSubscription | null> => {
+  const response = await apiRequest<UserSubscription | null | undefined>('/subscriptions/me/active', {
     query: { referenceDate },
   });
+  return response ?? null;
+};
 
 export const subscribeToPlan = async (data: SubscribePlanPayload): Promise<SubscribePlanResponse> =>
   apiRequest('/subscriptions/subscribe', { method: 'POST', body: data });

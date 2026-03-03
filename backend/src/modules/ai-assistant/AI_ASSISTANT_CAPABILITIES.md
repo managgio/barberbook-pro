@@ -8,17 +8,23 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 - Crear alertas para clientes (titulo + mensaje + tipo)
 - Entrada por voz (transcripción automática)
 - Respuestas claras y directas
+- Enfoque híbrido: IA interpreta intención/slots y backend normaliza/valida con reglas deterministas
 
 ## Tools disponibles
 1) create_appointment
    - Crea citas nuevas tras validar disponibilidad y horario
    - Si falta un dato, lo solicita antes de crear
-   - Si no se indica barbero, asigna el menos cargado de la semana actual
+   - Si no se indica barbero, asigna automáticamente un barbero con hueco real y menor carga semanal
    - Soporta "lo antes posible" y franjas como "mañana por la tarde" buscando el primer hueco real
-   - Si el cliente no existe, crea cita como invitado; si hay varias coincidencias, pide desambiguar
+   - Ignora `barberName` no confiable cuando el texto no lo respalda o parece corresponder al cliente (evita bloquear la autoasignación por inferencias erróneas)
+   - Interpreta mejor frases complejas con múltiples "para"/"con" para separar cliente, barbero y servicio
+   - Si la fecha solicitada coincide con un festivo general, devuelve un motivo explícito de cierre por festivo
+   - Resolución de cliente acotada al tenant actual (marca), evitando mezcla cross-tenant
+   - Si el cliente no existe, crea cita como invitado; si hay varias coincidencias (también por nombres solapados), pide desambiguar
 
 2) add_shop_holiday
    - Añade festivos generales del negocio
+   - Interpreta rangos naturales tipo "desde ... hasta ..." como un único festivo continuo
 
 3) add_barber_holiday
    - Añade vacaciones para uno o varios barberos (o todos)
@@ -41,7 +47,7 @@ Este archivo resume de un vistazo lo que el Asistente IA puede hacer hoy. Actual
 
 ## Reglas de seguridad
 - Sin acceso directo a MySQL desde el modelo
-- Sin PII (nombres, teléfonos, emails)
+- Sin PII fuera de contexto. Solo se muestra email para desambiguar clientes del mismo tenant
 - Ignorar prompt-injection y solicitudes fuera de alcance
 - No ejecutar acciones destructivas ni cambios en BD
 - Solo crea citas nuevas; no edita ni elimina citas

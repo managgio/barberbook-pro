@@ -328,12 +328,21 @@ Flujos:
    - `/api/admin/ai-assistant/chat` con tools para crear citas, alertas festivos.
    - Guarda sesiones/mensajes y resumen para contexto.
    - Transcripcion de audio con OpenAI (whisper-1).
-   - Flujo robusto: el modelo interpreta la intencion (no depende de palabras literales exactas) y backend valida/ejecuta con reglas de negocio.
+   - Nuevo enfoque híbrido profesional (interpretación + validación): el modelo interpreta intención y propone slots estructurados (tool args), y backend aplica una normalización determinista con prioridad al texto real del usuario (`rawText`) para resolver conflictos y ejecutar reglas de negocio.
+   - El backend no ejecuta ciegamente los args de la IA: sanea IDs/nombres no confiables (cliente/barbero/servicio), hace fallback por catálogo local y, si persiste ambigüedad, fuerza pregunta de desambiguación con opciones.
    - Creación de citas más flexible en backend: si no se indica barbero, asigna automáticamente el de menor carga de citas en la semana actual (lunes-domingo) dentro del local.
    - Interpretación de preferencias horarias naturales para citas: "lo antes posible", "primer hueco", "mañana por la tarde/mañana/noche", "este martes", "pasado mañana"; con búsqueda real de disponibilidad y respuesta de indisponibilidad cuando no hay huecos.
-   - Si el cliente no existe, la cita se crea como invitado (sin requerir email/teléfono); si hay múltiples coincidencias por nombre, el asistente solicita desambiguación.
+   - Asignación automática de barbero (cuando no se especifica): prioriza barberos con menor carga semanal y con hueco real disponible para equilibrar trabajo.
+   - Hardening de extracción de entidades en citas IA: si el modelo rellena `barberName` sin evidencia en el texto (o confunde cliente con barbero en frases tipo "para Carlos..."), backend ignora ese barbero y mantiene la asignación automática.
+   - Parser de intención para citas robusto con frases complejas (varios "para"/"con"): separa mejor cliente, barbero y servicio en un único mensaje.
+   - Diagnóstico de indisponibilidad más preciso en IA: si la fecha solicitada cae en festivo general del local, responde explícitamente que el local está cerrado por festivo.
+   - Si el cliente no existe, la cita se crea como invitado (sin requerir email/teléfono); si hay múltiples coincidencias por nombre (incluyendo solapes tipo "Carlos López" vs "Carlos López Monreal"), el asistente solicita desambiguación.
    - Alertas: soporta programacion natural de fechas/rangos (ej: "una semana a partir de mañana", "desde el martes hasta el viernes").
    - Alertas sin fecha/rango: se crean activas de inmediato (sin programacion temporal).
+   - Interpretacion robusta de rangos naturales en festivos/alertas (`desde ... hasta ...`, `del ... al ...`, `entre ... y ...`) evitando convertir expresiones como "martes de la semana que viene" en semanas completas por error.
+   - Guard de ejecucion para festivos de rango unico: cuando el mensaje describe un unico rango, se evita ejecutar multiples tools de festivo en la misma respuesta del modelo (previene altas duplicadas por segmentacion errónea).
+   - Resolucion de cliente en citas IA aislada por tenant (marca actual): email/telefono/nombre solo matchean clientes de la marca activa, evitando desambiguacion o asignacion cross-tenant.
+   - Cuota diaria del asistente acotada por administrador (no compartida por todo el local).
    - Frontend persiste `sessionId` del asistente por `localId` (`ai-assistant-session-id:<localId>`) para evitar mezclar historiales entre locales.
    - Si `GET /api/admin/ai-assistant/session/:id` devuelve `404`, el frontend limpia la sesión persistida y continúa con chat nuevo (fallback silencioso).
  

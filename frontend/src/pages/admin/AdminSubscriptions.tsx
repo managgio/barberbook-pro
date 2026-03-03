@@ -172,7 +172,7 @@ const AdminSubscriptions: React.FC = () => {
 
   const userActiveSubscriptionQuery = useQuery({
     queryKey: queryKeys.userActiveSubscription(currentLocationId, selectedClientId),
-    queryFn: () => getUserActiveSubscription(selectedClientId),
+    queryFn: () => (selectedClientId !== 'none' ? getUserActiveSubscription(selectedClientId) : Promise.resolve(null)),
     enabled: selectedClientId !== 'none',
   });
 

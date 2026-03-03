@@ -76,6 +76,24 @@ const WEEKDAY_MAP: Record<string, number> = {
   sabado: 6,
 };
 
+const WEEKDAY_PATTERN = /\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/;
+
+const MONTH_MAP: Record<string, number> = {
+  enero: 1,
+  febrero: 2,
+  marzo: 3,
+  abril: 4,
+  mayo: 5,
+  junio: 6,
+  julio: 7,
+  agosto: 8,
+  septiembre: 9,
+  setiembre: 9,
+  octubre: 10,
+  noviembre: 11,
+  diciembre: 12,
+};
+
 const weekdayIndexInTimeZone = (date: Date, timeZone: string) => {
   const short = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(date);
   const map: Record<string, number> = {
@@ -271,27 +289,11 @@ export const parseDateFromText = (input: string, now: Date, timeZone = AI_TIME_Z
     }
   }
 
-  const monthMap: Record<string, number> = {
-    enero: 1,
-    febrero: 2,
-    marzo: 3,
-    abril: 4,
-    mayo: 5,
-    junio: 6,
-    julio: 7,
-    agosto: 8,
-    septiembre: 9,
-    setiembre: 9,
-    octubre: 10,
-    noviembre: 11,
-    diciembre: 12,
-  };
-
   const monthMatch = text.match(/\b(\d{1,2})\s+de\s+([a-z]+)(?:\s+de\s+(\d{4}))?\b/);
   if (monthMatch) {
     const day = Number(monthMatch[1]);
     const monthName = monthMatch[2];
-    const month = monthMap[monthName];
+    const month = MONTH_MAP[monthName];
     if (!month || day < 1 || day > 31) return null;
     const yearMatch = monthMatch[3];
     const today = getDateStringInTimeZone(now, timeZone).split('-').map(Number);
@@ -321,7 +323,7 @@ export const parseDateFromText = (input: string, now: Date, timeZone = AI_TIME_Z
     return buildDateString(targetYear, targetMonth, day);
   }
 
-  const weekdayMatch = text.match(/\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/);
+  const weekdayMatch = text.match(WEEKDAY_PATTERN);
   if (weekdayMatch) {
     const targetIndex = WEEKDAY_MAP[weekdayMatch[1]];
     const forceNextWeek = /\b(que viene|proximo|siguiente|semana que viene)\b/.test(text);
@@ -334,12 +336,6 @@ export const parseDateFromText = (input: string, now: Date, timeZone = AI_TIME_Z
 export const parseDateRangeFromText = (input: string, now: Date, timeZone = AI_TIME_ZONE) => {
   const text = normalizeText(input || '');
   if (!text) return null;
-
-  if (/\b(semana que viene|proxima semana|siguiente semana)\b/.test(text)) {
-    const start = nextWeekdayDateString(now, WEEKDAY_MAP.lunes, timeZone, true);
-    const end = getDateStringInTimeZone(addDays(parseDateString(start), 6), timeZone);
-    return { start, end };
-  }
 
   const isoMatches = text.match(/\b\d{4}-\d{2}-\d{2}\b/g);
   if (isoMatches && isoMatches.length >= 2) {
@@ -355,22 +351,7 @@ export const parseDateRangeFromText = (input: string, now: Date, timeZone = AI_T
     const endDay = Number(rangeMonthMatch[2]);
     const monthName = rangeMonthMatch[3];
     const yearRaw = rangeMonthMatch[4];
-    const monthMap: Record<string, number> = {
-      enero: 1,
-      febrero: 2,
-      marzo: 3,
-      abril: 4,
-      mayo: 5,
-      junio: 6,
-      julio: 7,
-      agosto: 8,
-      septiembre: 9,
-      setiembre: 9,
-      octubre: 10,
-      noviembre: 11,
-      diciembre: 12,
-    };
-    const month = monthMap[monthName];
+    const month = MONTH_MAP[monthName];
     if (month && startDay >= 1 && endDay >= 1 && startDay <= 31 && endDay <= 31) {
       const today = getDateStringInTimeZone(now, timeZone).split('-').map(Number);
       let year = yearRaw ? Number(yearRaw) : today[0];
@@ -395,9 +376,29 @@ export const parseDateRangeFromText = (input: string, now: Date, timeZone = AI_T
     }
   }
 
+  const connectorMatch =
+    input.match(/\b(?:desde|del?)\s+(.+?)\s+(?:hasta|al|a)\s+(.+?)(?:[.,;]|$)/i)
+    || input.match(/\bentre\s+(.+?)\s+y\s+(.+?)(?:[.,;]|$)/i);
+  if (connectorMatch?.[1] && connectorMatch[2]) {
+    const start = parseDateFromText(connectorMatch[1], now, timeZone);
+    const end = parseDateFromText(connectorMatch[2], now, timeZone);
+    if (start && end) {
+      return start <= end ? { start, end } : { start: end, end: start };
+    }
+  }
+
+  const hasWholeWeekPhrase = /\b(semana que viene|proxima semana|siguiente semana)\b/.test(text);
+  const hasExplicitWeekday = WEEKDAY_PATTERN.test(text);
+  const hasExplicitRangeConnectors = /\b(desde|hasta|del?\s+\d|entre)\b/.test(text);
+  if (hasWholeWeekPhrase && !hasExplicitWeekday && !hasExplicitRangeConnectors) {
+    const start = nextWeekdayDateString(now, WEEKDAY_MAP.lunes, timeZone, true);
+    const end = getDateStringInTimeZone(addDays(parseDateString(start), 6), timeZone);
+    return { start, end };
+  }
+
   const firstDate = parseDateFromText(text, now, timeZone);
   if (!firstDate) return null;
-  const rest = text.replace(firstDate, '');
+  const rest = text.replace(firstDate, '').trim();
   const secondDate = parseDateFromText(rest, now, timeZone);
   if (secondDate) {
     return firstDate <= secondDate ? { start: firstDate, end: secondDate } : { start: secondDate, end: firstDate };
@@ -421,11 +422,21 @@ export const parseTimeFromText = (input: string) => {
 
   const adjustHour = (hour: number, period: string | undefined) => {
     if (!period) return hour;
-    if ((period.includes('tarde') || period.includes('noche') || period.includes('pm')) && hour < 12) {
-      return hour + 12;
-    }
-    if ((period.includes('manana') || period.includes('am')) && hour === 12) {
+    const normalizedPeriod = period.replace(/\./g, '');
+    const isMorning = normalizedPeriod.includes('manana') || normalizedPeriod.includes('am');
+    const isAfternoon = normalizedPeriod.includes('tarde') || normalizedPeriod.includes('pm');
+    const isNight = normalizedPeriod.includes('noche');
+    if (isMorning && hour === 12) {
       return 0;
+    }
+    if (isNight) {
+      if (hour === 12) return 0;
+      if (hour >= 1 && hour <= 6) return hour;
+      if (hour < 12) return hour + 12;
+      return hour;
+    }
+    if (isAfternoon && hour < 12) {
+      return hour + 12;
     }
     return hour;
   };

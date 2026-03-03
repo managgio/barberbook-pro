@@ -278,7 +278,10 @@ const AdminAiAssistant: React.FC = () => {
   const sendMessage = async (prompt: string) => {
     const trimmed = prompt.trim();
     if (!trimmed || !user) return;
-    if (user.role !== 'admin') {
+    const hasAdminAccess = Boolean(
+      user.isSuperAdmin || user.isPlatformAdmin || user.isLocalAdmin || user.role === 'admin',
+    );
+    if (!hasAdminAccess) {
       toast({
         title: 'Acceso restringido',
         description: 'Solo los administradores pueden usar el asistente.',
@@ -307,7 +310,7 @@ const AdminAiAssistant: React.FC = () => {
         description: errorMessage,
         variant: 'destructive',
       });
-      if (/limite diario/i.test(errorMessage)) {
+      if (/l[ií]mite diario/i.test(errorMessage)) {
         setMessages((prev) => [
           ...prev,
           {

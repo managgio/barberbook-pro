@@ -133,7 +133,7 @@ const AdminClients: React.FC = () => {
   });
   const activeSubscriptionQuery = useQuery({
     queryKey: queryKeys.userActiveSubscription(currentLocationId, selectedClientId),
-    queryFn: () => getUserActiveSubscription(selectedClientId as string),
+    queryFn: () => (selectedClientId ? getUserActiveSubscription(selectedClientId) : Promise.resolve(null)),
     enabled: Boolean(selectedClientId) && subscriptionsEnabled,
   });
   const stripeConfigQuery = useQuery({

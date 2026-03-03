@@ -41,7 +41,7 @@ export class AiAssistantService {
 
   async chat(adminUserId: string, message: string, sessionId?: string | null): Promise<AiChatResult> {
     await this.ensureAdminUser(adminUserId);
-    const dailyCount = await this.memory.getDailyUserMessageCount(AI_TIME_ZONE);
+    const dailyCount = await this.memory.getDailyUserMessageCount(adminUserId, AI_TIME_ZONE);
     if (dailyCount >= DAILY_MESSAGE_LIMIT) {
       throw new BadRequestException(
         `Límite diario alcanzado (${DAILY_MESSAGE_LIMIT} mensajes). Inténtalo de nuevo mañana.`,
@@ -92,6 +92,7 @@ export class AiAssistantService {
     let appointmentsChanged = false;
     let holidaysChanged = false;
     let alertsChanged = false;
+    const enforceSingleHolidayRangeCall = this.isSingleHolidayRangeIntent(message);
     const lastAssistantMessage = [...recentMessages].reverse().find((msg) => msg.role === 'assistant')?.content ?? '';
     let forcedTool = this.detectForcedTool(lastAssistantMessage);
     if (!alertsEnabled && forcedTool === 'create_alert') {
@@ -134,6 +135,7 @@ export class AiAssistantService {
           const holidaySuccessMessages: string[] = [];
           const holidayNeedsInfoMessages: string[] = [];
           const holidayErrorMessages: string[] = [];
+          let holidayToolExecuted = false;
           let appointmentMessage: string | null = null;
           let alertMessage: string | null = null;
 
@@ -141,6 +143,16 @@ export class AiAssistantService {
             const toolName = toolCall.function.name as AiToolName;
             if (!toolDefs.some((tool) => tool.function.name === toolName)) {
               throw new BadRequestException(`Tool no permitida: ${toolName}`);
+            }
+
+            const isHolidayTool = toolName === 'add_barber_holiday' || toolName === 'add_shop_holiday';
+            if (isHolidayTool && enforceSingleHolidayRangeCall && holidayToolExecuted) {
+              messages.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({ status: 'skipped', reason: 'single_holiday_range_guard' }),
+              });
+              continue;
             }
 
             let args: Record<string, unknown> = {};
@@ -183,6 +195,7 @@ export class AiAssistantService {
             }
 
             if (toolName === 'add_barber_holiday' || toolName === 'add_shop_holiday') {
+              holidayToolExecuted = true;
               const holidayResult = toolResult as AiHolidayActionResult;
               if (holidayResult.status === 'added') {
                 holidaysChanged = true;
@@ -345,6 +358,9 @@ export class AiAssistantService {
       if (result.reason === 'no_active_barbers') {
         return 'No hay barberos activos disponibles en este momento.';
       }
+      if (result.reason === 'shop_holiday') {
+        return 'Ese día el local está cerrado por festivo.';
+      }
       if (result.reason === 'slot_window_unavailable') {
         return 'No hay disponibilidad en el rango solicitado.';
       }
@@ -356,6 +372,18 @@ export class AiAssistantService {
     if (result.status === 'needs_info') {
       if (result.reason === 'barber_inactive') {
         return 'Ese barbero no está activo. Indícame otro barbero disponible.';
+      }
+      if ((result.missing ?? []).includes('serviceId') && result.options?.services?.length) {
+        const options = result.options.services
+          .slice(0, 5)
+          .map((service) => service.name);
+        return `Hay varios servicios posibles. Indícame uno: ${options.join(', ')}.`;
+      }
+      if ((result.missing ?? []).includes('barberId') && result.options?.barbers?.length) {
+        const options = result.options.barbers
+          .slice(0, 5)
+          .map((barber) => barber.name);
+        return `Hay varios barberos posibles. Indícame uno: ${options.join(', ')}.`;
       }
       if (result.reason === 'user_ambiguous' && result.options?.users?.length) {
         const options = result.options.users
@@ -493,6 +521,18 @@ export class AiAssistantService {
     if (!actionVerb) return false;
     const domainEntity = /\b(cita|festiv|vacaci|cierre|alerta|aviso|anuncio|comunicado)\b/.test(normalized);
     return domainEntity;
+  }
+
+  private isSingleHolidayRangeIntent(message: string) {
+    const normalized = this.normalizeIntentText(message || '');
+    if (!normalized) return false;
+    if (!/\b(festiv|vacaci|cierre|cerrar)\b/.test(normalized)) return false;
+    const hasRangeBounds = /\b(desde|del)\b/.test(normalized) && /\b(hasta|al)\b/.test(normalized);
+    if (!hasRangeBounds) return false;
+    const rangeStarts = normalized.match(/\b(desde|del)\b/g)?.length ?? 0;
+    if (rangeStarts > 1) return false;
+    const explicitMultiple = /\b(otro|otra|ademas|además|tambien|también|varios|dos|tres)\b/.test(normalized);
+    return !explicitMultiple;
   }
 
   private async updateSummary(sessionId: string, previousSummary: string) {

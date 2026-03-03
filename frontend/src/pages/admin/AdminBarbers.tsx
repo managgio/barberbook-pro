@@ -742,7 +742,7 @@ const AdminBarbers: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            className="h-4 w-4 rounded-full border border-white/30 shadow-sm transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                            className="h-4 w-4 shrink-0 aspect-square rounded-full border border-white/30 shadow-sm transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
                             style={{ backgroundColor: resolveBarberAccentColor(barber.id, barber.calendarColor) }}
                             onClick={() => {
                               const input = document.getElementById(`barber-calendar-color-${barber.id}`) as HTMLInputElement | null;
