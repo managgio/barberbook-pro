@@ -1,11 +1,20 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
+import { Inject, Injectable } from '@nestjs/common';
+import { ManagePlatformAuditLogsUseCase } from '../../contexts/platform/application/use-cases/manage-platform-audit-logs.use-case';
+import {
+  PLATFORM_AUDIT_LOG_MANAGEMENT_PORT,
+  PlatformAuditLogManagementPort,
+} from '../../contexts/platform/ports/outbound/platform-audit-log-management.port';
 
 @Injectable()
 export class AuditLogsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly managePlatformAuditLogsUseCase: ManagePlatformAuditLogsUseCase;
+
+  constructor(
+    @Inject(PLATFORM_AUDIT_LOG_MANAGEMENT_PORT)
+    private readonly auditLogManagementPort: PlatformAuditLogManagementPort,
+  ) {
+    this.managePlatformAuditLogsUseCase = new ManagePlatformAuditLogsUseCase(this.auditLogManagementPort);
+  }
 
   async log(params: {
     brandId?: string;
@@ -14,23 +23,9 @@ export class AuditLogsService {
     action: string;
     entityType: string;
     entityId?: string | null;
-    metadata?: Prisma.InputJsonValue | null;
+    metadata?: unknown;
   }) {
-    const brandId = params.brandId || getCurrentBrandId();
-    const locationId =
-      params.locationId === undefined ? getCurrentLocalId() : params.locationId;
-
-    return this.prisma.auditLog.create({
-      data: {
-        brandId,
-        locationId: locationId ?? null,
-        actorUserId: params.actorUserId ?? null,
-        action: params.action,
-        entityType: params.entityType,
-        entityId: params.entityId ?? null,
-        metadata: params.metadata ?? undefined,
-      },
-    });
+    return this.managePlatformAuditLogsUseCase.log(params);
   }
 
   async list(params: {
@@ -40,34 +35,6 @@ export class AuditLogsService {
     to?: string;
     localId?: string;
   }) {
-    const brandId = params.brandId || getCurrentBrandId();
-    const where: Record<string, any> = { brandId };
-    if (params.localId) {
-      where.locationId = params.localId;
-    }
-    if (params.action) {
-      where.action = params.action;
-    }
-    const fromDate = params.from ? new Date(params.from) : null;
-    const toDate = params.to ? new Date(params.to) : null;
-    const hasFrom = Boolean(fromDate && !Number.isNaN(fromDate.getTime()));
-    const hasTo = Boolean(toDate && !Number.isNaN(toDate.getTime()));
-    if (hasFrom || hasTo) {
-      where.createdAt = {
-        ...(hasFrom ? { gte: fromDate } : {}),
-        ...(hasTo ? { lte: toDate } : {}),
-      };
-    }
-
-    return this.prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-      include: {
-        actorUser: {
-          select: { id: true, name: true, email: true },
-        },
-      },
-    });
+    return this.managePlatformAuditLogsUseCase.list(params);
   }
 }

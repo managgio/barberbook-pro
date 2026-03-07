@@ -1,5 +1,3 @@
-import { Barber } from '@prisma/client';
-
 const sanitizeBarberPhoto = (photo?: string | null): string | null => {
   if (!photo) return null;
   if (photo.includes('images.unsplash.com') || photo.toLowerCase().includes('shadcn')) {
@@ -8,9 +6,23 @@ const sanitizeBarberPhoto = (photo?: string | null): string | null => {
   return photo;
 };
 
-type BarberWithAssignments = Barber & {
+type BarberWithAssignments = {
+  id: string;
+  name: string;
+  photo: string | null;
+  photoFileId: string | null;
+  specialty: string;
+  role: string;
+  bio: string | null;
+  startDate: Date;
+  endDate: Date | null;
+  isActive: boolean;
+  calendarColor: string | null;
+  userId: string | null;
   serviceAssignments?: Array<{ serviceId: string }>;
   serviceCategoryAssignments?: Array<{ categoryId: string }>;
+  assignedServiceIds?: string[];
+  assignedCategoryIds?: string[];
 };
 
 export const mapBarber = (barber: BarberWithAssignments) => ({
@@ -26,8 +38,17 @@ export const mapBarber = (barber: BarberWithAssignments) => ({
   isActive: barber.isActive,
   calendarColor: barber.calendarColor || null,
   userId: barber.userId || null,
-  assignedServiceIds: barber.serviceAssignments?.map((item) => item.serviceId) || [],
-  assignedCategoryIds: barber.serviceCategoryAssignments?.map((item) => item.categoryId) || [],
+  assignedServiceIds:
+    barber.assignedServiceIds ||
+    barber.serviceAssignments?.map((item) => item.serviceId) ||
+    [],
+  assignedCategoryIds:
+    barber.assignedCategoryIds ||
+    barber.serviceCategoryAssignments?.map((item) => item.categoryId) ||
+    [],
   hasAnyServiceAssignment:
-    (barber.serviceAssignments?.length || 0) > 0 || (barber.serviceCategoryAssignments?.length || 0) > 0,
+    (barber.assignedServiceIds?.length || 0) > 0 ||
+    (barber.assignedCategoryIds?.length || 0) > 0 ||
+    (barber.serviceAssignments?.length || 0) > 0 ||
+    (barber.serviceCategoryAssignments?.length || 0) > 0,
 });

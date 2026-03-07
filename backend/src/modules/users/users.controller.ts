@@ -1,13 +1,13 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Inject, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserBlockDto } from './dto/update-user-block.dto';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { AdminEndpoint } from '../../auth/admin.decorator';
 import { AuthService } from '../../auth/auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
 
 @Controller('users')
 export class UsersController {
@@ -19,13 +19,15 @@ export class UsersController {
     private readonly usersService: UsersService,
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
   ) {}
 
   private async canManageOtherUsers(request: Request) {
     const actor = await this.authService.requireUser(request);
     if (actor.isSuperAdmin || actor.isPlatformAdmin) return true;
     if (actor.role !== 'admin') return false;
-    const localId = getCurrentLocalId();
+    const localId = this.tenantContextPort.getRequestContext().localId;
     const staff = await this.prisma.locationStaff.findUnique({
       where: {
         localId_userId: {

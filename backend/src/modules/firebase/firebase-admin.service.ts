@@ -1,15 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { App, getApp, getApps, initializeApp, cert } from 'firebase-admin/app';
 import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
-import { TenantConfigService } from '../../tenancy/tenant-config.service';
-import { getCurrentBrandId } from '../../tenancy/tenant.context';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
+import { TENANT_CONFIG_READ_PORT, TenantConfigReadPort } from '../../shared/application/tenant-config-read.port';
 
 @Injectable()
 export class FirebaseAdminService {
   private readonly appCache = new Map<string, App>();
   private readonly appInitCache = new Map<string, Promise<App | null>>();
+  private readonly devAuthBypassEnabled =
+    process.env.AUTH_DEV_BYPASS_ENABLED === 'true' &&
+    (process.env.NODE_ENV || 'development').toLowerCase() !== 'production';
+  private readonly devAuthBypassPrefix = process.env.AUTH_DEV_BYPASS_PREFIX || 'dev:';
 
-  constructor(private readonly tenantConfig: TenantConfigService) {}
+  constructor(
+    @Inject(TENANT_CONFIG_READ_PORT)
+    private readonly tenantConfigReadPort: TenantConfigReadPort,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
+  ) {}
 
   private async getOrCreateApp(brandId: string) {
     if (this.appCache.has(brandId)) {
@@ -27,7 +36,7 @@ export class FirebaseAdminService {
     }
 
     const initPromise = (async () => {
-      const config = await this.tenantConfig.getBrandConfig(brandId);
+      const config = await this.tenantConfigReadPort.getBrandConfig(brandId);
       const firebase = config.firebaseAdmin;
       if (!firebase?.projectId || !firebase.clientEmail || !firebase.privateKey) {
         return null;
@@ -65,7 +74,7 @@ export class FirebaseAdminService {
   }
 
   async deleteUser(firebaseUid: string) {
-    const brandId = getCurrentBrandId();
+    const brandId = this.tenantContextPort.getRequestContext().brandId;
     const app = await this.getOrCreateApp(brandId);
     if (!app) return null;
     const auth = getAuth(app);
@@ -74,7 +83,10 @@ export class FirebaseAdminService {
   }
 
   async verifyIdToken(idToken: string): Promise<DecodedIdToken | null> {
-    const brandId = getCurrentBrandId();
+    const devBypassToken = this.resolveDevBypassToken(idToken);
+    if (devBypassToken) return devBypassToken;
+
+    const brandId = this.tenantContextPort.getRequestContext().brandId;
     const app = await this.getOrCreateApp(brandId);
     if (!app) return null;
     const auth = getAuth(app);
@@ -83,5 +95,26 @@ export class FirebaseAdminService {
     } catch {
       return null;
     }
+  }
+
+  private resolveDevBypassToken(idToken: string): DecodedIdToken | null {
+    if (!this.devAuthBypassEnabled) return null;
+    if (!idToken.startsWith(this.devAuthBypassPrefix)) return null;
+    const uid = idToken.slice(this.devAuthBypassPrefix.length).trim();
+    if (!uid) return null;
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      uid,
+      sub: uid,
+      aud: 'local-dev-bypass',
+      iss: 'https://local.dev/auth',
+      iat: now,
+      exp: now + 3600,
+      auth_time: now,
+      firebase: {
+        identities: {},
+        sign_in_provider: 'custom',
+      },
+    } as DecodedIdToken;
   }
 }

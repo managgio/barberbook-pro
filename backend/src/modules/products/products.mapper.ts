@@ -1,11 +1,44 @@
-import { Product, ProductCategory } from '@prisma/client';
 import { computeProductPricing } from './products.pricing';
 
-type ProductWithCategory = Product & { category?: ProductCategory | null };
+type ProductWithCategory = {
+  id: string;
+  name: string;
+  description: string | null;
+  sku: string | null;
+  price: number | { toString(): string };
+  stock: number;
+  minStock: number | null;
+  imageUrl: string | null;
+  imageFileId: string | null;
+  isActive: boolean;
+  isPublic: boolean;
+  categoryId: string | null;
+  category?:
+    | {
+        id: string;
+        name: string;
+        description: string | null;
+        position: number;
+      }
+    | null;
+  finalPrice?: number;
+  appliedOffer?: {
+    id: string;
+    name: string;
+    description: string;
+    discountType: string;
+    discountValue: number;
+    scope: string;
+    startDate: Date | null;
+    endDate: Date | null;
+    amountOff: number;
+  } | null;
+};
 
 export const mapProduct = (product: ProductWithCategory, pricing?: ReturnType<typeof computeProductPricing>) => {
   const price = Number(product.price);
-  const finalPrice = pricing?.finalPrice ?? price;
+  const finalPrice = pricing?.finalPrice ?? product.finalPrice ?? price;
+  const appliedOffer = pricing?.appliedOffer ?? product.appliedOffer ?? null;
   return {
     id: product.id,
     name: product.name,
@@ -28,10 +61,10 @@ export const mapProduct = (product: ProductWithCategory, pricing?: ReturnType<ty
           position: product.category.position,
         }
       : null,
-    appliedOffer: pricing?.appliedOffer
+    appliedOffer: appliedOffer
       ? {
-          ...pricing.appliedOffer,
-          amountOff: Number(pricing.appliedOffer.amountOff),
+          ...appliedOffer,
+          amountOff: Number(appliedOffer.amountOff),
         }
       : null,
   };

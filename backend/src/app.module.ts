@@ -1,10 +1,12 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { AdminGlobalGuard } from './bootstrap/nest/guards/admin-global.guard';
+import { TenantContextMiddleware } from './bootstrap/nest/middleware/tenant-context.middleware';
 import { ConfigModule } from '@nestjs/config';
+import { AlsTenantContextAdapter } from './contexts/platform/infrastructure/adapters/als-tenant-context.adapter';
+import { TENANT_CONTEXT_PORT } from './contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenancyModule } from './tenancy/tenancy.module';
-import { TenantMiddleware } from './tenancy/tenant.middleware';
-import { AdminGuard } from './auth/admin.guard';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { BarbersModule } from './modules/barbers/barbers.module';
@@ -68,10 +70,14 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
     ObservabilityModule,
     SubscriptionsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: AdminGuard }],
+  providers: [
+    { provide: TENANT_CONTEXT_PORT, useClass: AlsTenantContextAdapter },
+    { provide: APP_GUARD, useClass: AdminGlobalGuard },
+    TenantContextMiddleware,
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('*');
+    consumer.apply(TenantContextMiddleware).forRoutes('*');
   }
 }

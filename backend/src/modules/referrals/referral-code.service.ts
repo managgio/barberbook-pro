@@ -1,57 +1,26 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { randomBytes } from 'crypto';
-import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
-
-const CODE_LENGTH_BYTES = 5;
-const MAX_ATTEMPTS = 5;
+import { Inject, Injectable } from '@nestjs/common';
+import { ManageReferralCodesUseCase } from '../../contexts/engagement/application/use-cases/manage-referral-codes.use-case';
+import {
+  ENGAGEMENT_REFERRAL_CODE_MANAGEMENT_PORT,
+  EngagementReferralCodeManagementPort,
+} from '../../contexts/engagement/ports/outbound/referral-code-management.port';
 
 @Injectable()
 export class ReferralCodeService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly manageReferralCodesUseCase: ManageReferralCodesUseCase;
 
-  private generateCode() {
-    return randomBytes(CODE_LENGTH_BYTES).toString('hex').toUpperCase();
+  constructor(
+    @Inject(ENGAGEMENT_REFERRAL_CODE_MANAGEMENT_PORT)
+    private readonly referralCodeManagementPort: EngagementReferralCodeManagementPort,
+  ) {
+    this.manageReferralCodesUseCase = new ManageReferralCodesUseCase(this.referralCodeManagementPort);
   }
 
-  async getOrCreateCode(userId: string) {
-    const localId = getCurrentLocalId();
-    const user = await this.prisma.user.findFirst({ where: { id: userId }, select: { id: true } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    const existing = await this.prisma.referralCode.findFirst({ where: { localId, userId } });
-    if (existing) return existing;
-
-    let attempt = 0;
-    while (attempt < MAX_ATTEMPTS) {
-      const code = this.generateCode();
-      try {
-        return await this.prisma.referralCode.create({
-          data: {
-            localId,
-            userId,
-            code,
-          },
-        });
-      } catch (error: any) {
-        if (error?.code === 'P2002') {
-          attempt += 1;
-          continue;
-        }
-        throw error;
-      }
-    }
-    throw new Error('Unable to generate referral code');
+  getOrCreateCode(userId: string) {
+    return this.manageReferralCodesUseCase.getOrCreateCode(userId);
   }
 
-  async resolveCode(code: string) {
-    const localId = getCurrentLocalId();
-    const referral = await this.prisma.referralCode.findFirst({
-      where: { localId, code: code.toUpperCase(), isActive: true },
-      include: { user: true },
-    });
-    if (!referral) throw new NotFoundException('Referral code not found');
-    return referral;
+  resolveCode(code: string) {
+    return this.manageReferralCodesUseCase.resolveCode(code);
   }
 }

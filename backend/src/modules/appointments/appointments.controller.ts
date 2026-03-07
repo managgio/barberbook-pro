@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import { AppointmentsService } from './appointments.service';
+import { AppointmentsFacade } from './appointments.facade';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { AdminEndpoint } from '../../auth/admin.decorator';
@@ -12,7 +12,7 @@ export class AppointmentsController {
   private static readonly MAX_RANGE_DAYS = 62;
 
   constructor(
-    private readonly appointmentsService: AppointmentsService,
+    private readonly appointmentsFacade: AppointmentsFacade,
     private readonly authService: AuthService,
   ) {}
 
@@ -63,7 +63,7 @@ export class AppointmentsController {
     @Query('serviceId') serviceId?: string,
     @Query('appointmentIdToIgnore') appointmentIdToIgnore?: string,
   ) {
-    return this.appointmentsService.getAvailableSlots(barberId, date, { serviceId, appointmentIdToIgnore });
+    return this.appointmentsFacade.getAvailability(barberId, date, serviceId, appointmentIdToIgnore);
   }
 
   @Get('availability-batch')
@@ -74,7 +74,7 @@ export class AppointmentsController {
     @Query('appointmentIdToIgnore') appointmentIdToIgnore?: string,
   ) {
     const normalizedBarberIds = this.parseBoundedIds(barberIds, 'barberIds');
-    return this.appointmentsService.getAvailableSlotsBatch(date, normalizedBarberIds, {
+    return this.appointmentsFacade.getAvailabilityBatch(date, normalizedBarberIds, {
       serviceId,
       appointmentIdToIgnore,
     });
@@ -88,7 +88,7 @@ export class AppointmentsController {
   ) {
     this.assertRangeSize(dateFrom, dateTo, 'weekly-load');
     const normalizedBarberIds = this.parseBoundedIds(barberIds, 'barberIds');
-    return this.appointmentsService.getWeeklyLoad(dateFrom, dateTo, normalizedBarberIds);
+    return this.appointmentsFacade.getWeeklyLoad(dateFrom, dateTo, normalizedBarberIds);
   }
 
   @AdminEndpoint()
@@ -101,7 +101,7 @@ export class AppointmentsController {
     const safeWindow = Number.isFinite(parsedWindow)
       ? Math.min(90, Math.max(7, Math.floor(parsedWindow as number)))
       : undefined;
-    return this.appointmentsService.getDashboardSummary({
+    return this.appointmentsFacade.getDashboardSummary({
       windowDays: safeWindow,
       barberId: barberId && barberId !== 'all' ? barberId : undefined,
     });
@@ -126,7 +126,7 @@ export class AppointmentsController {
       Math.max(1, parseInt(page ?? '1', 10) || 1),
     );
     const limit = Math.min(200, Math.max(10, parseInt(pageSize ?? '50', 10) || 50));
-    return this.appointmentsService.findPageWithClients({
+    return this.appointmentsFacade.findPageWithClients({
       ...filters,
       page: pageNumber,
       pageSize: limit,
@@ -147,7 +147,7 @@ export class AppointmentsController {
     }
     this.assertRangeSize(dateFrom, dateTo, 'admin-calendar');
     const normalizedSort: 'asc' | 'desc' = sort === 'desc' ? 'desc' : 'asc';
-    return this.appointmentsService.findRangeWithClients({
+    return this.appointmentsFacade.findRangeWithClients({
       barberId,
       date,
       dateFrom,
@@ -176,12 +176,12 @@ export class AppointmentsController {
       Math.max(1, parseInt(page ?? '1', 10) || 1),
     );
     const limit = Math.min(200, Math.max(10, parseInt(pageSize ?? '50', 10) || 50));
-    return this.appointmentsService.findPage({ ...filters, page: pageNumber, pageSize: limit });
+    return this.appointmentsFacade.findPage({ ...filters, page: pageNumber, pageSize: limit });
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.appointmentsService.findOne(id);
+    return this.appointmentsFacade.findOne(id);
   }
 
   @Post()
@@ -189,7 +189,7 @@ export class AppointmentsController {
     const adminUserId = await this.resolveAdminUserId(req);
     const ip = this.resolveRequestIp(req);
     const userAgent = typeof req.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : null;
-    return this.appointmentsService.create(data, {
+    return this.appointmentsFacade.create(data, {
       requireConsent: !adminUserId,
       ip,
       userAgent,
@@ -200,18 +200,18 @@ export class AppointmentsController {
   @AdminEndpoint()
   @Post(':id/anonymize')
   anonymize(@Param('id') id: string, @Req() req: { adminUserId?: string }) {
-    return this.appointmentsService.anonymizeAppointment(id, req.adminUserId || null);
+    return this.appointmentsFacade.anonymize(id, req.adminUserId || null);
   }
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() data: UpdateAppointmentDto, @Req() req: any) {
     const adminUserId = await this.resolveAdminUserId(req);
-    return this.appointmentsService.update(id, data, { actorUserId: adminUserId });
+    return this.appointmentsFacade.update(id, data, { actorUserId: adminUserId });
   }
 
   @Delete(':id')
   remove(@Param('id') id: string) {
-    return this.appointmentsService.remove(id);
+    return this.appointmentsFacade.remove(id);
   }
 
   private async resolveAdminUserId(req: any): Promise<string | null> {

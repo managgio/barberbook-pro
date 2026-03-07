@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
 import { DistributedLockService } from '../../prisma/distributed-lock.service';
-import { AI_TIME_ZONE } from '../ai-assistant/ai-assistant.utils';
+import { AI_TIME_ZONE } from './adapters/usage-metrics-timezone.utils';
 import { UsageMetricsService } from './usage-metrics.service';
 
 @Injectable()

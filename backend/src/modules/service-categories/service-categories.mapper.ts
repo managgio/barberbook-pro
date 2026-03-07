@@ -1,7 +1,12 @@
-import { Service, ServiceCategory } from '@prisma/client';
 import { mapService } from '../services/services.mapper';
 
-type ServiceCategoryWithServices = ServiceCategory & { services?: (Service & { category?: ServiceCategory | null })[] };
+type ServiceCategoryWithServices = {
+  id: string;
+  name: string;
+  description: string | null;
+  position: number;
+  services?: unknown[];
+};
 
 export const mapServiceCategory = (
   category: ServiceCategoryWithServices,
@@ -14,5 +19,5 @@ export const mapServiceCategory = (
   services:
     options.includeServices === false || !category.services
       ? undefined
-      : category.services.map((service) => mapService(service)),
+      : category.services.map((service) => mapService(service as any)),
 });

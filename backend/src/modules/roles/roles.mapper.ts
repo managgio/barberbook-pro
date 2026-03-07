@@ -1,6 +1,11 @@
-import { AdminRole } from '@prisma/client';
+type RoleLike = {
+  id: string;
+  name: string;
+  description: string | null;
+  permissions: unknown;
+};
 
-export const mapRole = (role: AdminRole) => ({
+export const mapRole = (role: RoleLike) => ({
   id: role.id,
   name: role.name,
   description: role.description || null,

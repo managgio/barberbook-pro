@@ -238,6 +238,15 @@ const AdminAiAssistant: React.FC = () => {
           clearPersistedSession();
           return;
         }
+        if (isApiRequestError(error) && error.status >= 500) {
+          clearPersistedSession();
+          toast({
+            title: 'Historial reiniciado',
+            description: 'La sesión anterior no pudo recuperarse y se ha iniciado una nueva.',
+            variant: 'destructive',
+          });
+          return;
+        }
         toast({
           title: 'Historial no disponible',
           description: 'No se pudo cargar la sesión anterior del asistente.',

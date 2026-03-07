@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Put, Query } from '@nestjs/common';
 import { AdminEndpoint } from '../../auth/admin.decorator';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { ReferralConfigService } from './referral-config.service';
 import { ReferralAttributionService } from './referral-attribution.service';
 import { CopyReferralConfigDto } from './dto/copy-referral-config.dto';
@@ -9,7 +10,6 @@ import { VoidReferralDto } from './dto/void-referral.dto';
 import { ReferralAnalyticsService } from './referral-analytics.service';
 import { ReferralAttributionStatus } from '@prisma/client';
 import { ReferralTemplatesService } from './referral-templates.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
 
 @Controller('admin/referrals')
 export class ReferralsAdminController {
@@ -18,6 +18,8 @@ export class ReferralsAdminController {
     private readonly attributionService: ReferralAttributionService,
     private readonly analyticsService: ReferralAnalyticsService,
     private readonly templatesService: ReferralTemplatesService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
   ) {}
 
   @AdminEndpoint()
@@ -47,7 +49,7 @@ export class ReferralsAdminController {
   @AdminEndpoint()
   @Get('templates')
   listTemplates() {
-    const localId = getCurrentLocalId();
+    const localId = this.tenantContextPort.getRequestContext().localId;
     return this.templatesService.listForLocal(localId);
   }
 

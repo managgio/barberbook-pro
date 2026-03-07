@@ -1,9 +1,12 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
-import { DistributedLockService } from '../../prisma/distributed-lock.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
-import { AppointmentsService } from './appointments.service';
+import {
+  ACTIVE_LOCATION_ITERATOR_PORT,
+  ActiveLocationIteratorPort,
+} from '../../contexts/platform/ports/outbound/active-location-iterator.port';
+import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
+import { runTenantScopedJob } from '../../shared/application/tenant-job-execution';
+import { SyncAppointmentStatusesUseCase } from '../../contexts/booking/application/use-cases/sync-appointment-statuses.use-case';
 
 @Injectable()
 export class AppointmentsStatusSyncService implements OnModuleInit, OnModuleDestroy {
@@ -11,9 +14,11 @@ export class AppointmentsStatusSyncService implements OnModuleInit, OnModuleDest
   private task: ScheduledTask | null = null;
 
   constructor(
-    private readonly appointmentsService: AppointmentsService,
-    private readonly prisma: PrismaService,
-    private readonly distributedLock: DistributedLockService,
+    private readonly syncAppointmentStatusesUseCase: SyncAppointmentStatusesUseCase,
+    @Inject(DISTRIBUTED_LOCK_PORT)
+    private readonly distributedLockPort: DistributedLockPort,
+    @Inject(ACTIVE_LOCATION_ITERATOR_PORT)
+    private readonly activeLocationIteratorPort: ActiveLocationIteratorPort,
   ) {}
 
   onModuleInit() {
@@ -27,7 +32,7 @@ export class AppointmentsStatusSyncService implements OnModuleInit, OnModuleDest
   }
 
   private async handleSync() {
-    const executed = await this.distributedLock.runWithLock(
+    const executed = await this.distributedLockPort.runWithLock(
       'cron:appointments-status-sync',
       async () => {
         await this.runSync();
@@ -41,27 +46,18 @@ export class AppointmentsStatusSyncService implements OnModuleInit, OnModuleDest
   }
 
   private async runSync() {
-    try {
-      let updatedTotal = 0;
-      await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
-        try {
-          const updated = await this.appointmentsService.syncStatusesForAllAppointments();
-          updatedTotal += updated;
-        } catch (error) {
-          this.logger.error(
-            `Appointment status sync failed for ${brandId}/${localId}.`,
-            error instanceof Error ? error.stack : `${error}`,
-          );
-        }
-      });
-      if (updatedTotal > 0) {
-        this.logger.log(`Appointment status sync: updated ${updatedTotal} appointments.`);
-      }
-    } catch (error) {
-      this.logger.error(
-        'Appointment status sync failed.',
-        error instanceof Error ? error.stack : `${error}`,
-      );
-    }
+    await runTenantScopedJob({
+      jobName: 'appointments-status-sync',
+      logger: this.logger,
+      iterator: this.activeLocationIteratorPort,
+      alertPolicy: {
+        failureRateWarnThreshold: 0.05,
+        failedLocationsWarnThreshold: 1,
+      },
+      executeForLocation: async () => {
+        const updated = await this.syncAppointmentStatusesUseCase.execute();
+        return { appointmentsUpdated: updated };
+      },
+    });
   }
 }

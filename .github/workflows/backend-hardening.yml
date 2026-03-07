@@ -14,6 +14,32 @@ on:
 jobs:
   backend-hardening:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: leblond
+          MYSQL_USER: prisma
+          MYSQL_PASSWORD: password
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uprisma -ppassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_CHANGED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      TEST_CHANGED_HEAD_SHA: ${{ github.sha }}
+      TEST_E2E_SMOKE_ENABLED: "true"
+      TEST_E2E_SMOKE_STRICT: "true"
+      TEST_E2E_SMOKE_REQUIRE_CHECKOUT: ${{ vars.BACKEND_E2E_REQUIRE_CHECKOUT || 'false' }}
+      DATABASE_URL: mysql://prisma:password@127.0.0.1:3306/leblond
+      DEFAULT_BRAND_SUBDOMAIN: leblond
+      TENANT_BASE_DOMAIN: managgio.com
+      AUTH_DEV_BYPASS_PREFIX: dev:
+      NODE_ENV: test
     defaults:
       run:
         working-directory: backend
@@ -21,6 +47,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -35,8 +63,42 @@ jobs:
       - name: Generate Prisma Client
         run: npm run prisma:generate
 
+      - name: Prepare Database (schema + seed)
+        run: |
+          npm run prisma:deploy
+          npm run prisma:seed
+
       - name: Tenant Scope Gate
         run: npm run tenant:scope:check
+
+      - name: Architecture Boundary Gate
+        run: npm run arch:check
+
+      - name: Migration CI Gate
+        run: npm run migration:gate:ci
+
+      - name: Test Change Policy (PR)
+        if: github.event_name == 'pull_request'
+        run: npm run test:policy
+
+      - name: Affected Tests (PR fast gate)
+        if: github.event_name == 'pull_request'
+        run: npm run test:changed
+
+      - name: Unit Tests
+        run: npm run test:unit
+
+      - name: Contract Tests
+        run: npm run test:contract
+
+      - name: Parity Tests
+        run: npm run test:parity
+
+      - name: Coverage Gate
+        run: npm run test:coverage:gate
+
+      - name: Runtime E2E Smoke (opt-in)
+        run: npm run test:e2e:smoke
 
       - name: Build
         run: npm run build

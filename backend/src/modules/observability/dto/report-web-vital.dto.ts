@@ -1,19 +1,11 @@
 import { Type } from 'class-transformer';
 import { IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  PlatformWebVitalName as WebVitalName,
+  PlatformWebVitalRating as WebVitalRating,
+} from '../../../contexts/platform/domain/entities/platform-observability.entity';
 
-export enum WebVitalName {
-  LCP = 'LCP',
-  CLS = 'CLS',
-  INP = 'INP',
-  FCP = 'FCP',
-  TTFB = 'TTFB',
-}
-
-export enum WebVitalRating {
-  GOOD = 'good',
-  NEEDS_IMPROVEMENT = 'needs-improvement',
-  POOR = 'poor',
-}
+export { WebVitalName, WebVitalRating };
 
 export class ReportWebVitalDto {
   @IsEnum(WebVitalName)

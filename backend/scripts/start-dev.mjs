@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +14,50 @@ const env = {
   ...process.env,
   DISABLE_CONSOLE_NINJA: '1',
   CONSOLE_NINJA_ENABLED: 'false',
+};
+
+const DEFAULT_DEV_PORT = 3000;
+const MAX_PORT_SCAN_ATTEMPTS = 50;
+
+const parsePort = (value, fallback) => {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 65535) return fallback;
+  return parsed;
+};
+
+const isPortAvailable = async (port) =>
+  new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', () => resolve(false));
+    server.listen(port, '0.0.0.0', () => {
+      server.close(() => resolve(true));
+    });
+  });
+
+const resolveRuntimePort = async () => {
+  const preferredPort = parsePort(env.PORT, DEFAULT_DEV_PORT);
+  const preferredAvailable = await isPortAvailable(preferredPort);
+  if (preferredAvailable) return preferredPort;
+
+  for (let offset = 1; offset <= MAX_PORT_SCAN_ATTEMPTS; offset += 1) {
+    const candidate = preferredPort + offset;
+    if (candidate > 65535) break;
+    // eslint-disable-next-line no-await-in-loop
+    const available = await isPortAvailable(candidate);
+    if (!available) continue;
+    console.warn(
+      `[start-dev] PORT ${preferredPort} en uso. Arrancando en PORT ${candidate}. ` +
+      'Define PORT en .env para fijar otro puerto.',
+    );
+    return candidate;
+  }
+
+  throw new Error(
+    `[start-dev] No se encontró puerto libre desde ${preferredPort} hasta ${
+      Math.min(preferredPort + MAX_PORT_SCAN_ATTEMPTS, 65535)
+    }.`,
+  );
 };
 
 const run = (command, args, options = {}) =>
@@ -30,71 +75,82 @@ const runSync = (command, args) =>
     stdio: 'inherit',
   });
 
-const initialBuild = runSync(tscBin, ['tsc', '-p', 'tsconfig.build.json']);
-if (initialBuild.status !== 0) {
-  process.exit(initialBuild.status ?? 1);
-}
+const main = async () => {
+  env.PORT = String(await resolveRuntimePort());
 
-const distEntry = path.join(backendRoot, 'dist', 'main.js');
-if (!fs.existsSync(distEntry)) {
-  console.error('No se encontró dist/main.js tras compilar. Revisa tsconfig.build.json.');
-  process.exit(1);
-}
+  const initialBuild = runSync(tscBin, ['tsc', '-p', 'tsconfig.build.json']);
+  if (initialBuild.status !== 0) {
+    process.exit(initialBuild.status ?? 1);
+  }
 
-const tscWatch = run(tscBin, ['tsc', '-p', 'tsconfig.build.json', '--watch', '--preserveWatchOutput']);
+  const distEntry = path.join(backendRoot, 'dist', 'main.js');
+  if (!fs.existsSync(distEntry)) {
+    console.error('No se encontró dist/main.js tras compilar. Revisa tsconfig.build.json.');
+    process.exit(1);
+  }
 
-let appProcess = null;
-const spawnApp = () => {
-  const child = run(nodeBin, ['--enable-source-maps', 'dist/main.js']);
-  child.on('exit', () => {
-    if (appProcess === child) {
-      appProcess = null;
-    }
-  });
-  return child;
-};
-const restartApp = () => {
-  if (appProcess && appProcess.exitCode === null) {
-    appProcess.once('exit', () => {
-      if (!shuttingDown) {
-        appProcess = spawnApp();
+  const tscWatch = run(tscBin, ['tsc', '-p', 'tsconfig.build.json', '--watch', '--preserveWatchOutput']);
+
+  let appProcess = null;
+  let shuttingDown = false;
+
+  const spawnApp = () => {
+    const child = run(nodeBin, ['--enable-source-maps', 'dist/main.js']);
+    child.on('exit', () => {
+      if (appProcess === child) {
+        appProcess = null;
       }
     });
-    appProcess.kill('SIGTERM');
-    return;
-  }
-  appProcess = spawnApp();
-};
-restartApp();
+    return child;
+  };
 
-fs.watchFile(distEntry, { interval: 600 }, (current, previous) => {
-  if (shuttingDown) return;
-  if (!current.mtimeMs) return;
-  if (current.mtimeMs === previous.mtimeMs) return;
+  const restartApp = () => {
+    if (appProcess && appProcess.exitCode === null) {
+      appProcess.once('exit', () => {
+        if (!shuttingDown) {
+          appProcess = spawnApp();
+        }
+      });
+      appProcess.kill('SIGTERM');
+      return;
+    }
+    appProcess = spawnApp();
+  };
   restartApp();
+
+  fs.watchFile(distEntry, { interval: 600 }, (current, previous) => {
+    if (shuttingDown) return;
+    if (!current.mtimeMs) return;
+    if (current.mtimeMs === previous.mtimeMs) return;
+    restartApp();
+  });
+
+  const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    fs.unwatchFile(distEntry);
+    tscWatch.kill('SIGTERM');
+    appProcess?.kill('SIGTERM');
+    if (signal) {
+      process.exit(0);
+    }
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  const onChildExit = (code) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    fs.unwatchFile(distEntry);
+    appProcess?.kill('SIGTERM');
+    process.exit(code ?? 0);
+  };
+
+  tscWatch.on('exit', onChildExit);
+};
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
 });
-
-let shuttingDown = false;
-const shutdown = (signal) => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  fs.unwatchFile(distEntry);
-  tscWatch.kill('SIGTERM');
-  appProcess?.kill('SIGTERM');
-  if (signal) {
-    process.exit(0);
-  }
-};
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-const onChildExit = (code) => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  fs.unwatchFile(distEntry);
-  appProcess?.kill('SIGTERM');
-  process.exit(code ?? 0);
-};
-
-tscWatch.on('exit', onChildExit);

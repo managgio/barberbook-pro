@@ -1,6 +1,4 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { DEFAULT_BRAND_ID, DEFAULT_LOCAL_ID } from './tenant.constants';
-
 export type TenantContext = {
   brandId?: string;
   localId?: string;
@@ -37,11 +35,3 @@ export const runWithTenantScopeGuardBypassAsync = async <T>(fn: () => Promise<T>
   const current = getTenantContext();
   return runWithTenantContextAsync({ ...current, scopeGuardBypass: true }, fn);
 };
-
-export const getCurrentBrandId = (): string =>
-  getTenantContext().brandId || DEFAULT_BRAND_ID;
-
-export const getCurrentLocalId = (): string =>
-  getTenantContext().localId || DEFAULT_LOCAL_ID;
-
-export const isPlatformRequest = (): boolean => Boolean(getTenantContext().isPlatform);

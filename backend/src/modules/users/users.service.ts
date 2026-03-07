@@ -1,566 +1,224 @@
-import { Injectable, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { CreateUserUseCase } from '../../contexts/identity/application/use-cases/create-user.use-case';
+import { FindUserByEmailUseCase } from '../../contexts/identity/application/use-cases/find-user-by-email.use-case';
+import { FindUserByFirebaseUidUseCase } from '../../contexts/identity/application/use-cases/find-user-by-firebase-uid.use-case';
+import { FindUserByIdUseCase } from '../../contexts/identity/application/use-cases/find-user-by-id.use-case';
+import { FindUsersByIdsUseCase } from '../../contexts/identity/application/use-cases/find-users-by-ids.use-case';
+import { FindUsersPageUseCase } from '../../contexts/identity/application/use-cases/find-users-page.use-case';
+import { RemoveUserUseCase } from '../../contexts/identity/application/use-cases/remove-user.use-case';
+import { SetUserBrandBlockStatusUseCase } from '../../contexts/identity/application/use-cases/set-user-brand-block-status.use-case';
+import { UpdateUserUseCase } from '../../contexts/identity/application/use-cases/update-user.use-case';
+import { IdentityUserAccessRecord, IdentityUserRole } from '../../contexts/identity/domain/entities/user-access.entity';
+import {
+  IDENTITY_AUTH_USER_PORT,
+  IdentityAuthUserPort,
+} from '../../contexts/identity/ports/outbound/identity-auth-user.port';
+import {
+  IDENTITY_USER_READ_PORT,
+  UserReadPort,
+} from '../../contexts/identity/ports/outbound/user-read.port';
+import {
+  IDENTITY_USER_WRITE_PORT,
+  UserWritePort,
+} from '../../contexts/identity/ports/outbound/user-write.port';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
+import { rethrowDomainErrorAsHttp } from '../../shared/interfaces/http/rethrow-domain-error-as-http';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { mapUser } from './users.mapper';
-import { User } from '@prisma/client';
-import { Prisma } from '@prisma/client';
-import { TenantConfigService } from '../../tenancy/tenant-config.service';
-import { PLATFORM_ADMIN_EMAILS } from '../../tenancy/tenant.constants';
-import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
-import { FirebaseAdminService } from '../firebase/firebase-admin.service';
-
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'c.lopemonre@gmail.com').toLowerCase();
-type UserWithAccessRelations = User & {
-  brandMemberships: Array<{ isBlocked: boolean }>;
-  localStaffRoles: Array<{ adminRoleId: string | null }>;
-};
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
+  private readonly findUsersByIdsUseCase: FindUsersByIdsUseCase;
+  private readonly findUsersPageUseCase: FindUsersPageUseCase;
+  private readonly findUserByIdUseCase: FindUserByIdUseCase;
+  private readonly findUserByEmailUseCase: FindUserByEmailUseCase;
+  private readonly findUserByFirebaseUidUseCase: FindUserByFirebaseUidUseCase;
+  private readonly createUserUseCase: CreateUserUseCase;
+  private readonly updateUserUseCase: UpdateUserUseCase;
+  private readonly setUserBrandBlockStatusUseCase: SetUserBrandBlockStatusUseCase;
+  private readonly removeUserUseCase: RemoveUserUseCase;
+
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly tenantConfig: TenantConfigService,
-    private readonly firebaseAdmin: FirebaseAdminService,
-  ) {}
-
-  private normalizeEmail(email?: string | null): string {
-    return (email || '').trim().toLowerCase();
-  }
-
-  private async applySuperAdminFlag<T extends Partial<CreateUserDto | UpdateUserDto>>(data: T): Promise<T> {
-    const email = this.normalizeEmail(data.email);
-    if (!email) return data;
-
-    const brandConfig = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
-    const brandSuperAdminEmail = this.normalizeEmail(brandConfig.superAdminEmail) || SUPER_ADMIN_EMAIL;
-    const isBrandSuperAdmin = email === brandSuperAdminEmail;
-    const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(email);
-
-    if (isBrandSuperAdmin || isPlatformAdmin) {
-      return {
-        ...data,
-        role: 'admin',
-        isSuperAdmin: isBrandSuperAdmin || data.isSuperAdmin || false,
-        isPlatformAdmin: isPlatformAdmin || data.isPlatformAdmin || false,
-        adminRoleId: null,
-      } as T;
-    }
-
-    return data;
-  }
-
-  private async getBrandSuperAdminEmail(): Promise<string> {
-    const brandConfig = await this.tenantConfig.getBrandConfig(getCurrentBrandId());
-    return this.normalizeEmail(brandConfig.superAdminEmail) || SUPER_ADMIN_EMAIL;
-  }
-
-  private mapUserWithAccess(
-    user: User,
-    options: { adminRoleId?: string | null; isLocalAdmin?: boolean; isBlocked?: boolean },
-    brandSuperAdminEmail: string,
+    @Inject(IDENTITY_USER_READ_PORT)
+    private readonly userReadPort: UserReadPort,
+    @Inject(IDENTITY_USER_WRITE_PORT)
+    private readonly userWritePort: UserWritePort,
+    @Inject(IDENTITY_AUTH_USER_PORT)
+    private readonly identityAuthUserPort: IdentityAuthUserPort,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
   ) {
-    const email = user.email?.toLowerCase() || '';
-    const isBrandSuperAdmin = email === brandSuperAdminEmail;
-    const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(email);
-    const mapped = mapUser(user, {
-      adminRoleId: options.adminRoleId,
-      isLocalAdmin: options.isLocalAdmin,
-      isBlocked: options.isBlocked,
-      isPlatformAdmin,
-    });
+    this.findUsersByIdsUseCase = new FindUsersByIdsUseCase(this.userReadPort);
+    this.findUsersPageUseCase = new FindUsersPageUseCase(this.userReadPort);
+    this.findUserByIdUseCase = new FindUserByIdUseCase(this.userReadPort);
+    this.findUserByEmailUseCase = new FindUserByEmailUseCase(this.userReadPort);
+    this.findUserByFirebaseUidUseCase = new FindUserByFirebaseUidUseCase(this.userReadPort);
+    this.createUserUseCase = new CreateUserUseCase(this.userWritePort);
+    this.updateUserUseCase = new UpdateUserUseCase(this.userWritePort);
+    this.setUserBrandBlockStatusUseCase = new SetUserBrandBlockStatusUseCase(this.userWritePort);
+    this.removeUserUseCase = new RemoveUserUseCase(this.userWritePort, this.identityAuthUserPort);
+  }
+
+  private mapUserRecord(user: IdentityUserAccessRecord) {
     return {
-      ...mapped,
-      isSuperAdmin: mapped.isSuperAdmin || isBrandSuperAdmin,
-      isPlatformAdmin: mapped.isPlatformAdmin || isPlatformAdmin,
+      id: user.id,
+      firebaseUid: user.firebaseUid || undefined,
+      name: user.name,
+      email: user.email,
+      phone: user.phone || undefined,
+      role: user.role,
+      notificationPrefs: {
+        email: user.notificationEmail,
+        whatsapp: user.notificationWhatsapp,
+        sms: user.notificationSms,
+      },
+      isBlocked: user.isBlocked,
+      prefersBarberSelection: user.prefersBarberSelection,
+      avatar: user.avatar || undefined,
+      isSuperAdmin: user.isSuperAdmin,
+      isPlatformAdmin: user.isPlatformAdmin,
+      isLocalAdmin: user.isLocalAdmin,
+      adminRoleId: user.localAdminRoleId ?? user.adminRoleId ?? null,
     };
-  }
-
-  private mapPrefs(data: Partial<CreateUserDto | UpdateUserDto>, useDefaults = false) {
-    return {
-      notificationEmail: data.notificationEmail ?? (useDefaults ? true : undefined),
-      notificationWhatsapp: data.notificationWhatsapp ?? (useDefaults ? true : undefined),
-      notificationSms: data.notificationSms ?? (useDefaults ? true : undefined),
-      prefersBarberSelection: data.prefersBarberSelection ?? (useDefaults ? true : undefined),
-    };
-  }
-
-  private shouldSyncLocalStaff(data: Partial<CreateUserDto | UpdateUserDto>) {
-    return (
-      data.role !== undefined ||
-      data.adminRoleId !== undefined ||
-      data.isSuperAdmin !== undefined ||
-      data.isPlatformAdmin !== undefined
-    );
-  }
-
-  private async ensureBrandMembership(userId: string) {
-    const brandId = getCurrentBrandId();
-    const brandExists = await this.prisma.brand.findUnique({
-      where: { id: brandId },
-      select: { id: true },
-    });
-    if (!brandExists) {
-      this.logger.warn(
-        `Skipping brand membership sync for user ${userId}: brand ${brandId} does not exist.`,
-      );
-      return;
-    }
-    await this.prisma.brandUser.upsert({
-      where: {
-        brandId_userId: {
-          brandId,
-          userId,
-        },
-      },
-      update: {},
-      create: {
-        brandId,
-        userId,
-      },
-    });
-  }
-
-  private async getBrandMembershipStatus(userId: string) {
-    const brandId = getCurrentBrandId();
-    return this.prisma.brandUser.findUnique({
-      where: {
-        brandId_userId: {
-          brandId,
-          userId,
-        },
-      },
-      select: { isBlocked: true },
-    });
-  }
-
-  private async syncLocalStaffRole(user: Pick<User, 'id' | 'role' | 'isSuperAdmin' | 'isPlatformAdmin' | 'adminRoleId'>) {
-    const localId = getCurrentLocalId();
-    const isAdmin = user.role === 'admin' || user.isSuperAdmin || user.isPlatformAdmin;
-    if (!isAdmin) {
-      await this.prisma.locationStaff.deleteMany({
-        where: { userId: user.id, localId },
-      });
-      return;
-    }
-    await this.prisma.locationStaff.upsert({
-      where: {
-        localId_userId: {
-          localId,
-          userId: user.id,
-        },
-      },
-      update: { adminRoleId: user.adminRoleId ?? null },
-      create: {
-        localId,
-        userId: user.id,
-        adminRoleId: user.adminRoleId ?? null,
-      },
-    });
-  }
-
-  private buildUserAccessInclude(brandId: string, localId: string) {
-    return {
-      brandMemberships: {
-        where: { brandId },
-        select: { isBlocked: true },
-        take: 1,
-      },
-      localStaffRoles: {
-        where: { localId },
-        select: { adminRoleId: true },
-        take: 1,
-      },
-    } as const;
-  }
-
-  private mapUsersWithAccess(users: UserWithAccessRelations[], brandSuperAdminEmail: string) {
-    return users.map((user) =>
-      this.mapUserWithAccess(
-        user,
-        {
-          adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-          isLocalAdmin: user.localStaffRoles.length > 0,
-          isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-        },
-        brandSuperAdminEmail,
-      ),
-    );
-  }
-
-  private buildUsersWhere(options?: { ids?: string[]; role?: User['role']; query?: string }): Prisma.UserWhereInput {
-    const brandId = getCurrentBrandId();
-    const where: Prisma.UserWhereInput = { brandMemberships: { some: { brandId } } };
-    if (options?.ids && options.ids.length > 0) {
-      where.id = { in: options.ids };
-    }
-    if (options?.role) {
-      where.role = options.role;
-    }
-    const query = options?.query?.trim();
-    if (query) {
-      where.OR = [
-        { name: { contains: query } },
-        { email: { contains: query } },
-        { phone: { contains: query } },
-      ];
-    }
-    return where;
   }
 
   async findByIds(ids: string[]) {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
-    const users = await this.prisma.user.findMany({
-      where: this.buildUsersWhere({ ids }),
-      include: this.buildUserAccessInclude(brandId, localId),
-      orderBy: { createdAt: 'desc' },
+    const users = await this.findUsersByIdsUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      ids,
     });
-    return this.mapUsersWithAccess(users as UserWithAccessRelations[], brandSuperAdminEmail);
+    return users.map((user) => this.mapUserRecord(user));
   }
 
-  async findPage(params: { page: number; pageSize: number; role?: User['role']; query?: string }) {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
-    const where = this.buildUsersWhere({ role: params.role, query: params.query });
-    const [total, users] = await this.prisma.$transaction([
-      this.prisma.user.count({ where }),
-      this.prisma.user.findMany({
-        where,
-        include: this.buildUserAccessInclude(brandId, localId),
-        orderBy: { createdAt: 'desc' },
-        skip: (params.page - 1) * params.pageSize,
-        take: params.pageSize,
-      }),
-    ]);
+  async findPage(params: { page: number; pageSize: number; role?: IdentityUserRole; query?: string }) {
+    const { total, users } = await this.findUsersPageUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      page: params.page,
+      pageSize: params.pageSize,
+      role: params.role,
+      query: params.query,
+    });
 
     return {
       total,
       page: params.page,
       pageSize: params.pageSize,
       hasMore: params.page * params.pageSize < total,
-      items: this.mapUsersWithAccess(users as UserWithAccessRelations[], brandSuperAdminEmail),
+      items: users.map((user) => this.mapUserRecord(user)),
     };
   }
 
   async findOne(id: string) {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
-    const user = await this.prisma.user.findFirst({
-      where: { id, brandMemberships: { some: { brandId } } },
-      include: {
-        brandMemberships: {
-          where: { brandId },
-          select: { isBlocked: true },
-          take: 1,
-        },
-        localStaffRoles: {
-          where: { localId },
-          select: { adminRoleId: true },
-          take: 1,
-        },
-      },
+    const user = await this.findUserByIdUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      userId: id,
     });
+
     if (!user) throw new NotFoundException('User not found');
-    return this.mapUserWithAccess(
-      user,
-      {
-        adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-        isLocalAdmin: user.localStaffRoles.length > 0,
-        isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-      },
-      brandSuperAdminEmail,
-    );
+    return this.mapUserRecord(user);
   }
 
   async findByEmail(email: string) {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
-    const user = await this.prisma.user.findFirst({
-      where: { email: email.toLowerCase(), brandMemberships: { some: { brandId } } },
-      include: {
-        brandMemberships: {
-          where: { brandId },
-          select: { isBlocked: true },
-          take: 1,
-        },
-        localStaffRoles: {
-          where: { localId },
-          select: { adminRoleId: true },
-          take: 1,
-        },
-      },
+    const user = await this.findUserByEmailUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      email,
     });
-    if (user?.brandMemberships[0]?.isBlocked) {
+
+    if (user?.isBlocked) {
       throw new ForbiddenException('Usuario bloqueado');
     }
-    return user
-      ? this.mapUserWithAccess(
-          user,
-          {
-            adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-            isLocalAdmin: user.localStaffRoles.length > 0,
-            isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-          },
-          brandSuperAdminEmail,
-        )
-      : null;
+
+    return user ? this.mapUserRecord(user) : null;
   }
 
   async findByFirebaseUid(firebaseUid: string) {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const brandSuperAdminEmail = await this.getBrandSuperAdminEmail();
-    const user = await this.prisma.user.findFirst({
-      where: { firebaseUid, brandMemberships: { some: { brandId } } },
-      include: {
-        brandMemberships: {
-          where: { brandId },
-          select: { isBlocked: true },
-          take: 1,
-        },
-        localStaffRoles: {
-          where: { localId },
-          select: { adminRoleId: true },
-          take: 1,
-        },
-      },
+    const user = await this.findUserByFirebaseUidUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      firebaseUid,
     });
-    if (user?.brandMemberships[0]?.isBlocked) {
+
+    if (user?.isBlocked) {
       throw new ForbiddenException('Usuario bloqueado');
     }
-    return user
-      ? this.mapUserWithAccess(
-          user,
-          {
-            adminRoleId: user.localStaffRoles[0]?.adminRoleId ?? null,
-            isLocalAdmin: user.localStaffRoles.length > 0,
-            isBlocked: user.brandMemberships[0]?.isBlocked ?? false,
-          },
-          brandSuperAdminEmail,
-        )
-      : null;
+
+    return user ? this.mapUserRecord(user) : null;
   }
 
   async create(data: CreateUserDto) {
-    const payload = await this.applySuperAdminFlag(data);
+    const created = await this.createUserUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      firebaseUid: data.firebaseUid,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      role: data.role as IdentityUserRole | undefined,
+      avatar: data.avatar,
+      adminRoleId: data.adminRoleId,
+      isSuperAdmin: data.isSuperAdmin,
+      isPlatformAdmin: data.isPlatformAdmin,
+      notificationEmail: data.notificationEmail,
+      notificationWhatsapp: data.notificationWhatsapp,
+      notificationSms: data.notificationSms,
+      prefersBarberSelection: data.prefersBarberSelection,
+    });
+    return this.mapUserRecord(created);
+  }
+
+  async update(id: string, data: UpdateUserDto) {
     try {
-      const created = await this.prisma.user.create({
-        data: {
-          firebaseUid: payload.firebaseUid,
-          name: payload.name,
-          email: payload.email.toLowerCase(),
-          phone: payload.phone,
-          role: payload.role || 'client',
-          avatar: payload.avatar,
-          adminRoleId: payload.adminRoleId ?? null,
-          isSuperAdmin: payload.isSuperAdmin ?? false,
-          isPlatformAdmin: payload.isPlatformAdmin ?? false,
-          ...this.mapPrefs(payload, true),
-        },
+      const updated = await this.updateUserUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
+        userId: id,
+        firebaseUid: data.firebaseUid,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        role: data.role as IdentityUserRole | undefined,
+        avatar: data.avatar,
+        adminRoleId: data.adminRoleId,
+        isSuperAdmin: data.isSuperAdmin,
+        isPlatformAdmin: data.isPlatformAdmin,
+        notificationEmail: data.notificationEmail,
+        notificationWhatsapp: data.notificationWhatsapp,
+        notificationSms: data.notificationSms,
+        prefersBarberSelection: data.prefersBarberSelection,
       });
-      await this.ensureBrandMembership(created.id);
-      if (this.shouldSyncLocalStaff(payload)) {
-        await this.syncLocalStaffRole(created);
-      }
-      const brandMembership = await this.getBrandMembershipStatus(created.id);
-      const localId = getCurrentLocalId();
-      const localStaff = await this.prisma.locationStaff.findUnique({
-        where: { localId_userId: { localId, userId: created.id } },
-        select: { adminRoleId: true },
-      });
-      return mapUser(created, {
-        adminRoleId: localStaff?.adminRoleId ?? null,
-        isLocalAdmin: Boolean(localStaff),
-        isBlocked: brandMembership?.isBlocked ?? false,
-      });
+      return this.mapUserRecord(updated);
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002' &&
-        payload.email
-      ) {
-        const email = payload.email.toLowerCase();
-        const existing = await this.prisma.user.findUnique({ where: { email } });
-        if (!existing) {
-          throw error;
-        }
-        const updated = await this.prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            firebaseUid: payload.firebaseUid ?? existing.firebaseUid,
-            name: payload.name ?? existing.name,
-            email,
-            phone: payload.phone ?? existing.phone,
-            role: payload.role ?? existing.role,
-            avatar: payload.avatar ?? existing.avatar,
-            adminRoleId: payload.adminRoleId ?? existing.adminRoleId,
-            isSuperAdmin: payload.isSuperAdmin ?? existing.isSuperAdmin,
-            isPlatformAdmin: payload.isPlatformAdmin ?? existing.isPlatformAdmin,
-            ...this.mapPrefs(payload, false),
-          },
-        });
-        await this.ensureBrandMembership(updated.id);
-        if (this.shouldSyncLocalStaff(payload)) {
-          await this.syncLocalStaffRole(updated);
-        }
-        const brandMembership = await this.getBrandMembershipStatus(updated.id);
-        const localId = getCurrentLocalId();
-        const localStaff = await this.prisma.locationStaff.findUnique({
-          where: { localId_userId: { localId, userId: updated.id } },
-          select: { adminRoleId: true },
-        });
-        return mapUser(updated, {
-          adminRoleId: localStaff?.adminRoleId ?? null,
-          isLocalAdmin: Boolean(localStaff),
-          isBlocked: brandMembership?.isBlocked ?? false,
-        });
-      }
+      this.rethrowUserNotFound(error);
       throw error;
     }
   }
 
-  async update(id: string, data: UpdateUserDto) {
-    const brandId = getCurrentBrandId();
-    const payload = await this.applySuperAdminFlag(data);
-    const existing = await this.prisma.user.findFirst({
-      where: { id, brandMemberships: { some: { brandId } } },
-      select: { id: true },
-    });
-    if (!existing) {
-      throw new NotFoundException('User not found');
-    }
-    const shouldSyncLocalRole = this.shouldSyncLocalStaff(payload);
-    let updated: User;
-    try {
-      updated = await this.prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          firebaseUid: payload.firebaseUid,
-          name: payload.name,
-          email: payload.email?.toLowerCase(),
-          phone: payload.phone,
-          role: payload.role,
-          avatar: payload.avatar,
-          adminRoleId: payload.adminRoleId,
-          isSuperAdmin: payload.isSuperAdmin,
-          isPlatformAdmin: payload.isPlatformAdmin,
-          ...this.mapPrefs(payload, false),
-        },
-      });
-    } catch (error) {
-      throw new NotFoundException('User not found');
-    }
-    if (shouldSyncLocalRole) {
-      await this.syncLocalStaffRole(updated);
-    }
-    const brandMembership = await this.getBrandMembershipStatus(updated.id);
-    const localId = getCurrentLocalId();
-    const localStaff = await this.prisma.locationStaff.findUnique({
-      where: { localId_userId: { localId, userId: updated.id } },
-      select: { adminRoleId: true },
-    });
-    return mapUser(updated, {
-      adminRoleId: localStaff?.adminRoleId ?? null,
-      isLocalAdmin: Boolean(localStaff),
-      isBlocked: brandMembership?.isBlocked ?? false,
-    });
-  }
-
   async setBrandBlockStatus(userId: string, isBlocked: boolean) {
-    const brandId = getCurrentBrandId();
-    const membership = await this.prisma.brandUser.findUnique({
-      where: {
-        brandId_userId: {
-          brandId,
-          userId,
-        },
-      },
-    });
-    if (!membership) {
-      throw new NotFoundException('User not found');
+    try {
+      const updated = await this.setUserBrandBlockStatusUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
+        userId,
+        isBlocked,
+      });
+      return this.mapUserRecord(updated);
+    } catch (error) {
+      this.rethrowUserNotFound(error);
+      throw error;
     }
-    await this.prisma.brandUser.update({
-      where: {
-        brandId_userId: {
-          brandId,
-          userId,
-        },
-      },
-      data: { isBlocked },
-    });
-    return this.findOne(userId);
   }
 
   async remove(id: string) {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const membership = await this.prisma.brandUser.findUnique({
-      where: {
-        brandId_userId: {
-          brandId,
-          userId: id,
-        },
-      },
-      select: { brandId: true, userId: true },
-    });
-    if (!membership) throw new NotFoundException('User not found');
-
-    const existing = await this.prisma.user.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('User not found');
-
-    const locations = await this.prisma.location.findMany({
-      where: { brandId },
-      select: { id: true },
-    });
-    const locationIds = locations.map((location) => location.id);
-    const scopedLocationIds = locationIds.length > 0 ? locationIds : [localId];
-    let removeGlobally = false;
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.appointment.deleteMany({
-        where: {
-          userId: id,
-          localId: { in: scopedLocationIds },
-        },
+    try {
+      return await this.removeUserUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
+        userId: id,
       });
-      await tx.locationStaff.deleteMany({
-        where: {
-          userId: id,
-          localId: { in: scopedLocationIds },
-        },
-      });
-      await tx.brandUser.delete({
-        where: {
-          brandId_userId: {
-            brandId,
-            userId: id,
-          },
-        },
-      });
-      // tenant-scope-ignore: global membership count is required to decide if user can be deleted globally.
-      const remainingMemberships = await tx.brandUser.count({
-        where: { userId: id },
-      });
-      if (remainingMemberships === 0) {
-        removeGlobally = true;
-        await tx.user.delete({ where: { id } });
-      }
-    });
-
-    if (removeGlobally && existing.firebaseUid) {
-      try {
-        await this.firebaseAdmin.deleteUser(existing.firebaseUid);
-      } catch (error) {
-        this.logger?.warn?.(`No se pudo eliminar en Firebase Auth (${existing.firebaseUid}): ${error}`);
-      }
+    } catch (error) {
+      this.rethrowUserNotFound(error);
+      throw error;
     }
+  }
 
-    return { success: true, removedGlobally: removeGlobally };
+  private rethrowUserNotFound(error: unknown): never | void {
+    rethrowDomainErrorAsHttp(error, {
+      USER_NOT_FOUND: () => new NotFoundException('User not found'),
+    });
   }
 }

@@ -1,10 +1,22 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type OpenAI from 'openai';
-import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
-import { AppointmentsService } from '../appointments/appointments.service';
-import { HolidaysService } from '../holidays/holidays.service';
-import { AlertsService } from '../alerts/alerts.service';
+import {
+  AI_ALERT_TOOL_PORT,
+  AiAlertToolPort,
+} from '../../contexts/ai-orchestration/ports/outbound/ai-alert-tool.port';
+import {
+  AI_BOOKING_TOOL_PORT,
+  AiBookingToolPort,
+} from '../../contexts/ai-orchestration/ports/outbound/ai-booking-tool.port';
+import {
+  AI_HOLIDAY_TOOL_PORT,
+  AiHolidayToolPort,
+} from '../../contexts/ai-orchestration/ports/outbound/ai-holiday-tool.port';
+import {
+  AI_TOOLS_READ_PORT,
+  AiToolsReadPort,
+} from '../../contexts/ai-orchestration/ports/outbound/ai-tools-read.port';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import {
   formatTimeInTimeZone,
   addDays,
@@ -135,11 +147,25 @@ export class AiToolsRegistry {
   private readonly logger = new Logger(AiToolsRegistry.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly appointmentsService: AppointmentsService,
-    private readonly holidaysService: HolidaysService,
-    private readonly alertsService: AlertsService,
+    @Inject(AI_TOOLS_READ_PORT)
+    private readonly aiToolsReadPort: AiToolsReadPort,
+    @Inject(AI_BOOKING_TOOL_PORT)
+    private readonly bookingToolPort: AiBookingToolPort,
+    @Inject(AI_HOLIDAY_TOOL_PORT)
+    private readonly holidayToolPort: AiHolidayToolPort,
+    @Inject(AI_ALERT_TOOL_PORT)
+    private readonly alertToolPort: AiAlertToolPort,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
   ) {}
+
+  private getLocalId() {
+    return this.tenantContextPort.getRequestContext().localId;
+  }
+
+  private getBrandId() {
+    return this.tenantContextPort.getRequestContext().brandId;
+  }
 
   getTools() {
     return TOOL_DEFINITIONS;
@@ -204,7 +230,7 @@ export class AiToolsRegistry {
       endDate = startDate;
     }
 
-    await this.holidaysService.addGeneralHoliday({ start: startDate, end: endDate });
+    await this.holidayToolPort.addGeneralHoliday({ start: startDate, end: endDate });
     return {
       status: 'added',
       scope: 'shop',
@@ -311,19 +337,16 @@ export class AiToolsRegistry {
     }
 
     if (allBarbers) {
-      const localId = getCurrentLocalId();
-      const barbers = await this.prisma.barber.findMany({
-        where: { isActive: true, localId },
-        select: { id: true },
+      const barbers = await this.aiToolsReadPort.findActiveBarbers({
+        localId: this.getLocalId(),
       });
       barberIds = barbers.map((barber) => barber.id);
     }
 
     if (barberIds.length > 0) {
-      const localId = getCurrentLocalId();
-      const existing = await this.prisma.barber.findMany({
-        where: { id: { in: barberIds }, localId },
-        select: { id: true, name: true, isActive: true },
+      const existing = await this.aiToolsReadPort.findBarbersByIds({
+        localId: this.getLocalId(),
+        barberIds,
       });
       barberIds = existing.map((barber) => barber.id);
     }
@@ -349,11 +372,10 @@ export class AiToolsRegistry {
         const resolvedIds = new Set<string>();
         const ambiguousMatches: { id: string; name: string; isActive: boolean }[] = [];
         for (const candidate of filteredCandidates) {
-          const matches = await this.prisma.barber.findMany({
-            where: { name: { contains: candidate }, localId: getCurrentLocalId() },
+          const matches = await this.aiToolsReadPort.findBarbersByName({
+            localId: this.getLocalId(),
+            name: candidate,
             take: 5,
-            orderBy: { name: 'asc' },
-            select: { id: true, name: true, isActive: true },
           });
           if (matches.length === 1) {
             resolvedIds.add(matches[0].id);
@@ -382,13 +404,12 @@ export class AiToolsRegistry {
     }
 
     for (const barberId of barberIds) {
-      await this.holidaysService.addBarberHoliday(barberId, { start: startDate, end: endDate });
+      await this.holidayToolPort.addBarberHoliday(barberId, { start: startDate, end: endDate });
     }
 
-    const barberNames = await this.prisma.barber.findMany({
-      where: { id: { in: barberIds }, localId: getCurrentLocalId() },
-      select: { name: true },
-      orderBy: { name: 'asc' },
+    const barberNames = await this.aiToolsReadPort.findBarbersByIds({
+      localId: this.getLocalId(),
+      barberIds,
     });
 
     return {
@@ -396,7 +417,7 @@ export class AiToolsRegistry {
       scope: 'barber',
       range: { start: startDate, end: endDate },
       barberIds,
-      barberNames: barberNames.map((barber) => barber.name),
+      barberNames: barberNames.map((barber) => barber.name).sort((a, b) => a.localeCompare(b, 'es')),
       added: barberIds.length,
     };
   }
@@ -513,7 +534,7 @@ export class AiToolsRegistry {
       }
 
       const startDateTime = toDateInTimeZone(slotResolution.date, slotResolution.time, context.timeZone);
-      const created = await this.appointmentsService.create({
+      const created = await this.bookingToolPort.createAppointment({
         barberId: slotResolution.barber.id,
         serviceId: serviceResult.service.id,
         startDateTime: startDateTime.toISOString(),
@@ -522,7 +543,7 @@ export class AiToolsRegistry {
         guestName: userResult.guestName ?? undefined,
         guestContact: userResult.guestContact ?? undefined,
         notes: typeof args.notes === 'string' ? args.notes : undefined,
-      }, { requireConsent: false });
+      });
 
       return {
         status: 'created',
@@ -673,9 +694,9 @@ export class AiToolsRegistry {
 
     const barberId = typeof args.barberId === 'string' ? args.barberId.trim() : '';
     if (barberId) {
-      const barber = await this.prisma.barber.findFirst({
-        where: { id: barberId, localId: getCurrentLocalId(), isArchived: false },
-        select: { name: true },
+      const barber = await this.aiToolsReadPort.findBarberNameById({
+        localId: this.getLocalId(),
+        barberId,
       });
       if (!barber || !isTrustedBarberMention(barber.name)) {
         delete args.barberId;
@@ -694,9 +715,9 @@ export class AiToolsRegistry {
 
     const serviceId = typeof args.serviceId === 'string' ? args.serviceId.trim() : '';
     if (serviceId) {
-      const service = await this.prisma.service.findFirst({
-        where: { id: serviceId, localId: getCurrentLocalId(), isArchived: false },
-        select: { id: true, name: true },
+      const service = await this.aiToolsReadPort.findServiceById({
+        localId: this.getLocalId(),
+        serviceId,
       });
       if (!service) {
         delete args.serviceId;
@@ -774,7 +795,7 @@ export class AiToolsRegistry {
     if (uniqueBarberIds.length === 0) return empty;
     try {
       const { weekStart, weekEnd } = this.getCurrentWeekRange(context.now, context.timeZone);
-      const weeklyLoad = await this.appointmentsService.getWeeklyLoad(weekStart, weekEnd, uniqueBarberIds);
+      const weeklyLoad = await this.bookingToolPort.getWeeklyLoad(weekStart, weekEnd, uniqueBarberIds);
       return { ...empty, ...(weeklyLoad.counts || {}) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -806,22 +827,15 @@ export class AiToolsRegistry {
     const combined: Record<string, string[]> = {};
     for (let index = 0; index < uniqueBarberIds.length; index += chunkSize) {
       const chunk = uniqueBarberIds.slice(index, index + chunkSize);
-      const response = await this.appointmentsService.getAvailableSlotsBatch(date, chunk, { serviceId });
+      const response = await this.bookingToolPort.getAvailableSlotsBatch(date, chunk, { serviceId });
       Object.assign(combined, response);
     }
     return combined;
   }
 
   private async getActiveBarbers() {
-    const localId = getCurrentLocalId();
-    return this.prisma.barber.findMany({
-      where: {
-        localId,
-        isActive: true,
-        isArchived: false,
-      },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
+    return this.aiToolsReadPort.findActiveBarbers({
+      localId: this.getLocalId(),
     });
   }
 
@@ -921,7 +935,7 @@ export class AiToolsRegistry {
 
   private async isGeneralHolidayDate(date: string) {
     try {
-      const holidays = await this.holidaysService.getGeneralHolidays();
+      const holidays = await this.holidayToolPort.getGeneralHolidays();
       return holidays.some((holiday) => date >= holiday.start && date <= holiday.end);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -948,10 +962,9 @@ export class AiToolsRegistry {
     const barberName = typeof args.barberName === 'string' ? args.barberName.trim() : '';
 
     if (barberId) {
-      const localId = getCurrentLocalId();
-      const barber = await this.prisma.barber.findFirst({
-        where: { id: barberId, localId, isArchived: false },
-        select: { id: true, name: true, isActive: true },
+      const barber = await this.aiToolsReadPort.findBarberById({
+        localId: this.getLocalId(),
+        barberId,
       });
       if (!barber || barber.isActive === false) {
         return {
@@ -973,11 +986,11 @@ export class AiToolsRegistry {
       };
     }
 
-    const barbers = await this.prisma.barber.findMany({
-      where: { name: { contains: barberName }, isActive: true, isArchived: false, localId: getCurrentLocalId() },
+    const barbers = await this.aiToolsReadPort.findBarbersByName({
+      localId: this.getLocalId(),
+      name: barberName,
+      isActive: true,
       take: 5,
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true },
     });
 
     if (barbers.length === 1) {
@@ -985,10 +998,11 @@ export class AiToolsRegistry {
     }
 
     if (barbers.length === 0) {
-      const inactiveMatches = await this.prisma.barber.findMany({
-        where: { name: { contains: barberName }, isActive: false, isArchived: false, localId: getCurrentLocalId() },
+      const inactiveMatches = await this.aiToolsReadPort.findBarbersByName({
+        localId: this.getLocalId(),
+        name: barberName,
+        isActive: false,
         take: 1,
-        select: { id: true, name: true },
       });
       if (inactiveMatches.length > 0) {
         return {
@@ -1015,7 +1029,7 @@ export class AiToolsRegistry {
     const serviceId = typeof args.serviceId === 'string' ? args.serviceId : '';
     const serviceName = typeof args.serviceName === 'string' ? args.serviceName.trim() : '';
     const rawText = typeof args.rawText === 'string' ? args.rawText.trim() : '';
-    const localId = getCurrentLocalId();
+    const localId = this.getLocalId();
 
     const normalizeLookupText = (value: string) =>
       this.normalizeIntentText(value)
@@ -1023,7 +1037,6 @@ export class AiToolsRegistry {
         .replace(/\s+/g, ' ')
         .trim();
     const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const catalogSelect = { id: true, name: true, duration: true } as const;
     const stopWords = new Set([
       'de',
       'del',
@@ -1043,11 +1056,7 @@ export class AiToolsRegistry {
       if (!rawText) return { kind: 'none' as const };
       const normalizedRaw = normalizeLookupText(rawText);
       if (!normalizedRaw) return { kind: 'none' as const };
-      const servicesCatalog = await this.prisma.service.findMany({
-        where: { localId, isArchived: false },
-        orderBy: { name: 'asc' },
-        select: catalogSelect,
-      });
+      const servicesCatalog = await this.aiToolsReadPort.findServicesCatalog({ localId });
       if (servicesCatalog.length === 0) return { kind: 'none' as const };
       const matched = servicesCatalog.filter((service) => {
         const normalizedName = normalizeLookupText(service.name);
@@ -1071,10 +1080,7 @@ export class AiToolsRegistry {
     };
 
     if (serviceId) {
-      const service = await this.prisma.service.findFirst({
-        where: { id: serviceId, localId, isArchived: false },
-        select: { id: true, name: true, duration: true },
-      });
+      const service = await this.aiToolsReadPort.findServiceById({ localId, serviceId });
       if (!service) {
         delete args.serviceId;
       } else {
@@ -1103,11 +1109,10 @@ export class AiToolsRegistry {
       };
     }
 
-    const services = await this.prisma.service.findMany({
-      where: { name: { contains: serviceName }, localId, isArchived: false },
+    const services = await this.aiToolsReadPort.findServicesByName({
+      localId,
+      name: serviceName,
       take: 5,
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, duration: true },
     });
 
     if (services.length === 1) {
@@ -1151,7 +1156,7 @@ export class AiToolsRegistry {
       }
     | { status: 'needs_info'; result: AiCreateAppointmentResult }
   > {
-    const brandId = getCurrentBrandId();
+    const brandId = this.getBrandId();
     const userEmail = typeof args.userEmail === 'string' ? args.userEmail.trim().toLowerCase() : '';
     const userPhone = typeof args.userPhone === 'string' ? args.userPhone.trim() : '';
     const userName = typeof args.userName === 'string' ? args.userName.trim() : '';
@@ -1165,13 +1170,9 @@ export class AiToolsRegistry {
         .trim();
 
     if (userEmail) {
-      const user = await this.prisma.user.findFirst({
-        where: {
-          email: userEmail,
-          role: 'client',
-          brandMemberships: { some: { brandId, isBlocked: false } },
-        },
-        select: { id: true, name: true },
+      const user = await this.aiToolsReadPort.findClientByEmail({
+        brandId,
+        email: userEmail,
       });
       if (user) {
         return { status: 'ok', userId: user.id, clientName: user.name };
@@ -1185,13 +1186,9 @@ export class AiToolsRegistry {
     }
 
     if (userPhone) {
-      const user = await this.prisma.user.findFirst({
-        where: {
-          phone: userPhone,
-          role: 'client',
-          brandMemberships: { some: { brandId, isBlocked: false } },
-        },
-        select: { id: true, name: true },
+      const user = await this.aiToolsReadPort.findClientByPhone({
+        brandId,
+        phone: userPhone,
       });
       if (user) {
         return { status: 'ok', userId: user.id, clientName: user.name };
@@ -1215,16 +1212,10 @@ export class AiToolsRegistry {
     const normalizedTokens = normalizedInputName.split(' ').filter(Boolean);
     const broadLookupName = normalizedTokens.slice(0, Math.min(2, normalizedTokens.length)).join(' ');
     const lookupTerms = Array.from(new Set([userName, broadLookupName].map((value) => value.trim()).filter(Boolean)));
-    const nameFilters = lookupTerms.map((term) => ({ name: { contains: term } }));
-    const users = await this.prisma.user.findMany({
-      where: {
-        role: 'client',
-        brandMemberships: { some: { brandId, isBlocked: false } },
-        ...(nameFilters.length === 1 ? nameFilters[0] : { OR: nameFilters }),
-      },
-      select: { id: true, name: true, email: true },
+    const users = await this.aiToolsReadPort.findClientsByNameTerms({
+      brandId,
+      terms: lookupTerms,
       take: 15,
-      orderBy: { name: 'asc' },
     });
 
     const isOverlappingNameMatch = (candidateName: string) => {
@@ -1408,7 +1399,7 @@ export class AiToolsRegistry {
 
     try {
       const schedule = this.resolveAlertSchedule(args, context);
-      const created = await this.alertsService.create({
+      const created = await this.alertToolPort.createAlert({
         title,
         message,
         type,

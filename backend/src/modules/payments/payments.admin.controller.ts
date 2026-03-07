@@ -1,14 +1,18 @@
-import { Body, Controller, Get, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Put, Req } from '@nestjs/common';
 import { Request } from 'express';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { AdminEndpoint } from '../../auth/admin.decorator';
 import { PaymentsService } from './payments.service';
 import { UpdateStripeConfigDto } from './dto/update-stripe-config.dto';
 import { buildBaseUrl } from './payments.utils';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
 
 @Controller('admin/payments/stripe')
 export class PaymentsAdminController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
+  ) {}
 
   @Get('config')
   @AdminEndpoint()
@@ -29,6 +33,7 @@ export class PaymentsAdminController {
   @AdminEndpoint()
   connect(@Req() req: Request) {
     const baseUrl = buildBaseUrl(req);
-    return this.paymentsService.createStripeOnboardingLink('location', getCurrentLocalId(), baseUrl);
+    const localId = this.tenantContextPort.getRequestContext().localId;
+    return this.paymentsService.createStripeOnboardingLink('location', localId, baseUrl);
   }
 }

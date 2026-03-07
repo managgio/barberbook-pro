@@ -1,11 +1,15 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Inject, Injectable, NestInterceptor } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
-import { getCurrentBrandId, getCurrentLocalId, getTenantContext } from '../../tenancy/tenant.context';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { ObservabilityService } from './observability.service';
 
 @Injectable()
 export class ApiMetricsInterceptor implements NestInterceptor {
-  constructor(private readonly observability: ObservabilityService) {}
+  constructor(
+    private readonly observability: ObservabilityService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
+  ) {}
 
   private resolveStatusCode(error: unknown, fallbackStatus?: unknown) {
     if (typeof (error as { status?: unknown })?.status === 'number') {
@@ -48,15 +52,16 @@ export class ApiMetricsInterceptor implements NestInterceptor {
     const route = this.resolveRoute(request);
 
     const commit = (statusCode: number) => {
+      const tenantContext = this.tenantContextPort.getRequestContext();
       this.observability.recordApiMetric({
         method,
         route,
         statusCode,
         durationMs: Date.now() - startedAt,
         timestamp: Date.now(),
-        localId: getCurrentLocalId(),
-        brandId: getCurrentBrandId(),
-        subdomain: getTenantContext().subdomain || null,
+        localId: tenantContext.localId,
+        brandId: tenantContext.brandId,
+        subdomain: tenantContext.subdomain || null,
       });
     };
 

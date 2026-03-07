@@ -1,0 +1,1 @@
+Clock adapters live here.

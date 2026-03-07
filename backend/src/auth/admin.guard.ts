@@ -1,8 +1,8 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../contexts/platform/ports/outbound/tenant-context.port';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
 import { ADMIN_ENDPOINT_KEY } from './admin.decorator';
-import { getCurrentLocalId } from '../tenancy/tenant.context';
 import { AuthService } from './auth.service';
 
 @Injectable()
@@ -11,6 +11,8 @@ export class AdminGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -35,7 +37,7 @@ export class AdminGuard implements CanActivate {
       throw new ForbiddenException('Acceso restringido a administradores.');
     }
 
-    const localId = getCurrentLocalId();
+    const localId = this.tenantContextPort.getRequestContext().localId;
     const staff = await this.prisma.locationStaff.findUnique({
       where: {
         localId_userId: {

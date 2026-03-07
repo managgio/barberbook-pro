@@ -1,6 +1,14 @@
-import { Alert } from '@prisma/client';
+type AlertLike = {
+  id: string;
+  title: string;
+  message: string;
+  active: boolean;
+  type: string;
+  startDate: Date | null;
+  endDate: Date | null;
+};
 
-export const mapAlert = (alert: Alert) => ({
+export const mapAlert = (alert: AlertLike) => ({
   id: alert.id,
   title: alert.title,
   message: alert.message,

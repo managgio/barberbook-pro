@@ -1,8 +1,15 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
-import { DistributedLockService } from '../../prisma/distributed-lock.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
+import {
+  AI_ASSISTANT_MEMORY_MAINTENANCE_PORT,
+  AiAssistantMemoryMaintenancePort,
+} from '../../contexts/ai-orchestration/ports/outbound/ai-assistant-memory-maintenance.port';
+import {
+  ACTIVE_LOCATION_ITERATOR_PORT,
+  ActiveLocationIteratorPort,
+} from '../../contexts/platform/ports/outbound/active-location-iterator.port';
+import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
+import { runTenantScopedJob } from '../../shared/application/tenant-job-execution';
 import { AI_TIME_ZONE, getDateStringInTimeZone, getDayBoundsInTimeZone } from './ai-assistant.utils';
 
 @Injectable()
@@ -11,8 +18,12 @@ export class AiMemoryCleanupService implements OnModuleInit, OnModuleDestroy {
   private task: ScheduledTask | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly distributedLock: DistributedLockService,
+    @Inject(DISTRIBUTED_LOCK_PORT)
+    private readonly distributedLockPort: DistributedLockPort,
+    @Inject(ACTIVE_LOCATION_ITERATOR_PORT)
+    private readonly activeLocationIteratorPort: ActiveLocationIteratorPort,
+    @Inject(AI_ASSISTANT_MEMORY_MAINTENANCE_PORT)
+    private readonly aiAssistantMemoryMaintenancePort: AiAssistantMemoryMaintenancePort,
   ) {}
 
   onModuleInit() {
@@ -30,7 +41,7 @@ export class AiMemoryCleanupService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async cleanupOldMessages() {
-    const executed = await this.distributedLock.runWithLock(
+    const executed = await this.distributedLockPort.runWithLock(
       'cron:ai-memory-cleanup',
       async () => {
         await this.runCleanup();
@@ -47,49 +58,17 @@ export class AiMemoryCleanupService implements OnModuleInit, OnModuleDestroy {
     const now = new Date();
     const dayKey = getDateStringInTimeZone(now, AI_TIME_ZONE);
     const { start } = getDayBoundsInTimeZone(dayKey, AI_TIME_ZONE);
-    let messagesDeleted = 0;
-    let sessionsDeleted = 0;
-    let sessionsSummarized = 0;
-
-    await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
-      try {
-        const [messagesResult, sessionsResult, summariesResult] = await Promise.all([
-          this.prisma.aiChatMessage.deleteMany({
-            where: {
-              localId,
-              createdAt: { lt: start },
-            },
-          }),
-          this.prisma.aiChatSession.deleteMany({
-            where: {
-              localId,
-              OR: [
-                { lastMessageAt: { lt: start } },
-                { lastMessageAt: null, createdAt: { lt: start } },
-              ],
-            },
-          }),
-          this.prisma.aiChatSession.updateMany({
-            where: { localId },
-            data: { summary: '' },
-          }),
-        ]);
-
-        messagesDeleted += messagesResult.count;
-        sessionsDeleted += sessionsResult.count;
-        sessionsSummarized += summariesResult.count;
-      } catch (error) {
-        this.logger.error(
-          `AI cleanup failed for ${brandId}/${localId}.`,
-          error instanceof Error ? error.stack : `${error}`,
-        );
-      }
+    await runTenantScopedJob({
+      jobName: 'ai-memory-cleanup',
+      logger: this.logger,
+      iterator: this.activeLocationIteratorPort,
+      alertPolicy: {
+        failureRateWarnThreshold: 0.05,
+        failedLocationsWarnThreshold: 1,
+      },
+      executeForLocation: async ({ localId }) => {
+        return this.aiAssistantMemoryMaintenancePort.cleanupForLocalBeforeDate(localId, start);
+      },
     });
-
-    if (messagesDeleted || sessionsDeleted || sessionsSummarized) {
-      this.logger.log(
-        `Limpieza IA: ${messagesDeleted} mensajes, ${sessionsDeleted} sesiones eliminadas y ${sessionsSummarized} sesiones re-sincronizadas.`,
-      );
-    }
   }
 }

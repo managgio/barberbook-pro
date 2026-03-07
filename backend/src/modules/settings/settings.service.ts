@@ -1,127 +1,27 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentBrandId, getCurrentLocalId } from '../../tenancy/tenant.context';
-import { TenantConfigService } from '../../tenancy/tenant-config.service';
-import { SiteSettings, normalizeSettings, cloneSettings } from './settings.types';
+import { Inject, Injectable } from '@nestjs/common';
+import { ManagePlatformSettingsUseCase } from '../../contexts/platform/application/use-cases/manage-platform-settings.use-case';
+import {
+  PLATFORM_SETTINGS_MANAGEMENT_PORT,
+  PlatformSettingsManagementPort,
+} from '../../contexts/platform/ports/outbound/platform-settings-management.port';
+import { SiteSettings } from './settings.types';
 
 @Injectable()
 export class SettingsService {
+  private readonly managePlatformSettingsUseCase: ManagePlatformSettingsUseCase;
+
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly tenantConfig: TenantConfigService,
-  ) {}
-
-  private async resolveRuntimeFlags() {
-    const config = await this.tenantConfig.getEffectiveConfig();
-    const hidden = config.adminSidebar?.hiddenSections;
-    const productsEnabled = !Array.isArray(hidden) || !hidden.includes('stock');
-    const barberServiceAssignmentPlatformEnabled =
-      config.features?.barberServiceAssignmentEnabled !== false;
-    return {
-      productsEnabled,
-      barberServiceAssignmentPlatformEnabled,
-    };
+    @Inject(PLATFORM_SETTINGS_MANAGEMENT_PORT)
+    private readonly settingsManagementPort: PlatformSettingsManagementPort,
+  ) {
+    this.managePlatformSettingsUseCase = new ManagePlatformSettingsUseCase(this.settingsManagementPort);
   }
 
-  private async ensureSettings(): Promise<SiteSettings> {
-    const localId = await this.resolveScopedLocalId();
-    const existing = await this.prisma.siteSettings.findUnique({ where: { localId } });
-    if (!existing) {
-      const shopSchedule = await this.prisma.shopSchedule.findUnique({ where: { localId } });
-      const defaults = normalizeSettings({
-        openingHours: (shopSchedule?.data || undefined) as SiteSettings['openingHours'] | undefined,
-      });
-      await this.prisma.siteSettings.create({ data: { localId, data: defaults } });
-      return defaults;
-    }
-    return normalizeSettings(existing.data as Partial<SiteSettings>);
+  getSettings(): Promise<SiteSettings> {
+    return this.managePlatformSettingsUseCase.getSettings() as Promise<SiteSettings>;
   }
 
-  private async resolveScopedLocalId(): Promise<string> {
-    const localId = getCurrentLocalId();
-    const brandId = getCurrentBrandId();
-
-    const scoped = await this.prisma.location.findFirst({
-      where: { id: localId, brandId },
-      select: { id: true },
-    });
-    if (scoped) return scoped.id;
-
-    const fallback =
-      (await this.prisma.location.findFirst({
-        where: { brandId, isActive: true },
-        orderBy: { createdAt: 'asc' },
-        select: { id: true },
-      })) ||
-      (await this.prisma.location.findFirst({
-        where: { brandId },
-        orderBy: { createdAt: 'asc' },
-        select: { id: true },
-      }));
-
-    if (!fallback) {
-      throw new BadRequestException('No hay un local disponible para este tenant.');
-    }
-    return fallback.id;
-  }
-
-  async getSettings(): Promise<SiteSettings> {
-    const [settings, runtimeFlags] = await Promise.all([
-      this.ensureSettings(),
-      this.resolveRuntimeFlags(),
-    ]);
-    return cloneSettings({
-      ...settings,
-      services: {
-        ...settings.services,
-        barberServiceAssignmentEnabled:
-          runtimeFlags.barberServiceAssignmentPlatformEnabled
-            ? settings.services.barberServiceAssignmentEnabled
-            : false,
-      },
-      products: { ...settings.products, enabled: runtimeFlags.productsEnabled },
-    });
-  }
-
-  async updateSettings(settings: SiteSettings): Promise<SiteSettings> {
-    const localId = await this.resolveScopedLocalId();
-    const normalized = normalizeSettings(settings);
-    const runtimeFlags = await this.resolveRuntimeFlags();
-    normalized.products.enabled = runtimeFlags.productsEnabled;
-
-    if (!runtimeFlags.barberServiceAssignmentPlatformEnabled) {
-      const existing = await this.prisma.siteSettings.findUnique({
-        where: { localId },
-        select: { data: true },
-      });
-      const existingNormalized = normalizeSettings(
-        (existing?.data || undefined) as Partial<SiteSettings> | undefined,
-      );
-      normalized.services.barberServiceAssignmentEnabled =
-        existingNormalized.services.barberServiceAssignmentEnabled;
-    }
-
-    if (normalized.products.categoriesEnabled) {
-      const uncategorizedProducts = await this.prisma.product.count({
-        where: { categoryId: null, localId },
-      });
-      if (uncategorizedProducts > 0) {
-        throw new BadRequestException(
-          'Asigna una categoría a todos los productos antes de activar la categorización.',
-        );
-      }
-    }
-
-    await this.prisma.siteSettings.upsert({
-      where: { localId },
-      update: { data: normalized },
-      create: { localId, data: normalized },
-    });
-    await this.prisma.shopSchedule.upsert({
-      where: { localId },
-      update: { data: normalized.openingHours },
-      create: { localId, data: normalized.openingHours },
-    });
-    return this.getSettings();
+  updateSettings(settings: SiteSettings): Promise<SiteSettings> {
+    return this.managePlatformSettingsUseCase.updateSettings(settings) as Promise<SiteSettings>;
   }
 }

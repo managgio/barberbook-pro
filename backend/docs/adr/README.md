@@ -1,0 +1,11 @@
+# ADR Index (DDD + Hexagonal Migration)
+
+- [ADR-0001 CQRS Pragmatico](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0001-cqrs-pragmatico.md)
+- [ADR-0002 Transaction Boundary + SERIALIZABLE](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0002-transaction-boundary.md)
+- [ADR-0003 Domain Events Sync + Outbox Plan](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0003-domain-events-outbox.md)
+- [ADR-0004 Idempotency Keys](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0004-idempotency.md)
+- [ADR-0005 RequestContext + ClockPort](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0005-request-context-clock.md)
+- [ADR-0006 Cross-Context Contracts por Ports/ACL](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0006-cross-context-contracts.md)
+- [ADR-0007 Aggregate Boundaries](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0007-aggregate-boundaries.md)
+- [ADR-0008 Prisma Tenant Guard](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0008-prisma-tenant-guard.md)
+- [ADR-0009 Post-Migration Boundary Enforcement](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0009-post-migration-boundary-enforcement.md)

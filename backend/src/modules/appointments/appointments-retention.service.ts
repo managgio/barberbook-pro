@@ -1,11 +1,19 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
-import { DistributedLockService } from '../../prisma/distributed-lock.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
-import { AI_TIME_ZONE } from '../ai-assistant/ai-assistant.utils';
-import { LegalService } from '../legal/legal.service';
-import { AppointmentsService } from './appointments.service';
+import {
+  ACTIVE_LOCATION_ITERATOR_PORT,
+  ActiveLocationIteratorPort,
+} from '../../contexts/platform/ports/outbound/active-location-iterator.port';
+import {
+  PLATFORM_LEGAL_MANAGEMENT_PORT,
+  PlatformLegalManagementPort,
+} from '../../contexts/platform/ports/outbound/platform-legal-management.port';
+import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
+import { runTenantScopedJob } from '../../shared/application/tenant-job-execution';
+import { AnonymizeAppointmentUseCase } from '../../contexts/booking/application/use-cases/anonymize-appointment.use-case';
+import { BOOKING_MAINTENANCE_PORT, BookingMaintenancePort } from '../../contexts/booking/ports/outbound/booking-maintenance.port';
+
+const APPOINTMENTS_RETENTION_TIME_ZONE = 'Europe/Madrid';
 
 @Injectable()
 export class AppointmentsRetentionService implements OnModuleInit, OnModuleDestroy {
@@ -13,10 +21,15 @@ export class AppointmentsRetentionService implements OnModuleInit, OnModuleDestr
   private task: ScheduledTask | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly legalService: LegalService,
-    private readonly appointmentsService: AppointmentsService,
-    private readonly distributedLock: DistributedLockService,
+    @Inject(PLATFORM_LEGAL_MANAGEMENT_PORT)
+    private readonly legalManagementPort: PlatformLegalManagementPort,
+    private readonly anonymizeAppointmentUseCase: AnonymizeAppointmentUseCase,
+    @Inject(DISTRIBUTED_LOCK_PORT)
+    private readonly distributedLockPort: DistributedLockPort,
+    @Inject(BOOKING_MAINTENANCE_PORT)
+    private readonly bookingMaintenancePort: BookingMaintenancePort,
+    @Inject(ACTIVE_LOCATION_ITERATOR_PORT)
+    private readonly activeLocationIteratorPort: ActiveLocationIteratorPort,
   ) {}
 
   onModuleInit() {
@@ -25,7 +38,7 @@ export class AppointmentsRetentionService implements OnModuleInit, OnModuleDestr
       () => {
         void this.handleRetention();
       },
-      { timezone: AI_TIME_ZONE },
+      { timezone: APPOINTMENTS_RETENTION_TIME_ZONE },
     );
   }
 
@@ -34,7 +47,7 @@ export class AppointmentsRetentionService implements OnModuleInit, OnModuleDestr
   }
 
   private async handleRetention() {
-    const executed = await this.distributedLock.runWithLock(
+    const executed = await this.distributedLockPort.runWithLock(
       'cron:appointments-retention',
       async () => {
         await this.runRetention();
@@ -48,42 +61,42 @@ export class AppointmentsRetentionService implements OnModuleInit, OnModuleDestr
   }
 
   private async runRetention() {
-    let anonymizedTotal = 0;
-    await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
-      try {
-        const settings = await this.legalService.getSettings(brandId, localId);
-        if (!settings.retentionDays) return;
+    await runTenantScopedJob({
+      jobName: 'appointments-retention',
+      logger: this.logger,
+      iterator: this.activeLocationIteratorPort,
+      alertPolicy: {
+        failureRateWarnThreshold: 0.05,
+        failedLocationsWarnThreshold: 1,
+      },
+      executeForLocation: async ({ brandId, localId }) => {
+        const settings = await this.legalManagementPort.getSettings(brandId, localId);
+        if (!settings.retentionDays) return { appointmentsAnonymized: 0 };
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - settings.retentionDays);
 
-        const appointments = await this.prisma.appointment.findMany({
-          where: {
-            localId,
-            anonymizedAt: null,
-            startDateTime: { lt: cutoff },
-            OR: [
-              { guestName: { not: null } },
-              { guestContact: { not: null } },
-              { notes: { not: null } },
-            ],
-          },
-          select: { id: true },
-        });
+        const appointmentIds = this.bookingMaintenancePort.findAppointmentsForAnonymization
+          ? await this.bookingMaintenancePort.findAppointmentsForAnonymization({ localId, cutoff })
+          : [];
 
-        for (const appointment of appointments) {
-          await this.appointmentsService.anonymizeAppointment(appointment.id, null, 'retention');
-          anonymizedTotal += 1;
+        for (const appointmentId of appointmentIds) {
+          await this.anonymizeAppointmentUseCase.execute({
+            context: {
+              tenantId: brandId,
+              brandId,
+              localId,
+              actorUserId: null,
+              timezone: APPOINTMENTS_RETENTION_TIME_ZONE,
+              correlationId: `retention:${localId}:${appointmentId}`,
+            },
+            appointmentId,
+            actorUserId: null,
+            reason: 'retention',
+          });
         }
-      } catch (error) {
-        this.logger.error(
-          `Retention job failed for ${brandId}/${localId}.`,
-          error instanceof Error ? error.stack : `${error}`,
-        );
-      }
-    });
 
-    if (anonymizedTotal > 0) {
-      this.logger.log(`Retention job: anonymized ${anonymizedTotal} appointments.`);
-    }
+        return { appointmentsAnonymized: appointmentIds.length };
+      },
+    });
   }
 }

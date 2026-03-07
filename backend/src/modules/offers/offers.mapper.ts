@@ -1,10 +1,18 @@
-import { Offer, Product, ProductCategory, Service, ServiceCategory } from '@prisma/client';
-
-type OfferWithRelations = Offer & {
-  categories?: ServiceCategory[];
-  services?: Service[];
-  productCategories?: ProductCategory[];
-  products?: Product[];
+type OfferWithRelations = {
+  id: string;
+  name: string;
+  description: string | null;
+  discountType: string;
+  discountValue: number | { toString(): string };
+  scope: string;
+  target: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  active: boolean;
+  categories?: Array<{ id: string; name: string }>;
+  services?: Array<{ id: string; name: string }>;
+  productCategories?: Array<{ id: string; name: string }>;
+  products?: Array<{ id: string; name: string }>;
 };
 
 export const mapOffer = (offer: OfferWithRelations) => ({
@@ -12,7 +20,7 @@ export const mapOffer = (offer: OfferWithRelations) => ({
   name: offer.name,
   description: offer.description ?? '',
   discountType: offer.discountType,
-  discountValue: parseFloat(offer.discountValue.toString()),
+  discountValue: Number(offer.discountValue),
   scope: offer.scope,
   target: offer.target,
   startDate: offer.startDate,

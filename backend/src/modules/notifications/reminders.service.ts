@@ -1,11 +1,21 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { schedule, ScheduledTask } from 'node-cron';
-import { DistributedLockService } from '../../prisma/distributed-lock.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
-import { runForEachActiveLocation } from '../../tenancy/tenant.utils';
-import { NotificationsService } from './notifications.service';
-import { TenantConfigService } from '../../tenancy/tenant-config.service';
+import { RunNotificationRemindersUseCase } from '../../contexts/engagement/application/use-cases/run-notification-reminders.use-case';
+import {
+  ENGAGEMENT_NOTIFICATION_MANAGEMENT_PORT,
+  EngagementNotificationManagementPort,
+} from '../../contexts/engagement/ports/outbound/notification-management.port';
+import {
+  ENGAGEMENT_NOTIFICATION_REMINDER_PORT,
+  EngagementNotificationReminderPort,
+} from '../../contexts/engagement/ports/outbound/notification-reminder.port';
+import {
+  ACTIVE_LOCATION_ITERATOR_PORT,
+  ActiveLocationIteratorPort,
+} from '../../contexts/platform/ports/outbound/active-location-iterator.port';
+import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
+import { TENANT_CONFIG_READ_PORT, TenantConfigReadPort } from '../../shared/application/tenant-config-read.port';
+import { runTenantScopedJob } from '../../shared/application/tenant-job-execution';
 
 const REMINDER_OFFSET_MS = 24 * 60 * 60 * 1000; // 24h
 const REMINDER_WINDOW_MS = 10 * 60 * 1000; // 10 minutes window to avoid repeats if job runs often
@@ -14,13 +24,25 @@ const REMINDER_WINDOW_MS = 10 * 60 * 1000; // 10 minutes window to avoid repeats
 export class RemindersService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RemindersService.name);
   private task: ScheduledTask | null = null;
+  private readonly runNotificationRemindersUseCase: RunNotificationRemindersUseCase;
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly notificationsService: NotificationsService,
-    private readonly tenantConfig: TenantConfigService,
-    private readonly distributedLock: DistributedLockService,
-  ) {}
+    @Inject(TENANT_CONFIG_READ_PORT)
+    private readonly tenantConfigReadPort: TenantConfigReadPort,
+    @Inject(DISTRIBUTED_LOCK_PORT)
+    private readonly distributedLockPort: DistributedLockPort,
+    @Inject(ACTIVE_LOCATION_ITERATOR_PORT)
+    private readonly activeLocationIteratorPort: ActiveLocationIteratorPort,
+    @Inject(ENGAGEMENT_NOTIFICATION_REMINDER_PORT)
+    private readonly reminderPort: EngagementNotificationReminderPort,
+    @Inject(ENGAGEMENT_NOTIFICATION_MANAGEMENT_PORT)
+    private readonly notificationManagementPort: EngagementNotificationManagementPort,
+  ) {
+    this.runNotificationRemindersUseCase = new RunNotificationRemindersUseCase(
+      this.reminderPort,
+      this.notificationManagementPort,
+    );
+  }
 
   onModuleInit() {
     // Every 5 minutes
@@ -32,7 +54,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleReminders() {
-    const executed = await this.distributedLock.runWithLock(
+    const executed = await this.distributedLockPort.runWithLock(
       'cron:notifications-reminders',
       async () => {
         await this.runReminders();
@@ -46,26 +68,23 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async runReminders() {
-    let totalReminders = 0;
-    await runForEachActiveLocation(this.prisma, async ({ brandId, localId }) => {
-      try {
+    await runTenantScopedJob({
+      jobName: 'notifications-reminders',
+      logger: this.logger,
+      iterator: this.activeLocationIteratorPort,
+      alertPolicy: {
+        failureRateWarnThreshold: 0.05,
+        failedLocationsWarnThreshold: 1,
+      },
+      executeForLocation: async () => {
         const sent = await this.handleRemindersForLocal();
-        totalReminders += sent;
-      } catch (error) {
-        this.logger.error(
-          `Reminder job failed for ${brandId}/${localId}.`,
-          error instanceof Error ? error.stack : `${error}`,
-        );
-      }
+        return { remindersSent: sent };
+      },
     });
-
-    if (totalReminders > 0) {
-      this.logger.log(`Reminder job: sent ${totalReminders} reminders`);
-    }
   }
 
   private async handleRemindersForLocal() {
-    const config = await this.tenantConfig.getEffectiveConfig();
+    const config = await this.tenantConfigReadPort.getEffectiveConfig();
     const smsEnabled = config.notificationPrefs?.sms !== false;
     const whatsappEnabled = config.notificationPrefs?.whatsapp !== false;
     if (!smsEnabled && !whatsappEnabled) {
@@ -76,61 +95,11 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     const windowStart = new Date(now.getTime() + REMINDER_OFFSET_MS - REMINDER_WINDOW_MS);
     const windowEnd = new Date(now.getTime() + REMINDER_OFFSET_MS + REMINDER_WINDOW_MS);
 
-    const appointments = await this.prisma.appointment.findMany({
-      where: {
-        localId: getCurrentLocalId(),
-        status: 'scheduled',
-        reminderSent: false,
-        startDateTime: {
-          gte: windowStart,
-          lte: windowEnd,
-        },
-      },
-      include: {
-        user: true,
-        barber: true,
-        service: true,
-      },
+    return this.runNotificationRemindersUseCase.execute({
+      windowStart,
+      windowEnd,
+      smsEnabled,
+      whatsappEnabled,
     });
-
-    let sentCount = 0;
-    for (const appointment of appointments) {
-      const allowSms = appointment.user ? appointment.user.notificationSms === true : false;
-      const allowWhatsapp = appointment.user ? appointment.user.notificationWhatsapp === true : false;
-      if (!allowSms && !allowWhatsapp) {
-        continue;
-      }
-
-      const contact = this.getContact(appointment.user, appointment.guestName, appointment.guestContact);
-      const payload = {
-        date: appointment.startDateTime,
-        serviceName: appointment.service?.name,
-        barberName: appointment.barber?.name,
-      };
-      if (smsEnabled && allowSms) {
-        await this.notificationsService.sendReminderSms(contact, payload);
-      }
-      if (whatsappEnabled && allowWhatsapp) {
-        await this.notificationsService.sendReminderWhatsapp(contact, payload);
-      }
-
-      await this.prisma.appointment.update({
-        where: { id: appointment.id },
-        data: { reminderSent: true },
-      });
-      sentCount += 1;
-    }
-
-    return sentCount;
-  }
-
-  private getContact(user: any, guestName?: string | null, guestContact?: string | null) {
-    const emailCandidate = user?.email || (guestContact?.includes('@') ? guestContact : null);
-    const phoneCandidate = user?.phone || (!guestContact?.includes('@') ? guestContact : null);
-    return {
-      email: emailCandidate || null,
-      phone: phoneCandidate || null,
-      name: user?.name || guestName || null,
-    };
   }
 }

@@ -1,7 +1,12 @@
-import { Product, ProductCategory } from '@prisma/client';
 import { mapProduct } from '../products/products.mapper';
 
-type ProductCategoryWithProducts = ProductCategory & { products?: (Product & { category?: ProductCategory | null })[] };
+type ProductCategoryWithProducts = {
+  id: string;
+  name: string;
+  description: string | null;
+  position: number;
+  products?: unknown[];
+};
 
 export const mapProductCategory = (
   category: ProductCategoryWithProducts,
@@ -14,5 +19,5 @@ export const mapProductCategory = (
   products:
     options.includeProducts === false || !category.products
       ? undefined
-      : category.products.map((product) => mapProduct(product)),
+      : category.products.map((product) => mapProduct(product as any)),
 });

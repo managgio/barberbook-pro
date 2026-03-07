@@ -1,69 +1,60 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
-import { DEFAULT_SHOP_SCHEDULE, ShopSchedule } from './schedule.types';
-import { DAY_KEYS, cloneSchedule, normalizeSchedule } from './schedule.utils';
+import { Inject, Injectable } from '@nestjs/common';
+import { GetBarberScheduleUseCase } from '../../contexts/booking/application/use-cases/get-barber-schedule.use-case';
+import { GetShopScheduleUseCase } from '../../contexts/booking/application/use-cases/get-shop-schedule.use-case';
+import { UpdateBarberScheduleUseCase } from '../../contexts/booking/application/use-cases/update-barber-schedule.use-case';
+import { UpdateShopScheduleUseCase } from '../../contexts/booking/application/use-cases/update-shop-schedule.use-case';
+import {
+  SCHEDULE_MANAGEMENT_PORT,
+  ScheduleManagementPort,
+} from '../../contexts/booking/ports/outbound/schedule-management.port';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
+import { BookingSchedulePolicy } from '../../contexts/booking/domain/value-objects/schedule';
+import { ShopSchedule } from './schedule.types';
 
 @Injectable()
 export class SchedulesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly getShopScheduleUseCase: GetShopScheduleUseCase;
+  private readonly updateShopScheduleUseCase: UpdateShopScheduleUseCase;
+  private readonly getBarberScheduleUseCase: GetBarberScheduleUseCase;
+  private readonly updateBarberScheduleUseCase: UpdateBarberScheduleUseCase;
 
-  private async ensureShopSchedule(): Promise<ShopSchedule> {
-    const localId = getCurrentLocalId();
-    const existing = await this.prisma.shopSchedule.findUnique({ where: { localId } });
-    if (existing) {
-      return normalizeSchedule(existing.data as Partial<ShopSchedule>);
-    }
-    await this.prisma.shopSchedule.create({ data: { localId, data: DEFAULT_SHOP_SCHEDULE } });
-    return cloneSchedule(DEFAULT_SHOP_SCHEDULE);
+  constructor(
+    @Inject(SCHEDULE_MANAGEMENT_PORT)
+    private readonly scheduleManagementPort: ScheduleManagementPort,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
+  ) {
+    this.getShopScheduleUseCase = new GetShopScheduleUseCase(this.scheduleManagementPort);
+    this.updateShopScheduleUseCase = new UpdateShopScheduleUseCase(this.scheduleManagementPort);
+    this.getBarberScheduleUseCase = new GetBarberScheduleUseCase(this.scheduleManagementPort);
+    this.updateBarberScheduleUseCase = new UpdateBarberScheduleUseCase(this.scheduleManagementPort);
   }
 
   async getShopSchedule(): Promise<ShopSchedule> {
-    const schedule = await this.ensureShopSchedule();
-    return cloneSchedule(schedule);
+    return this.getShopScheduleUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+    }) as Promise<ShopSchedule>;
   }
 
   async updateShopSchedule(schedule: ShopSchedule): Promise<ShopSchedule> {
-    const localId = getCurrentLocalId();
-    const normalized = normalizeSchedule(schedule);
-    await this.prisma.shopSchedule.upsert({
-      where: { localId },
-      update: { data: normalized },
-      create: { localId, data: normalized },
-    });
-    const existingSettings = await this.prisma.siteSettings.findUnique({ where: { localId } });
-    if (existingSettings) {
-      const openingHours = DAY_KEYS.reduce((acc, key) => {
-        acc[key] = normalized[key];
-        return acc;
-      }, {} as Pick<ShopSchedule, typeof DAY_KEYS[number]>);
-      await this.prisma.siteSettings.update({
-        where: { localId },
-        data: { data: { ...(existingSettings.data as Record<string, unknown>), openingHours } },
-      });
-    }
-    return cloneSchedule(normalized);
+    return this.updateShopScheduleUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      schedule: schedule as BookingSchedulePolicy,
+    }) as Promise<ShopSchedule>;
   }
 
   async getBarberSchedule(barberId: string): Promise<ShopSchedule> {
-    const record = await this.prisma.barberSchedule.findFirst({
-      where: { barberId, localId: getCurrentLocalId() },
-    });
-    if (!record) {
-      const shopSchedule = await this.ensureShopSchedule();
-      return cloneSchedule(shopSchedule);
-    }
-    return normalizeSchedule(record.data as Partial<ShopSchedule>, { preserveEndOverflowUndefined: true });
+    return this.getBarberScheduleUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      barberId,
+    }) as Promise<ShopSchedule>;
   }
 
   async updateBarberSchedule(barberId: string, schedule: ShopSchedule): Promise<ShopSchedule> {
-    const localId = getCurrentLocalId();
-    const normalized = normalizeSchedule(schedule, { preserveEndOverflowUndefined: true });
-    await this.prisma.barberSchedule.upsert({
-      where: { barberId },
-      update: { data: normalized },
-      create: { barberId, localId, data: normalized },
+    return this.updateBarberScheduleUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      barberId,
+      schedule: schedule as BookingSchedulePolicy,
     });
-    return cloneSchedule(normalized);
   }
 }

@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from './tenant-config.defaults';
 import { BrandConfigData, EffectiveTenantConfig, LocationConfigData, TenantThemeConfig } from './tenant-config.types';
-import { getCurrentBrandId, getCurrentLocalId } from './tenant.context';
 
 const mergeConfig = <T extends Record<string, any>>(base: T, override?: Partial<T>) => {
   if (!override) return { ...base };
@@ -30,9 +30,21 @@ const normalizeTheme = (theme?: TenantThemeConfig): TenantThemeConfig | undefine
 
 @Injectable()
 export class TenantConfigService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
+  ) {}
 
-  async getBrandConfig(brandId = getCurrentBrandId()): Promise<BrandConfigData> {
+  private getBrandId() {
+    return this.tenantContextPort.getRequestContext().brandId;
+  }
+
+  private getLocalId() {
+    return this.tenantContextPort.getRequestContext().localId;
+  }
+
+  async getBrandConfig(brandId = this.getBrandId()): Promise<BrandConfigData> {
     const fallback = buildBrandConfigFromEnv();
     const config = await this.prisma.brandConfig.findUnique({
       where: { brandId },
@@ -50,7 +62,7 @@ export class TenantConfigService {
     };
   }
 
-  async getLocationConfig(localId = getCurrentLocalId()): Promise<LocationConfigData> {
+  async getLocationConfig(localId = this.getLocalId()): Promise<LocationConfigData> {
     const fallback = buildLocationConfigFromEnv();
     const config = await this.prisma.locationConfig.findUnique({
       where: { localId },

@@ -64,7 +64,14 @@ Infra/Dev:
 - Puede forzar subdominio con `VITE_TENANT_SUBDOMAIN`.
 - `useBusinessCopy` normaliza el copy de staff/local (articulos y plurales) segun `business.type` y se usa en landing, reservas y panel admin.
 
-## Arquitectura backend (NestJS)
+## Arquitectura backend (NestJS + DDD + Hexagonal)
+Estado actual (post-migracion):
+- El backend mantiene **NestJS** como framework de entrega (HTTP, DI, bootstrap), pero el core se organiza por **bounded contexts** y capas de **DDD + Hexagonal**.
+- El codigo de **domain** y **application** se mantiene desacoplado de Nest, Prisma y SDKs externos.
+- Todo acceso a infraestructura (DB, Stripe, Twilio/Email, OpenAI, Firebase, ImageKit, locks, etc.) entra por **ports** implementados en **adapters**.
+- Los controllers de Nest actuan como adaptadores de entrada (DTO HTTP -> command/query -> use case).
+- Se mantiene el aislamiento multi-tenant como regla transversal (request context + guardrails de tenant en runtime como defensa en profundidad).
+
 Patrones globales:
 - Prefijo global `/api`.
 - ValidationPipe con `whitelist`, `forbidNonWhitelisted` y `transform`.
@@ -183,7 +190,7 @@ Observabilidad UX:
 - **Redirección automática al detectar sesión activa**: la ruta raíz (`/`) ya no deja al usuario autenticado en la landing. Si tiene perfil admin/superadmin/platform-admin se redirige a `/admin`; si es cliente se redirige a `/app/book` (reserva directa). `AuthPage` mantiene la misma resolución para evitar incoherencias de destino tras login.
 - **Acceso explícito a landing con sesión iniciada**: para evitar bloquear navegación voluntaria, `/?view=landing` fuerza render de landing aun con sesión activa. El logo principal del `Navbar` usa ese target cuando el usuario está autenticado.
 - **Navegación admin hacia landing**: el `AdminSidebar` usa `/?view=landing` tanto en el logo superior como en el botón `Volver` para evitar rebotes al panel por la redirección automática de `/`.
-- Alertas operativas por email (event-driven, no periodicas): cuando llega un Web Vital en estado `poor` o cuando una ruta API entra en degradacion (5xx/p95 en ventana), backend envia correo con contexto (metrica, ruta, severidad, tenant, umbral y distribucion de estados). Incluye cooldown por clave para evitar spam.
+- Alertas operativas por email (event-driven, no periodicas): cuando llega un Web Vital en estado `poor` o cuando una ruta API entra en degradacion (5xx/p95 en ventana), backend envia correo con contexto (metrica, ruta, severidad, tenant, umbral, distribucion de estados y **entorno runtime**: `prod/staging/local`). Incluye cooldown por clave para evitar spam.
 
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
@@ -258,6 +265,18 @@ Flujos:
 - Booking requiere consentimiento de privacidad y se guarda con version + audit log.
 - Cron de retencion itera marcas/locales y anonimiza citas antiguas segun `retentionDays`.
 - El hash de IP usa `IP_HASH_SALT` si esta definido.
+
+## Documentacion de migracion (DDD + Hexagonal)
+Documentos de referencia creados durante la migracion (detalle operativo y evidencia):
+- `backend/docs/DDD_HEXAGONAL_MIGRATION_ROADMAP.md` (roadmap y estado por fases/PRs).
+- `backend/docs/adr/README.md` + `backend/docs/adr/ADR-0001..0009` (decisiones arquitectonicas).
+- `backend/docs/migration/inventory-appointments.md` (inventario inicial de appointments/endpoints/dependencias).
+- `backend/docs/migration/context-module-bridges-inventory.md` (inventario de bridges entre contexts/modulos).
+- `backend/docs/migration/transition-artifacts-checklist.md` (artefactos de transicion pendientes/presentes).
+- `backend/docs/migration/residual-debt-prioritization.md` (deuda tecnica residual priorizada).
+- `backend/docs/migration/release-gate-policy.md` (gates de liberacion y criterios de paso).
+- `backend/docs/analytics/BACKEND_HEALTH_AUDIT.md` (auditoria periodica de salud/rendimiento backend).
+- `backend/docs/testing/TESTING_STRATEGY.md` (estrategia oficial de testing y automatizacion).
 
 ## Flujos clave (logica importante)
 1) **Bootstrap tenant**
@@ -461,7 +480,7 @@ Backend (`backend/.env`):
   - Si `EMAIL_HOST` no está definido, backend aplica fallback automático por dominio del remitente:
     - Outlook/Hotmail/Live/MSN -> `smtp.office365.com`
     - resto -> `smtp.gmail.com`
-- Observability alerts: `OBSERVABILITY_ALERT_EMAILS` (comma-separated, default `executive.managgio@gmail.com`), `OBSERVABILITY_ALERT_COOLDOWN_MINUTES`, `OBSERVABILITY_ALERT_API_WINDOW_MINUTES`, `OBSERVABILITY_ALERT_API_MIN_SAMPLES`, `OBSERVABILITY_ALERT_API_ERROR_RATE_PERCENT`, `OBSERVABILITY_ALERT_API_ERROR_MIN_COUNT`, `OBSERVABILITY_ALERT_API_P95_MS`.
+- Observability alerts: `OBSERVABILITY_ALERT_EMAILS` (comma-separated, default `executive.managgio@gmail.com`), `OBSERVABILITY_ALERT_COOLDOWN_MINUTES`, `OBSERVABILITY_ALERT_API_WINDOW_MINUTES`, `OBSERVABILITY_ALERT_API_MIN_SAMPLES`, `OBSERVABILITY_ALERT_API_ERROR_RATE_PERCENT`, `OBSERVABILITY_ALERT_API_ERROR_MIN_COUNT`, `OBSERVABILITY_ALERT_API_P95_MS`, `OBSERVABILITY_RUNTIME_ENV` (opcional para etiquetar correos como `prod/staging/local`).
 - Observability persistence: `OBSERVABILITY_PERSIST_FLUSH_MS`, `OBSERVABILITY_PERSIST_BATCH_SIZE`, `OBSERVABILITY_PERSIST_BUFFER_LIMIT`, `OBSERVABILITY_PERSIST_RETENTION_DAYS`, `OBSERVABILITY_SUMMARY_QUERY_CAP`.
 - Distributed locks: `DISTRIBUTED_LOCK_PREFIX` (namespace de locks compartidos entre instancias).
 - AI: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`, `AI_TRANSCRIPTION_MODEL`.
@@ -616,6 +635,7 @@ Este contrato define el estandar minimo de calidad tecnica de Managgio. Cualquie
 ### 3) Regla documental (obligatoria)
 - Si cambia arquitectura, contratos API, flujos clave, indices, observabilidad o guardrails:
   - Actualizar `docs/ARCHITECTURE.md` en el mismo PR.
+  - Actualizar `backend/docs/testing/TESTING_STRATEGY.md` y `backend/test/README.md` si cambian reglas/ejecución de tests.
   - Actualizar `docs/perf/PERF_BASELINE.md` si hay impacto de performance medible.
   - No dejar secciones en contradiccion (si se reemplaza un flujo, retirar el flujo anterior del documento).
 
@@ -633,3 +653,37 @@ Este contrato define el estandar minimo de calidad tecnica de Managgio. Cualquie
   - impacto explicitado (perf/seguridad/UX),
   - plan de remediacion con fecha,
   - y registro en este `ARCHITECTURE.md` o en el PR correspondiente.
+
+### 6) Reglas de testing backend (obligatorias)
+- Estructura oficial de tests: `backend/test/{unit|contract|parity|e2e}/<context>/...`.
+- Cambio en `backend/src/**` requiere cambio en `backend/test/**` (policy automática en CI con `npm run test:policy`).
+- Toda feature nueva requiere tests nuevos; todo bug fix requiere test de regresión.
+- Antes de `push` o PR, usar el advisor contextual: `npm --prefix backend run test:advisor -- --phase=push|pr`.
+- Ejecución automática por cambios:
+  - `npm run test:changed` selecciona y ejecuta tests afectados por diff.
+  - Si el cambio es transversal (`shared/bootstrap/prisma/tenancy/app/main`), se ejecuta suite completa.
+- Gate de cobertura obligatorio: `npm run test:coverage:gate` usando umbrales en `backend/test/coverage-thresholds.json`.
+- E2E smoke runtime existe y se ejecuta con `npm run test:e2e:smoke`.
+  - En CI backend está activado con MySQL dedicado (workflow `backend-hardening.yml`).
+  - CI corre en modo estricto (`TEST_E2E_SMOKE_STRICT=true`) y exige checks críticos de `auth` y `platform`.
+  - En local sigue siendo opt-in con `TEST_E2E_SMOKE_ENABLED=true`.
+- Referencia normativa de testing: `backend/docs/testing/TESTING_STRATEGY.md`.
+- Playbook manual del equipo (cuándo ejecutar qué test) documentado en `backend/docs/testing/TESTING_STRATEGY.md`.
+
+### 7) Routing documental y avisos manuales (equipo y asistentes)
+- Regla general:
+  - No sugerir comandos manuales si no hay cambios relevantes en backend.
+  - Cuando el usuario indique intención de `push` o apertura de PR, sugerir ejecutar `npm --prefix backend run test:advisor -- --phase=push|pr`.
+  - Seguir recomendaciones del advisor y no repetir comandos no aplicables al diff actual.
+- Documentos a consultar según tarea:
+  - Arquitectura y normas globales: `docs/ARCHITECTURE.md`.
+  - Estrategia y política de tests: `backend/docs/testing/TESTING_STRATEGY.md`.
+  - Organización concreta de suites/comandos: `backend/test/README.md`.
+  - Estado del roadmap de migración DDD+Hexagonal: `backend/docs/DDD_HEXAGONAL_MIGRATION_ROADMAP.md`.
+  - Deuda técnica pendiente (solo pendientes): `backend/docs/migration/residual-debt-prioritization.md`.
+  - Salud/rendimiento y comparativa temporal: `backend/docs/analytics/BACKEND_HEALTH_AUDIT.md`.
+- Reglas de recordatorio contextual:
+  - Desarrollo diario: `test:advisor -- --phase=dev` + comandos que indique.
+  - Antes de push: `test:advisor -- --phase=push`.
+  - Antes de PR: `test:advisor -- --phase=pr` y verificar `test:policy` + `test:coverage:gate`.
+  - Cambios amplios o críticos: incluir `test:ci`.

@@ -1,320 +1,163 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { getCurrentLocalId } from '../../tenancy/tenant.context';
-import { ImageKitService } from '../imagekit/imagekit.service';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { CreateProductUseCase } from '../../contexts/commerce/application/use-cases/create-product.use-case';
+import { GetProductsAdminUseCase } from '../../contexts/commerce/application/use-cases/get-products-admin.use-case';
+import { GetProductsPublicUseCase } from '../../contexts/commerce/application/use-cases/get-products-public.use-case';
+import { ImportProductsUseCase } from '../../contexts/commerce/application/use-cases/import-products.use-case';
+import { RemoveProductUseCase } from '../../contexts/commerce/application/use-cases/remove-product.use-case';
+import { UpdateProductUseCase } from '../../contexts/commerce/application/use-cases/update-product.use-case';
+import {
+  COMMERCE_PRODUCT_MANAGEMENT_PORT,
+  CommerceProductManagementPort,
+} from '../../contexts/commerce/ports/outbound/product-management.port';
+import {
+  COMMERCE_PRODUCT_MEDIA_STORAGE_PORT,
+  CommerceProductMediaStoragePort,
+} from '../../contexts/commerce/ports/outbound/product-media-storage.port';
+import {
+  COMMERCE_PRODUCT_READ_PORT,
+  CommerceProductReadPort,
+} from '../../contexts/commerce/ports/outbound/product-read.port';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
+import { rethrowDomainErrorAsHttp } from '../../shared/interfaces/http/rethrow-domain-error-as-http';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { mapProduct } from './products.mapper';
-import { computeProductPricing } from './products.pricing';
-import { isOfferActiveNow } from '../services/services.pricing';
-import { areProductCategoriesEnabled, getProductSettings } from './products.utils';
-import { normalizeSettings, SiteSettings } from '../settings/settings.types';
 
 @Injectable()
 export class ProductsService {
-  private readonly logger = new Logger(ProductsService.name);
+  private readonly getProductsAdminUseCase: GetProductsAdminUseCase;
+  private readonly getProductsPublicUseCase: GetProductsPublicUseCase;
+  private readonly createProductUseCase: CreateProductUseCase;
+  private readonly updateProductUseCase: UpdateProductUseCase;
+  private readonly removeProductUseCase: RemoveProductUseCase;
+  private readonly importProductsUseCase: ImportProductsUseCase;
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly imageKit: ImageKitService,
-  ) {}
-
-  private normalizeName(value: string) {
-    return value.trim().toLowerCase();
-  }
-
-  private async findProductByName(localId: string, name: string) {
-    const normalizedName = this.normalizeName(name);
-    const candidates = await this.prisma.product.findMany({
-      where: { localId, isArchived: false },
-      select: { id: true, name: true },
-    });
-    return candidates.find((candidate) => this.normalizeName(candidate.name) === normalizedName) ?? null;
-  }
-
-  private async assertCategoryExists(categoryId: string) {
-    const localId = getCurrentLocalId();
-    const category = await this.prisma.productCategory.findFirst({
-      where: { id: categoryId, localId },
-    });
-    if (!category) throw new NotFoundException('Category not found');
-  }
-
-  private async assertProductsEnabled() {
-    const settings = await getProductSettings(this.prisma);
-    if (!settings.enabled) {
-      throw new BadRequestException('El control de productos no está habilitado en este local.');
-    }
-  }
-
-  private async getProductOffers(referenceDate: Date) {
-    const localId = getCurrentLocalId();
-    const offers = await this.prisma.offer.findMany({
-      where: { active: true, localId, target: 'product' },
-      include: { productCategories: true, products: true },
-    });
-    return offers.filter((offer) => isOfferActiveNow(offer, referenceDate));
-  }
-
-  private mapWithPricing(products: any[], offers: any[], referenceDate: Date) {
-    return products.map((product) =>
-      mapProduct(product, computeProductPricing(product, offers, referenceDate)),
-    );
+    @Inject(COMMERCE_PRODUCT_READ_PORT)
+    private readonly productReadPort: CommerceProductReadPort,
+    @Inject(COMMERCE_PRODUCT_MANAGEMENT_PORT)
+    private readonly productManagementPort: CommerceProductManagementPort,
+    @Inject(COMMERCE_PRODUCT_MEDIA_STORAGE_PORT)
+    private readonly productMediaStoragePort: CommerceProductMediaStoragePort,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
+  ) {
+    this.getProductsAdminUseCase = new GetProductsAdminUseCase(this.productReadPort);
+    this.getProductsPublicUseCase = new GetProductsPublicUseCase(this.productReadPort);
+    this.createProductUseCase = new CreateProductUseCase(this.productManagementPort, this.productReadPort);
+    this.updateProductUseCase = new UpdateProductUseCase(this.productManagementPort, this.productReadPort);
+    this.removeProductUseCase = new RemoveProductUseCase(this.productManagementPort, this.productMediaStoragePort);
+    this.importProductsUseCase = new ImportProductsUseCase(this.productManagementPort);
   }
 
   async findAllAdmin() {
-    const localId = getCurrentLocalId();
-    const [products, offers] = await Promise.all([
-      this.prisma.product.findMany({
-        where: { localId, isArchived: false },
-        orderBy: { name: 'asc' },
-        include: { category: true },
-      }),
-      this.getProductOffers(new Date()),
-    ]);
-    return this.mapWithPricing(products, offers, new Date());
+    const products = await this.getProductsAdminUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+    });
+    return products.map((product) => mapProduct(product));
   }
 
   async findPublic(context: 'landing' | 'booking' = 'booking') {
-    const localId = getCurrentLocalId();
-    const settings = await getProductSettings(this.prisma);
-    if (!settings.enabled) return [];
-    if (context === 'landing' && !settings.showOnLanding) return [];
-    if (context === 'booking' && !settings.clientPurchaseEnabled) return [];
-
-    const [products, offers] = await Promise.all([
-      this.prisma.product.findMany({
-        where: { localId, isActive: true, isPublic: true, isArchived: false },
-        orderBy: { name: 'asc' },
-        include: { category: true },
-      }),
-      this.getProductOffers(new Date()),
-    ]);
-    return this.mapWithPricing(products, offers, new Date());
+    const products = await this.getProductsPublicUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      contextView: context,
+    });
+    return products.map((product) => mapProduct(product));
   }
 
   async create(data: CreateProductDto) {
-    await this.assertProductsEnabled();
-    const localId = getCurrentLocalId();
-    const name = data.name.trim();
-    const categoriesEnabled = await areProductCategoriesEnabled(this.prisma);
-    const categoryId = data.categoryId ?? null;
-    if (categoriesEnabled && !categoryId) {
-      throw new BadRequestException('Debes asignar una categoría porque la categorización está activa.');
-    }
-    if (categoryId) {
-      await this.assertCategoryExists(categoryId);
-    }
-
-    const payload = {
-      name,
-      description: data.description ?? '',
-      sku: data.sku ?? null,
-      price: data.price,
-      stock: data.stock ?? 0,
-      minStock: data.minStock ?? 0,
-      categoryId,
-      imageUrl: data.imageUrl ?? null,
-      imageFileId: data.imageFileId ?? null,
-      isActive: data.isActive ?? true,
-      isPublic: data.isPublic ?? true,
-    };
-
-    const existing = await this.findProductByName(localId, name);
-    const created = existing
-      ? await this.prisma.product.update({
-          where: { id: existing.id },
-          data: payload,
-          include: { category: true },
-        })
-      : await this.prisma.product.create({
-          data: { localId, ...payload },
-          include: { category: true },
-        });
-    const offers = await this.getProductOffers(new Date());
-    return mapProduct(created, computeProductPricing(created, offers, new Date()));
-  }
-
-  async update(id: string, data: UpdateProductDto) {
-    await this.assertProductsEnabled();
-    const localId = getCurrentLocalId();
-    const existing = await this.prisma.product.findFirst({
-      where: { id, localId, isArchived: false },
-    });
-    if (!existing) throw new NotFoundException('Product not found');
-    const categoriesEnabled = await areProductCategoriesEnabled(this.prisma);
-    const categoryId = data.categoryId === undefined ? existing.categoryId : data.categoryId;
-    if (categoriesEnabled && !categoryId) {
-      throw new BadRequestException('Debes asignar una categoría porque la categorización está activa.');
-    }
-    if (categoryId) {
-      await this.assertCategoryExists(categoryId);
-    }
-
-    const updated = await this.prisma.product.update({
-      where: { id },
-      data: {
+    try {
+      const product = await this.createProductUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
         name: data.name,
         description: data.description,
         sku: data.sku,
         price: data.price,
         stock: data.stock,
         minStock: data.minStock,
-        categoryId: categoryId ?? null,
+        categoryId: data.categoryId,
         imageUrl: data.imageUrl,
         imageFileId: data.imageFileId,
         isActive: data.isActive,
         isPublic: data.isPublic,
-      },
-      include: { category: true },
-    });
-    const offers = await this.getProductOffers(new Date());
-    return mapProduct(updated, computeProductPricing(updated, offers, new Date()));
+      });
+      return mapProduct(product);
+    } catch (error) {
+      rethrowDomainErrorAsHttp(error, {
+        PRODUCTS_MODULE_DISABLED: () =>
+          new BadRequestException('El control de productos no está habilitado en este local.'),
+        PRODUCT_CATEGORY_REQUIRED_WHEN_ENABLED: () =>
+          new BadRequestException('Debes asignar una categoría porque la categorización está activa.'),
+        PRODUCT_CATEGORY_NOT_FOUND: () => new NotFoundException('Category not found'),
+        PRODUCT_NOT_FOUND: () => new NotFoundException('Product not found'),
+      });
+      throw error;
+    }
+  }
+
+  async update(id: string, data: UpdateProductDto) {
+    try {
+      const product = await this.updateProductUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
+        productId: id,
+        name: data.name,
+        description: data.description,
+        sku: data.sku,
+        price: data.price,
+        stock: data.stock,
+        minStock: data.minStock,
+        categoryId: data.categoryId,
+        imageUrl: data.imageUrl,
+        imageFileId: data.imageFileId,
+        isActive: data.isActive,
+        isPublic: data.isPublic,
+      });
+      return mapProduct(product);
+    } catch (error) {
+      rethrowDomainErrorAsHttp(error, {
+        PRODUCTS_MODULE_DISABLED: () =>
+          new BadRequestException('El control de productos no está habilitado en este local.'),
+        PRODUCT_CATEGORY_REQUIRED_WHEN_ENABLED: () =>
+          new BadRequestException('Debes asignar una categoría porque la categorización está activa.'),
+        PRODUCT_CATEGORY_NOT_FOUND: () => new NotFoundException('Category not found'),
+        PRODUCT_NOT_FOUND: () => new NotFoundException('Product not found'),
+      });
+      throw error;
+    }
   }
 
   async remove(id: string) {
-    await this.assertProductsEnabled();
-    const localId = getCurrentLocalId();
-    const existing = await this.prisma.product.findFirst({
-      where: { id, localId, isArchived: false },
-    });
-    if (!existing) throw new NotFoundException('Product not found');
-    const inAppointments = await this.prisma.appointmentProduct.count({
-      where: { productId: id },
-    });
-    if (existing.imageFileId) {
-      try {
-        await this.imageKit.deleteFile(existing.imageFileId);
-      } catch (error) {
-        this.logger.warn(
-          `No se pudo eliminar la imagen del producto ${id} en ImageKit: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
-    if (inAppointments > 0) {
-      await this.prisma.product.update({
-        where: { id },
-        data: {
-          isActive: false,
-          isPublic: false,
-          isArchived: true,
-          imageUrl: null,
-          imageFileId: null,
-        },
+    try {
+      return await this.removeProductUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
+        productId: id,
       });
-      return { success: true, archived: true };
+    } catch (error) {
+      rethrowDomainErrorAsHttp(error, {
+        PRODUCTS_MODULE_DISABLED: () =>
+          new BadRequestException('El control de productos no está habilitado en este local.'),
+        PRODUCT_NOT_FOUND: () => new NotFoundException('Product not found'),
+      });
+      throw error;
     }
-    await this.prisma.product.delete({ where: { id } });
-    return { success: true };
-  }
-
-  private async getSettingsForLocal(localId: string) {
-    const settings = await this.prisma.siteSettings.findUnique({ where: { localId } });
-    const normalized = normalizeSettings((settings?.data || undefined) as Partial<SiteSettings> | undefined);
-    return normalized.products;
   }
 
   async importFromLocal(sourceLocalId: string, targetLocalId?: string) {
-    const currentLocalId = getCurrentLocalId();
-    const destinationLocalId = targetLocalId ?? currentLocalId;
-    const locals = await this.prisma.location.findMany({
-      where: { id: { in: [sourceLocalId, destinationLocalId] } },
-    });
-    const source = locals.find((loc) => loc.id === sourceLocalId) || null;
-    const destination = locals.find((loc) => loc.id === destinationLocalId) || null;
-    if (!source || !destination) {
-      throw new NotFoundException('Local no encontrado.');
+    try {
+      return await this.importProductsUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
+        sourceLocalId,
+        targetLocalId,
+      });
+    } catch (error) {
+      rethrowDomainErrorAsHttp(error, {
+        LOCATION_NOT_FOUND: () => new NotFoundException('Local no encontrado.'),
+        PRODUCT_IMPORT_CROSS_BRAND_FORBIDDEN: () =>
+          new BadRequestException('Solo puedes importar productos entre locales de la misma marca.'),
+        PRODUCT_IMPORT_TARGET_DISABLED: () =>
+          new BadRequestException('El local destino no tiene habilitado el control de productos.'),
+      });
+      throw error;
     }
-    if (source.brandId !== destination.brandId) {
-      throw new BadRequestException('Solo puedes importar productos entre locales de la misma marca.');
-    }
-
-    const destinationSettings = await this.getSettingsForLocal(destinationLocalId);
-    if (!destinationSettings.enabled) {
-      throw new BadRequestException('El local destino no tiene habilitado el control de productos.');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const [sourceCategories, destinationCategories, sourceProducts, destinationProducts] = await Promise.all([
-        tx.productCategory.findMany({ where: { localId: sourceLocalId } }),
-        tx.productCategory.findMany({ where: { localId: destinationLocalId } }),
-        tx.product.findMany({
-          where: { localId: sourceLocalId, isArchived: false },
-          include: { category: true },
-        }),
-        tx.product.findMany({ where: { localId: destinationLocalId, isArchived: false } }),
-      ]);
-
-      const destinationCategoryByName = new Map(
-        destinationCategories.map((cat) => [this.normalizeName(cat.name), cat]),
-      );
-      const destinationProductByName = new Map(
-        destinationProducts.map((product) => [this.normalizeName(product.name), product]),
-      );
-
-      let created = 0;
-      let updated = 0;
-
-      for (const sourceProduct of sourceProducts) {
-        let targetCategoryId: string | null = null;
-        if (sourceProduct.category) {
-          const categoryKey = this.normalizeName(sourceProduct.category.name);
-          let targetCategory = destinationCategoryByName.get(categoryKey);
-          if (!targetCategory) {
-            targetCategory = await tx.productCategory.create({
-              data: {
-                localId: destinationLocalId,
-                name: sourceProduct.category.name,
-                description: sourceProduct.category.description ?? '',
-                position: sourceProduct.category.position ?? 0,
-              },
-            });
-            destinationCategoryByName.set(categoryKey, targetCategory);
-          } else {
-            await tx.productCategory.update({
-              where: { id: targetCategory.id },
-              data: {
-                description: sourceProduct.category.description ?? '',
-                position: sourceProduct.category.position ?? targetCategory.position,
-              },
-            });
-          }
-          targetCategoryId = targetCategory.id;
-        }
-
-        const productKey = this.normalizeName(sourceProduct.name);
-        const existingProduct = destinationProductByName.get(productKey);
-        const payload = {
-          localId: destinationLocalId,
-          name: sourceProduct.name,
-          description: sourceProduct.description ?? '',
-          sku: sourceProduct.sku ?? null,
-          price: sourceProduct.price,
-          stock: sourceProduct.stock,
-          minStock: sourceProduct.minStock ?? 0,
-          categoryId: targetCategoryId,
-          imageUrl: sourceProduct.imageUrl ?? null,
-          imageFileId: sourceProduct.imageFileId ?? null,
-          isActive: sourceProduct.isActive,
-          isPublic: sourceProduct.isPublic,
-        };
-
-        if (existingProduct) {
-          await tx.product.update({
-            where: { id: existingProduct.id },
-            data: payload,
-          });
-          updated += 1;
-        } else {
-          const createdProduct = await tx.product.create({ data: payload });
-          destinationProductByName.set(productKey, createdProduct);
-          created += 1;
-        }
-      }
-
-      return { created, updated };
-    });
   }
 }

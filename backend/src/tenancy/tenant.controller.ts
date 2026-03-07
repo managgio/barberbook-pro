@@ -1,8 +1,8 @@
-import { Controller, Get, Header, Query, Req } from '@nestjs/common';
+import { Controller, Get, Header, Inject, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantConfigService } from './tenant-config.service';
-import { getCurrentBrandId, getCurrentLocalId, isPlatformRequest } from './tenant.context';
 
 type SiteBrandingSettings = {
   branding?: {
@@ -163,12 +163,26 @@ export class TenantController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantConfig: TenantConfigService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
   ) {}
+
+  private getBrandId() {
+    return this.tenantContextPort.getRequestContext().brandId;
+  }
+
+  private getLocalId() {
+    return this.tenantContextPort.getRequestContext().localId;
+  }
+
+  private isPlatformRequest() {
+    return Boolean(this.tenantContextPort.getRequestContext().isPlatform);
+  }
 
   @Get('bootstrap')
   async getBootstrap() {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
+    const brandId = this.getBrandId();
+    const localId = this.getLocalId();
     const [brand, publicConfig] = await Promise.all([
       this.prisma.brand.findUnique({
         where: { id: brandId },
@@ -195,7 +209,7 @@ export class TenantController {
         : null,
       locations: brand?.locations || [],
       currentLocalId: localId,
-      isPlatform: isPlatformRequest(),
+      isPlatform: this.isPlatformRequest(),
       config: publicConfig,
     };
   }
@@ -209,9 +223,9 @@ export class TenantController {
     @Query('tenantHost') tenantHost?: string,
     @Query('debug') debug?: string,
   ) {
-    const brandId = getCurrentBrandId();
-    const localId = getCurrentLocalId();
-    const isPlatform = isPlatformRequest();
+    const brandId = this.getBrandId();
+    const localId = this.getLocalId();
+    const isPlatform = this.isPlatformRequest();
     const origin = resolveOrigin(req, tenantHost);
 
     const [brand, publicConfig, siteSettings] = await Promise.all([
