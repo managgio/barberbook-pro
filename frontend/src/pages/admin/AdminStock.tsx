@@ -687,14 +687,14 @@ const AdminStock: React.FC = () => {
 
       {/* Product Dialog */}
       <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingProduct ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
             <DialogDescription className="sr-only">
               Completa los datos del producto, stock, categoría y visibilidad.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nombre</Label>
@@ -818,7 +818,7 @@ const AdminStock: React.FC = () => {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setIsProductDialogOpen(false)}>
               Cancelar
             </Button>

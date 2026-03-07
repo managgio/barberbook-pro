@@ -486,14 +486,14 @@ const AdminServices: React.FC = () => {
 
       {/* Services Grid */}
       {isLoading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="mt-2 grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => <CardSkeleton key={i} />)}
         </div>
       ) : services.length > 0 ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="mt-2 grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {services.map((service) => (
-            <Card key={service.id} variant="elevated" className="h-full">
-              <CardContent className="p-6 flex flex-col gap-3">
+            <Card key={service.id} variant="elevated" className="h-full mt-2 sm:mt-0">
+              <CardContent className="admin-service-card-content p-6 flex flex-col gap-3">
                 <div className="flex justify-between items-start">
                   <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Scissors className="w-6 h-6 text-primary" />

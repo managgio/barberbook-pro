@@ -109,14 +109,14 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
           </p>
         </div>
         {previewUrl && (
-          <div className="h-16 w-16 rounded-full border bg-muted/30 overflow-hidden">
+          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border bg-muted/30">
             <img
               src={previewUrl}
               alt="Previsualización"
               loading="lazy"
               decoding="async"
-              width={64}
-              height={64}
+              width={96}
+              height={96}
               className="h-full w-full object-cover"
             />
           </div>

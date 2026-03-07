@@ -21,7 +21,7 @@ const AiAssistantFloatingButton: React.FC = () => {
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-5xl h-[80vh] max-h-[85vh] p-6 flex flex-col overflow-hidden">
+        <DialogContent className="admin-ai-assistant-modal max-w-5xl h-[88vh] max-h-[92vh] p-3 sm:h-[80vh] sm:max-h-[85vh] sm:p-6 flex flex-col overflow-hidden">
           <DialogTitle className="sr-only">Asistente IA</DialogTitle>
           <DialogDescription className="sr-only">
             Asistente para gestionar citas, festivos y avisos del local desde el panel de administración.

@@ -563,13 +563,13 @@ const AdminAiAssistant: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <div className="admin-ai-assistant flex h-full min-h-0 flex-col gap-3 sm:gap-4 animate-fade-in">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
             <Sparkles className="w-5 h-5" />
           </div>
-          <div>
+          <div className="min-w-0">
             <CardTitle>Asistente IA</CardTitle>
             <p className="text-sm text-muted-foreground">Habla normal y crea gestiones en segundos.</p>
           </div>
@@ -578,7 +578,7 @@ const AdminAiAssistant: React.FC = () => {
           type="button"
           variant="outline"
           size="sm"
-          className="rounded-full"
+          className="w-full rounded-full sm:w-auto"
           onClick={() => setActiveView('guide')}
           disabled={activeView === 'guide'}
         >
@@ -588,25 +588,28 @@ const AdminAiAssistant: React.FC = () => {
       </div>
 
       {activeView === 'guide' ? (
-        <Card variant="glass" className="flex flex-1 flex-col border-primary/10 bg-gradient-to-br from-primary/5 via-card to-card">
+        <Card
+          variant="glass"
+          className="flex flex-1 min-h-0 flex-col overflow-hidden border-primary/10 bg-gradient-to-br from-primary/5 via-card to-card"
+        >
           <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
+            <div className="space-y-2">
+              <div className="flex items-start">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="mt-0.5"
+                  className="admin-ai-assistant-guide-back h-8 w-8 self-start"
                   onClick={() => setActiveView('chat')}
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <div>
-                  <CardTitle className="text-lg">Guia rapida del asistente</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Como pedir tareas de forma simple, sin tecnicismos.
-                  </p>
-                </div>
+              </div>
+              <div>
+                <CardTitle className="text-lg">Guia rapida del asistente</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Como pedir tareas de forma simple, sin tecnicismos.
+                </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 pt-3">
@@ -626,7 +629,7 @@ const AdminAiAssistant: React.FC = () => {
               </span>
             </div>
           </CardHeader>
-          <CardContent className="pt-0">
+          <CardContent className="flex-1 min-h-0 overflow-y-auto pt-0 pr-1">
             <Accordion
               type="single"
               collapsible
@@ -737,7 +740,7 @@ const AdminAiAssistant: React.FC = () => {
         </Card>
       ) : (
         <Card variant="elevated" className="flex flex-1 flex-col min-h-0 overflow-hidden">
-          <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4 py-6">
+          <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4 py-4 sm:py-6">
           {isLoadingHistory && messages.length === 0 ? (
             <div className="space-y-3">
               <Skeleton className="h-10 w-2/3" />
@@ -754,7 +757,7 @@ const AdminAiAssistant: React.FC = () => {
               <div
                 key={msg.id}
                 className={cn(
-                  'max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+                  'max-w-[90%] sm:max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
                   msg.role === 'user'
                     ? 'ml-auto bg-primary text-primary-foreground'
                     : 'bg-secondary text-foreground'
@@ -798,12 +801,12 @@ const AdminAiAssistant: React.FC = () => {
           )}
           <div ref={bottomRef} />
           </CardContent>
-          <div className="border-t border-border p-4 space-y-3">
-            <div className="flex flex-wrap gap-2">
+          <div className="border-t border-border p-3 sm:p-4 space-y-3">
+            <div className="admin-ai-assistant-quick-actions flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-full"
+                className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                 onClick={() =>
                   applyTemplate(`Crea una cita para [cliente] el [fecha] a las [hora] con [servicio] y [${staffSingularLabel}].`)
                 }
@@ -814,7 +817,7 @@ const AdminAiAssistant: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-full"
+                className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                 onClick={() =>
                   applyTemplate(`Crea un festivo para [${staffHolidayPlaceholder}] del [fecha inicio] al [fecha fin].`)
                 }
@@ -826,7 +829,7 @@ const AdminAiAssistant: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-full"
+                  className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                   onClick={() =>
                     applyTemplate('Crea una alerta para [motivo o anuncio] dirigida a los clientes.')
                   }
@@ -836,35 +839,37 @@ const AdminAiAssistant: React.FC = () => {
                 </Button>
               )}
             </div>
-            <div className="flex gap-3 items-end">
-              <Button
-                type="button"
-                variant={isRecording ? 'destructive' : 'outline'}
-                size="icon"
-                className="h-12 w-12"
-                onClick={startRecording}
-                disabled={!supportsAudio || isSending || isTranscribing}
-                aria-pressed={isRecording}
-                aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
-              >
-                {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </Button>
+            <div className="admin-ai-assistant-composer space-y-2 sm:flex sm:items-end sm:gap-3 sm:space-y-0">
               <Textarea
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Describe la cita o el festivo..."
-                className="min-h-[48px] resize-none"
+                className="min-h-[48px] w-full resize-none sm:flex-1"
                 disabled={isRecording}
               />
-              <Button
-                onClick={handleSubmit}
-                disabled={isSending || isRecording || isTranscribing || !input.trim()}
-                className="h-12 px-4"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
+              <div className="admin-ai-assistant-composer-actions flex items-center gap-2 sm:gap-3">
+                <Button
+                  type="button"
+                  variant={isRecording ? 'destructive' : 'outline'}
+                  size="icon"
+                  className="h-10 !w-auto flex-1 sm:h-12 sm:w-12 sm:flex-none"
+                  onClick={startRecording}
+                  disabled={!supportsAudio || isSending || isTranscribing}
+                  aria-pressed={isRecording}
+                  aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
+                >
+                  {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={isSending || isRecording || isTranscribing || !input.trim()}
+                  className="h-10 !w-auto flex-1 px-3 sm:h-12 sm:px-4 sm:w-auto sm:flex-none"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>

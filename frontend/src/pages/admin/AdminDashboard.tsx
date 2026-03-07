@@ -417,21 +417,23 @@ const AdminDashboard: React.FC = () => {
             Resumen de la actividad {copy.location.fromWithDefinite}.
           </p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        <div className="flex w-full items-center gap-2 sm:w-auto sm:flex-row sm:items-center">
           {hasMultipleBarbers && (
-            <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
-              <SelectTrigger className="h-9 w-full sm:w-[210px]">
-                <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
-                {barbers.map((barber) => (
-                  <SelectItem key={barber.id} value={barber.id}>
-                    {barber.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="min-w-0 flex-1 sm:flex-none">
+              <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
+                <SelectTrigger className="h-9 w-full sm:w-[210px]">
+                  <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
+                  {barbers.map((barber) => (
+                    <SelectItem key={barber.id} value={barber.id}>
+                      {barber.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
           <Dialog open={isQrDialogOpen} onOpenChange={setIsQrDialogOpen}>
             <TooltipProvider>
@@ -441,7 +443,7 @@ const AdminDashboard: React.FC = () => {
                     onClick={() => setIsQrDialogOpen(true)}
                     variant="secondary"
                     size="icon"
-                    className="h-9 w-9 rounded-full"
+                    className="h-9 w-9 shrink-0 rounded-full"
                     disabled={isSettingsLoading}
                     aria-label={qrSticker ? 'QR del negocio' : 'Crear QR'}
                   >
@@ -619,14 +621,14 @@ const AdminDashboard: React.FC = () => {
           },
         ].map((stat, index) => (
           <Card key={stat.label} variant="elevated" className="animate-scale-in" style={{ animationDelay: `${index * 0.1}s` }}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
+            <CardContent className="!px-4 !pb-4 !pt-5 sm:!p-6">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">{stat.value}</p>
+                  <p className="text-xs leading-tight text-muted-foreground sm:text-sm">{stat.label}</p>
+                  <p className="mt-1 text-2xl font-bold leading-none text-foreground sm:text-3xl">{stat.value}</p>
                 </div>
-                <div className={`w-12 h-12 rounded-xl bg-secondary flex items-center justify-center ${stat.color}`}>
-                  <stat.icon className="w-6 h-6" />
+                <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-secondary sm:h-12 sm:w-12 sm:rounded-xl ${stat.color}`}>
+                  <stat.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
               </div>
             </CardContent>

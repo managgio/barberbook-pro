@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import AdminSidebar from './AdminSidebar';
 import { cn } from '@/lib/utils';
@@ -30,14 +30,21 @@ const AdminLayoutContent: React.FC = () => {
   const assistantFloatingEnabled =
     tenant?.config?.branding?.adminAssistantFloatingEnabled !== false;
 
+  useEffect(() => {
+    document.body.classList.add('admin-route-active');
+    return () => {
+      document.body.classList.remove('admin-route-active');
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="admin-layout-shell min-h-screen bg-background">
       <Button
         variant="ghost"
         size="icon"
         className={cn(
-          'fixed top-4 z-[1000] md:hidden transition-all duration-300',
-          collapsed ? 'left-4' : 'left-64 -translate-x-1/2'
+          'fixed top-4 z-[45] md:hidden transition-all duration-300',
+          collapsed ? 'left-[.8rem]' : 'left-[16.5rem] -translate-x-1/2'
         )}
         onClick={() => setCollapsed((prev) => !prev)}
         aria-label={collapsed ? 'Abrir menú' : 'Cerrar menú'}
@@ -48,7 +55,7 @@ const AdminLayoutContent: React.FC = () => {
         variant="ghost"
         size="icon"
         className={cn(
-          'fixed top-4 z-[1000] hidden md:inline-flex transition-all duration-300',
+          'fixed top-4 z-[45] hidden md:inline-flex transition-all duration-300',
           collapsed ? 'left-20 -translate-x-1/2' : 'left-64 -translate-x-1/2'
         )}
         onClick={() => setCollapsed((prev) => !prev)}
@@ -66,8 +73,8 @@ const AdminLayoutContent: React.FC = () => {
       <AdminSidebar collapsed={collapsed} onToggle={() => setCollapsed((prev) => !prev)} />
       {spotlightFloatingEnabled && <AdminSpotlight />}
       <main
-        className={cn(
-          'p-4 sm:p-6 md:p-8 transition-all duration-300 ml-0',
+          className={cn(
+          'admin-layout-main p-3 !pt-6 sm:p-6 sm:pt-6 md:p-8 transition-all duration-300 ml-0',
           collapsed ? 'md:ml-20' : 'md:ml-64'
         )}
       >

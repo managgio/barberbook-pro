@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -20,7 +22,7 @@ import {
 } from '@/data/api/barbers';
 import { updateSiteSettings } from '@/data/api/settings';
 import { Barber, DayKey, Service, ServiceCategory, ShopSchedule } from '@/data/types';
-import { Plus, Pencil, Trash2, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste, WandSparkles } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, UserCircle, CalendarClock, Copy, ClipboardPaste, WandSparkles, MoreHorizontal } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { dispatchBarbersUpdated, dispatchSchedulesUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
 import { CardSkeleton } from '@/components/common/Skeleton';
@@ -725,7 +727,7 @@ const AdminBarbers: React.FC = () => {
         <div className="grid md:grid-cols-2 gap-4">
           {barbers.map((barber) => (
             <Card key={barber.id} variant="elevated">
-              <CardContent className="p-6">
+              <CardContent className="admin-barber-card-content p-6">
                 <div className="flex gap-4">
                   <img 
                     src={barber.photo || defaultAvatar} 
@@ -764,21 +766,75 @@ const AdminBarbers: React.FC = () => {
                         </div>
                         <p className="text-sm text-primary">{barber.specialty}</p>
                       </div>
-                      <div className="flex gap-1">
-                        {assignmentFeatureVisible && (
-                          <Button variant="ghost" size="icon" onClick={() => openAssignmentDialog(barber)}>
-                            <WandSparkles className="w-4 h-4" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" onClick={() => openScheduleDialog(barber)}>
-                          <CalendarClock className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(barber)}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(barber.id)}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                      <div className="hidden sm:flex gap-1">
+                        <TooltipProvider delayDuration={150}>
+                          {assignmentFeatureVisible && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => openAssignmentDialog(barber)}>
+                                  <WandSparkles className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Asignar servicios</TooltipContent>
+                            </Tooltip>
+                          )}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={() => openScheduleDialog(barber)}>
+                                <CalendarClock className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Editar horario</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={() => openEditDialog(barber)}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Editar perfil</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(barber.id)}>
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Eliminar</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <div className="sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            {assignmentFeatureVisible && (
+                              <DropdownMenuItem onClick={() => openAssignmentDialog(barber)}>
+                                <WandSparkles className="mr-2 w-4 h-4" />
+                                Asignar servicios
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => openScheduleDialog(barber)}>
+                              <CalendarClock className="mr-2 w-4 h-4" />
+                              Editar horario
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(barber)}>
+                              <Pencil className="mr-2 w-4 h-4" />
+                              Editar perfil
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => openDeleteDialog(barber.id)}
+                            >
+                              <Trash2 className="mr-2 w-4 h-4" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                     <div className="flex items-center gap-4 mt-2">
