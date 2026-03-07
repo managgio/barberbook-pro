@@ -188,9 +188,11 @@ export class ChatWithAiAssistantUseCase {
               || toolName === 'add_shop_holiday'
               || toolName === 'create_alert'
             ) {
-              const rawText = typeof args.rawText === 'string' ? args.rawText.trim() : '';
-              if (!rawText) {
-                args.rawText = input.message;
+              // Always use the real user utterance to avoid LLM argument drift
+              // (e.g. hallucinated explicit times conflicting with "por la tarde").
+              const userRawText = input.message.trim();
+              if (userRawText) {
+                args.rawText = userRawText;
               }
             }
 

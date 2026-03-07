@@ -239,3 +239,46 @@ test('resolveUser keeps a single clear match as registered client', async () => 
   assert.equal(result.userId, 'user-2');
   assert.equal(result.clientName, 'Carlos López Monreal');
 });
+
+test('createAppointment honors "por la tarde" window even if tool args include a non-explicit morning time', async () => {
+  const registry = buildRegistry({
+    readPort: {
+      findActiveBarbers: async () => [{ id: 'barber-1', name: 'David Fernández' }],
+      findServiceById: async () => ({ id: 'service-1', name: 'Corte clásico', duration: 30 }),
+      findClientsByNameTerms: async () => [],
+    },
+    bookingPort: {
+      getWeeklyLoad: async () => ({ counts: { 'barber-1': 0 } }),
+      getAvailableSlotsBatch: async () => ({ 'barber-1': ['09:00', '14:00', '16:00'] }),
+      createAppointment: async (params: { startDateTime: string }) => ({
+        id: 'apt-2',
+        startDateTime: params.startDateTime,
+      }),
+    },
+  });
+
+  const result = await (registry as any).createAppointment(
+    {
+      userName: 'María López',
+      serviceId: 'service-1',
+      date: '2026-03-09',
+      time: '09:00',
+      rawText: 'Crea una cita para María López para el lunes que viene por la tarde para un corte clásico',
+    },
+    {
+      adminUserId: 'admin-1',
+      now: new Date('2026-03-07T09:00:00.000Z'),
+      timeZone: AI_TIME_ZONE,
+    },
+  );
+
+  assert.equal(result.status, 'created');
+  if (result.status !== 'created') return;
+  const localTime = new Intl.DateTimeFormat('es-ES', {
+    timeZone: AI_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(result.startDateTime as string));
+  assert.equal(localTime, '14:00');
+});

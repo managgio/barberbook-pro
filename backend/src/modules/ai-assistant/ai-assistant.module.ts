@@ -2,17 +2,14 @@ import { Module } from '@nestjs/common';
 import {
   CHAT_WITH_AI_ASSISTANT_USE_CASE,
   CHAT_WITH_AI_ASSISTANT_USE_CASE_DEPS,
-  createChatWithAiAssistantUseCase,
 } from '../../contexts/ai-orchestration/application/use-cases/chat-with-ai-assistant.use-case';
 import {
   GET_AI_ASSISTANT_SESSION_USE_CASE,
   GET_AI_ASSISTANT_SESSION_USE_CASE_DEPS,
-  createGetAiAssistantSessionUseCase,
 } from '../../contexts/ai-orchestration/application/use-cases/get-ai-assistant-session.use-case';
 import {
   TRANSCRIBE_AI_AUDIO_USE_CASE,
   TRANSCRIBE_AI_AUDIO_USE_CASE_DEPS,
-  createTranscribeAiAudioUseCase,
 } from '../../contexts/ai-orchestration/application/use-cases/transcribe-ai-audio.use-case';
 import { OpenAiLlmAdapter } from '../../contexts/ai-orchestration/infrastructure/adapters/openai-ai-llm.adapter';
 import { PrismaAiAssistantMemoryAdapter } from '../../contexts/ai-orchestration/infrastructure/prisma/prisma-ai-assistant-memory.adapter';
@@ -48,6 +45,11 @@ import { ModuleAiAssistantToolsAdapter } from './adapters/module-ai-assistant-to
 import { ModuleAiUsageMetricsAdapter } from './adapters/module-ai-usage-metrics.adapter';
 import { ModuleAiBookingToolAdapter } from './adapters/module-ai-booking-tool.adapter';
 import { ModuleAiHolidayToolAdapter } from './adapters/module-ai-holiday-tool.adapter';
+import {
+  createChatWithAiAssistantUseCaseFromDeps,
+  createGetAiAssistantSessionUseCaseFromDeps,
+  createTranscribeAiAudioUseCaseFromDeps,
+} from './ai-assistant.use-case-factories';
 import { AuthModule } from '../../auth/auth.module';
 
 @Module({
@@ -78,17 +80,17 @@ import { AuthModule } from '../../auth/auth.module';
     { provide: AI_LLM_PORT, useClass: OpenAiLlmAdapter },
     {
       provide: CHAT_WITH_AI_ASSISTANT_USE_CASE,
-      useFactory: createChatWithAiAssistantUseCase,
+      useFactory: createChatWithAiAssistantUseCaseFromDeps,
       inject: Object.values(CHAT_WITH_AI_ASSISTANT_USE_CASE_DEPS),
     },
     {
       provide: GET_AI_ASSISTANT_SESSION_USE_CASE,
-      useFactory: createGetAiAssistantSessionUseCase,
+      useFactory: createGetAiAssistantSessionUseCaseFromDeps,
       inject: Object.values(GET_AI_ASSISTANT_SESSION_USE_CASE_DEPS),
     },
     {
       provide: TRANSCRIBE_AI_AUDIO_USE_CASE,
-      useFactory: createTranscribeAiAudioUseCase,
+      useFactory: createTranscribeAiAudioUseCaseFromDeps,
       inject: Object.values(TRANSCRIBE_AI_AUDIO_USE_CASE_DEPS),
     },
     AiAssistantService,
