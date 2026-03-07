@@ -43,6 +43,7 @@
     "test:contract": "node --test -r ts-node/register -r tsconfig-paths/register \"test/contract/**/*.test.ts\"",
     "test:parity": "node --test -r ts-node/register -r tsconfig-paths/register \"test/parity/**/*.test.ts\"",
     "test:coverage": "node --test --experimental-test-coverage -r ts-node/register -r tsconfig-paths/register \"test/**/*.test.ts\"",
+    "test:typecheck": "tsc -p test/tsconfig.json --noEmit",
     "test:coverage:gate": "node scripts/tests/coverage-gate.mjs",
     "test:changed": "node scripts/tests/run-affected-tests.mjs",
     "test:changed:list": "node scripts/tests/run-affected-tests.mjs --list",

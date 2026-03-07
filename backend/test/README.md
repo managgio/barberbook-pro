@@ -23,6 +23,7 @@ Organizacion oficial de tests del backend:
 - `npm run test:unit`: ejecuta solo unit tests.
 - `npm run test:contract`: ejecuta solo contract tests.
 - `npm run test:parity`: ejecuta solo parity tests.
+- `npm run test:typecheck`: valida imports y tipos de `test/**/*.test.ts` con `tsconfig` específico de tests.
 - `npm run test:coverage:gate`: ejecuta coverage y valida umbrales (`test/coverage-thresholds.json`).
 - `npm run test:changed`: ejecuta tests afectados por los archivos modificados.
 - `npm run test:changed:list`: muestra la selección afectada sin ejecutar.
