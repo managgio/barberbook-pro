@@ -110,6 +110,9 @@ const main = async () => {
     extraEnv: {
       ALLOW_DESTRUCTIVE_SEED: 'true',
       DESTRUCTIVE_SEED_CONFIRMATION: 'I_UNDERSTAND_DATA_LOSS',
+      APP_ENV: 'ci',
+      OBSERVABILITY_RUNTIME_ENV: 'ci',
+      NODE_ENV: 'test',
     },
   });
 
