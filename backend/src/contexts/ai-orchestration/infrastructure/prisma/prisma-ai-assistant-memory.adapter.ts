@@ -53,21 +53,40 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
 
   async getOrCreateSession(adminUserId: string, sessionId?: string | null): Promise<{ id: string }> {
     await this.ensureDailyCleanup();
+    const dayStart = this.getCurrentDayStart();
+    const localId = this.getLocalId();
     if (sessionId) {
-      const localId = this.getLocalId();
       const existing = await this.prisma.aiChatSession.findFirst({
-        where: { id: sessionId, adminUserId, localId },
+        where: {
+          id: sessionId,
+          adminUserId,
+          localId,
+          OR: [
+            { lastMessageAt: { gte: dayStart } },
+            { lastMessageAt: null, createdAt: { gte: dayStart } },
+          ],
+        },
         select: { id: true, lastMessageAt: true },
       });
       if (existing) {
-        const dayKey = getDateStringInTimeZone(new Date(), AI_MEMORY_DEFAULT_TIME_ZONE);
-        const { start } = getDayBoundsInTimeZone(dayKey, AI_MEMORY_DEFAULT_TIME_ZONE);
-        if (existing.lastMessageAt && existing.lastMessageAt >= start) {
-          return { id: existing.id };
-        }
+        return { id: existing.id };
       }
     }
-    const localId = this.getLocalId();
+    const latestSession = await this.prisma.aiChatSession.findFirst({
+      where: {
+        adminUserId,
+        localId,
+        OR: [
+          { lastMessageAt: { gte: dayStart } },
+          { lastMessageAt: null, createdAt: { gte: dayStart } },
+        ],
+      },
+      orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true },
+    });
+    if (latestSession) {
+      return { id: latestSession.id };
+    }
     const created = await this.prisma.aiChatSession.create({
       data: {
         localId,
@@ -151,18 +170,20 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
   } | null> {
     try {
       await this.ensureDailyCleanup();
+      const dayStart = this.getCurrentDayStart();
       const session = await this.prisma.aiChatSession.findFirst({
-        where: { id: sessionId, adminUserId, localId: this.getLocalId() },
+        where: {
+          id: sessionId,
+          adminUserId,
+          localId: this.getLocalId(),
+          OR: [
+            { lastMessageAt: { gte: dayStart } },
+            { lastMessageAt: null, createdAt: { gte: dayStart } },
+          ],
+        },
         select: { id: true, summary: true, lastMessageAt: true },
       });
       if (!session) return null;
-      if (session.lastMessageAt) {
-        const dayKey = getDateStringInTimeZone(new Date(), AI_MEMORY_DEFAULT_TIME_ZONE);
-        const { start } = getDayBoundsInTimeZone(dayKey, AI_MEMORY_DEFAULT_TIME_ZONE);
-        if (session.lastMessageAt < start) {
-          return null;
-        }
-      }
       const messages = await this.prisma.aiChatMessage.findMany({
         where: { sessionId, role: { in: ['user', 'assistant'] }, localId: this.getLocalId() },
         orderBy: { createdAt: 'asc' },
@@ -179,6 +200,54 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
       if (this.isRecoverableSessionReadError(error)) {
         this.logger.warn(
           `AI session read fallback to null (sessionId=${sessionId}, localId=${this.getLocalId()}): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async getLatestSessionMessages(
+    adminUserId: string,
+    limit = 50,
+  ): Promise<{
+    session: { id: string; summary: string };
+    messages: Array<{ id: string; role: string; content: string; createdAt: Date }>;
+  } | null> {
+    try {
+      await this.ensureDailyCleanup();
+      const dayStart = this.getCurrentDayStart();
+      const session = await this.prisma.aiChatSession.findFirst({
+        where: {
+          adminUserId,
+          localId: this.getLocalId(),
+          OR: [
+            { lastMessageAt: { gte: dayStart } },
+            { lastMessageAt: null, createdAt: { gte: dayStart } },
+          ],
+        },
+        orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+        select: { id: true, summary: true },
+      });
+      if (!session) return null;
+      const messages = await this.prisma.aiChatMessage.findMany({
+        where: { sessionId: session.id, role: { in: ['user', 'assistant'] }, localId: this.getLocalId() },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          role: true,
+          content: true,
+          createdAt: true,
+        },
+      });
+      return { session: { id: session.id, summary: session.summary || '' }, messages };
+    } catch (error) {
+      if (this.isRecoverableSessionReadError(error)) {
+        this.logger.warn(
+          `AI latest session read fallback to null (adminUserId=${adminUserId}, localId=${this.getLocalId()}): ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -250,5 +319,10 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
       return message.includes('aichatsession') || message.includes('aichatmessage');
     }
     return false;
+  }
+
+  private getCurrentDayStart(timeZone = AI_MEMORY_DEFAULT_TIME_ZONE) {
+    const dayKey = getDateStringInTimeZone(new Date(), timeZone);
+    return getDayBoundsInTimeZone(dayKey, timeZone).start;
   }
 }

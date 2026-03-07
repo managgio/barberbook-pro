@@ -25,6 +25,9 @@ export const getAiAssistantSession = async (payload: {
 }): Promise<AiChatSessionResponse> =>
   apiRequest(`/admin/ai-assistant/session/${payload.sessionId}`);
 
+export const getAiAssistantLatestSession = async (): Promise<AiChatSessionResponse | undefined> =>
+  apiRequest('/admin/ai-assistant/session', { skip404: true });
+
 export const postAiAssistantTranscribe = async (payload: {
   file: File;
 }): Promise<{ text: string }> => {

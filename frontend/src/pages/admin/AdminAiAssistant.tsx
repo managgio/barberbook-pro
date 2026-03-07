@@ -18,7 +18,12 @@ import { Skeleton } from '@/components/common/Skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
-import { getAiAssistantSession, postAiAssistantChat, postAiAssistantTranscribe } from '@/data/api/ai';
+import {
+  getAiAssistantLatestSession,
+  getAiAssistantSession,
+  postAiAssistantChat,
+  postAiAssistantTranscribe,
+} from '@/data/api/ai';
 import { AiChatResponse } from '@/data/types';
 import { isApiRequestError } from '@/lib/networkErrors';
 import { cn } from '@/lib/utils';
@@ -104,7 +109,8 @@ const AdminAiAssistant: React.FC = () => {
   const staffHolidayPlaceholder = copy.staff.isCollective
     ? `miembro del equipo o ${copy.location.singularLower}`
     : `${copy.staff.singularLower} o ${copy.location.singularLower}`;
-  const storageKey = `${STORAGE_KEY_PREFIX}:${currentLocationId || 'default'}`;
+  const scopedLocationKey = `${STORAGE_KEY_PREFIX}:${currentLocationId || 'default'}`;
+  const storageKey = `${scopedLocationKey}:${user?.id || 'anonymous'}`;
 
   const getSupportedMimeType = () => {
     if (typeof MediaRecorder === 'undefined') return '';
@@ -185,16 +191,18 @@ const AdminAiAssistant: React.FC = () => {
   const persistSession = useCallback((newSessionId: string) => {
     setSessionId(newSessionId);
     localStorage.setItem(storageKey, newSessionId);
+    localStorage.removeItem(scopedLocationKey);
     localStorage.removeItem(LEGACY_STORAGE_KEY);
-  }, [storageKey]);
+  }, [scopedLocationKey, storageKey]);
 
   const clearPersistedSession = useCallback(() => {
     setSessionId(null);
     setMessages([]);
     loadedSessionRef.current = null;
     localStorage.removeItem(storageKey);
+    localStorage.removeItem(scopedLocationKey);
     localStorage.removeItem(LEGACY_STORAGE_KEY);
-  }, [storageKey]);
+  }, [scopedLocationKey, storageKey]);
 
   useEffect(() => {
     loadedSessionRef.current = null;
@@ -206,6 +214,12 @@ const AdminAiAssistant: React.FC = () => {
       return;
     }
 
+    const legacyScopedSessionId = localStorage.getItem(scopedLocationKey);
+    if (legacyScopedSessionId) {
+      persistSession(legacyScopedSessionId);
+      return;
+    }
+
     const legacySessionId = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (legacySessionId) {
       persistSession(legacySessionId);
@@ -213,11 +227,49 @@ const AdminAiAssistant: React.FC = () => {
     }
 
     setSessionId(null);
-  }, [persistSession, storageKey]);
+  }, [persistSession, scopedLocationKey, storageKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isSending, isRecording, isTranscribing]);
+
+  useEffect(() => {
+    let active = true;
+    const loadLatestSession = async () => {
+      if (!user || !currentLocationId || sessionId) return;
+      setIsLoadingHistory(true);
+      try {
+        const latestSession = await getAiAssistantLatestSession();
+        if (!active || !latestSession) return;
+        loadedSessionRef.current = latestSession.sessionId;
+        persistSession(latestSession.sessionId);
+        setMessages(latestSession.messages.map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          createdAt: message.createdAt,
+        })));
+      } catch (error) {
+        if (!active) return;
+        if (isApiRequestError(error) && error.status === 404) {
+          return;
+        }
+        toast({
+          title: 'Historial no disponible',
+          description: 'No se pudo cargar la sesión más reciente del asistente.',
+          variant: 'destructive',
+        });
+      } finally {
+        if (active) {
+          setIsLoadingHistory(false);
+        }
+      }
+    };
+    void loadLatestSession();
+    return () => {
+      active = false;
+    };
+  }, [currentLocationId, persistSession, sessionId, toast, user]);
 
   useEffect(() => {
     const loadSession = async () => {

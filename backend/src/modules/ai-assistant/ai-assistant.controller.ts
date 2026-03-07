@@ -20,6 +20,12 @@ export class AiAssistantController {
     return this.aiAssistantService.chat(adminUserId, body.message, body.sessionId);
   }
 
+  @Get('session')
+  async getLatestSession(@Req() req: AiRequest) {
+    const adminUserId = req.adminUserId || '';
+    return this.aiAssistantService.getLatestSession(adminUserId);
+  }
+
   @Get('session/:id')
   async getSession(@Param('id') sessionId: string, @Req() req: AiRequest) {
     const adminUserId = req.adminUserId || '';

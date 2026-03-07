@@ -32,4 +32,8 @@ export interface AiAssistantMemoryPort {
     adminUserId: string,
     limit: number,
   ): Promise<{ session: AiAssistantSessionRecord; messages: AiAssistantStoredMessage[] } | null>;
+  getLatestSessionMessages(
+    adminUserId: string,
+    limit: number,
+  ): Promise<{ session: AiAssistantSessionRecord; messages: AiAssistantStoredMessage[] } | null>;
 }

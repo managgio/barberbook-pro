@@ -362,7 +362,8 @@ Documentos de referencia creados durante la migracion (detalle operativo y evide
    - Guard de ejecucion para festivos de rango unico: cuando el mensaje describe un unico rango, se evita ejecutar multiples tools de festivo en la misma respuesta del modelo (previene altas duplicadas por segmentacion errónea).
    - Resolucion de cliente en citas IA aislada por tenant (marca actual): email/telefono/nombre solo matchean clientes de la marca activa, evitando desambiguacion o asignacion cross-tenant.
    - Cuota diaria del asistente acotada por administrador (no compartida por todo el local).
-   - Frontend persiste `sessionId` del asistente por `localId` (`ai-assistant-session-id:<localId>`) para evitar mezclar historiales entre locales.
+   - Frontend persiste `sessionId` del asistente por `localId + adminUserId` (`ai-assistant-session-id:<localId>:<adminUserId>`) para evitar mezclar historiales entre locales/usuarios.
+   - Al abrir el asistente sin `sessionId` local (otro navegador/dispositivo), frontend recupera la sesión activa más reciente del usuario (`GET /api/admin/ai-assistant/session`) y muestra su historial.
    - Si `GET /api/admin/ai-assistant/session/:id` devuelve `404`, el frontend limpia la sesión persistida y continúa con chat nuevo (fallback silencioso).
  
 8) **Caja registradora**

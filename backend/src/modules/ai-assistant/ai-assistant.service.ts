@@ -76,6 +76,18 @@ export class AiAssistantService {
     }
   }
 
+  async getLatestSession(adminUserId: string) {
+    const localId = this.tenantContextPort.getRequestContext().localId;
+    try {
+      return await this.getAiAssistantSessionUseCase.execute({
+        adminUserId,
+        localId,
+      });
+    } catch (error) {
+      this.rethrowAsHttp(error);
+    }
+  }
+
   async transcribeAudio(adminUserId: string, file?: Express.Multer.File) {
     const localId = this.tenantContextPort.getRequestContext().localId;
     try {

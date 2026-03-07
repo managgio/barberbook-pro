@@ -7,7 +7,7 @@ import {
 
 export interface GetAiAssistantSessionInput {
   adminUserId: string;
-  sessionId: string;
+  sessionId?: string | null;
   localId: string;
 }
 
@@ -30,7 +30,9 @@ export class GetAiAssistantSessionUseCase {
 
   async execute(input: GetAiAssistantSessionInput): Promise<GetAiAssistantSessionResult> {
     await this.ensureAdminUser(input.adminUserId, input.localId);
-    const sessionData = await this.memoryPort.getSessionMessages(input.sessionId, input.adminUserId, 80);
+    const sessionData = input.sessionId
+      ? await this.memoryPort.getSessionMessages(input.sessionId, input.adminUserId, 80)
+      : await this.memoryPort.getLatestSessionMessages(input.adminUserId, 80);
     if (!sessionData) {
       throw new AiAssistantNotFoundError('Sesión no encontrada.');
     }
