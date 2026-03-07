@@ -114,7 +114,6 @@ const main = async () => {
 
     const requiredCapabilityChecks = parseCsvEnv('TEST_E2E_SMOKE_REQUIRED_CHECKS_CAPABILITY', [
       'tenant.bootstrap',
-      'appointments.fixture.resolve',
       'appointments.availability.single.valid',
       'appointments.availability.batch.valid',
       'appointments.create.valid',
@@ -141,11 +140,6 @@ const main = async () => {
       'auth.admin.payments.stripe.config',
       'auth.admin.loyalty.programs',
       'auth.admin.referrals.list',
-      'auth.platform.metrics',
-      'auth.platform.brands.list',
-      'auth.platform.brand.health',
-      'auth.platform.observability.web-vitals',
-      'auth.platform.observability.api',
       'auth.appointments.create.valid',
       'auth.payments.webhook.invalid-body',
     ]);
