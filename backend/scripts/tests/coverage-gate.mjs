@@ -24,6 +24,7 @@ const runCoverage = () =>
     const args = [
       '--test',
       '--experimental-test-coverage',
+      '--test-coverage-include=src/**/*.ts',
       '-r',
       'ts-node/register',
       '-r',
