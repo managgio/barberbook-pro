@@ -107,8 +107,13 @@ export class UsersController {
     const identity = await this.authService.requireIdentity(req);
     const actor = await this.authService.resolveUserFromRequest(req);
     const isManager = actor ? await this.canManageOtherUsers(req) : false;
+    const requestedEmail = email.toLowerCase();
     const identityEmail = typeof identity.email === 'string' ? identity.email.toLowerCase() : '';
-    if (!isManager && identityEmail !== email.toLowerCase()) {
+    const actorEmail = typeof actor?.email === 'string' ? actor.email.toLowerCase() : '';
+    const ownsRequestedEmail =
+      (identityEmail.length > 0 && identityEmail === requestedEmail) ||
+      (actorEmail.length > 0 && actorEmail === requestedEmail);
+    if (!isManager && !ownsRequestedEmail) {
       throw new ForbiddenException('No tienes permisos para consultar ese correo.');
     }
     return this.usersService.findByEmail(email);
