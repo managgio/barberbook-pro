@@ -26,7 +26,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole, requirePl
   }
 
   if (requirePlatformAdmin && !user?.isPlatformAdmin) {
-    return <Navigate to={user?.role === 'admin' ? '/admin' : '/app'} replace />;
+    return <Navigate to="/auth?reason=platform-access" replace />;
   }
 
   if (requiredRole) {

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   DEFAULT_BRAND_ID,
@@ -48,9 +49,19 @@ const resolveSubdomain = (hostname: string) => {
 
 @Injectable()
 export class TenantService {
+  private readonly logger = new Logger(TenantService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async resolveTenant(params: {
+    host?: string | string[];
+    subdomainOverride?: string | null;
+    localIdOverride?: string | null;
+  }): Promise<TenantResolution> {
+    return this.withReconnectRetry(() => this.resolveTenantInternal(params));
+  }
+
+  private async resolveTenantInternal(params: {
     host?: string | string[];
     subdomainOverride?: string | null;
     localIdOverride?: string | null;
@@ -135,5 +146,39 @@ export class TenantService {
       subdomain,
       isPlatform,
     };
+  }
+
+  private async withReconnectRetry<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!this.isRecoverableConnectionError(error)) {
+        throw error;
+      }
+
+      this.logger.warn(
+        'Prisma connection dropped during tenant resolution. Retrying once after reconnect.',
+      );
+      await this.prisma.$disconnect().catch(() => undefined);
+      await this.prisma.$connect();
+      try {
+        return await operation();
+      } catch (retryError) {
+        if (this.isRecoverableConnectionError(retryError)) {
+          throw new TenantResolutionError('TENANT_DB_UNAVAILABLE', 503);
+        }
+        throw retryError;
+      }
+    }
+  }
+
+  private isRecoverableConnectionError(error: unknown): boolean {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === 'P1017') return true;
+    if (error instanceof Prisma.PrismaClientInitializationError) return true;
+    const message = error instanceof Error ? error.message : String(error || '');
+    return /server has closed the connection|can't reach database server|connection.*closed/i.test(
+      message.toLowerCase(),
+    );
   }
 }

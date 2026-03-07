@@ -16,6 +16,7 @@ type WebVitalPayload = {
 
 export const reportWebVital = (payload: WebVitalPayload) => {
   const localId = getStoredLocalId();
+  if (!localId) return;
   const tenantSubdomain = getTenantSubdomainOverride();
   const url = buildApiUrl(`${API_BASE}/observability/web-vitals`);
 

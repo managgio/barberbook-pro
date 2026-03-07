@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(scriptDir, '..');
+const runtimePortFile = path.join(backendRoot, '.dev-port');
 const tscBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const nodeBin = process.execPath;
 
@@ -77,6 +78,7 @@ const runSync = (command, args) =>
 
 const main = async () => {
   env.PORT = String(await resolveRuntimePort());
+  fs.writeFileSync(runtimePortFile, `${env.PORT}\n`, 'utf8');
 
   const initialBuild = runSync(tscBin, ['tsc', '-p', 'tsconfig.build.json']);
   if (initialBuild.status !== 0) {
@@ -129,6 +131,9 @@ const main = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
     fs.unwatchFile(distEntry);
+    if (fs.existsSync(runtimePortFile)) {
+      fs.rmSync(runtimePortFile, { force: true });
+    }
     tscWatch.kill('SIGTERM');
     appProcess?.kill('SIGTERM');
     if (signal) {
@@ -143,6 +148,9 @@ const main = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
     fs.unwatchFile(distEntry);
+    if (fs.existsSync(runtimePortFile)) {
+      fs.rmSync(runtimePortFile, { force: true });
+    }
     appProcess?.kill('SIGTERM');
     process.exit(code ?? 0);
   };
@@ -151,6 +159,9 @@ const main = async () => {
 };
 
 main().catch((error) => {
+  if (fs.existsSync(runtimePortFile)) {
+    fs.rmSync(runtimePortFile, { force: true });
+  }
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

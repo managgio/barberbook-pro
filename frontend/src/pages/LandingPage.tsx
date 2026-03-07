@@ -826,7 +826,7 @@ const LandingPage: React.FC = () => {
               <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Contacto</h4>
               <ul className="space-y-1 sm:space-y-2 text-[11px] sm:text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
-                  <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <MapPin className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
                   <a
                     href={settings.location.mapUrl}
                     target="_blank"
@@ -838,7 +838,7 @@ const LandingPage: React.FC = () => {
                 </li>
                 {hasContactPhone && (
                   <li className="flex items-center gap-2">
-                    <Phone className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <Phone className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
                     <a href={whatsappLink ?? undefined} className="hover:text-primary transition-colors">
                       {phoneDisplay}
                     </a>
@@ -846,7 +846,7 @@ const LandingPage: React.FC = () => {
                 )}
                 {hasContactEmail && (
                   <li className="flex items-center gap-2">
-                    <Mail className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <Mail className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
                     <a href={`mailto:${contactEmail}`} className="hover:text-primary transition-colors">
                       {contactEmail}
                     </a>

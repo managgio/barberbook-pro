@@ -1,7 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import fs from "node:fs";
 import { componentTagger } from "lovable-tagger";
+
+const resolveBackendProxyTarget = () => {
+  if (process.env.VITE_API_BASE_URL) {
+    return process.env.VITE_API_BASE_URL;
+  }
+  const runtimePortFile = path.resolve(__dirname, "../backend/.dev-port");
+  if (fs.existsSync(runtimePortFile)) {
+    const runtimePort = fs.readFileSync(runtimePortFile, "utf8").trim();
+    if (/^\d+$/.test(runtimePort)) {
+      return `http://localhost:${runtimePort}`;
+    }
+  }
+  return "http://localhost:3000";
+};
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -10,7 +25,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     proxy: {
       "/api": {
-        target: process.env.VITE_API_BASE_URL || "http://127.0.0.1:3000",
+        target: resolveBackendProxyTarget(),
         changeOrigin: true,
         xfwd: true,
       },

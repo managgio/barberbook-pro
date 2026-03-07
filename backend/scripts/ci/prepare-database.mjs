@@ -40,11 +40,11 @@ const waitForTcp = ({ host, port, timeoutMs }) =>
     attempt();
   });
 
-const run = (command, args) =>
+const run = (command, args, extraEnv) =>
   new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: 'inherit',
-      env: process.env,
+      env: { ...process.env, ...(extraEnv || {}) },
     });
     child.on('error', reject);
     child.on('exit', (code) => {
@@ -56,12 +56,12 @@ const run = (command, args) =>
     });
   });
 
-const runWithRetry = async ({ label, retries, delayMs, command, args, onRetry }) => {
+const runWithRetry = async ({ label, retries, delayMs, command, args, onRetry, extraEnv }) => {
   let lastError = null;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
       console.log(`[ci:prepare:db] ${label} attempt ${attempt}/${retries}`);
-      await run(command, args);
+      await run(command, args, extraEnv);
       return;
     } catch (error) {
       lastError = error;
@@ -75,6 +75,12 @@ const runWithRetry = async ({ label, retries, delayMs, command, args, onRetry })
 };
 
 const main = async () => {
+  if (process.env.CI !== 'true' && process.env.ALLOW_LOCAL_CI_PREPARE_DB !== 'true') {
+    throw new Error(
+      'ci:prepare:db is blocked outside CI. Use ALLOW_LOCAL_CI_PREPARE_DB=true only for isolated local test databases.',
+    );
+  }
+
   const db = parseDatabaseAddress();
   console.log(`[ci:prepare:db] waiting for mysql at ${db.host}:${db.port}`);
   await waitForTcp({ ...db, timeoutMs: 90_000 });
@@ -101,6 +107,10 @@ const main = async () => {
     delayMs: 3_000,
     command: 'npm',
     args: ['run', 'prisma:seed'],
+    extraEnv: {
+      ALLOW_DESTRUCTIVE_SEED: 'true',
+      DESTRUCTIVE_SEED_CONFIRMATION: 'I_UNDERSTAND_DATA_LOSS',
+    },
   });
 
   console.log('[ci:prepare:db] database prepared successfully');

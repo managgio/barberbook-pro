@@ -79,12 +79,19 @@ const AuthPage: React.FC = () => {
   React.useEffect(() => {
     if (isAuthenticated && user) {
       const preferredTarget = fromPath ?? redirectTarget;
-      if (user.isPlatformAdmin && isPlatform) {
-        if (preferredTarget?.startsWith('/platform')) {
-          navigate(preferredTarget, { replace: true });
+      if (isPlatform) {
+        if (user.isPlatformAdmin) {
+          if (preferredTarget?.startsWith('/platform')) {
+            navigate(preferredTarget, { replace: true });
+            return;
+          }
+          navigate('/platform', { replace: true });
           return;
         }
-        navigate('/platform', { replace: true });
+        const params = new URLSearchParams(location.search);
+        if (params.get('reason') !== 'platform-access') {
+          navigate('/auth?reason=platform-access', { replace: true });
+        }
         return;
       }
       if (preferredTarget && !isPlatform) {
@@ -94,7 +101,7 @@ const AuthPage: React.FC = () => {
       const hasAdminAccess = Boolean(user.isSuperAdmin || user.isLocalAdmin || user.role === 'admin' || user.isPlatformAdmin);
       navigate(hasAdminAccess ? '/admin' : '/app/book', { replace: true });
     }
-  }, [isAuthenticated, user, navigate, isPlatform, redirectTarget, fromPath]);
+  }, [isAuthenticated, user, navigate, isPlatform, redirectTarget, fromPath, location.search]);
 
   React.useEffect(() => {
     if (isPlatform && activeTab !== 'login') {

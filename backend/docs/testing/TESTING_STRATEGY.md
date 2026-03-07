@@ -45,6 +45,11 @@ Asegurar calidad funcional, estabilidad de migración DDD+Hexagonal y velocidad 
   - Ejecuta solo con `TEST_E2E_SMOKE_ENABLED=true`.
   - Reutiliza `runtime-capability-smoke` y `runtime-authenticated-smoke`.
   - En CI (`backend-hardening.yml`) corre con MySQL dedicado por servicio (`mysql:8`) + `npm run ci:prepare:db` (wait/retry + `prisma:deploy` + `prisma:seed`).
+  - Safety de seed destructivo:
+    - `prisma/seed.ts` está bloqueado por defecto.
+    - Solo permite truncado total con `ALLOW_DESTRUCTIVE_SEED=true` + `DESTRUCTIVE_SEED_CONFIRMATION=I_UNDERSTAND_DATA_LOSS`.
+    - Además bloquea ejecución en entornos protegidos (`prod/staging/preprod/preview/qa`) y en hosts DB no locales.
+    - `ci:prepare:db` está bloqueado fuera de CI salvo override explícito `ALLOW_LOCAL_CI_PREPARE_DB=true`.
   - CI ejecuta en modo estricto (`TEST_E2E_SMOKE_STRICT=true`) para exigir checks críticos de `auth` y `platform`.
   - `checkout` se puede exigir también con `TEST_E2E_SMOKE_REQUIRE_CHECKOUT=true` (requiere Stripe disponible en CI).
 

@@ -17,6 +17,9 @@ export class ObservabilityController {
     @Headers('user-agent') userAgent?: string,
   ) {
     const tenantContext = this.tenantContextPort.getRequestContext();
+    if (!tenantContext?.localId || !tenantContext?.brandId) {
+      return { success: true };
+    }
     this.observability.recordWebVital(payload, {
       localId: tenantContext.localId,
       brandId: tenantContext.brandId,

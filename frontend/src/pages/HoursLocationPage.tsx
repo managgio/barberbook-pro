@@ -187,7 +187,7 @@ const HoursLocationPage: React.FC = () => {
                 </CardHeader>
                 <CardContent className="space-y-3 sm:space-y-4 pt-0">
                   <div className="flex items-start gap-2.5 sm:gap-3">
-                    <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5" />
+                    <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5 shrink-0" />
                     <div>
                       <p className="text-sm sm:text-base font-medium text-foreground">Dirección</p>
                       <a
@@ -203,7 +203,7 @@ const HoursLocationPage: React.FC = () => {
                   
                   {hasContactPhone && (
                     <div className="flex items-start gap-2.5 sm:gap-3">
-                      <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5" />
+                      <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5 shrink-0" />
                       <div>
                         <p className="text-sm sm:text-base font-medium text-foreground">Contacto</p>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
@@ -228,7 +228,7 @@ const HoursLocationPage: React.FC = () => {
 
                   {hasContactEmail && (
                     <div className="flex items-start gap-2.5 sm:gap-3">
-                      <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5" />
+                      <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5 shrink-0" />
                       <div>
                         <p className="text-sm sm:text-base font-medium text-foreground">Correo</p>
                         <a href={`mailto:${contactEmail}`} className="text-sm sm:text-base text-primary hover:underline">

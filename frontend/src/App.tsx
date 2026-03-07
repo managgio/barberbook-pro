@@ -110,6 +110,8 @@ const AppRoutes: React.FC = () => {
       <Routes>
         <Route path="/" element={<Navigate to="/auth" replace />} />
         <Route path="/auth" element={withSuspense(<AuthPage />)} />
+        <Route path="/app/*" element={<Navigate to="/auth?reason=platform-access" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/auth?reason=platform-access" replace />} />
         <Route
           path="/platform"
           element={withSuspense(

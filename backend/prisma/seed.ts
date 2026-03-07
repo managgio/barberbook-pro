@@ -7,6 +7,40 @@ import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from '../src/tena
 
 const prisma = new PrismaClient();
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'c.lopemonre@gmail.com').toLowerCase();
+const DESTRUCTIVE_SEED_CONFIRMATION_TOKEN = 'I_UNDERSTAND_DATA_LOSS';
+const LOCAL_DATABASE_HOSTS = new Set(['127.0.0.1', 'localhost']);
+
+const resolveRuntimeEnvironment = () => {
+  const raw =
+    process.env.APP_ENV ||
+    process.env.OBSERVABILITY_RUNTIME_ENV ||
+    process.env.VERCEL_ENV ||
+    process.env.RAILWAY_ENVIRONMENT ||
+    process.env.NODE_ENV ||
+    'local';
+  return String(raw).trim().toLowerCase();
+};
+
+const isProtectedEnvironment = (environment: string) => {
+  if (!environment) return false;
+  if (environment === 'production' || environment === 'prod') return true;
+  if (environment === 'staging' || environment === 'preprod' || environment === 'preview' || environment === 'qa') {
+    return true;
+  }
+  return environment.includes('prod') || environment.includes('stag');
+};
+
+const resolveDatabaseHostname = () => {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is required for seed execution.');
+  }
+  try {
+    return new URL(databaseUrl).hostname.toLowerCase();
+  } catch {
+    throw new Error('DATABASE_URL is invalid for seed execution.');
+  }
+};
 
 const adminRoles = [
   {
@@ -159,6 +193,27 @@ const holidaysByBarber: Record<string, { localId: string; start: string; end: st
 };
 
 async function clearDatabase() {
+  const environment = resolveRuntimeEnvironment();
+  if (isProtectedEnvironment(environment)) {
+    throw new Error(`Destructive seed blocked in protected environment: ${environment}`);
+  }
+
+  const databaseHostname = resolveDatabaseHostname();
+  if (!LOCAL_DATABASE_HOSTS.has(databaseHostname)) {
+    throw new Error(
+      `Destructive seed blocked for non-local database host: ${databaseHostname}`,
+    );
+  }
+
+  const destructiveSeedEnabled = process.env.ALLOW_DESTRUCTIVE_SEED === 'true';
+  const confirmationProvided =
+    process.env.DESTRUCTIVE_SEED_CONFIRMATION === DESTRUCTIVE_SEED_CONFIRMATION_TOKEN;
+  if (!destructiveSeedEnabled || !confirmationProvided) {
+    throw new Error(
+      `Destructive seed blocked. Set ALLOW_DESTRUCTIVE_SEED=true and DESTRUCTIVE_SEED_CONFIRMATION=${DESTRUCTIVE_SEED_CONFIRMATION_TOKEN}.`,
+    );
+  }
+
   const rows = await prisma.$queryRaw<Array<{ TABLE_NAME: string }>>`
     SELECT TABLE_NAME
     FROM information_schema.tables
