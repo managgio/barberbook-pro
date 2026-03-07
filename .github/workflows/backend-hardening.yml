@@ -64,9 +64,7 @@ jobs:
         run: npm run prisma:generate
 
       - name: Prepare Database (schema + seed)
-        run: |
-          npm run prisma:deploy
-          npm run prisma:seed
+        run: npm run ci:prepare:db
 
       - name: Tenant Scope Gate
         run: npm run tenant:scope:check
@@ -88,8 +86,14 @@ jobs:
       - name: Unit Tests
         run: npm run test:unit
 
+      - name: Test Typecheck
+        run: npm run test:typecheck
+
       - name: Contract Tests
         run: npm run test:contract
+
+      - name: Critical Regression Suite
+        run: npm run test:critical
 
       - name: Parity Tests
         run: npm run test:parity

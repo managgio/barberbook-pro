@@ -17,6 +17,7 @@ Asegurar calidad funcional, estabilidad de migración DDD+Hexagonal y velocidad 
 - `npm run test:unit`
 - `npm run test:contract`
 - `npm run test:parity`
+- `npm run test:critical`
 - `npm run test:coverage:gate`
 - `npm run test:changed`
 - `npm run test:advisor -- --phase=dev|push|pr`
@@ -43,9 +44,32 @@ Asegurar calidad funcional, estabilidad de migración DDD+Hexagonal y velocidad 
   - Script: `backend/scripts/tests/run-optional-e2e-smoke.mjs`
   - Ejecuta solo con `TEST_E2E_SMOKE_ENABLED=true`.
   - Reutiliza `runtime-capability-smoke` y `runtime-authenticated-smoke`.
-  - En CI (`backend-hardening.yml`) corre con MySQL dedicado por servicio (`mysql:8`) + `prisma:deploy` + `prisma:seed`.
+  - En CI (`backend-hardening.yml`) corre con MySQL dedicado por servicio (`mysql:8`) + `npm run ci:prepare:db` (wait/retry + `prisma:deploy` + `prisma:seed`).
   - CI ejecuta en modo estricto (`TEST_E2E_SMOKE_STRICT=true`) para exigir checks críticos de `auth` y `platform`.
   - `checkout` se puede exigir también con `TEST_E2E_SMOKE_REQUIRE_CHECKOUT=true` (requiere Stripe disponible en CI).
+
+## Matriz crítica obligatoria (P0)
+
+- `Auth/Firebase`:
+  - Unit: `backend/test/unit/identity/auth-service-and-guards.test.ts`
+  - Unit: `backend/test/unit/identity/firebase-admin-auth-dev-bypass.test.ts`
+  - Smoke estricto: checks `auth.users.*`, `auth.admin.*`, `auth.platform.*`.
+- `Booking/Appointments`:
+  - Unit: `backend/test/unit/booking/booking-availability-engine.test.ts`
+  - Unit: `backend/test/unit/booking/booking-get-availability.usecase.test.ts`
+  - Unit: `backend/test/unit/booking/booking-create-appointment.usecase.test.ts`
+  - Unit: `backend/test/unit/booking/booking-update-appointment.usecase.test.ts`
+  - Unit: `backend/test/unit/booking/booking-remove-appointment.usecase.test.ts`
+  - Contract: `backend/test/contract/booking/prisma-booking-availability-read.adapter.test.ts`
+- `Payments/Stripe`:
+  - Unit: `backend/test/unit/commerce/commerce-process-stripe-webhook.usecase.test.ts`
+  - Contract: `backend/test/contract/commerce/commerce-stripe-payment-gateway.adapter.test.ts`
+  - Smoke estricto: checks `auth.admin.payments.stripe.config`, `auth.payments.webhook.invalid-body`.
+- `Errores HTTP de dominio`:
+  - Unit: `backend/test/unit/shared/rethrow-domain-error-as-http.test.ts`
+
+Si se toca cualquiera de estas capacidades, es obligatorio mantener/añadir tests en estos grupos.
+Además, CI ejecuta `test:critical` como gate explícito de regresión.
 
 ## Avisos contextuales (manual + asistente)
 

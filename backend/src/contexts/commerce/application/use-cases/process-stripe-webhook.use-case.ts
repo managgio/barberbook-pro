@@ -25,6 +25,7 @@ export class ProcessStripeWebhookUseCase {
     if (appointmentId) {
       const appointment = await this.paymentLifecyclePort.findAppointmentById(appointmentId);
       if (!appointment || appointment.status === 'cancelled') return;
+      if (appointment.paymentStatus === 'paid') return;
 
       await this.paymentLifecyclePort.markAppointmentPaid({
         appointmentId: appointment.id,
@@ -79,15 +80,17 @@ export class ProcessStripeWebhookUseCase {
   async handlePaymentSucceeded(intent: StripePaymentIntentPayload) {
     const now = new Date();
     const appointment = await this.paymentLifecyclePort.findAppointmentByPaymentIntent(intent.id);
-    if (appointment && appointment.paymentStatus !== 'paid') {
-      await this.paymentLifecyclePort.markAppointmentPaid({
-        appointmentId: appointment.id,
-        localId: appointment.localId,
-        brandId: appointment.brandId,
-        amountTotal: this.toAmountTotal(intent.amount_received),
-        currency: intent.currency || this.defaultCurrency,
-        paidAt: now,
-      });
+    if (appointment) {
+      if (appointment.paymentStatus !== 'paid') {
+        await this.paymentLifecyclePort.markAppointmentPaid({
+          appointmentId: appointment.id,
+          localId: appointment.localId,
+          brandId: appointment.brandId,
+          amountTotal: this.toAmountTotal(intent.amount_received),
+          currency: intent.currency || this.defaultCurrency,
+          paidAt: now,
+        });
+      }
       return;
     }
 

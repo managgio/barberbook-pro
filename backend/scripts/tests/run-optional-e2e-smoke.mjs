@@ -138,6 +138,7 @@ const main = async () => {
       'auth.admin.barbers.list',
       'auth.admin.products.list',
       'auth.admin.subscriptions.plans',
+      'auth.admin.payments.stripe.config',
       'auth.admin.loyalty.programs',
       'auth.admin.referrals.list',
       'auth.platform.metrics',
@@ -146,6 +147,7 @@ const main = async () => {
       'auth.platform.observability.web-vitals',
       'auth.platform.observability.api',
       'auth.appointments.create.valid',
+      'auth.payments.webhook.invalid-body',
     ]);
 
     if (requireCheckout) {

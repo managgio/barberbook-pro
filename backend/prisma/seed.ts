@@ -158,29 +158,31 @@ const holidaysByBarber: Record<string, { localId: string; start: string; end: st
   'barber-4': [{ localId: DEFAULT_LOCAL_ID, start: '2025-12-17', end: '2025-12-17' }],
 };
 
+async function clearDatabase() {
+  const rows = await prisma.$queryRaw<Array<{ TABLE_NAME: string }>>`
+    SELECT TABLE_NAME
+    FROM information_schema.tables
+    WHERE table_schema = DATABASE()
+  `;
+
+  const tableNames = rows
+    .map((row) => row.TABLE_NAME)
+    .filter((tableName) => tableName && tableName !== '_prisma_migrations');
+
+  await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0');
+  try {
+    for (const tableName of tableNames) {
+      const escapedTableName = tableName.replace(/`/g, '``');
+      await prisma.$executeRawUnsafe(`TRUNCATE TABLE \`${escapedTableName}\``);
+    }
+  } finally {
+    await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1');
+  }
+}
+
 async function main() {
   console.log('Seeding database...');
-
-  await prisma.aiChatMessage.deleteMany();
-  await prisma.aiChatSession.deleteMany();
-  await prisma.aiBusinessFact.deleteMany();
-  await prisma.appointment.deleteMany();
-  await prisma.barberHoliday.deleteMany();
-  await prisma.generalHoliday.deleteMany();
-  await prisma.barberSchedule.deleteMany();
-  await prisma.shopSchedule.deleteMany();
-  await prisma.siteSettings.deleteMany();
-  await prisma.alert.deleteMany();
-  await prisma.offer.deleteMany();
-  await prisma.serviceCategory.deleteMany();
-  await prisma.service.deleteMany();
-  await prisma.barber.deleteMany();
-  await prisma.locationStaff.deleteMany();
-  await prisma.brandUser.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.adminRole.deleteMany();
-  await prisma.location.deleteMany();
-  await prisma.brand.deleteMany();
+  await clearDatabase();
 
   await prisma.brand.create({
     data: {

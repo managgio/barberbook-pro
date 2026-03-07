@@ -144,6 +144,23 @@ test('checkout.completed marca cita pagada cuando la cita sigue activa', async (
   assert.deepEqual(port.paidSubscriptionsById, []);
 });
 
+test('checkout.completed no reprocesa cita ya pagada', async () => {
+  const port = new FakePaymentLifecyclePort();
+  port.appointments.set('appt-paid', {
+    id: 'appt-paid',
+    localId: 'loc-1',
+    brandId: 'brand-1',
+    status: 'confirmed',
+    paymentStatus: 'paid',
+  });
+  const useCase = new ProcessStripeWebhookUseCase(port, 'eur');
+
+  await useCase.handleCheckoutCompleted(checkoutSession({ appointmentId: 'appt-paid' }));
+
+  assert.deepEqual(port.paidAppointments, []);
+  assert.deepEqual(port.paidSubscriptionsById, []);
+});
+
 test('checkout.expired no cancela cita ya pagada o completada', async () => {
   const port = new FakePaymentLifecyclePort();
   port.appointments.set('appt-paid', {
@@ -194,6 +211,24 @@ test('payment.succeeded deriva a subscription cuando no encuentra cita', async (
 
   assert.deepEqual(port.paidAppointments, []);
   assert.deepEqual(port.paidSubscriptionsByIntent, ['pi_sub']);
+});
+
+test('payment.succeeded no deriva a subscription cuando el payment intent pertenece a cita ya pagada', async () => {
+  const port = new FakePaymentLifecyclePort();
+  port.appointments.set('appt-paid', {
+    id: 'appt-paid',
+    localId: 'loc-1',
+    brandId: 'brand-1',
+    status: 'confirmed',
+    paymentStatus: 'paid',
+  });
+  port.intents.set('pi_paid', 'appt-paid');
+  const useCase = new ProcessStripeWebhookUseCase(port, 'eur');
+
+  await useCase.handlePaymentSucceeded(paymentIntent('pi_paid'));
+
+  assert.deepEqual(port.paidAppointments, []);
+  assert.deepEqual(port.paidSubscriptionsByIntent, []);
 });
 
 test('cancelExpiredStripePayments contabiliza solo cancelaciones efectivas', async () => {

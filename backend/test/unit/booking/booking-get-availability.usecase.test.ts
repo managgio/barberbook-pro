@@ -119,3 +119,58 @@ test('returns empty when date is before barber startDate', async () => {
 
   assert.deepEqual(result, []);
 });
+
+test('forwards appointmentIdToIgnore to availability read port', async () => {
+  const calls: Array<{ appointmentIdToIgnore?: string }> = [];
+
+  const useCase = new GetAvailabilityUseCase(
+    {
+      listAppointmentsForBarberDay: async (params) => {
+        calls.push({ appointmentIdToIgnore: params.appointmentIdToIgnore });
+        return [];
+      },
+      listAppointmentsForBarbersDay: async () => [],
+      countWeeklyLoad: async () => ({}),
+    },
+    {
+      getShopSchedule: async () => schedule,
+      getBarberSchedule: async () => schedule,
+      getBarberSchedules: async () => ({ barber1: schedule }),
+    },
+    {
+      getGeneralHolidays: async () => [],
+      getBarberHolidays: async () => [],
+      getBarberHolidaysByBarberIds: async () => ({}),
+    },
+    {
+      getBarber: async () => ({
+        id: 'barber1',
+        isActive: true,
+        startDate: null,
+        endDate: null,
+      }),
+      getBarbers: async () => [],
+      isBarberAllowedForService: async () => true,
+      getEligibleBarberIdsForService: async () => [],
+    },
+    {
+      getServiceDuration: async () => 30,
+    },
+  );
+
+  await useCase.execute({
+    context: {
+      tenantId: 'b1',
+      brandId: 'b1',
+      localId: 'l1',
+      actorUserId: null,
+      timezone: 'Europe/Madrid',
+      correlationId: 'corr-4',
+    },
+    barberId: 'barber1',
+    date: '2026-03-04',
+    appointmentIdToIgnore: 'appt-123',
+  });
+
+  assert.deepEqual(calls, [{ appointmentIdToIgnore: 'appt-123' }]);
+});
