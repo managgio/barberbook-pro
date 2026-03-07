@@ -854,7 +854,7 @@ const AdminAiAssistant: React.FC = () => {
                   type="button"
                   variant={isRecording ? 'destructive' : 'outline'}
                   size="icon"
-                  className="h-10 !w-auto flex-1 sm:h-12 sm:w-12 sm:flex-none"
+                  className="h-10 flex-1 sm:h-12 sm:w-12 sm:flex-none"
                   onClick={startRecording}
                   disabled={!supportsAudio || isSending || isTranscribing}
                   aria-pressed={isRecording}
@@ -865,7 +865,7 @@ const AdminAiAssistant: React.FC = () => {
                 <Button
                   onClick={handleSubmit}
                   disabled={isSending || isRecording || isTranscribing || !input.trim()}
-                  className="h-10 !w-auto flex-1 px-3 sm:h-12 sm:px-4 sm:w-auto sm:flex-none"
+                  className="h-10 flex-1 px-3 sm:h-12 sm:w-12 sm:flex-none sm:px-0"
                 >
                   <Send className="w-4 h-4" />
                 </Button>
