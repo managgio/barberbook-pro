@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { useI18n } from '@/hooks/useI18n';
 
 export type PhotoChangePayload = {
   previewUrl: string;
@@ -65,6 +66,7 @@ export const cropAndCompress = async (src: string, zoom: number) => {
 
 export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { t } = useI18n();
   const copy = useBusinessCopy();
   const [previewUrl, setPreviewUrl] = useState<string>(value);
   const [selectedDataUrl, setSelectedDataUrl] = useState<string | null>(null);
@@ -103,16 +105,16 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-1">
-          <Label>Foto {copy.staff.fromWithDefinite}</Label>
+          <Label>{t('admin.barbers.photo.label', { staffFromWithDefinite: copy.staff.fromWithDefinite })}</Label>
           <p className="text-sm text-muted-foreground">
-            Recorte automático a cuadrado y compresión WebP antes de guardar la imagen.
+            {t('admin.barbers.photo.description')}
           </p>
         </div>
         {previewUrl && (
           <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border bg-muted/30">
             <img
               src={previewUrl}
-              alt="Previsualización"
+              alt={t('admin.barbers.photo.previewAlt')}
               loading="lazy"
               decoding="async"
               width={96}
@@ -136,9 +138,9 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
             <Upload className="h-6 w-6" />
           </div>
           <div className="flex-1 space-y-1">
-            <p className="font-medium text-foreground">Arrastra o selecciona una imagen</p>
+            <p className="font-medium text-foreground">{t('admin.barbers.photo.dropzoneTitle')}</p>
             <p className="text-sm text-muted-foreground">
-              Recomendado 800x800px. Admite JPG/PNG/WebP. El archivo se optimiza antes de guardar.
+              {t('admin.barbers.photo.dropzoneHint')}
             </p>
             <div className="flex flex-wrap gap-3 pt-2">
               <Button
@@ -148,7 +150,7 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
                 onClick={handleRemovePhoto}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                Eliminar foto
+                {t('admin.barbers.photo.remove')}
               </Button>
             </div>
           </div>
@@ -166,13 +168,13 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
         <div className="rounded-lg border bg-card p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Sparkles className="h-4 w-4" />
-            <span>Ajusta el recorte (zoom) antes de guardar</span>
+            <span>{t('admin.barbers.photo.adjustBeforeSave')}</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-[220px_1fr] items-center">
             <div className="relative aspect-square overflow-hidden rounded-xl border">
               <img
                 src={selectedDataUrl}
-                alt="Recorte"
+                alt={t('admin.barbers.photo.cropAlt')}
                 loading="lazy"
                 decoding="async"
                 width={220}
@@ -185,7 +187,7 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
             <div className="space-y-3">
               <Label className="text-sm text-foreground flex items-center gap-2">
                 <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                Zoom / recorte centrado
+                {t('admin.barbers.photo.zoomLabel')}
               </Label>
               <Slider
                 min={1}
@@ -201,7 +203,7 @@ export const BarberPhotoUploader: React.FC<Props> = ({ value, onChange }) => {
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                Se recorta al centro y se exporta a WebP 800x800 ({Math.round(zoom * 100)}% de zoom).
+                {t('admin.barbers.photo.zoomHint', { zoom: Math.round(zoom * 100) })}
               </p>
             </div>
           </div>

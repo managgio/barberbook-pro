@@ -3,19 +3,10 @@ import Navbar from '@/components/layout/Navbar';
 import LegalFooter from '@/components/layout/LegalFooter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clock, MapPin, Phone, Instagram, Mail, Twitter, Linkedin, Youtube, Music2 } from 'lucide-react';
-import { DayKey, DaySchedule, ShopSchedule } from '@/data/types';
+import { DayKey, DaySchedule } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay, normalizePhoneParts } from '@/lib/siteSettings';
-
-const dayNames: Record<string, string> = {
-  monday: 'Lunes',
-  tuesday: 'Martes',
-  wednesday: 'Miércoles',
-  thursday: 'Jueves',
-  friday: 'Viernes',
-  saturday: 'Sábado',
-  sunday: 'Domingo',
-};
+import { useI18n } from '@/hooks/useI18n';
 
 const dayOrder: DayKey[] = [
   'monday',
@@ -41,9 +32,9 @@ const normalizeDaySchedule = (schedule?: Partial<DaySchedule> | null): DaySchedu
   },
 });
 
-const formatDaySchedule = (schedule?: Partial<DaySchedule> | null) => {
+const formatDaySchedule = (schedule?: Partial<DaySchedule> | null, closedLabel = 'Closed') => {
   const safeSchedule = normalizeDaySchedule(schedule);
-  if (safeSchedule.closed) return 'Cerrado';
+  if (safeSchedule.closed) return closedLabel;
   const segments: string[] = [];
   if (safeSchedule.morning.enabled && safeSchedule.morning.start && safeSchedule.morning.end) {
     segments.push(`${safeSchedule.morning.start} - ${safeSchedule.morning.end}`);
@@ -51,11 +42,12 @@ const formatDaySchedule = (schedule?: Partial<DaySchedule> | null) => {
   if (safeSchedule.afternoon.enabled && safeSchedule.afternoon.start && safeSchedule.afternoon.end) {
     segments.push(`${safeSchedule.afternoon.start} - ${safeSchedule.afternoon.end}`);
   }
-  return segments.length > 0 ? segments.join(' · ') : 'Cerrado';
+  return segments.length > 0 ? segments.join(' · ') : closedLabel;
 };
 
 const HoursLocationPage: React.FC = () => {
-  const { settings, isLoading } = useSiteSettings();
+  const { t } = useI18n();
+  const { settings } = useSiteSettings();
   const schedule = settings.openingHours;
   const contactPhone = settings.contact.phone?.trim() || '';
   const contactEmail = settings.contact.email?.trim() || '';
@@ -111,6 +103,15 @@ const HoursLocationPage: React.FC = () => {
     },
   ].filter((social) => social.url && social.label);
   const hasSocials = socials.length > 0;
+  const dayNames: Record<DayKey, string> = {
+    monday: t('weekday.monday'),
+    tuesday: t('weekday.tuesday'),
+    wednesday: t('weekday.wednesday'),
+    thursday: t('weekday.thursday'),
+    friday: t('weekday.friday'),
+    saturday: t('weekday.saturday'),
+    sunday: t('weekday.sunday'),
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -121,10 +122,10 @@ const HoursLocationPage: React.FC = () => {
           {/* Header */}
           <div className="text-center mb-8 sm:mb-16">
             <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold text-foreground mb-2 sm:mb-4">
-              Horario y <span className="text-gradient">ubicación</span>
+              {t('hoursLocation.titlePrefix')} <span className="text-gradient">{t('hoursLocation.titleEmphasis')}</span>
             </h1>
             <p className="text-sm sm:text-lg text-muted-foreground max-w-2xl mx-auto">
-              Visítanos cuando quieras. Estamos aquí para cuidar de tu imagen.
+              {t('hoursLocation.subtitle')}
             </p>
           </div>
 
@@ -134,7 +135,7 @@ const HoursLocationPage: React.FC = () => {
               <CardHeader className="pb-3 sm:pb-6">
                 <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
                   <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                  Horario de apertura
+                  {t('hoursLocation.openingHours')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
@@ -149,13 +150,13 @@ const HoursLocationPage: React.FC = () => {
                       >
                         <span className="text-sm sm:text-base font-medium text-foreground">{dayNames[day]}</span>
                         <span className={`text-xs sm:text-sm ${daySchedule.closed ? 'text-muted-foreground' : 'text-primary'}`}>
-                          {formatDaySchedule(daySchedule)}
+                          {formatDaySchedule(daySchedule, t('hoursLocation.closed'))}
                         </span>
                       </div>
                     )})}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Cargando horario...</p>
+                  <p className="text-sm text-muted-foreground">{t('hoursLocation.loadingSchedule')}</p>
                 )}
               </CardContent>
             </Card>
@@ -173,7 +174,7 @@ const HoursLocationPage: React.FC = () => {
                     allowFullScreen
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
-                    title={`Ubicación de ${settings.branding.name}`}
+                    title={t('hoursLocation.mapTitle', { name: settings.branding.name })}
                   />
                 </div>
               </Card>
@@ -182,14 +183,14 @@ const HoursLocationPage: React.FC = () => {
               <Card variant="elevated" className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
                 <CardHeader className="pb-3 sm:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
-                    Contacto
+                    {t('hoursLocation.contact')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 sm:space-y-4 pt-0">
                   <div className="flex items-start gap-2.5 sm:gap-3">
                     <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-sm sm:text-base font-medium text-foreground">Dirección</p>
+                      <p className="text-sm sm:text-base font-medium text-foreground">{t('hoursLocation.address')}</p>
                       <a
                         href={settings.location.mapUrl}
                         target="_blank"
@@ -205,19 +206,19 @@ const HoursLocationPage: React.FC = () => {
                     <div className="flex items-start gap-2.5 sm:gap-3">
                       <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-sm sm:text-base font-medium text-foreground">Contacto</p>
+                        <p className="text-sm sm:text-base font-medium text-foreground">{t('hoursLocation.contact')}</p>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
                           <a
                             href={phoneHref}
                             className="text-sm sm:text-base text-primary hover:underline"
                           >
-                            Llamar · {phoneDisplay}
+                            {t('hoursLocation.call')} · {phoneDisplay}
                           </a>
                           {whatsappLink && (
                             <>
                               <span className="hidden sm:block text-muted-foreground">·</span>
                               <a href={whatsappLink} className="text-sm sm:text-base text-primary hover:underline">
-                                WhatsApp directo
+                                {t('hoursLocation.whatsappDirect')}
                               </a>
                             </>
                           )}
@@ -230,7 +231,7 @@ const HoursLocationPage: React.FC = () => {
                     <div className="flex items-start gap-2.5 sm:gap-3">
                       <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-sm sm:text-base font-medium text-foreground">Correo</p>
+                        <p className="text-sm sm:text-base font-medium text-foreground">{t('hoursLocation.email')}</p>
                         <a href={`mailto:${contactEmail}`} className="text-sm sm:text-base text-primary hover:underline">
                           {contactEmail}
                         </a>
@@ -242,7 +243,7 @@ const HoursLocationPage: React.FC = () => {
                     <>
                       <hr className="border-border" />
                       <div>
-                        <p className="text-sm sm:text-base font-medium text-foreground mb-2 sm:mb-3">Síguenos</p>
+                        <p className="text-sm sm:text-base font-medium text-foreground mb-2 sm:mb-3">{t('hoursLocation.followUs')}</p>
                       <div className="grid sm:grid-cols-2 gap-2 sm:gap-3">
                         {socials.map((social) => (
                           <a 

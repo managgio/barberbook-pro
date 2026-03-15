@@ -25,7 +25,6 @@ import {
 import { Appointment, Barber, ClientNote, PaginatedResponse, PaymentMethod, Service, User } from '@/data/types';
 import { Search, User as UserIcon, Mail, Phone, Calendar, Pencil, Trash2, HelpCircle, FileText, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { format, parseISO, subMonths, isAfter } from 'date-fns';
-import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
@@ -40,6 +39,8 @@ import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 const CLIENTS_PAGE_SIZE = 25;
@@ -54,6 +55,8 @@ const EMPTY_NOTES: ClientNote[] = [];
 const AdminClients: React.FC = () => {
   const { toast } = useToast();
   const { currentLocationId, tenant } = useTenant();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
@@ -160,38 +163,38 @@ const AdminClients: React.FC = () => {
   useEffect(() => {
     if (!clientsQuery.error) return;
     toast({
-      title: 'No se pudieron cargar los clientes',
-      description: 'Inténtalo de nuevo en unos segundos.',
+      title: t('admin.clients.toast.loadClientsErrorTitle'),
+      description: t('admin.common.tryAgainInSeconds'),
       variant: 'destructive',
     });
-  }, [clientsQuery.error, toast]);
+  }, [clientsQuery.error, t, toast]);
 
   useEffect(() => {
     if (!appointmentsQuery.error) return;
     toast({
-      title: 'No se pudieron cargar las citas',
-      description: 'Inténtalo de nuevo en unos segundos.',
+      title: t('admin.clients.toast.loadAppointmentsErrorTitle'),
+      description: t('admin.common.tryAgainInSeconds'),
       variant: 'destructive',
     });
-  }, [appointmentsQuery.error, toast]);
+  }, [appointmentsQuery.error, t, toast]);
 
   useEffect(() => {
     if (!notesQuery.error) return;
     toast({
-      title: 'No se pudieron cargar las notas',
-      description: 'Inténtalo de nuevo en unos segundos.',
+      title: t('admin.clients.toast.loadNotesErrorTitle'),
+      description: t('admin.common.tryAgainInSeconds'),
       variant: 'destructive',
     });
-  }, [notesQuery.error, toast]);
+  }, [notesQuery.error, t, toast]);
 
   useEffect(() => {
     if (!barbersQuery.error && !servicesQuery.error && !stripeConfigQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudieron cargar algunos datos de soporte.',
+      title: t('admin.common.error'),
+      description: t('admin.common.toast.supportDataError'),
       variant: 'destructive',
     });
-  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, toast]);
+  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, t, toast]);
 
   useEffect(() => {
     const pageData = clientsQuery.data;
@@ -271,7 +274,7 @@ const AdminClients: React.FC = () => {
   const getAppointmentBarberName = (appointment: Appointment) =>
     getBarber(appointment.barberId)?.name ||
     appointment.barberNameSnapshot ||
-    `${copy.staff.singular} eliminado`;
+    t('admin.common.removedStaff', { staffSingular: copy.staff.singular });
 
   const applyAppointmentUpdate = useCallback((updated: Appointment) => {
     queryClient.setQueryData<PaginatedResponse<Appointment>>(appointmentsQueryKey, (previous) => {
@@ -338,8 +341,8 @@ const AdminClients: React.FC = () => {
       applyAppointmentUpdate(updated);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el método de pago.',
+        title: t('admin.common.error'),
+        description: t('admin.common.toast.paymentMethodError'),
         variant: 'destructive',
       });
       setPaymentMethodDrafts((prev) => ({
@@ -363,8 +366,8 @@ const AdminClients: React.FC = () => {
     const parsed = Number(normalized);
     if (Number.isNaN(parsed) || parsed < 0) {
       toast({
-        title: 'Precio inválido',
-        description: 'Introduce un importe válido para la cita.',
+        title: t('admin.common.invalidPrice'),
+        description: t('admin.common.toast.invalidPriceDescription'),
         variant: 'destructive',
       });
       setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
@@ -380,8 +383,8 @@ const AdminClients: React.FC = () => {
       applyAppointmentUpdate(updated);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el precio final.',
+        title: t('admin.common.error'),
+        description: t('admin.common.toast.finalPriceError'),
         variant: 'destructive',
       });
       setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
@@ -400,24 +403,24 @@ const AdminClients: React.FC = () => {
     const trimmed = noteDraft.trim();
     if (!trimmed) {
       toast({
-        title: 'Escribe una nota',
-        description: 'La nota no puede estar vacía.',
+        title: t('admin.clients.notes.emptyTitle'),
+        description: t('admin.clients.notes.emptyDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (trimmed.length > 150) {
       toast({
-        title: 'Límite superado',
-        description: 'La nota no puede superar 150 caracteres.',
+        title: t('admin.clients.notes.maxReachedTitle'),
+        description: t('admin.clients.notes.maxLengthDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (clientNotes.length >= 5) {
       toast({
-        title: 'Límite alcanzado',
-        description: 'Solo puedes guardar hasta 5 notas por cliente.',
+        title: t('admin.clients.notes.maxReachedTitle'),
+        description: t('admin.clients.notes.maxCountDescription'),
         variant: 'destructive',
       });
       return;
@@ -428,13 +431,13 @@ const AdminClients: React.FC = () => {
       queryClient.setQueryData<ClientNote[]>(clientNotesQueryKey, (previous) => [created, ...(previous ?? EMPTY_NOTES)]);
       setNoteDraft('');
       toast({
-        title: 'Nota guardada',
-        description: 'La nota interna se añadió correctamente.',
+        title: t('admin.clients.notes.savedTitle'),
+        description: t('admin.clients.notes.savedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.clients.notes.saveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -451,13 +454,13 @@ const AdminClients: React.FC = () => {
         (previous ?? EMPTY_NOTES).filter((note) => note.id !== noteId),
       );
       toast({
-        title: 'Nota eliminada',
-        description: 'La nota interna se eliminó.',
+        title: t('admin.clients.notes.deletedTitle'),
+        description: t('admin.clients.notes.deletedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo eliminar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.clients.notes.deleteErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -479,15 +482,15 @@ const AdminClients: React.FC = () => {
       });
       dispatchUsersUpdated({ source: 'admin-clients' });
       toast({
-        title: updated.isBlocked ? 'Cliente bloqueado' : 'Cliente desbloqueado',
+        title: updated.isBlocked ? t('admin.clients.toast.clientBlockedTitle') : t('admin.clients.toast.clientUnblockedTitle'),
         description: updated.isBlocked
-          ? 'El cliente no podrá acceder a la app de la marca.'
-          : 'El cliente vuelve a tener acceso a la app.',
+          ? t('admin.clients.toast.clientBlockedDescription')
+          : t('admin.clients.toast.clientUnblockedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo actualizar el bloqueo',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.clients.toast.blockUpdateErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -505,9 +508,9 @@ const AdminClients: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="pl-12 md:pl-0">
-        <h1 className="text-3xl font-bold text-foreground">Clientes</h1>
+        <h1 className="text-3xl font-bold text-foreground">{t('admin.clients.title')}</h1>
         <p className="text-muted-foreground mt-1">
-          Busca clientes y consulta su historial de citas.
+          {t('admin.clients.subtitle')}
         </p>
       </div>
 
@@ -520,7 +523,7 @@ const AdminClients: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserIcon className="w-5 h-5 text-primary" />
-              Lista de clientes
+              {t('admin.clients.list.title')}
             </CardTitle>
           </CardHeader>
           <CardContent className="flex-1 min-h-0 overflow-hidden pt-2">
@@ -528,7 +531,7 @@ const AdminClients: React.FC = () => {
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por nombre, email o teléfono..."
+                  placeholder={t('admin.clients.searchPlaceholder')}
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
@@ -557,7 +560,7 @@ const AdminClients: React.FC = () => {
                     >
                       <p className="font-medium text-foreground">{client.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {client.email || 'Sin email'}
+                        {client.email || t('admin.clients.noEmail')}
                       </p>
                       {client.phone && (
                         <p className="text-sm text-muted-foreground">
@@ -568,7 +571,7 @@ const AdminClients: React.FC = () => {
                   ))}
                   </div>
                   <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Página {clientsPage} de {clientsTotalPages}</span>
+                    <span>{t('admin.common.pagination.pageOf', { page: clientsPage, total: clientsTotalPages })}</span>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -577,7 +580,7 @@ const AdminClients: React.FC = () => {
                         onClick={() => setClientsPage((page) => Math.max(1, page - 1))}
                         disabled={clientsPage <= 1}
                       >
-                        Anterior
+                        {t('admin.common.previous')}
                       </Button>
                       <Button
                         type="button"
@@ -586,14 +589,14 @@ const AdminClients: React.FC = () => {
                         onClick={() => setClientsPage((page) => Math.min(clientsTotalPages, page + 1))}
                         disabled={clientsPage >= clientsTotalPages}
                       >
-                        Siguiente
+                        {t('admin.common.next')}
                       </Button>
                     </div>
                   </div>
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                  No se encontraron clientes
+                  {t('admin.clients.empty.noResults')}
                 </div>
               )}
             </div>
@@ -603,7 +606,7 @@ const AdminClients: React.FC = () => {
         {/* Client Details */}
         <Card variant="elevated" className="lg:col-span-2 h-[calc(100vh-150px)] flex flex-col">
           <CardHeader>
-            <CardTitle>Historial del cliente</CardTitle>
+            <CardTitle>{t('admin.clients.historyTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="flex-1 min-h-0 overflow-hidden">
             {selectedClient ? (
@@ -624,7 +627,7 @@ const AdminClients: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground">Cliente registrado</p>
+                        <p className="text-sm text-muted-foreground">{t('admin.clients.registeredClient')}</p>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -636,13 +639,13 @@ const AdminClients: React.FC = () => {
                               <button
                                 type="button"
                                 className="inline-flex items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                                aria-label="Info sobre el rango de datos"
+                                aria-label={t('admin.clients.noShow.infoAria')}
                               >
                                 <HelpCircle className="w-3.5 h-3.5" />
                               </button>
                             </TooltipTrigger>
                             <TooltipContent side="left" className="text-xs">
-                              Cálculo basado en las citas visibles en esta página.
+                              {t('admin.clients.noShow.infoTooltip')}
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -651,45 +654,45 @@ const AdminClients: React.FC = () => {
                         <DialogTrigger asChild>
                           <Button variant="outline" size="sm" className="gap-2">
                             <FileText className="w-4 h-4" />
-                            Notas internas: {isNotesLoading ? '...' : clientNotes.length}
+                            {t('admin.clients.notes.buttonLabel', { count: isNotesLoading ? '...' : clientNotes.length })}
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-lg h-[560px] max-h-[80vh] overflow-hidden flex flex-col">
                           <DialogHeader>
-                            <DialogTitle>Notas internas del cliente</DialogTitle>
+                            <DialogTitle>{t('admin.clients.notes.dialogTitle')}</DialogTitle>
                             <DialogDescription>
-                              Son recordatorios privados para el equipo admin. El cliente no las ve ni recibe.
+                              {t('admin.clients.notes.dialogDescription')}
                             </DialogDescription>
                           </DialogHeader>
                           <div className="flex min-h-0 flex-1 flex-col gap-4">
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <Label htmlFor="client-note">Nueva nota</Label>
+                                <Label htmlFor="client-note">{t('admin.clients.notes.new')}</Label>
                                 <span className="text-xs text-muted-foreground tabular-nums">
                                   {noteDraft.length}/150
                                 </span>
                               </div>
                               <Textarea
                                 id="client-note"
-                                placeholder="Ej: Prefiere citas por la tarde, evitar navaja en barba..."
+                                placeholder={t('admin.clients.notes.placeholder')}
                                 value={noteDraft}
                                 onChange={(e) => setNoteDraft(e.target.value)}
                                 maxLength={150}
                                 className="min-h-[96px]"
                               />
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{clientNotes.length}/5 notas guardadas</span>
+                                <span>{t('admin.clients.notes.savedCount', { count: clientNotes.length })}</span>
                                 <Button
                                   size="sm"
                                   onClick={handleCreateNote}
                                   disabled={isSavingNote || noteDraft.trim().length === 0 || clientNotes.length >= 5}
                                 >
-                                  {isSavingNote ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar nota'}
+                                  {isSavingNote ? <Loader2 className="w-4 h-4 animate-spin" /> : t('admin.clients.notes.save')}
                                 </Button>
                               </div>
                             </div>
                             <div className="flex min-h-0 flex-1 flex-col space-y-2">
-                              <p className="text-sm font-medium text-foreground">Notas guardadas</p>
+                              <p className="text-sm font-medium text-foreground">{t('admin.clients.notes.savedTitle')}</p>
                               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                                 {isNotesLoading ? (
                                   <ListSkeleton count={2} />
@@ -717,14 +720,14 @@ const AdminClients: React.FC = () => {
                                           </Button>
                                         </div>
                                         <p className="mt-2 text-xs text-muted-foreground">
-                                          {format(parseISO(note.createdAt), "d MMM yyyy, HH:mm", { locale: es })}
+                                          {format(parseISO(note.createdAt), "d MMM yyyy, HH:mm", { locale: dateLocale })}
                                         </p>
                                       </div>
                                     ))}
                                   </div>
                                 ) : (
                                   <p className="text-sm text-muted-foreground">
-                                    Aún no hay notas internas para este cliente.
+                                    {t('admin.clients.notes.emptyState')}
                                   </p>
                                 )}
                               </div>
@@ -747,7 +750,7 @@ const AdminClients: React.FC = () => {
                       ) : (
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Mail className="w-4 h-4" />
-                          Sin email
+                          {t('admin.clients.noEmail')}
                         </div>
                       )}
                       {whatsappLink ? (
@@ -763,7 +766,7 @@ const AdminClients: React.FC = () => {
                       ) : (
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Phone className="w-4 h-4" />
-                          Sin teléfono
+                          {t('admin.clients.noPhone')}
                         </div>
                       )}
                       {subscriptionsEnabled && (
@@ -771,14 +774,14 @@ const AdminClients: React.FC = () => {
                           {activeSubscriptionQuery.isLoading ? (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <Loader2 className="w-3 h-3 animate-spin" />
-                              Comprobando suscripción activa...
+                              {t('admin.clients.subscription.loading')}
                             </div>
                           ) : activeSubscriptionQuery.data ? (
                             <Badge variant="secondary">
-                              Suscripción activa: {activeSubscriptionQuery.data.plan.name}
+                              {t('admin.clients.subscription.active', { planName: activeSubscriptionQuery.data.plan.name })}
                             </Badge>
                           ) : (
-                            <Badge variant="outline">Sin suscripción activa</Badge>
+                            <Badge variant="outline">{t('admin.clients.subscription.none')}</Badge>
                           )}
                         </div>
                       )}
@@ -792,22 +795,22 @@ const AdminClients: React.FC = () => {
                             className={isClientBlocked ? 'border-primary/40 text-primary hover:border-primary/70' : ''}
                           >
                             {isClientBlocked ? <ShieldCheck className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                            {isClientBlocked ? 'Desbloquear' : 'Bloquear'}
+                            {isClientBlocked ? t('admin.clients.unblock') : t('admin.clients.block')}
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>
-                              {isClientBlocked ? 'Desbloquear cliente' : 'Bloquear cliente'}
+                              {isClientBlocked ? t('admin.clients.unblockTitle') : t('admin.clients.blockTitle')}
                             </AlertDialogTitle>
                             <AlertDialogDescription>
                               {isClientBlocked
-                                ? 'El cliente podrá volver a iniciar sesión en la app de la marca.'
-                                : 'Este bloqueo es a nivel de marca y aplica en todos los locales. El cliente no podrá iniciar sesión.'}
+                                ? t('admin.clients.unblockDescription')
+                                : t('admin.clients.blockDescription')}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel disabled={isBlocking}>Cancelar</AlertDialogCancel>
+                            <AlertDialogCancel disabled={isBlocking}>{t('admin.common.cancelDialog.back')}</AlertDialogCancel>
                             <AlertDialogAction
                               className={
                                 isClientBlocked
@@ -817,7 +820,7 @@ const AdminClients: React.FC = () => {
                               onClick={handleToggleBlock}
                               disabled={isBlocking}
                             >
-                              {isBlocking ? 'Guardando...' : isClientBlocked ? 'Desbloquear' : 'Bloquear'}
+                              {isBlocking ? t('admin.common.saving') : isClientBlocked ? t('admin.clients.unblock') : t('admin.clients.block')}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -832,7 +835,7 @@ const AdminClients: React.FC = () => {
                     <div className="sticky top-0 z-10 bg-card border-b border-border/60 pb-2">
                       <h4 className="font-medium text-foreground flex items-center gap-2 pt-1">
                         <Calendar className="w-4 h-4 text-primary" />
-                        Historial de citas ({appointmentsTotal})
+                        {t('admin.clients.appointmentsHistory', { total: appointmentsTotal })}
                       </h4>
                     </div>
                     {isAppointmentsLoading ? (
@@ -851,13 +854,13 @@ const AdminClients: React.FC = () => {
                                 <p className="font-medium text-foreground">{getService(apt.serviceId)?.name}</p>
                                 {apt.subscriptionApplied && (
                                   <Badge variant="secondary" className="h-5 px-2 text-[10px]">
-                                    Suscripción
+                                    {t('admin.common.subscription')}
                                   </Badge>
                                 )}
                                 <AppointmentNoteIndicator note={apt.notes} variant="icon" />
                               </div>
                               <p className="text-sm text-muted-foreground">
-                                {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: es })} · {getAppointmentBarberName(apt)}
+                                {format(parseISO(apt.startDateTime), "d MMM yyyy, HH:mm", { locale: dateLocale })} · {getAppointmentBarberName(apt)}
                               </p>
                             </div>
                             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -872,11 +875,11 @@ const AdminClients: React.FC = () => {
                                 disabled={Boolean(savingPayment[apt.id])}
                               >
                                 <SelectTrigger className="h-8 w-[120px] rounded-full bg-background/70 px-3 text-xs">
-                                  <SelectValue placeholder="Método de pago" />
+                                  <SelectValue placeholder={t('admin.common.paymentMethod.placeholder')} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="cash">Efectivo</SelectItem>
-                                  <SelectItem value="card">Tarjeta</SelectItem>
+                                  <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
+                                  <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
                                   <SelectItem value="bizum">Bizum</SelectItem>
                                   {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
                                   {!stripeEnabled && (paymentMethodDrafts[apt.id] ?? apt.paymentMethod) === 'stripe' && (
@@ -884,7 +887,7 @@ const AdminClients: React.FC = () => {
                                       Stripe
                                     </SelectItem>
                                   )}
-                                  <SelectItem value="none">Sin método</SelectItem>
+                                  <SelectItem value="none">{t('admin.common.paymentMethod.none')}</SelectItem>
                                 </SelectContent>
                               </Select>
                               {savingPayment[apt.id] && (
@@ -919,7 +922,7 @@ const AdminClients: React.FC = () => {
                                     }
                                   }}
                                   className="w-[60px] bg-transparent text-center text-base font-semibold text-primary outline-none"
-                                  aria-label="Precio final"
+                                  aria-label={t('admin.common.table.finalPrice')}
                                   disabled={Boolean(savingPrice[apt.id])}
                                 />
                                 <span className="text-xs font-semibold text-primary">€</span>
@@ -948,7 +951,11 @@ const AdminClients: React.FC = () => {
                         ))}
                         <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
                           <p className="text-xs text-muted-foreground">
-                            Mostrando {appointmentsFirstIndex}-{appointmentsLastIndex} de {appointmentsTotal}
+                            {t('admin.search.pagination.showing', {
+                              first: appointmentsFirstIndex,
+                              last: appointmentsLastIndex,
+                              total: appointmentsTotal,
+                            })}
                           </p>
                           <div className="flex items-center gap-2">
                             <Button
@@ -958,10 +965,10 @@ const AdminClients: React.FC = () => {
                               onClick={() => setAppointmentsPage((page) => Math.max(1, page - 1))}
                               disabled={appointmentsPage <= 1}
                             >
-                              Anterior
+                              {t('admin.common.previous')}
                             </Button>
                             <span className="text-xs text-muted-foreground">
-                              Página {appointmentsPage} de {appointmentsTotalPages}
+                              {t('admin.common.pagination.pageOf', { page: appointmentsPage, total: appointmentsTotalPages })}
                             </span>
                             <Button
                               type="button"
@@ -972,14 +979,14 @@ const AdminClients: React.FC = () => {
                               }
                               disabled={appointmentsPage >= appointmentsTotalPages}
                             >
-                              Siguiente
+                              {t('admin.common.next')}
                             </Button>
                           </div>
                         </div>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center py-6 text-muted-foreground">
-                        Este cliente no tiene citas registradas
+                        {t('admin.clients.empty.noAppointments')}
                       </div>
                     )}
                   </div>
@@ -988,8 +995,8 @@ const AdminClients: React.FC = () => {
             ) : (
               <EmptyState
                 icon={UserIcon}
-                title="Selecciona un cliente"
-                description="Haz clic en un cliente de la lista para ver su historial."
+                title={t('admin.clients.empty.selectClientTitle')}
+                description={t('admin.clients.empty.selectClientDescription')}
               />
             )}
           </CardContent>
@@ -1013,13 +1020,13 @@ const AdminClients: React.FC = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.common.cancelDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
+              {t('admin.common.cancelDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t('admin.common.cancelDialog.back')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
@@ -1027,19 +1034,26 @@ const AdminClients: React.FC = () => {
                 setIsDeleting(true);
                 try {
                   await updateAppointment(deleteTarget.id, { status: 'cancelled' });
-                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
+                  toast({
+                    title: t('admin.common.toast.appointmentCancelledTitle'),
+                    description: t('admin.common.toast.appointmentCancelledDescription'),
+                  });
                   setDeleteTarget(null);
                   dispatchAppointmentsUpdated({ source: 'admin-clients' });
                   await appointmentsQuery.refetch();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
+                  toast({
+                    title: t('admin.common.error'),
+                    description: t('admin.common.toast.cancelAppointmentError'),
+                    variant: 'destructive',
+                  });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Cancelando...' : 'Cancelar'}
+              {isDeleting ? t('admin.common.cancelDialog.cancelling') : t('admin.common.cancelDialog.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

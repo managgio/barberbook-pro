@@ -12,7 +12,6 @@ import { Appointment, Barber, LoyaltySummary, ReferralSummaryResponse, Service }
 import AlertBanner from '@/components/common/AlertBanner';
 import { Calendar, User, ArrowRight, Scissors, Crown, X } from 'lucide-react';
 import { format, isPast, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { useBusinessCopy } from '@/lib/businessCopy';
@@ -21,6 +20,8 @@ import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { getStoredLocalId } from '@/lib/tenant';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_BARBERS: Barber[] = [];
@@ -28,7 +29,10 @@ const EMPTY_SERVICES: Service[] = [];
 
 const ClientDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { t, language } = useI18n();
   const copy = useBusinessCopy();
+  const dateLocale = resolveDateLocale(language);
+  const firstName = user?.name?.split(' ')[0] || t('clientDashboard.defaultName');
   const [referralBannerDismissed, setReferralBannerDismissed] = useState(false);
   const localId = getStoredLocalId();
   const userId = user?.id;
@@ -153,11 +157,11 @@ const ClientDashboard: React.FC = () => {
   const favoriteServiceId = getMostFrequentId(completedAppointments, 'serviceId');
   const favoriteBarberId = getMostFrequentId(completedAppointments, 'barberId');
   const favoriteServiceName = favoriteServiceId
-    ? servicesById.get(favoriteServiceId)?.name ?? serviceSnapshotsById.get(favoriteServiceId) ?? 'Sin datos'
-    : 'Sin datos';
+    ? servicesById.get(favoriteServiceId)?.name ?? serviceSnapshotsById.get(favoriteServiceId) ?? t('clientDashboard.missingData')
+    : t('clientDashboard.missingData');
   const favoriteBarberName = favoriteBarberId
-    ? barbersById.get(favoriteBarberId)?.name ?? barberSnapshotsById.get(favoriteBarberId) ?? 'Sin datos'
-    : 'Sin datos';
+    ? barbersById.get(favoriteBarberId)?.name ?? barberSnapshotsById.get(favoriteBarberId) ?? t('clientDashboard.missingData')
+    : t('clientDashboard.missingData');
 
   const showReferralBanner =
     completedAppointments.length > 0 &&
@@ -177,16 +181,16 @@ const ClientDashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-3xl font-bold text-foreground">
-            ¡Hola, {user?.name?.split(' ')[0]}!
+            {t('clientDashboard.greeting', { firstName })}
           </h1>
           <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
-            Gestiona tus citas y mantén tu estilo impecable.
+            {t('clientDashboard.subtitle')}
           </p>
         </div>
         <Button variant="glow" size="lg" className="h-8 sm:h-11 px-3 sm:px-5 text-xs sm:text-base" asChild>
           <Link to="/app/book">
             <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-            Reservar ahora
+            {t('clientDashboard.bookNow')}
           </Link>
         </Button>
       </div>
@@ -197,19 +201,19 @@ const ClientDashboard: React.FC = () => {
       {showReferralBanner && (
         <div className="relative rounded-2xl border border-primary/20 bg-primary/5 px-3 sm:px-4 py-2.5 sm:py-3 pr-10 sm:pr-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
           <div>
-            <p className="text-xs sm:text-sm font-semibold text-foreground">¿Conoces a alguien? Invítalo y gana.</p>
-            <p className="hidden sm:block text-xs text-muted-foreground">Comparte tu enlace y desbloquea recompensas.</p>
+            <p className="text-xs sm:text-sm font-semibold text-foreground">{t('clientDashboard.referralBanner.title')}</p>
+            <p className="hidden sm:block text-xs text-muted-foreground">{t('clientDashboard.referralBanner.description')}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="glow" size="sm" className="h-8 text-xs sm:text-sm" asChild>
-              <Link to="/app/referrals">Invita y gana</Link>
+              <Link to="/app/referrals">{t('clientDashboard.referralBanner.cta')}</Link>
             </Button>
           </div>
           <button
             type="button"
             onClick={dismissReferralBanner}
             className="absolute top-2 right-2 sm:top-3 sm:right-3 p-0.5 sm:p-1 rounded-full hover:bg-primary/10 text-muted-foreground"
-            aria-label="Cerrar"
+            aria-label={t('clientDashboard.referralBanner.closeAria')}
           >
             <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
@@ -219,10 +223,10 @@ const ClientDashboard: React.FC = () => {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
         {[
-          { label: 'Próximas citas', value: upcomingAppointments.length, icon: Calendar },
-          { label: 'Total de visitas', value: completedAppointments.length, icon: User },
-          { label: 'Corte más solicitado por ti', value: favoriteServiceName, icon: Scissors },
-          { label: `${copy.staff.singular} más visitado`, value: favoriteBarberName, icon: Crown },
+          { label: t('clientDashboard.stats.upcomingAppointments'), value: upcomingAppointments.length, icon: Calendar },
+          { label: t('clientDashboard.stats.totalVisits'), value: completedAppointments.length, icon: User },
+          { label: t('clientDashboard.stats.favoriteService'), value: favoriteServiceName, icon: Scissors },
+          { label: t('clientDashboard.stats.favoriteBarber', { staffSingular: copy.staff.singular }), value: favoriteBarberName, icon: Crown },
         ].map((stat, index) => (
           <Card key={stat.label} variant="glass" className="animate-scale-in" style={{ animationDelay: `${index * 0.1}s` }}>
             <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
@@ -241,9 +245,9 @@ const ClientDashboard: React.FC = () => {
       {loyaltySummary?.enabled && loyaltySummary.programs.length > 0 && (
         <div className="space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base sm:text-xl font-semibold text-foreground">Fidelización</h2>
+            <h2 className="text-base sm:text-xl font-semibold text-foreground">{t('clientDashboard.loyalty.title')}</h2>
             <Link to="/app/profile#loyalty" className="text-xs sm:text-sm text-primary hover:underline">
-              Ver detalle
+              {t('clientDashboard.loyalty.viewDetail')}
             </Link>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
@@ -261,9 +265,9 @@ const ClientDashboard: React.FC = () => {
       {/* Upcoming Appointments */}
       <Card variant="elevated">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base sm:text-lg">Próximas citas</CardTitle>
+          <CardTitle className="text-base sm:text-lg">{t('clientDashboard.upcomingAppointments.title')}</CardTitle>
           <Link to="/app/appointments" className="text-xs sm:text-sm text-primary hover:underline flex items-center">
-            Ver todas
+            {t('clientDashboard.upcomingAppointments.viewAll')}
             <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-1" />
           </Link>
         </CardHeader>
@@ -275,8 +279,11 @@ const ClientDashboard: React.FC = () => {
               {upcomingAppointments.slice(0, 3).map((appointment) => {
                 const barber = barbersById.get(appointment.barberId);
                 const service = servicesById.get(appointment.serviceId);
-                const barberName = barber?.name ?? appointment.barberNameSnapshot ?? `${copy.staff.singular} eliminado`;
-                const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
+                const barberName =
+                  barber?.name ??
+                  appointment.barberNameSnapshot ??
+                  t('clientDashboard.fallback.removedStaff', { staffSingular: copy.staff.singular });
+                const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? t('clientDashboard.fallback.removedService');
                 const date = parseISO(appointment.startDateTime);
                 
                 return (
@@ -295,11 +302,13 @@ const ClientDashboard: React.FC = () => {
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm sm:text-base font-medium text-foreground truncate">{serviceName}</p>
-                      <p className="text-xs sm:text-sm text-muted-foreground truncate">con {barberName}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                        {t('clientDashboard.withStaff', { barberName })}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs sm:text-sm font-medium text-primary">
-                        {format(date, 'EEEE d', { locale: es })}
+                        {format(date, 'EEEE d', { locale: dateLocale })}
                       </p>
                       <p className="text-xs sm:text-sm text-muted-foreground">
                         {format(date, 'HH:mm')}
@@ -314,9 +323,11 @@ const ClientDashboard: React.FC = () => {
               <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 sm:mb-4">
                 <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground" />
               </div>
-              <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">No tienes citas programadas</p>
+              <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
+                {t('clientDashboard.empty.noAppointments')}
+              </p>
               <Button className="h-8 sm:h-10 text-xs sm:text-sm" asChild>
-                <Link to="/app/book">Reservar mi primera cita</Link>
+                <Link to="/app/book">{t('clientDashboard.empty.bookFirstAppointment')}</Link>
               </Button>
             </div>
           )}

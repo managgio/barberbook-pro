@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CircleHelp, RefreshCcw } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { AlertTriangle, CircleHelp, PauseCircle, PlayCircle, RefreshCcw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -17,11 +19,16 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   getPlatformApiMetricsSummary,
+  getPlatformI18nObservabilitySummary,
+  pausePlatformTenantAutoTranslate,
+  resumePlatformTenantAutoTranslate,
   getPlatformWebVitalsSummary,
 } from '@/data/api/observability';
 import {
   PlatformObservabilityApiRouteSummary,
   PlatformObservabilityApiSummary,
+  PlatformI18nObservabilitySummary,
+  PlatformI18nTenantStatus,
   PlatformObservabilityWebVitalMetricSummary,
   PlatformObservabilityWebVitalsSummary,
 } from '@/data/types';
@@ -45,6 +52,7 @@ const WEB_VITAL_LEGEND = [
 
 const formatMs = (value: number) => `${value.toFixed(0)} ms`;
 const formatPct = (value: number) => `${value.toFixed(2)}%`;
+const formatInteger = (value: number) => value.toLocaleString('es-ES');
 
 type HealthLevel = 'ok' | 'warning' | 'critical';
 
@@ -87,6 +95,31 @@ const getApiHealth = (row: PlatformObservabilityApiRouteSummary): HealthLevel =>
   if (has5xx || row.errorRate >= 5 || row.p95DurationMs >= 2_000) return 'critical';
   if (row.errorRate >= 1 || row.p95DurationMs >= 1_000) return 'warning';
   return 'ok';
+};
+
+const getI18nStatusMeta = (status: PlatformI18nTenantStatus) => {
+  if (status === 'critical') {
+    return {
+      label: 'Crítico',
+      badgeClassName: 'border-destructive/40 bg-destructive/10 text-destructive',
+    };
+  }
+  if (status === 'paused') {
+    return {
+      label: 'Pausado',
+      badgeClassName: 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+    };
+  }
+  if (status === 'warning') {
+    return {
+      label: 'Vigilar',
+      badgeClassName: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    };
+  }
+  return {
+    label: 'OK',
+    badgeClassName: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  };
 };
 
 const buildHealthSummary = <T,>(rows: T[], resolver: (row: T) => HealthLevel) =>
@@ -136,6 +169,16 @@ const CardInfoTooltip: React.FC<{ label: string; children: React.ReactNode }> = 
       {children}
     </TooltipContent>
   </Tooltip>
+);
+
+const MetricLabelWithTooltip: React.FC<{
+  label: string;
+  tooltip: React.ReactNode;
+}> = ({ label, tooltip }) => (
+  <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+    <span>{label}</span>
+    <CardInfoTooltip label={`Info ${label}`}>{tooltip}</CardInfoTooltip>
+  </div>
 );
 
 const WebVitalsTable: React.FC<{ rows: PlatformObservabilityWebVitalMetricSummary[] }> = ({ rows }) => {
@@ -228,8 +271,177 @@ const ApiTable: React.FC<{ rows: PlatformObservabilityApiRouteSummary[] }> = ({ 
   );
 };
 
+const I18nTenantsTable: React.FC<{
+  data: PlatformI18nObservabilitySummary;
+  showIssuesOnly: boolean;
+  actionBrandId: string | null;
+  onTogglePaused: (brandId: string, paused: boolean) => void;
+}> = ({ data, showIssuesOnly, actionBrandId, onTogglePaused }) => {
+  const rows = showIssuesOnly
+    ? data.tenants.filter((tenant) => tenant.status !== 'ok')
+    : data.tenants;
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {showIssuesOnly
+          ? 'No hay tenants con alertas en esta ventana.'
+          : 'No hay datos i18n suficientes todavía para mostrar detalle por tenant.'}
+      </p>
+    );
+  }
+
+  return (
+    <Table className="min-w-[1100px]">
+      <TableHeader>
+        <TableRow>
+          <TableHead>
+            <div className="flex items-center gap-1">
+              <span>Tenant</span>
+              <CardInfoTooltip label="Info tenant">
+                Marca/cliente que estás monitorizando en esta fila.
+              </CardInfoTooltip>
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center gap-1">
+              <span>Estado</span>
+              <CardInfoTooltip label="Info estado">
+                Salud operativa de traducciones para ese tenant: OK, Vigilar, Crítico o Pausado.
+              </CardInfoTooltip>
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center gap-1">
+              <span>Cola</span>
+              <CardInfoTooltip label="Info cola">
+                Traducciones pendientes de procesar.
+              </CardInfoTooltip>
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center gap-1">
+              <span>Fallos (ventana)</span>
+              <CardInfoTooltip label="Info fallos ventana">
+                Ratio de fallos de traducción automática en la ventana temporal seleccionada.
+              </CardInfoTooltip>
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center gap-1">
+              <span>Uso mensual</span>
+              <CardInfoTooltip label="Info uso mensual">
+                Consumo del mes en peticiones/caracteres frente al límite configurado (si existe).
+              </CardInfoTooltip>
+            </div>
+          </TableHead>
+          <TableHead className="text-right">Acción</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((tenant) => {
+          const statusMeta = getI18nStatusMeta(tenant.status);
+          const requestPct = tenant.monthlyRequests.ratio !== null
+            ? Math.min(100, Math.round(tenant.monthlyRequests.ratio * 100))
+            : null;
+          const characterPct = tenant.monthlyCharacters.ratio !== null
+            ? Math.min(100, Math.round(tenant.monthlyCharacters.ratio * 100))
+            : null;
+          const failurePct = tenant.failureWindow.totalSamples > 0
+            ? tenant.failureWindow.failureRate * 100
+            : 0;
+          const isActioning = actionBrandId === tenant.brandId;
+
+          return (
+            <TableRow key={tenant.brandId}>
+              <TableCell>
+                <div className="space-y-1">
+                  <div className="font-medium leading-tight">{tenant.brandName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {tenant.subdomain}.managgio • {tenant.languages.defaultLanguage.toUpperCase()} •{' '}
+                    {tenant.languages.supportedCount} idioma{tenant.languages.supportedCount === 1 ? '' : 's'}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  <Badge variant="outline" className={statusMeta.badgeClassName}>
+                    {statusMeta.label}
+                  </Badge>
+                  {!tenant.autoTranslateEnabled && (
+                    <div className="text-[11px] text-muted-foreground">Auto-traducción desactivada</div>
+                  )}
+                  {tenant.paused && tenant.pauseReason && (
+                    <div className="text-[11px] text-muted-foreground line-clamp-2">
+                      {tenant.pauseReason}
+                    </div>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">{formatInteger(tenant.queue.pending)}</div>
+                  <div className="text-[11px] text-muted-foreground">pendientes</div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  <div className={`text-sm font-medium ${tenant.failureWindow.highFailure ? 'text-destructive' : ''}`}>
+                    {tenant.failureWindow.failedSamples}/{tenant.failureWindow.totalSamples} ({failurePct.toFixed(1)}%)
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    umbral {Math.round(tenant.failureWindow.threshold * 100)}% • mín {tenant.failureWindow.minSamples}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell className="space-y-2">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className={tenant.monthlyRequests.overLimit ? 'text-destructive font-semibold' : 'text-muted-foreground'}>
+                      Peticiones
+                    </span>
+                    <span className={tenant.monthlyRequests.overLimit ? 'text-destructive font-semibold' : 'text-foreground'}>
+                      {formatInteger(tenant.monthlyRequests.used)}
+                      {tenant.monthlyRequests.limit ? ` / ${formatInteger(tenant.monthlyRequests.limit)}` : ' / sin límite'}
+                    </span>
+                  </div>
+                  {requestPct !== null && <Progress value={requestPct} className="h-1.5" />}
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className={tenant.monthlyCharacters.overLimit ? 'text-destructive font-semibold' : 'text-muted-foreground'}>
+                      Caracteres
+                    </span>
+                    <span className={tenant.monthlyCharacters.overLimit ? 'text-destructive font-semibold' : 'text-foreground'}>
+                      {formatInteger(tenant.monthlyCharacters.used)}
+                      {tenant.monthlyCharacters.limit ? ` / ${formatInteger(tenant.monthlyCharacters.limit)}` : ' / sin límite'}
+                    </span>
+                  </div>
+                  {characterPct !== null && <Progress value={characterPct} className="h-1.5" />}
+                </div>
+              </TableCell>
+              <TableCell className="text-right">
+                <Button
+                  size="sm"
+                  variant={tenant.paused ? 'default' : 'outline'}
+                  disabled={isActioning}
+                  onClick={() => onTogglePaused(tenant.brandId, tenant.paused)}
+                >
+                  {tenant.paused ? <PlayCircle className="mr-2 h-4 w-4" /> : <PauseCircle className="mr-2 h-4 w-4" />}
+                  {tenant.paused ? 'Reanudar' : 'Pausar'}
+                </Button>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+};
+
 const PlatformObservability: React.FC = () => {
   const [windowMinutes, setWindowMinutes] = useState<number>(60);
+  const [showIssuesOnly, setShowIssuesOnly] = useState<boolean>(true);
 
   const webVitalsQuery = useQuery<PlatformObservabilityWebVitalsSummary>({
     queryKey: queryKeys.platformObservabilityWebVitals(windowMinutes),
@@ -245,7 +457,26 @@ const PlatformObservability: React.FC = () => {
     placeholderData: (previous) => previous,
   });
 
-  const isRefreshing = webVitalsQuery.isFetching || apiQuery.isFetching;
+  const i18nQuery = useQuery<PlatformI18nObservabilitySummary>({
+    queryKey: queryKeys.platformObservabilityI18n(windowMinutes),
+    queryFn: () => getPlatformI18nObservabilitySummary(windowMinutes),
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+  });
+
+  const i18nActionMutation = useMutation({
+    mutationFn: async (params: { brandId: string; currentlyPaused: boolean }) => {
+      if (params.currentlyPaused) {
+        return resumePlatformTenantAutoTranslate(params.brandId);
+      }
+      return pausePlatformTenantAutoTranslate(params.brandId);
+    },
+    onSuccess: async () => {
+      await i18nQuery.refetch();
+    },
+  });
+
+  const isRefreshing = webVitalsQuery.isFetching || apiQuery.isFetching || i18nQuery.isFetching;
 
   const webVitalRows = useMemo(
     () =>
@@ -272,6 +503,7 @@ const PlatformObservability: React.FC = () => {
   );
   const webVitalsHealth = useMemo(() => buildHealthSummary(webVitalRows, getWebVitalHealth), [webVitalRows]);
   const apiHealth = useMemo(() => buildHealthSummary(apiRows, getApiHealth), [apiRows]);
+  const i18nSummary = i18nQuery.data?.summary;
 
   return (
     <section className="space-y-6">
@@ -298,7 +530,7 @@ const PlatformObservability: React.FC = () => {
           <Button
             variant="outline"
             onClick={() => {
-              void Promise.all([webVitalsQuery.refetch(), apiQuery.refetch()]);
+              void Promise.all([webVitalsQuery.refetch(), apiQuery.refetch(), i18nQuery.refetch()]);
             }}
             disabled={isRefreshing}
           >
@@ -404,6 +636,107 @@ const PlatformObservability: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="flex min-w-0 flex-col">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                I18N Operativa (cross-tenant)
+                <CardInfoTooltip label="Qué muestra esta card i18n">
+                  Estado de traducciones por tenant para actuar rápido: cola pendiente, salud de fallos, consumo mensual y
+                  control inmediato de pausa/reanudación.
+                </CardInfoTooltip>
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Resumen platform-level para tomar decisiones de operación en segundos.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2">
+              <span className="text-xs text-muted-foreground">Solo alertas</span>
+              <CardInfoTooltip label="Info solo alertas">
+                Activo: muestra únicamente tenants con estado Vigilar, Crítico o Pausado. Desactivo: muestra todos.
+              </CardInfoTooltip>
+              <Switch checked={showIssuesOnly} onCheckedChange={setShowIssuesOnly} />
+            </div>
+          </div>
+          {i18nSummary && (
+            <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="rounded-lg border border-border/60 px-3 py-2">
+                <MetricLabelWithTooltip
+                  label="Tenants"
+                  tooltip="Cantidad total de tenants incluidos en este resumen."
+                />
+                <p className="text-lg font-semibold">{formatInteger(i18nSummary.totalTenants)}</p>
+              </div>
+              <div className="rounded-lg border border-border/60 px-3 py-2">
+                <MetricLabelWithTooltip
+                  label="Crítico"
+                  tooltip="Tenants con incidencia grave: fallos altos o límites mensuales superados."
+                />
+                <p className="text-lg font-semibold text-destructive">{formatInteger(i18nSummary.statuses.critical)}</p>
+              </div>
+              <div className="rounded-lg border border-border/60 px-3 py-2">
+                <MetricLabelWithTooltip
+                  label="Pausados"
+                  tooltip="Tenants con la auto-traducción detenida manualmente o por pausa activa."
+                />
+                <p className="text-lg font-semibold text-blue-600 dark:text-blue-300">{formatInteger(i18nSummary.pausedTenants)}</p>
+              </div>
+              <div className="rounded-lg border border-border/60 px-3 py-2">
+                <MetricLabelWithTooltip
+                  label="Cerca del límite"
+                  tooltip={`Tenants por encima del ${Math.round((i18nQuery.data?.nearLimitThreshold || 0.8) * 100)}% de su límite mensual.`}
+                />
+                <p className="text-lg font-semibold text-amber-600 dark:text-amber-300">{formatInteger(i18nSummary.nearLimitTenants)}</p>
+              </div>
+              <div className="rounded-lg border border-border/60 px-3 py-2">
+                <MetricLabelWithTooltip
+                  label="Fallo alto"
+                  tooltip="Tenants cuyo ratio de error en la ventana supera el umbral operativo configurado."
+                />
+                <p className="text-lg font-semibold text-destructive">{formatInteger(i18nSummary.highFailureTenants)}</p>
+              </div>
+              <div className="rounded-lg border border-border/60 px-3 py-2">
+                <MetricLabelWithTooltip
+                  label="Cola total"
+                  tooltip="Total de traducciones pendientes sumando todos los tenants."
+                />
+                <p className="text-lg font-semibold">{formatInteger(i18nSummary.pendingQueueTotal)}</p>
+              </div>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4 overflow-x-auto">
+          {i18nActionMutation.error && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              {getErrorMessage(i18nActionMutation.error)}
+            </div>
+          )}
+          {i18nQuery.error ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4" />
+                No se pudo cargar observabilidad i18n
+              </div>
+              <p className="mt-1">{getErrorMessage(i18nQuery.error)}</p>
+            </div>
+          ) : i18nQuery.data ? (
+            <I18nTenantsTable
+              data={i18nQuery.data}
+              showIssuesOnly={showIssuesOnly}
+              actionBrandId={
+                i18nActionMutation.isPending ? i18nActionMutation.variables?.brandId || null : null
+              }
+              onTogglePaused={(brandId, currentlyPaused) =>
+                i18nActionMutation.mutate({ brandId, currentlyPaused })
+              }
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Cargando estado i18n...</p>
+          )}
+        </CardContent>
+      </Card>
     </section>
   );
 };

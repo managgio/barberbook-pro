@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import type { Locale } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -9,30 +10,34 @@ import { getReferralSummary, getRewardsWallet } from '@/data/api/referrals';
 import { ReferralSummaryResponse, RewardWalletSummary, ReferralAttributionItem } from '@/data/types';
 import { Copy, Share2, QrCode, Gift, Wallet, Ticket } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
-const buildWhatsAppMessage = (link: string) =>
-  `Invita a alguien de confianza. Cuando complete su primera visita, ambos ganáis. ${link}`;
+const buildWhatsAppMessage = (template: string, link: string) => template.replace('{link}', link);
 
-const ReferralStatusCard: React.FC<{ item: ReferralAttributionItem }> = ({ item }) => {
-  const referredName = item.referred?.name || item.referred?.email || item.referred?.phone || 'Invitado';
+const ReferralStatusCard: React.FC<{
+  item: ReferralAttributionItem;
+  t: (key: string, values?: Record<string, string | number>) => string;
+  dateLocale: Locale;
+}> = ({ item, t, dateLocale }) => {
+  const referredName = item.referred?.name || item.referred?.email || item.referred?.phone || t('referrals.invitedFallback');
   const statusLabel =
     item.status === 'REWARDED' || item.status === 'COMPLETED'
-      ? 'Confirmado'
+      ? t('referrals.status.confirmed')
       : item.status === 'EXPIRED'
-      ? 'Expirado'
+      ? t('referrals.status.expired')
       : item.status === 'VOIDED'
-      ? 'Invalidado'
-      : 'Pendiente';
+      ? t('referrals.status.invalidated')
+      : t('referrals.status.pending');
   const description =
     item.status === 'REWARDED' || item.status === 'COMPLETED'
-      ? '¡Listo! Tu recompensa está disponible.'
+      ? t('referrals.statusDescription.confirmed')
       : item.status === 'EXPIRED'
-      ? 'La invitación caducó antes de completar la primera visita.'
+      ? t('referrals.statusDescription.expired')
       : item.status === 'VOIDED'
-      ? 'Esta invitación fue invalidada por seguridad.'
-      : 'Tu invitación está activa. Se desbloquea cuando complete su primera visita.';
+      ? t('referrals.statusDescription.invalidated')
+      : t('referrals.statusDescription.pending');
 
   return (
     <div className="rounded-xl border border-border/70 bg-muted/30 p-3 sm:p-4 space-y-1.5 sm:space-y-2">
@@ -42,7 +47,7 @@ const ReferralStatusCard: React.FC<{ item: ReferralAttributionItem }> = ({ item 
       </div>
       <p className="hidden sm:block text-xs text-muted-foreground">{description}</p>
       <p className="text-[10px] sm:text-[11px] text-muted-foreground">
-        {format(parseISO(item.attributedAt), 'd MMM yyyy', { locale: es })}
+        {format(parseISO(item.attributedAt), 'd MMM yyyy', { locale: dateLocale })}
       </p>
     </div>
   );
@@ -50,8 +55,10 @@ const ReferralStatusCard: React.FC<{ item: ReferralAttributionItem }> = ({ item 
 
 const ReferralsPage: React.FC = () => {
   const { user } = useAuth();
+  const { t, language } = useI18n();
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const dateLocale = resolveDateLocale(language);
   const [summary, setSummary] = useState<ReferralSummaryResponse | null>(null);
   const [walletSummary, setWalletSummary] = useState<RewardWalletSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -97,24 +104,24 @@ const ReferralsPage: React.FC = () => {
     if (!shareUrl) return;
     await navigator.clipboard.writeText(shareUrl);
     toast({
-      title: 'Enlace copiado',
-      description: 'Ya puedes compartir tu enlace de referido.',
+      title: t('referrals.toast.linkCopiedTitle'),
+      description: t('referrals.toast.linkCopiedDescription'),
     });
   };
 
   if (isLoading) {
-    return <div className="text-sm text-muted-foreground">Cargando tu programa de referidos...</div>;
+    return <div className="text-sm text-muted-foreground">{t('referrals.loading')}</div>;
   }
 
   if (!summary) {
-    return <div className="text-sm text-muted-foreground">No pudimos cargar el programa de referidos.</div>;
+    return <div className="text-sm text-muted-foreground">{t('referrals.loadError')}</div>;
   }
   if (summary.programEnabled === false) {
     return (
       <div className="text-sm text-muted-foreground">
         {summary.blockedBySubscription
-          ? 'Mientras tengas una suscripción activa, el programa de referidos queda pausado para tu cuenta.'
-          : `El programa de referidos no está activo en ${copy.location.definiteSingular}.`}
+          ? t('referrals.blockedBySubscription')
+          : t('referrals.disabledInLocation', { location: copy.location.definiteSingular })}
       </div>
     );
   }
@@ -122,9 +129,9 @@ const ReferralsPage: React.FC = () => {
   return (
     <div className="space-y-4 sm:space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Invita y gana</h1>
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('referrals.title')}</h1>
         <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
-          Invita a alguien de confianza. Cuando complete su primera visita, ambos ganáis.
+          {t('referrals.subtitle')}
         </p>
       </div>
 
@@ -133,10 +140,10 @@ const ReferralsPage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Share2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-              Comparte tu invitación
+              {t('referrals.share.title')}
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
-              Comparte tu enlace o muestra el QR en {copy.location.definiteSingular}.
+              {t('referrals.share.description', { location: copy.location.definiteSingular })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4">
@@ -144,27 +151,33 @@ const ReferralsPage: React.FC = () => {
               <Input value={shareUrl} readOnly className="h-9 sm:h-10 text-xs sm:text-sm" />
               <Button variant="outline" onClick={handleCopy} className="h-9 sm:h-10 text-xs sm:text-sm gap-2">
                 <Copy className="w-4 h-4" />
-                Copiar enlace
+                {t('referrals.share.copyLink')}
               </Button>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 variant="glow"
                 className="h-9 sm:h-10 text-xs sm:text-sm gap-2"
-                onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(buildWhatsAppMessage(shareUrl))}`)}
+                onClick={() =>
+                  window.open(
+                    `https://wa.me/?text=${encodeURIComponent(
+                      buildWhatsAppMessage(t('referrals.share.whatsappMessage'), shareUrl),
+                    )}`,
+                  )
+                }
               >
-                Compartir por WhatsApp
+                {t('referrals.share.whatsapp')}
               </Button>
             </div>
             {qrUrl && (
               <div className="rounded-2xl border border-border/60 bg-muted/20 p-3 sm:p-4 flex flex-col items-center gap-2 sm:gap-3">
                 <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
                   <QrCode className="w-4 h-4" />
-                  Escanea este QR para reservar con tu recompensa.
+                  {t('referrals.share.qrHint')}
                 </div>
                 <img
                   src={qrUrl}
-                  alt="QR de referido"
+                  alt={t('referrals.share.qrAlt')}
                   loading="lazy"
                   decoding="async"
                   width={160}
@@ -180,19 +193,19 @@ const ReferralsPage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Gift className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-              Resumen de recompensas
+              {t('referrals.rewardsSummary.title')}
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
-              Tú ganas: {summary.rewardSummary.referrer.text}
+              {t('referrals.rewardsSummary.youWin', { reward: summary.rewardSummary.referrer.text })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2.5 sm:space-y-3">
             <div className="rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
-              <p className="text-xs text-muted-foreground">Tú ganas:</p>
+              <p className="text-xs text-muted-foreground">{t('referrals.rewardsSummary.youWinLabel')}</p>
               <p className="text-sm sm:text-lg font-semibold text-foreground">{summary.rewardSummary.referrer.text}</p>
             </div>
             <div className="rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
-              <p className="text-xs text-muted-foreground">Tu amigo gana:</p>
+              <p className="text-xs text-muted-foreground">{t('referrals.rewardsSummary.friendWinsLabel')}</p>
               <p className="text-sm sm:text-lg font-semibold text-foreground">{summary.rewardSummary.referred.text}</p>
             </div>
           </CardContent>
@@ -203,39 +216,41 @@ const ReferralsPage: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Wallet className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-            Recompensas disponibles
+            {t('referrals.wallet.title')}
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
-            Saldo disponible y cupones activos.
+            {t('referrals.wallet.description')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-3 sm:px-4 py-2.5 sm:py-3">
             <div>
-              <p className="text-xs text-muted-foreground">Saldo disponible</p>
+              <p className="text-xs text-muted-foreground">{t('referrals.wallet.availableBalance')}</p>
               <p className="text-lg sm:text-xl font-bold text-foreground">{walletAvailable.toFixed(2)}€</p>
             </div>
-            <span className="text-[11px] sm:text-xs text-muted-foreground">Saldo total: {walletBalance.toFixed(2)}€</span>
+            <span className="text-[11px] sm:text-xs text-muted-foreground">
+              {t('referrals.wallet.totalBalance', { amount: walletBalance.toFixed(2) })}
+            </span>
           </div>
           <div className="space-y-2">
             <p className="text-xs sm:text-sm font-medium text-foreground flex items-center gap-2">
               <Ticket className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              Cupones activos
+              {t('referrals.wallet.activeCoupons')}
             </p>
             {walletSummary?.coupons.length ? (
               <div className="grid gap-2">
                 {walletSummary.coupons.map((coupon) => (
                   <div key={coupon.id} className="rounded-xl border border-border/60 bg-muted/20 p-2.5 sm:p-3 text-xs sm:text-sm">
                     {coupon.discountType === 'FREE_SERVICE'
-                      ? 'Servicio gratis'
+                      ? t('referrals.coupon.freeService')
                       : coupon.discountType === 'PERCENT_DISCOUNT'
-                      ? `${coupon.discountValue ?? 0}% de descuento`
-                      : `${coupon.discountValue ?? 0}€ de descuento`}
+                      ? t('referrals.coupon.percentDiscount', { value: coupon.discountValue ?? 0 })
+                      : t('referrals.coupon.fixedDiscount', { value: coupon.discountValue ?? 0 })}
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">No tienes cupones activos ahora mismo.</p>
+              <p className="text-xs text-muted-foreground">{t('referrals.wallet.noActiveCoupons')}</p>
             )}
           </div>
         </CardContent>
@@ -243,34 +258,38 @@ const ReferralsPage: React.FC = () => {
 
       <Tabs defaultValue="pending" className="space-y-4">
         <TabsList className="grid w-full max-w-md grid-cols-3 h-7 sm:h-10 p-0.5 sm:p-1">
-          <TabsTrigger value="pending" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">Pendientes</TabsTrigger>
-          <TabsTrigger value="confirmed" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">Confirmados</TabsTrigger>
-          <TabsTrigger value="rewards" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">Recompensas</TabsTrigger>
+          <TabsTrigger value="pending" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">{t('referrals.tabs.pending')}</TabsTrigger>
+          <TabsTrigger value="confirmed" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">{t('referrals.tabs.confirmed')}</TabsTrigger>
+          <TabsTrigger value="rewards" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none">{t('referrals.tabs.rewards')}</TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="space-y-3">
           {summary.pending.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tienes invitaciones pendientes.</p>
+            <p className="text-sm text-muted-foreground">{t('referrals.empty.pending')}</p>
           ) : (
-            summary.pending.map((item) => <ReferralStatusCard key={item.id} item={item} />)
+            summary.pending.map((item) => (
+              <ReferralStatusCard key={item.id} item={item} t={t} dateLocale={dateLocale} />
+            ))
           )}
         </TabsContent>
         <TabsContent value="confirmed" className="space-y-3">
           {summary.confirmed.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aún no tienes referidos confirmados.</p>
+            <p className="text-sm text-muted-foreground">{t('referrals.empty.confirmed')}</p>
           ) : (
-            summary.confirmed.map((item) => <ReferralStatusCard key={item.id} item={item} />)
+            summary.confirmed.map((item) => (
+              <ReferralStatusCard key={item.id} item={item} t={t} dateLocale={dateLocale} />
+            ))
           )}
         </TabsContent>
         <TabsContent value="rewards" className="space-y-3">
           {summary.expired.length === 0 && summary.invalidated.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay invitaciones expiradas o invalidadas.</p>
+            <p className="text-sm text-muted-foreground">{t('referrals.empty.rewards')}</p>
           ) : (
             <div className="space-y-3">
               {summary.expired.map((item) => (
-                <ReferralStatusCard key={item.id} item={item} />
+                <ReferralStatusCard key={item.id} item={item} t={t} dateLocale={dateLocale} />
               ))}
               {summary.invalidated.map((item) => (
-                <ReferralStatusCard key={item.id} item={item} />
+                <ReferralStatusCard key={item.id} item={item} t={t} dateLocale={dateLocale} />
               ))}
             </div>
           )}

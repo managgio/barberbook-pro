@@ -23,12 +23,13 @@ import { Award, Copy, Users, TrendingUp, Info } from 'lucide-react';
 import { fetchServicesCached } from '@/lib/catalogQuery';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { useI18n } from '@/hooks/useI18n';
 
 const rewardTypeOptions = [
-  { value: 'WALLET', label: 'Saldo (wallet)' },
-  { value: 'PERCENT_DISCOUNT', label: '% Descuento' },
-  { value: 'FIXED_DISCOUNT', label: 'Descuento fijo' },
-  { value: 'FREE_SERVICE', label: 'Servicio gratis' },
+  { value: 'WALLET', labelKey: 'admin.referrals.rewardType.wallet' },
+  { value: 'PERCENT_DISCOUNT', labelKey: 'admin.referrals.rewardType.percentDiscount' },
+  { value: 'FIXED_DISCOUNT', labelKey: 'admin.referrals.rewardType.fixedDiscount' },
+  { value: 'FREE_SERVICE', labelKey: 'admin.referrals.rewardType.freeService' },
 ] as const;
 const LIST_PAGE = 1;
 const LIST_PAGE_SIZE = 25;
@@ -50,6 +51,7 @@ type ReferralOverview = {
 
 const AdminReferrals: React.FC = () => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const { locations, currentLocationId } = useTenant();
   const queryClient = useQueryClient();
   const copy = useBusinessCopy();
@@ -63,36 +65,44 @@ const AdminReferrals: React.FC = () => {
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoKey, setInfoKey] = useState<'expiry' | 'newCustomer' | 'monthlyLimit' | 'allowedServices' | 'rewardReferrer' | 'rewardReferred' | 'antiFraud' | null>(null);
 
-  const infoContent = {
-    expiry: {
-      title: 'Caducidad de la atribución',
-      body: 'Es el número de días que tiene un invitado desde que entra por tu enlace para completar su primera cita. Si se pasa el plazo, la invitación expira y no genera recompensa.',
-    },
-    newCustomer: {
-      title: 'Solo nuevos clientes',
-      body: `Cuando está activo, el referido solo es válido si el invitado no tiene citas previas en ${copy.location.definiteSingular}.`,
-    },
-    monthlyLimit: {
-      title: 'Límite mensual por embajador',
-      body: 'Define cuántas recompensas puede desbloquear un mismo embajador en un mes. Si se supera, las nuevas invitaciones quedan invalidadas.',
-    },
-    allowedServices: {
-      title: 'Servicios permitidos',
-      body: 'Si seleccionas servicios aquí, solo las citas de esos servicios podrán activar la recompensa del referido.',
-    },
-    rewardReferrer: {
-      title: 'Recompensa embajador',
-      body: 'Lo que gana el cliente que invita. Puedes dar saldo, descuento o un servicio gratis.',
-    },
-    rewardReferred: {
-      title: 'Recompensa invitado',
-      body: 'Lo que gana la persona invitada cuando completa su primera cita.',
-    },
-    antiFraud: {
-      title: 'Anti-fraude',
-      body: `Bloquear auto-referidos por usuario: impide que alguien se refiera a sí mismo con su propia cuenta. Bloquear auto-referidos por contacto: evita que el invitado use el mismo email o teléfono que el embajador. Bloquear contactos duplicados: una misma identidad (email/teléfono) no puede generar más de una recompensa en ${copy.location.definiteSingular}.`,
-    },
-  } as const;
+  const infoContent = useMemo(
+    () =>
+      ({
+        expiry: {
+          title: t('admin.referrals.info.expiry.title'),
+          body: t('admin.referrals.info.expiry.body'),
+        },
+        newCustomer: {
+          title: t('admin.referrals.info.newCustomer.title'),
+          body: t('admin.referrals.info.newCustomer.body', {
+            locationDefiniteSingular: copy.location.definiteSingular,
+          }),
+        },
+        monthlyLimit: {
+          title: t('admin.referrals.info.monthlyLimit.title'),
+          body: t('admin.referrals.info.monthlyLimit.body'),
+        },
+        allowedServices: {
+          title: t('admin.referrals.info.allowedServices.title'),
+          body: t('admin.referrals.info.allowedServices.body'),
+        },
+        rewardReferrer: {
+          title: t('admin.referrals.info.rewardReferrer.title'),
+          body: t('admin.referrals.info.rewardReferrer.body'),
+        },
+        rewardReferred: {
+          title: t('admin.referrals.info.rewardReferred.title'),
+          body: t('admin.referrals.info.rewardReferred.body'),
+        },
+        antiFraud: {
+          title: t('admin.referrals.info.antiFraud.title'),
+          body: t('admin.referrals.info.antiFraud.body', {
+            locationDefiniteSingular: copy.location.definiteSingular,
+          }),
+        },
+      }) as const,
+    [copy.location.definiteSingular, t],
+  );
 
   const openInfo = (key: typeof infoKey) => {
     setInfoKey(key);
@@ -148,20 +158,20 @@ const AdminReferrals: React.FC = () => {
   useEffect(() => {
     if (!configQuery.error && !servicesQuery.error && !overviewQuery.error) return;
     toast({
-      title: 'No se pudo cargar referidos',
-      description: 'Inténtalo más tarde.',
+      title: t('admin.referrals.toast.loadErrorTitle'),
+      description: t('admin.referrals.toast.tryLater'),
       variant: 'destructive',
     });
-  }, [configQuery.error, overviewQuery.error, servicesQuery.error, toast]);
+  }, [configQuery.error, overviewQuery.error, servicesQuery.error, t, toast]);
 
   useEffect(() => {
     if (!listQueryResult.error) return;
     toast({
-      title: 'No se pudo cargar el listado',
-      description: 'Inténtalo más tarde.',
+      title: t('admin.referrals.toast.loadListErrorTitle'),
+      description: t('admin.referrals.toast.tryLater'),
       variant: 'destructive',
     });
-  }, [listQueryResult.error, toast]);
+  }, [listQueryResult.error, t, toast]);
 
   const services = servicesQuery.data ?? EMPTY_SERVICES;
   const overview = overviewQuery.data ?? null;
@@ -189,14 +199,14 @@ const AdminReferrals: React.FC = () => {
       setConfig(updated);
       queryClient.setQueryData(queryKeys.adminReferralConfig(currentLocationId), updated);
       toast({
-        title: 'Configuración guardada',
-        description: 'Programa de referidos actualizado.',
+        title: t('admin.referrals.toast.savedTitle'),
+        description: t('admin.referrals.toast.savedDescription'),
       });
       await Promise.all([overviewQuery.refetch(), listQueryResult.refetch()]);
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
-        description: error instanceof Error ? error.message : 'Revisa los datos.',
+        title: t('admin.referrals.toast.saveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.referrals.toast.reviewData'),
         variant: 'destructive',
       });
     } finally {
@@ -210,12 +220,17 @@ const AdminReferrals: React.FC = () => {
       const updated = await copyReferralConfig(selectedCopyLocation);
       setConfig(updated);
       queryClient.setQueryData(queryKeys.adminReferralConfig(currentLocationId), updated);
-      toast({ title: 'Configuración copiada', description: `Se aplicó la configuración ${copy.location.fromWithDefinite}.` });
+      toast({
+        title: t('admin.referrals.toast.copiedTitle'),
+        description: t('admin.referrals.toast.copiedDescription', {
+          locationFromWithDefinite: copy.location.fromWithDefinite,
+        }),
+      });
       setCopyDialogOpen(false);
     } catch (error) {
       toast({
-        title: 'No se pudo copiar',
-        description: error instanceof Error ? error.message : 'Inténtalo más tarde.',
+        title: t('admin.referrals.toast.copyErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.referrals.toast.tryLater'),
         variant: 'destructive',
       });
     }
@@ -223,31 +238,31 @@ const AdminReferrals: React.FC = () => {
 
 
   if (isLoading || !config) {
-    return <div className="text-muted-foreground">Cargando referidos...</div>;
+    return <div className="text-muted-foreground">{t('admin.referrals.loading')}</div>;
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div  className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Programa de referidos</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.referrals.title')}</h1>
           <p className="text-muted-foreground">
-            Convierte a tus clientes en tu mejor canal de crecimiento.
+            {t('admin.referrals.subtitle')}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="gap-2" onClick={() => setCopyDialogOpen(true)}>
             <Copy className="w-4 h-4" />
-            Copiar configuración
+            {t('admin.referrals.actions.copyConfig')}
           </Button>
         </div>
       </div>
 
       <Tabs defaultValue="config" className="space-y-6">
         <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="config">Configuración</TabsTrigger>
-          <TabsTrigger value="analytics">Analítica</TabsTrigger>
-          <TabsTrigger value="list">Listado</TabsTrigger>
+          <TabsTrigger value="config">{t('admin.referrals.tabs.config')}</TabsTrigger>
+          <TabsTrigger value="analytics">{t('admin.referrals.tabs.analytics')}</TabsTrigger>
+          <TabsTrigger value="list">{t('admin.referrals.tabs.list')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="config" className="space-y-6">
@@ -255,18 +270,20 @@ const AdminReferrals: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-primary" />
-                Configuración {copy.location.fromWithDefinite}
+                {t('admin.referrals.configTitle', { locationFromWithDefinite: copy.location.fromWithDefinite })}
               </CardTitle>
               <CardDescription>
-                Ajusta reglas, recompensas y anti-fraude.
+                {t('admin.referrals.configDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Activar programa</p>
+                  <p className="text-sm font-medium text-foreground">{t('admin.referrals.fields.enableProgram')}</p>
                   <p className="text-xs text-muted-foreground">
-                    Habilita el programa de referidos en {copy.location.definiteSingular}.
+                    {t('admin.referrals.fields.enableProgramHint', {
+                      locationDefiniteSingular: copy.location.definiteSingular,
+                    })}
                   </p>
                 </div>
                 <Switch checked={config.enabled} onCheckedChange={(val) => updateConfigField('enabled', val)} />
@@ -275,12 +292,12 @@ const AdminReferrals: React.FC = () => {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>Caducidad atribución (días)</Label>
+                    <Label>{t('admin.referrals.fields.attributionExpiryDays')}</Label>
                     <button
                       type="button"
                       onClick={() => openInfo('expiry')}
                       className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                      aria-label="Información sobre caducidad"
+                      aria-label={t('admin.referrals.aria.expiryInfo')}
                     >
                       <Info className="w-4 h-4" />
                     </button>
@@ -295,12 +312,12 @@ const AdminReferrals: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>Límite mensual por embajador</Label>
+                    <Label>{t('admin.referrals.fields.monthlyLimit')}</Label>
                     <button
                       type="button"
                       onClick={() => openInfo('monthlyLimit')}
                       className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                      aria-label="Información sobre límite mensual"
+                      aria-label={t('admin.referrals.aria.monthlyLimitInfo')}
                     >
                       <Info className="w-4 h-4" />
                     </button>
@@ -319,16 +336,18 @@ const AdminReferrals: React.FC = () => {
               <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Solo nuevos clientes</p>
+                    <p className="text-sm font-medium text-foreground">{t('admin.referrals.fields.newCustomerOnly')}</p>
                     <p className="text-xs text-muted-foreground">
-                      Solo cuenta la primera cita en {copy.location.definiteSingular}.
+                      {t('admin.referrals.fields.newCustomerOnlyHint', {
+                        locationDefiniteSingular: copy.location.definiteSingular,
+                      })}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => openInfo('newCustomer')}
                     className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                    aria-label="Información sobre solo nuevos clientes"
+                    aria-label={t('admin.referrals.aria.newCustomerInfo')}
                   >
                     <Info className="w-4 h-4" />
                   </button>
@@ -338,12 +357,12 @@ const AdminReferrals: React.FC = () => {
 
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Label>Servicios permitidos (opcional)</Label>
+                  <Label>{t('admin.referrals.fields.allowedServices')}</Label>
                   <button
                     type="button"
                     onClick={() => openInfo('allowedServices')}
                     className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                    aria-label="Información sobre servicios permitidos"
+                    aria-label={t('admin.referrals.aria.allowedServicesInfo')}
                   >
                     <Info className="w-4 h-4" />
                   </button>
@@ -365,20 +384,20 @@ const AdminReferrals: React.FC = () => {
                 <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/10 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">Recompensa embajador</p>
-                      <p className="text-xs text-muted-foreground">Lo que gana quien invita.</p>
+                      <p className="text-sm font-semibold text-foreground">{t('admin.referrals.reward.referrer.title')}</p>
+                      <p className="text-xs text-muted-foreground">{t('admin.referrals.reward.referrer.subtitle')}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => openInfo('rewardReferrer')}
                       className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                      aria-label="Información sobre recompensa embajador"
+                      aria-label={t('admin.referrals.aria.rewardReferrerInfo')}
                     >
                       <Info className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="space-y-2">
-                    <Label>Tipo</Label>
+                    <Label>{t('admin.referrals.fields.type')}</Label>
                     <Select
                       value={config.rewardReferrerType}
                       onValueChange={(val) =>
@@ -391,7 +410,7 @@ const AdminReferrals: React.FC = () => {
                       <SelectContent>
                         {rewardTypeOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                            {t(option.labelKey)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -399,7 +418,7 @@ const AdminReferrals: React.FC = () => {
                   </div>
                   {config.rewardReferrerType !== 'FREE_SERVICE' && (
                     <div className="space-y-2">
-                      <Label>Valor</Label>
+                      <Label>{t('admin.referrals.fields.value')}</Label>
                       <Input
                         type="number"
                         min={0}
@@ -412,13 +431,13 @@ const AdminReferrals: React.FC = () => {
                   )}
                   {config.rewardReferrerType === 'FREE_SERVICE' && (
                     <div className="space-y-2">
-                      <Label>Servicio</Label>
+                      <Label>{t('admin.common.table.service')}</Label>
                       <Select
                         value={config.rewardReferrerServiceId ?? ''}
                         onValueChange={(val) => updateConfigField('rewardReferrerServiceId', val)}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Selecciona servicio" />
+                          <SelectValue placeholder={t('admin.referrals.fields.selectService')} />
                         </SelectTrigger>
                         <SelectContent>
                           {services.map((service) => (
@@ -435,20 +454,20 @@ const AdminReferrals: React.FC = () => {
                 <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/10 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">Recompensa invitado</p>
-                      <p className="text-xs text-muted-foreground">Lo que gana la persona invitada.</p>
+                      <p className="text-sm font-semibold text-foreground">{t('admin.referrals.reward.referred.title')}</p>
+                      <p className="text-xs text-muted-foreground">{t('admin.referrals.reward.referred.subtitle')}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => openInfo('rewardReferred')}
                       className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                      aria-label="Información sobre recompensa invitado"
+                      aria-label={t('admin.referrals.aria.rewardReferredInfo')}
                     >
                       <Info className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="space-y-2">
-                    <Label>Tipo</Label>
+                    <Label>{t('admin.referrals.fields.type')}</Label>
                     <Select
                       value={config.rewardReferredType}
                       onValueChange={(val) =>
@@ -461,7 +480,7 @@ const AdminReferrals: React.FC = () => {
                       <SelectContent>
                         {rewardTypeOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                            {t(option.labelKey)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -469,7 +488,7 @@ const AdminReferrals: React.FC = () => {
                   </div>
                   {config.rewardReferredType !== 'FREE_SERVICE' && (
                     <div className="space-y-2">
-                      <Label>Valor</Label>
+                      <Label>{t('admin.referrals.fields.value')}</Label>
                       <Input
                         type="number"
                         min={0}
@@ -482,13 +501,13 @@ const AdminReferrals: React.FC = () => {
                   )}
                   {config.rewardReferredType === 'FREE_SERVICE' && (
                     <div className="space-y-2">
-                      <Label>Servicio</Label>
+                      <Label>{t('admin.common.table.service')}</Label>
                       <Select
                         value={config.rewardReferredServiceId ?? ''}
                         onValueChange={(val) => updateConfigField('rewardReferredServiceId', val)}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Selecciona servicio" />
+                          <SelectValue placeholder={t('admin.referrals.fields.selectService')} />
                         </SelectTrigger>
                         <SelectContent>
                           {services.map((service) => (
@@ -505,32 +524,32 @@ const AdminReferrals: React.FC = () => {
 
               <div className="rounded-2xl border border-border/60 bg-muted/10 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-foreground">Anti-fraude</p>
+                  <p className="text-sm font-semibold text-foreground">{t('admin.referrals.antiFraud.title')}</p>
                   <button
                     type="button"
                     onClick={() => openInfo('antiFraud')}
                     className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                    aria-label="Información sobre anti-fraude"
+                    aria-label={t('admin.referrals.aria.antiFraudInfo')}
                   >
                     <Info className="w-4 h-4" />
                   </button>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Bloquear auto-referidos por usuario</span>
+                  <span className="text-sm text-muted-foreground">{t('admin.referrals.antiFraud.blockSelfByUser')}</span>
                   <Switch
                     checked={config.antiFraud.blockSelfByUser}
                     onCheckedChange={(val) => updateConfigField('antiFraud', { ...config.antiFraud, blockSelfByUser: val })}
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Bloquear auto-referidos por contacto</span>
+                  <span className="text-sm text-muted-foreground">{t('admin.referrals.antiFraud.blockSelfByContact')}</span>
                   <Switch
                     checked={config.antiFraud.blockSelfByContact}
                     onCheckedChange={(val) => updateConfigField('antiFraud', { ...config.antiFraud, blockSelfByContact: val })}
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Bloquear contactos duplicados</span>
+                  <span className="text-sm text-muted-foreground">{t('admin.referrals.antiFraud.blockDuplicateContact')}</span>
                   <Switch
                     checked={config.antiFraud.blockDuplicateContact}
                     onCheckedChange={(val) => updateConfigField('antiFraud', { ...config.antiFraud, blockDuplicateContact: val })}
@@ -540,7 +559,7 @@ const AdminReferrals: React.FC = () => {
 
               <div className="flex justify-end">
                 <Button variant="glow" onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? 'Guardando...' : 'Guardar'}
+                  {isSaving ? t('admin.common.saving') : t('admin.referrals.actions.save')}
                 </Button>
               </div>
             </CardContent>
@@ -550,10 +569,14 @@ const AdminReferrals: React.FC = () => {
         <TabsContent value="analytics" className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: 'Invitaciones', value: overview?.invites ?? 0, icon: Users },
-              { label: 'Pendientes', value: overview?.pending ?? 0, icon: TrendingUp },
-              { label: 'Confirmados', value: overview?.confirmed ?? 0, icon: Award },
-              { label: 'Revenue atribuible', value: `${(overview?.revenueAttributable ?? 0).toFixed(2)}€`, icon: TrendingUp },
+              { label: t('admin.referrals.metrics.invites'), value: overview?.invites ?? 0, icon: Users },
+              { label: t('admin.referrals.metrics.pending'), value: overview?.pending ?? 0, icon: TrendingUp },
+              { label: t('admin.referrals.metrics.confirmed'), value: overview?.confirmed ?? 0, icon: Award },
+              {
+                label: t('admin.referrals.metrics.attributableRevenue'),
+                value: `${(overview?.revenueAttributable ?? 0).toFixed(2)}€`,
+                icon: TrendingUp,
+              },
             ].map((item) => (
               <Card key={item.label} variant="glass">
                 <CardContent className="p-4 flex items-center gap-3">
@@ -571,11 +594,11 @@ const AdminReferrals: React.FC = () => {
 
           <Card variant="elevated">
             <CardHeader>
-              <CardTitle>Top embajadores</CardTitle>
+              <CardTitle>{t('admin.referrals.topAmbassadorsTitle')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {(overview?.topAmbassadors ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aún no hay embajadores destacados.</p>
+                <p className="text-sm text-muted-foreground">{t('admin.referrals.topAmbassadorsEmpty')}</p>
               ) : (
                 overview.topAmbassadors.map((item) => (
                   <div key={item.userId} className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-2">
@@ -594,44 +617,46 @@ const AdminReferrals: React.FC = () => {
         <TabsContent value="list" className="space-y-4">
           <Card variant="elevated">
             <CardHeader>
-              <CardTitle>Listado de referidos</CardTitle>
-              <CardDescription>Filtra por estado o busca por nombre/contacto.</CardDescription>
+              <CardTitle>{t('admin.referrals.listTitle')}</CardTitle>
+              <CardDescription>{t('admin.referrals.listDescription')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row">
                 <Input
-                  placeholder="Buscar por nombre, email o teléfono"
+                  placeholder={t('admin.referrals.listSearchPlaceholder')}
                   value={listQuery}
                   onChange={(e) => setListQuery(e.target.value)}
                 />
                 <Select value={listStatus} onValueChange={setListStatus}>
                   <SelectTrigger className="md:w-64">
-                    <SelectValue placeholder="Todos los estados" />
+                    <SelectValue placeholder={t('admin.referrals.listStatus.allStatuses')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="ATTRIBUTED">Pendiente</SelectItem>
-                    <SelectItem value="BOOKED">Reservado</SelectItem>
-                    <SelectItem value="COMPLETED">Completado</SelectItem>
-                    <SelectItem value="REWARDED">Recompensado</SelectItem>
-                    <SelectItem value="EXPIRED">Expirado</SelectItem>
-                    <SelectItem value="VOIDED">Invalidado</SelectItem>
+                    <SelectItem value="all">{t('admin.referrals.listStatus.all')}</SelectItem>
+                    <SelectItem value="ATTRIBUTED">{t('admin.referrals.listStatus.attributed')}</SelectItem>
+                    <SelectItem value="BOOKED">{t('admin.referrals.listStatus.booked')}</SelectItem>
+                    <SelectItem value="COMPLETED">{t('admin.referrals.listStatus.completed')}</SelectItem>
+                    <SelectItem value="REWARDED">{t('admin.referrals.listStatus.rewarded')}</SelectItem>
+                    <SelectItem value="EXPIRED">{t('admin.referrals.listStatus.expired')}</SelectItem>
+                    <SelectItem value="VOIDED">{t('admin.referrals.listStatus.voided')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-3">
                 {list.items.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No hay resultados.</p>
+                  <p className="text-sm text-muted-foreground">{t('admin.search.empty.title')}</p>
                 ) : (
                   list.items.map((item) => (
                     <div key={item.id} className="rounded-xl border border-border/60 bg-muted/20 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-foreground">
-                            {item.referred?.name || item.referred?.email || item.referred?.phone || 'Invitado'}
+                            {item.referred?.name || item.referred?.email || item.referred?.phone || t('admin.common.guest')}
                           </p>
-                          <p className="text-xs text-muted-foreground">Invitado por {item.referrer?.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {t('admin.referrals.referredBy', { name: item.referrer?.name ?? '-' })}
+                          </p>
                         </div>
                         <span className="text-xs uppercase text-muted-foreground">{item.status}</span>
                       </div>
@@ -647,14 +672,24 @@ const AdminReferrals: React.FC = () => {
       <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Copiar configuración desde {copy.location.indefiniteSingular}</DialogTitle>
+            <DialogTitle>
+              {t('admin.referrals.copyDialog.title', {
+                locationIndefiniteSingular: copy.location.indefiniteSingular,
+              })}
+            </DialogTitle>
             <DialogDescription>
-              Selecciona {copy.location.definiteSingular} origen para copiar su configuración.
+              {t('admin.referrals.copyDialog.description', {
+                locationDefiniteSingular: copy.location.definiteSingular,
+              })}
             </DialogDescription>
           </DialogHeader>
           <Select value={selectedCopyLocation} onValueChange={setSelectedCopyLocation}>
             <SelectTrigger>
-              <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
+              <SelectValue
+                placeholder={t('admin.referrals.copyDialog.selectPlaceholder', {
+                  locationIndefiniteSingular: copy.location.indefiniteSingular,
+                })}
+              />
             </SelectTrigger>
             <SelectContent>
               {availableCopyLocations.map((loc) => (
@@ -666,10 +701,10 @@ const AdminReferrals: React.FC = () => {
           </Select>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCopyDialogOpen(false)}>
-              Cancelar
+              {t('appointmentEditor.cancel')}
             </Button>
             <Button onClick={handleCopy} disabled={!selectedCopyLocation}>
-              Copiar ahora
+              {t('admin.referrals.actions.copyNow')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -679,11 +714,11 @@ const AdminReferrals: React.FC = () => {
       <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{infoKey ? infoContent[infoKey].title : 'Información'}</DialogTitle>
+            <DialogTitle>{infoKey ? infoContent[infoKey].title : t('admin.alerts.type.info')}</DialogTitle>
             <DialogDescription>{infoKey ? infoContent[infoKey].body : ''}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={() => setInfoOpen(false)}>Entendido</Button>
+            <Button onClick={() => setInfoOpen(false)}>{t('admin.referrals.actions.understood')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -25,6 +25,7 @@ import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/
 import { TENANT_CONFIG_READ_PORT, TenantConfigReadPort } from '../../shared/application/tenant-config-read.port';
 import { rethrowDomainErrorAsHttp } from '../../shared/interfaces/http/rethrow-domain-error-as-http';
 import { resolveStaffSingular } from '../../tenancy/business-copy';
+import { LocalizationService } from '../localization/localization.service';
 import { CreateBarberDto } from './dto/create-barber.dto';
 import { UpdateBarberDto } from './dto/update-barber.dto';
 import { UpdateBarberServiceAssignmentDto } from './dto/update-barber-service-assignment.dto';
@@ -56,6 +57,7 @@ export class BarbersService {
     private readonly barberPhotoStoragePort: BarberPhotoStoragePort,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
+    private readonly localizationService: LocalizationService,
   ) {
     this.listBarbersUseCase = new ListBarbersUseCase(this.barberDirectoryReadPort);
     this.getBarberByIdUseCase = new GetBarberByIdUseCase(this.barberDirectoryReadPort);
@@ -69,21 +71,81 @@ export class BarbersService {
   }
 
   async findAll(serviceId?: string, options?: FindAllBarbersOptions) {
+    const context = this.tenantContextPort.getRequestContext();
     const barbers = await this.listBarbersUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       serviceId,
       includeInactive: options?.includeInactive === true,
     });
-    return barbers.map(mapBarber);
+    const mapped = barbers.map(mapBarber);
+    const { items } = await this.localizationService.localizeCollection({
+      context,
+      entityType: 'barber',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'name',
+          getValue: (item) => item.name,
+          setValue: (item, value) => {
+            item.name = value;
+          },
+        },
+        {
+          fieldKey: 'specialty',
+          getValue: (item) => item.specialty,
+          setValue: (item, value) => {
+            item.specialty = value;
+          },
+        },
+        {
+          fieldKey: 'bio',
+          getValue: (item) => item.bio,
+          setValue: (item, value) => {
+            item.bio = value;
+          },
+        },
+      ],
+    });
+    return items;
   }
 
   async findOne(id: string) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const barber = await this.getBarberByIdUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         barberId: id,
       });
-      return mapBarber(barber);
+      const mapped = mapBarber(barber);
+      const { items } = await this.localizationService.localizeCollection({
+        context,
+        entityType: 'barber',
+        items: [mapped],
+        descriptors: [
+          {
+            fieldKey: 'name',
+            getValue: (item) => item.name,
+            setValue: (item, value) => {
+              item.name = value;
+            },
+          },
+          {
+            fieldKey: 'specialty',
+            getValue: (item) => item.specialty,
+            setValue: (item, value) => {
+              item.specialty = value;
+            },
+          },
+          {
+            fieldKey: 'bio',
+            getValue: (item) => item.bio,
+            setValue: (item, value) => {
+              item.bio = value;
+            },
+          },
+        ],
+      });
+      return items[0];
     } catch (error) {
       rethrowDomainErrorAsHttp(error, {
         BARBER_NOT_FOUND: () => new NotFoundException('Barber not found'),
@@ -120,8 +182,9 @@ export class BarbersService {
   }
 
   async create(data: CreateBarberDto) {
+    const context = this.tenantContextPort.getRequestContext();
     const created = await this.createBarberUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       name: data.name,
       photo: data.photo,
       photoFileId: data.photoFileId,
@@ -134,13 +197,24 @@ export class BarbersService {
       calendarColor: data.calendarColor,
       userId: data.userId,
     });
+    await this.localizationService.syncEntitySourceFields({
+      context,
+      entityType: 'barber',
+      entityId: created.id,
+      fields: {
+        name: created.name,
+        specialty: created.specialty,
+        bio: created.bio,
+      },
+    });
     return mapBarber(created);
   }
 
   async update(id: string, data: UpdateBarberDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const updated = await this.updateBarberUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         barberId: id,
         name: data.name,
         photo: data.photo,
@@ -153,6 +227,16 @@ export class BarbersService {
         isActive: data.isActive,
         calendarColor: data.calendarColor,
         userId: data.userId,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'barber',
+        entityId: updated.id,
+        fields: {
+          name: updated.name,
+          specialty: updated.specialty,
+          bio: updated.bio,
+        },
       });
       return mapBarber(updated);
     } catch (error) {

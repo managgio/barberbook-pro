@@ -45,13 +45,14 @@ import {
 import { queryClient } from '@/lib/queryClient';
 import { queryKeys } from '@/lib/queryKeys';
 import { BUSINESS_TYPE_OPTIONS, getBusinessCopy } from '@/lib/businessCopy';
+import { LANGUAGE_OPTIONS } from '@/lib/language';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS, getAdminSections } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
 import MarkdownContent from '@/components/common/MarkdownContent';
 
 const PLATFORM_BRAND_STORAGE_KEY = 'platform:brands:selected';
 const PLATFORM_TAB_STORAGE_KEY = 'platform:brands:tab';
-const PLATFORM_BRAND_TABS = ['datos', 'locales', 'admins', 'sidebar', 'landing', 'config', 'legal'] as const;
+const PLATFORM_BRAND_TABS = ['datos', 'locales', 'admins', 'sidebar', 'landing', 'config', 'idiomas', 'legal'] as const;
 const LOCATION_SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 type PlatformBrandTab = (typeof PLATFORM_BRAND_TABS)[number];
 type JsonRecord = Record<string, unknown>;
@@ -154,6 +155,27 @@ interface PlatformConfig {
   features?: {
     barberServiceAssignmentEnabled?: boolean;
   };
+  i18n?: {
+    defaultLanguage?: string;
+    supportedLanguages?: string[];
+    autoTranslate?: {
+      enabled?: boolean;
+      paused?: boolean;
+      pauseUntil?: string;
+      pauseReason?: string;
+      retryAttempts?: number;
+      monthlyRequestLimit?: number;
+      monthlyCharacterLimit?: number;
+      circuitBreaker?: {
+        enabled?: boolean;
+        failureRateThreshold?: number;
+        minSamples?: number;
+        consecutiveFailures?: number;
+        windowMinutes?: number;
+        pauseMinutes?: number;
+      };
+    };
+  };
   imagekit?: {
     folder?: string;
   };
@@ -201,6 +223,22 @@ const writeStorageValue = (key: string, value: string | null) => {
   } catch {
     // ignore storage errors
   }
+};
+
+const toDatetimeLocalInput = (iso?: string) => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+};
+
+const fromDatetimeLocalInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString();
 };
 
 const normalizeSlugCandidate = (value?: string | null) =>
@@ -1468,6 +1506,36 @@ const PlatformBrands: React.FC = () => {
     whatsapp: brandConfig?.notificationPrefs?.whatsapp !== false,
     sms: brandConfig?.notificationPrefs?.sms !== false,
   };
+  const supportedLanguageOptions = LANGUAGE_OPTIONS;
+  const normalizedDefaultLanguage = (brandConfig?.i18n?.defaultLanguage || 'es').toLowerCase();
+  const brandSupportedLanguages = Array.from(
+    new Set(
+      [normalizedDefaultLanguage, ...(brandConfig?.i18n?.supportedLanguages || [])]
+        .map((language) => (language || '').trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+  const brandAutoTranslateEnabled = brandConfig?.i18n?.autoTranslate?.enabled !== false;
+  const brandAutoTranslatePauseUntil = brandConfig?.i18n?.autoTranslate?.pauseUntil || '';
+  const pauseUntilDate = brandAutoTranslatePauseUntil ? new Date(brandAutoTranslatePauseUntil) : null;
+  const brandAutoTranslatePaused =
+    brandConfig?.i18n?.autoTranslate?.paused === true ||
+    Boolean(pauseUntilDate && !Number.isNaN(pauseUntilDate.getTime()) && pauseUntilDate > new Date());
+  const brandAutoTranslatePauseReason = brandConfig?.i18n?.autoTranslate?.pauseReason || '';
+  const brandAutoTranslateRetryAttempts = Number(brandConfig?.i18n?.autoTranslate?.retryAttempts ?? 2);
+  const brandAutoTranslateMonthlyRequestLimit = brandConfig?.i18n?.autoTranslate?.monthlyRequestLimit;
+  const brandAutoTranslateMonthlyCharacterLimit = brandConfig?.i18n?.autoTranslate?.monthlyCharacterLimit;
+  const brandAutoTranslateCircuitEnabled = brandConfig?.i18n?.autoTranslate?.circuitBreaker?.enabled !== false;
+  const brandAutoTranslateFailureRateThreshold =
+    Number(brandConfig?.i18n?.autoTranslate?.circuitBreaker?.failureRateThreshold ?? 0.6);
+  const brandAutoTranslateMinSamples =
+    Number(brandConfig?.i18n?.autoTranslate?.circuitBreaker?.minSamples ?? 12);
+  const brandAutoTranslateConsecutiveFailures =
+    Number(brandConfig?.i18n?.autoTranslate?.circuitBreaker?.consecutiveFailures ?? 6);
+  const brandAutoTranslateWindowMinutes =
+    Number(brandConfig?.i18n?.autoTranslate?.circuitBreaker?.windowMinutes ?? 30);
+  const brandAutoTranslatePauseMinutes =
+    Number(brandConfig?.i18n?.autoTranslate?.circuitBreaker?.pauseMinutes ?? 30);
   const brandStripe = readStripeConfig(brandConfig);
   const locationStripe = readStripeConfig(locationConfig);
   const brandStripeReady = brandStripe.chargesEnabled && brandStripe.detailsSubmitted;
@@ -1584,6 +1652,65 @@ const PlatformBrands: React.FC = () => {
     };
   };
 
+  const handleBrandDefaultLanguageChange = (language: string) => {
+    const normalized = language.trim().toLowerCase();
+    setBrandConfig((prev) => {
+      const currentSupported = Array.isArray(prev.i18n?.supportedLanguages)
+        ? prev.i18n?.supportedLanguages
+        : [];
+      const nextSupported = Array.from(new Set([normalized, ...currentSupported.map((entry) => entry.toLowerCase())]));
+      let next = updateNestedValue(prev, ['i18n', 'defaultLanguage'], normalized);
+      next = updateNestedValue(next, ['i18n', 'supportedLanguages'], nextSupported);
+      return next;
+    });
+  };
+
+  const handleBrandSupportedLanguageToggle = (language: string, enabled: boolean) => {
+    const normalized = language.trim().toLowerCase();
+    setBrandConfig((prev) => {
+      const currentDefault = (prev.i18n?.defaultLanguage || 'es').toLowerCase();
+      const currentSupported = Array.isArray(prev.i18n?.supportedLanguages)
+        ? prev.i18n?.supportedLanguages.map((entry) => entry.toLowerCase())
+        : [currentDefault];
+      const nextSet = new Set(currentSupported.length > 0 ? currentSupported : [currentDefault]);
+      nextSet.add(currentDefault);
+      if (normalized === currentDefault) {
+        nextSet.add(normalized);
+      } else if (enabled) {
+        nextSet.add(normalized);
+      } else {
+        nextSet.delete(normalized);
+      }
+      return updateNestedValue(prev, ['i18n', 'supportedLanguages'], Array.from(nextSet));
+    });
+  };
+
+  const handleBrandAutoTranslateNumberChange = (
+    path: string[],
+    rawValue: string,
+    options: { min: number; max: number; allowEmpty?: boolean },
+  ) => {
+    const trimmed = rawValue.trim();
+    const parsed = trimmed ? Number(trimmed) : NaN;
+    if (!trimmed && options.allowEmpty) {
+      setBrandConfig((prev) => updateNestedValue(prev, path, undefined));
+      return;
+    }
+    if (!Number.isFinite(parsed)) return;
+    const rounded = Math.round(parsed);
+    const clamped = Math.min(options.max, Math.max(options.min, rounded));
+    setBrandConfig((prev) => updateNestedValue(prev, path, clamped));
+  };
+
+  const handleBrandAutoTranslateRateChange = (rawValue: string) => {
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) return;
+    const ratio = Math.min(1, Math.max(0.05, parsed / 100));
+    setBrandConfig((prev) =>
+      updateNestedValue(prev, ['i18n', 'autoTranslate', 'circuitBreaker', 'failureRateThreshold'], ratio),
+    );
+  };
+
   const updateSidebarVisibility = (
     setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
     section: AdminSectionKey,
@@ -1623,7 +1750,7 @@ const PlatformBrands: React.FC = () => {
         prev.adminSidebar && typeof prev.adminSidebar === 'object' && !Array.isArray(prev.adminSidebar)
           ? prev.adminSidebar
           : undefined;
-      let next = withLocalOverrideDraft(prev, 'adminSidebar', adminSidebarValue);
+      const next = withLocalOverrideDraft(prev, 'adminSidebar', adminSidebarValue);
       if (!next.adminSidebar) return next;
       const { adminSidebar, ...rest } = next;
       return rest;
@@ -1649,7 +1776,7 @@ const PlatformBrands: React.FC = () => {
         prev.notificationPrefs && typeof prev.notificationPrefs === 'object' && !Array.isArray(prev.notificationPrefs)
           ? prev.notificationPrefs
           : undefined;
-      let next = withLocalOverrideDraft(prev, 'notificationPrefs', notificationPrefsValue);
+      const next = withLocalOverrideDraft(prev, 'notificationPrefs', notificationPrefsValue);
       if (!next.notificationPrefs) return next;
       const { notificationPrefs, ...rest } = next;
       return rest;
@@ -1669,7 +1796,7 @@ const PlatformBrands: React.FC = () => {
     }
     setLocationConfig((prev) => {
       const currentValue = prev?.features?.barberServiceAssignmentEnabled;
-      let next: PlatformConfig = withLocalOverrideDraft(
+      const next: PlatformConfig = withLocalOverrideDraft(
         prev,
         'barberAssignment',
         typeof currentValue === 'boolean' ? currentValue : undefined,
@@ -2076,7 +2203,7 @@ const PlatformBrands: React.FC = () => {
         prev.landing && typeof prev.landing === 'object' && !Array.isArray(prev.landing)
           ? prev.landing
           : undefined;
-      let next = withLocalOverrideDraft(prev, 'landing', landingValue);
+      const next = withLocalOverrideDraft(prev, 'landing', landingValue);
       if (!next.landing) return next;
       const { landing, ...rest } = next;
       return rest;
@@ -2129,7 +2256,7 @@ const PlatformBrands: React.FC = () => {
     }
     setLocationConfig((prev) => {
       const landingBrandingDraft = pickBrandingFields(prev.branding, LANDING_BRANDING_OVERRIDE_FIELDS);
-      let next = withLocalOverrideDraft(
+      const next = withLocalOverrideDraft(
         prev,
         'landingBranding',
         Object.keys(landingBrandingDraft).length ? landingBrandingDraft : undefined,
@@ -2780,13 +2907,14 @@ const PlatformBrands: React.FC = () => {
               className="space-y-6"
             >
               <div className="sticky top-0 z-10 -mx-6 border-b border-border/60 bg-card px-6 py-3 shadow-[0_10px_24px_-20px_hsl(var(--background)/0.9)]">
-                <TabsList className="scrollbar-none flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto sm:grid sm:grid-cols-7 sm:justify-center sm:overflow-visible">
+                <TabsList className="scrollbar-none flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto sm:grid sm:grid-cols-8 sm:justify-center sm:overflow-visible">
                   <TabsTrigger value="datos">Datos</TabsTrigger>
                   <TabsTrigger value="locales">Locales</TabsTrigger>
                   <TabsTrigger value="admins">Admins</TabsTrigger>
                   <TabsTrigger value="sidebar">Sidebar</TabsTrigger>
                   <TabsTrigger value="landing">Landing</TabsTrigger>
                   <TabsTrigger value="config">Config</TabsTrigger>
+                  <TabsTrigger value="idiomas">Idiomas</TabsTrigger>
                   <TabsTrigger value="legal">Legal</TabsTrigger>
                 </TabsList>
               </div>
@@ -4406,6 +4534,290 @@ const PlatformBrands: React.FC = () => {
                     </Card>
                   )}
                 </div>
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveBrand} disabled={isSaving}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Guardar cambios
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="idiomas" className="space-y-6">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Settings2 className="h-4 w-4 text-primary" />
+                  Control de idiomas y seguridad operativa
+                </div>
+
+                <Card className="border border-border/60 bg-card/80">
+                  <CardHeader>
+                    <CardTitle className="text-base">Idiomas del tenant</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">Idiomas</p>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Idioma principal</Label>
+                          <Select value={normalizedDefaultLanguage} onValueChange={handleBrandDefaultLanguageChange}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona idioma" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {supportedLanguageOptions.map((option) => (
+                                <SelectItem key={option.code} value={option.code}>
+                                  {option.nativeLabel} ({option.code.toUpperCase()})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">Auto-traducción</div>
+                            <p className="text-xs text-muted-foreground">
+                              Genera traducciones persistidas para idiomas habilitados.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={brandAutoTranslateEnabled}
+                            onCheckedChange={(checked) =>
+                              setBrandConfig((prev) =>
+                                updateNestedValue(prev, ['i18n', 'autoTranslate', 'enabled'], checked),
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {supportedLanguageOptions.map((option) => (
+                          <div
+                            key={option.code}
+                            className="flex items-center justify-between rounded-xl border border-border/60 p-3"
+                          >
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">{option.nativeLabel}</div>
+                              <p className="text-xs text-muted-foreground uppercase">{option.code}</p>
+                            </div>
+                            <Switch
+                              checked={brandSupportedLanguages.includes(option.code)}
+                              disabled={option.code === normalizedDefaultLanguage}
+                              onCheckedChange={(checked) =>
+                                handleBrandSupportedLanguageToggle(option.code, checked)
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">Controles de negocio</p>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <Label>Reintentos por traducción</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={5}
+                            value={Number.isFinite(brandAutoTranslateRetryAttempts) ? brandAutoTranslateRetryAttempts : 2}
+                            onChange={(e) =>
+                              handleBrandAutoTranslateNumberChange(
+                                ['i18n', 'autoTranslate', 'retryAttempts'],
+                                e.target.value,
+                                { min: 1, max: 5 },
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Límite mensual de peticiones</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            placeholder="Sin límite"
+                            value={brandAutoTranslateMonthlyRequestLimit ?? ''}
+                            onChange={(e) =>
+                              handleBrandAutoTranslateNumberChange(
+                                ['i18n', 'autoTranslate', 'monthlyRequestLimit'],
+                                e.target.value,
+                                { min: 1, max: 1_000_000, allowEmpty: true },
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Límite mensual de caracteres</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            placeholder="Sin límite"
+                            value={brandAutoTranslateMonthlyCharacterLimit ?? ''}
+                            onChange={(e) =>
+                              handleBrandAutoTranslateNumberChange(
+                                ['i18n', 'autoTranslate', 'monthlyCharacterLimit'],
+                                e.target.value,
+                                { min: 1, max: 500_000_000, allowEmpty: true },
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">Seguridad operativa</p>
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">Circuit breaker</div>
+                          <p className="text-xs text-muted-foreground">
+                            Pausa automática si sube el nivel de fallos.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={brandAutoTranslateCircuitEnabled}
+                          onCheckedChange={(checked) =>
+                            setBrandConfig((prev) =>
+                              updateNestedValue(
+                                prev,
+                                ['i18n', 'autoTranslate', 'circuitBreaker', 'enabled'],
+                                checked,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-5">
+                        <div className="space-y-2">
+                          <Label>Umbral fallo (%)</Label>
+                          <Input
+                            type="number"
+                            min={5}
+                            max={100}
+                            value={Math.round(brandAutoTranslateFailureRateThreshold * 100)}
+                            onChange={(e) => handleBrandAutoTranslateRateChange(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Mínimo muestras</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={500}
+                            value={brandAutoTranslateMinSamples}
+                            onChange={(e) =>
+                              handleBrandAutoTranslateNumberChange(
+                                ['i18n', 'autoTranslate', 'circuitBreaker', 'minSamples'],
+                                e.target.value,
+                                { min: 1, max: 500 },
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Fallos consecutivos</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={brandAutoTranslateConsecutiveFailures}
+                            onChange={(e) =>
+                              handleBrandAutoTranslateNumberChange(
+                                ['i18n', 'autoTranslate', 'circuitBreaker', 'consecutiveFailures'],
+                                e.target.value,
+                                { min: 1, max: 100 },
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Ventana (min)</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={240}
+                            value={brandAutoTranslateWindowMinutes}
+                            onChange={(e) =>
+                              handleBrandAutoTranslateNumberChange(
+                                ['i18n', 'autoTranslate', 'circuitBreaker', 'windowMinutes'],
+                                e.target.value,
+                                { min: 1, max: 240 },
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Pausa automática (min)</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={720}
+                            value={brandAutoTranslatePauseMinutes}
+                            onChange={(e) =>
+                              handleBrandAutoTranslateNumberChange(
+                                ['i18n', 'autoTranslate', 'circuitBreaker', 'pauseMinutes'],
+                                e.target.value,
+                                { min: 1, max: 720 },
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">Pausa manual</p>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 md:col-span-1">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">Pausar auto-traducción</div>
+                            <p className="text-xs text-muted-foreground">Bloquea generación automática.</p>
+                          </div>
+                          <Switch
+                            checked={brandAutoTranslatePaused}
+                            onCheckedChange={(checked) =>
+                              setBrandConfig((prev) => {
+                                let next = updateNestedValue(prev, ['i18n', 'autoTranslate', 'paused'], checked);
+                                if (!checked) {
+                                  next = updateNestedValue(next, ['i18n', 'autoTranslate', 'pauseUntil'], undefined);
+                                }
+                                return next;
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Pausa hasta</Label>
+                          <Input
+                            type="datetime-local"
+                            value={toDatetimeLocalInput(brandAutoTranslatePauseUntil)}
+                            onChange={(e) =>
+                              setBrandConfig((prev) =>
+                                updateNestedValue(
+                                  prev,
+                                  ['i18n', 'autoTranslate', 'pauseUntil'],
+                                  fromDatetimeLocalInput(e.target.value) || undefined,
+                                ),
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Motivo</Label>
+                          <Input
+                            value={brandAutoTranslatePauseReason}
+                            placeholder="Mantenimiento o incidencia"
+                            onChange={(e) =>
+                              setBrandConfig((prev) =>
+                                updateNestedValue(prev, ['i18n', 'autoTranslate', 'pauseReason'], e.target.value),
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 <div className="flex justify-end">
                   <Button onClick={handleSaveBrand} disabled={isSaving}>
                     <Save className="h-4 w-4 mr-2" />

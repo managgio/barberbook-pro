@@ -24,6 +24,7 @@ import {
   fetchServiceCategoriesCached,
   fetchServicesCached,
 } from '@/lib/catalogQuery';
+import { useI18n } from '@/hooks/useI18n';
 
 interface AppointmentEditorDialogProps {
   open: boolean;
@@ -41,6 +42,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   context = 'admin',
 }) => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const copy = useBusinessCopy();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -110,7 +112,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         appointment.products?.map((item) => ({ productId: item.productId, quantity: item.quantity })) ?? [],
       );
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo cargar la información.', variant: 'destructive' });
+      toast({ title: t('appointmentEditor.toast.errorTitle'), description: t('appointmentEditor.toast.loadInfoError'), variant: 'destructive' });
       onClose();
     } finally {
       setIsLoading(false);
@@ -144,7 +146,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       return slots;
     } catch (error) {
       if (!options?.silent) {
-        toast({ title: 'Error', description: 'No se pudo cargar la disponibilidad.', variant: 'destructive' });
+        toast({ title: t('appointmentEditor.toast.errorTitle'), description: t('appointmentEditor.toast.loadAvailabilityError'), variant: 'destructive' });
       }
       setAvailableSlots([]);
       return [];
@@ -268,8 +270,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     if (!appointment) return;
     if (!form.serviceId || !form.barberId || !form.date || !form.time) {
       toast({
-        title: 'Campos incompletos',
-        description: `Selecciona servicio, ${copy.staff.singularLower}, fecha y hora.`,
+        title: t('appointmentEditor.toast.incompleteFieldsTitle'),
+        description: t('appointmentEditor.toast.incompleteFieldsDescription', { staffSingularLower: copy.staff.singularLower }),
       });
       return;
     }
@@ -288,7 +290,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       if (context === 'admin') {
         dispatchAppointmentsUpdated({ source: 'appointment-editor' });
       }
-      toast({ title: 'Cita actualizada', description: 'Los cambios han sido guardados.' });
+      toast({ title: t('appointmentEditor.toast.updatedTitle'), description: t('appointmentEditor.toast.updatedDescription') });
       onSaved?.(updated);
       onClose();
     } catch (error) {
@@ -297,8 +299,8 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
       if (isSlotConflict) {
         toast({
-          title: 'Horario ocupado',
-          description: 'Ese horario se acaba de reservar. Hemos actualizado la disponibilidad.',
+          title: t('appointmentEditor.toast.slotTakenTitle'),
+          description: t('appointmentEditor.toast.slotTakenDescription'),
           variant: 'destructive',
         });
         const slots = await loadSlots(form.barberId, form.date, form.serviceId, { silent: true });
@@ -307,14 +309,14 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         }
       } else if (isBarberMismatch) {
         toast({
-          title: `${copy.staff.singular} no disponible`,
-          description: `Selecciona otro ${copy.staff.singularLower} compatible con este servicio.`,
+          title: t('appointmentEditor.toast.staffUnavailableTitle', { staffSingular: copy.staff.singular }),
+          description: t('appointmentEditor.toast.staffUnavailableDescription', { staffSingularLower: copy.staff.singularLower }),
           variant: 'destructive',
         });
         setForm((prev) => ({ ...prev, barberId: '', time: '' }));
         setAvailableSlots([]);
       } else {
-        toast({ title: 'Error', description: 'No se pudo actualizar la cita.', variant: 'destructive' });
+        toast({ title: t('appointmentEditor.toast.errorTitle'), description: t('appointmentEditor.toast.updateError'), variant: 'destructive' });
       }
     } finally {
       setIsSaving(false);
@@ -329,12 +331,12 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       if (context === 'admin') {
         dispatchAppointmentsUpdated({ source: 'appointment-anonymize' });
       }
-      toast({ title: 'Cita anonimizada', description: 'Los datos personales han sido anonimizados.' });
+      toast({ title: t('appointmentEditor.toast.anonymizedTitle'), description: t('appointmentEditor.toast.anonymizedDescription') });
       onSaved?.(updated);
       setAnonymizeOpen(false);
       onClose();
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo anonimizar la cita.', variant: 'destructive' });
+      toast({ title: t('appointmentEditor.toast.errorTitle'), description: t('appointmentEditor.toast.anonymizeError'), variant: 'destructive' });
     } finally {
       setIsAnonymizing(false);
     }
@@ -344,9 +346,9 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     <Dialog open={open} onOpenChange={(value) => !value && !isSaving && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Editar cita</DialogTitle>
+          <DialogTitle>{t('appointmentEditor.title')}</DialogTitle>
           <DialogDescription>
-            Actualiza el servicio, {copy.staff.singularLower} u horario de esta cita.
+            {t('appointmentEditor.description', { staffSingularLower: copy.staff.singularLower })}
           </DialogDescription>
         </DialogHeader>
 
@@ -359,13 +361,13 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
             <div className="space-y-5">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Servicio</Label>
+                <Label>{t('appointmentEditor.service')}</Label>
                 <Select
                   value={form.serviceId}
                   onValueChange={handleServiceChange}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un servicio" />
+                    <SelectValue placeholder={t('appointmentEditor.servicePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {categoriesEnabled && orderedCategories.length > 0 ? (
@@ -381,7 +383,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                                 <SelectLabel>{category.name}</SelectLabel>
                                 {servicesForCategory.map((service) => (
                                   <SelectItem key={service.id} value={service.id}>
-                                    {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                    {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
                                   </SelectItem>
                                 ))}
                               </SelectGroup>
@@ -392,10 +394,10 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                         {uncategorizedServices.length > 0 && (
                           <React.Fragment key="uncategorized">
                             <SelectGroup>
-                              <SelectLabel>Otros</SelectLabel>
+                              <SelectLabel>{t('appointmentEditor.otherServices')}</SelectLabel>
                               {uncategorizedServices.map((service) => (
                                 <SelectItem key={service.id} value={service.id}>
-                                  {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                  {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
@@ -405,7 +407,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                     ) : (
                       selectableServices.map((service) => (
                         <SelectItem key={service.id} value={service.id}>
-                          {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                          {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
                         </SelectItem>
                       ))
                     )}
@@ -416,13 +418,13 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                 <Label>{copy.staff.singular}</Label>
                 <Select value={form.barberId} onValueChange={(value) => setForm((prev) => ({ ...prev, barberId: value }))}>
                   <SelectTrigger>
-                    <SelectValue placeholder={`Selecciona ${copy.staff.indefiniteSingular}`} />
+                    <SelectValue placeholder={t('appointmentEditor.staffPlaceholder', { staffIndefiniteSingular: copy.staff.indefiniteSingular })} />
                   </SelectTrigger>
                   <SelectContent>
                     {filteredBarbers.map((barber) => (
                       <SelectItem key={barber.id} value={barber.id}>
                         {barber.name}
-                        {barber.isActive === false && ' · (inactivo)'}
+                        {barber.isActive === false && ` · (${t('appointmentEditor.inactive')})`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -433,7 +435,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CalendarIcon className="w-4 h-4" /> Selecciona el día
+                  <CalendarIcon className="w-4 h-4" /> {t('appointmentEditor.selectDay')}
                 </Label>
                 <Input
                   type="date"
@@ -444,12 +446,12 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
             </div>
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock className="w-4 h-4" /> Selecciona la hora
+                <Clock className="w-4 h-4" /> {t('appointmentEditor.selectTime')}
               </Label>
               <div className="min-h-[120px] rounded-2xl border border-dashed border-border p-3">
                 {!form.serviceId || !form.barberId || !form.date ? (
                   <p className="text-sm text-muted-foreground">
-                    Selecciona servicio, {copy.staff.singularLower} y fecha.
+                    {t('appointmentEditor.selectServiceStaffDate', { staffSingularLower: copy.staff.singularLower })}
                   </p>
                 ) : slotsLoading ? (
                   <div className="flex items-center justify-center py-6">
@@ -457,13 +459,13 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                   </div>
                 ) : availableSlots.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No hay horarios disponibles para ese día.
+                    {t('appointmentEditor.noTimesForDay')}
                   </p>
                 ) : (
                   <div className="space-y-3">
                     {slotGroups.morning.length > 0 && (
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground mb-2">Mañana</p>
+                        <p className="text-xs uppercase text-muted-foreground mb-2">{t('appointmentEditor.morning')}</p>
                         <div className="flex flex-wrap gap-2">
                           {slotGroups.morning.map((slot) => (
                             <button
@@ -485,7 +487,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                     )}
                     {slotGroups.afternoon.length > 0 && (
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground mb-2">Tarde</p>
+                        <p className="text-xs uppercase text-muted-foreground mb-2">{t('appointmentEditor.afternoon')}</p>
                         <div className="flex flex-wrap gap-2">
                           {slotGroups.afternoon.map((slot) => (
                             <button
@@ -514,14 +516,14 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <Label>Productos para la cita</Label>
+                    <Label>{t('appointmentEditor.productsForAppointment')}</Label>
                     <p className="text-xs text-muted-foreground">
-                      Solo se muestran los productos añadidos en esta cita.
+                      {t('appointmentEditor.productsForAppointmentHint')}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-muted-foreground">
-                      Total productos: {selectedProductsTotal.toFixed(2)}€
+                      {t('appointmentEditor.productsTotal', { total: selectedProductsTotal.toFixed(2) })}
                     </span>
                     <Button
                       type="button"
@@ -530,7 +532,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                       onClick={() => setIsProductsDialogOpen(true)}
                       disabled={!canShowProducts || isNoShowLocked}
                     >
-                      {selectedProducts.length > 0 ? 'Editar productos' : 'Añadir productos'}
+                      {selectedProducts.length > 0 ? t('appointmentEditor.editProducts') : t('appointmentEditor.addProducts')}
                     </Button>
                   </div>
                 </div>
@@ -552,7 +554,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                                   className="h-full w-full object-cover"
                                 />
                               ) : (
-                                <span className="text-[11px] text-muted-foreground">Sin foto</span>
+                                <span className="text-[11px] text-muted-foreground">{t('appointmentEditor.noPhoto')}</span>
                               )}
                             </div>
                             <div>
@@ -567,12 +569,12 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
+                    <p className="text-sm text-muted-foreground">{t('appointmentEditor.noAddedProducts')}</p>
                   )}
                 </div>
                 {!canShowProducts && (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                    La compra de productos no está disponible para clientes en {copy.location.definiteSingular}.
+                    {t('appointmentEditor.productsNotAvailable', { location: copy.location.definiteSingular })}
                   </div>
                 )}
               </div>
@@ -581,7 +583,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
             {isAdminContext ? (
               appointment.notes?.trim() ? (
                 <div className="space-y-2">
-                  <Label htmlFor="appointment-notes">Comentario del cliente</Label>
+                  <Label htmlFor="appointment-notes">{t('appointmentEditor.clientComment')}</Label>
                   <Textarea
                     id="appointment-notes"
                     value={appointment.notes}
@@ -593,7 +595,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="appointment-notes">Comentario del cliente</Label>
+                  <Label htmlFor="appointment-notes">{t('appointmentEditor.clientComment')}</Label>
                   <span className="text-xs text-muted-foreground">
                     {form.notes.length}/250
                   </span>
@@ -603,7 +605,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                   value={form.notes}
                   maxLength={250}
                   onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Añade o edita el comentario del cliente"
+                  placeholder={t('appointmentEditor.clientCommentPlaceholder')}
                   className="min-h-[110px] resize-none"
                 />
               </div>
@@ -618,30 +620,30 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
                     disabled={isSaving || isAnonymizing}
                     onClick={() => setAnonymizeOpen(true)}
                   >
-                    Anonimizar
+                    {t('appointmentEditor.anonymize')}
                   </Button>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>¿Anonimizar cita?</AlertDialogTitle>
+                      <AlertDialogTitle>{t('appointmentEditor.anonymizeTitle')}</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Esta acción sustituye los datos personales del invitado por valores anonimizados.
+                        {t('appointmentEditor.anonymizeDescription')}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
                       <AlertDialogAction onClick={handleAnonymize} disabled={isAnonymizing}>
                         {isAnonymizing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        Confirmar
+                        {t('appointmentEditor.confirm')}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
               )}
               <Button variant="outline" type="button" onClick={onClose} disabled={isSaving || isAnonymizing}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button onClick={handleSave} disabled={isSaving || isAnonymizing}>
-                {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Guardar cambios
+                {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}{t('appointmentEditor.saveChanges')}
               </Button>
             </div>
             </div>
@@ -651,9 +653,9 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
       <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Seleccionar productos</DialogTitle>
+            <DialogTitle>{t('appointmentEditor.productsDialogTitle')}</DialogTitle>
             <DialogDescription>
-              Busca y añade productos a la cita. Solo se guardarán los seleccionados.
+              {t('appointmentEditor.productsDialogDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto pr-2">
@@ -667,7 +669,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setIsProductsDialogOpen(false)}>
-              Listo
+              {t('appointmentEditor.done')}
             </Button>
           </DialogFooter>
         </DialogContent>

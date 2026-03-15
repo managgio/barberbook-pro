@@ -24,34 +24,39 @@ import type { BusinessCopy } from '@/lib/businessCopy';
 export type AdminNavItem = {
   href: string;
   label: string;
+  labelKey: string;
   icon: ElementType;
   section: AdminSectionKey;
   keywords?: string[];
 };
 
 export const adminNavItems: AdminNavItem[] = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, section: 'dashboard', keywords: ['resumen', 'inicio'] },
-  { href: '/admin/calendar', label: 'Calendario', icon: Calendar, section: 'calendar', keywords: ['agenda', 'citas'] },
-  { href: '/admin/search', label: 'Buscar Citas', icon: Search, section: 'search', keywords: ['busqueda', 'clientes'] },
-  { href: '/admin/clients', label: 'Clientes', icon: Users, section: 'clients', keywords: ['usuarios'] },
-  { href: '/admin/cash-register', label: 'Caja Registradora', icon: Wallet, section: 'cash-register', keywords: ['ventas', 'caja'] },
-  { href: '/admin/stock', label: 'Control de stock', icon: Boxes, section: 'stock', keywords: ['inventario', 'productos'] },
-  { href: '/admin/services', label: 'Servicios', icon: Scissors, section: 'services', keywords: ['prestaciones'] },
-  { href: '/admin/barbers', label: 'Barberos', icon: UserCircle, section: 'barbers', keywords: ['staff', 'equipo'] },
-  { href: '/admin/subscriptions', label: 'Suscripciones', icon: Repeat, section: 'subscriptions', keywords: ['planes', 'mensual'] },
-  { href: '/admin/loyalty', label: 'Fidelización', icon: Award, section: 'loyalty', keywords: ['puntos', 'recompensas'] },
-  { href: '/admin/referrals', label: 'Referidos', icon: UserPlus, section: 'referrals', keywords: ['invitaciones'] },
-  { href: '/admin/reviews', label: 'Reseñas', icon: Star, section: 'reviews', keywords: ['ratings', 'opiniones'] },
-  { href: '/admin/alerts', label: 'Alertas', icon: Bell, section: 'alerts', keywords: ['avisos'] },
-  { href: '/admin/offers', label: 'Ofertas', icon: Tag, section: 'offers', keywords: ['descuentos', 'promos'] },
-  { href: '/admin/holidays', label: 'Festivos', icon: CalendarDays, section: 'holidays', keywords: ['cierres'] },
-  { href: '/admin/settings', label: 'Configuración', icon: Settings, section: 'settings', keywords: ['ajustes'] },
-  { href: '/admin/roles', label: 'Roles', icon: Shield, section: 'roles', keywords: ['permisos'] },
+  { href: '/admin', label: 'Dashboard', labelKey: 'admin.nav.dashboard', icon: LayoutDashboard, section: 'dashboard', keywords: ['resumen', 'inicio'] },
+  { href: '/admin/calendar', label: 'Calendario', labelKey: 'admin.nav.calendar', icon: Calendar, section: 'calendar', keywords: ['agenda', 'citas'] },
+  { href: '/admin/search', label: 'Buscar Citas', labelKey: 'admin.nav.search', icon: Search, section: 'search', keywords: ['busqueda', 'clientes'] },
+  { href: '/admin/clients', label: 'Clientes', labelKey: 'admin.nav.clients', icon: Users, section: 'clients', keywords: ['usuarios'] },
+  { href: '/admin/cash-register', label: 'Caja Registradora', labelKey: 'admin.nav.cashRegister', icon: Wallet, section: 'cash-register', keywords: ['ventas', 'caja'] },
+  { href: '/admin/stock', label: 'Control de stock', labelKey: 'admin.nav.stock', icon: Boxes, section: 'stock', keywords: ['inventario', 'productos'] },
+  { href: '/admin/services', label: 'Servicios', labelKey: 'admin.nav.services', icon: Scissors, section: 'services', keywords: ['prestaciones'] },
+  { href: '/admin/barbers', label: 'Barberos', labelKey: 'admin.nav.barbers', icon: UserCircle, section: 'barbers', keywords: ['staff', 'equipo'] },
+  { href: '/admin/subscriptions', label: 'Suscripciones', labelKey: 'admin.nav.subscriptions', icon: Repeat, section: 'subscriptions', keywords: ['planes', 'mensual'] },
+  { href: '/admin/loyalty', label: 'Fidelización', labelKey: 'admin.nav.loyalty', icon: Award, section: 'loyalty', keywords: ['puntos', 'recompensas'] },
+  { href: '/admin/referrals', label: 'Referidos', labelKey: 'admin.nav.referrals', icon: UserPlus, section: 'referrals', keywords: ['invitaciones'] },
+  { href: '/admin/reviews', label: 'Reseñas', labelKey: 'admin.nav.reviews', icon: Star, section: 'reviews', keywords: ['ratings', 'opiniones'] },
+  { href: '/admin/alerts', label: 'Alertas', labelKey: 'admin.nav.alerts', icon: Bell, section: 'alerts', keywords: ['avisos'] },
+  { href: '/admin/offers', label: 'Ofertas', labelKey: 'admin.nav.offers', icon: Tag, section: 'offers', keywords: ['descuentos', 'promos'] },
+  { href: '/admin/holidays', label: 'Festivos', labelKey: 'admin.nav.holidays', icon: CalendarDays, section: 'holidays', keywords: ['cierres'] },
+  { href: '/admin/settings', label: 'Configuración', labelKey: 'admin.nav.settings', icon: Settings, section: 'settings', keywords: ['ajustes'] },
+  { href: '/admin/roles', label: 'Roles', labelKey: 'admin.nav.roles', icon: Shield, section: 'roles', keywords: ['permisos'] },
 ];
 
-export const resolveAdminNavItemLabel = (item: AdminNavItem, copy?: BusinessCopy | null) => {
-  if (!copy) return item.label;
-  if (item.section === 'barbers') return copy.staff.plural;
+export const resolveAdminNavItemLabel = (
+  item: AdminNavItem,
+  copy?: BusinessCopy | null,
+  translate?: (key: string) => string,
+) => {
+  if (item.section === 'barbers' && copy) return copy.staff.plural;
+  if (translate) return translate(item.labelKey);
   return item.label;
 };
 

@@ -7,6 +7,7 @@ import {
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../../contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TenantConfigService } from '../../../tenancy/tenant-config.service';
+import { LocalizationService } from '../../localization/localization.service';
 import { cloneSettings, normalizeSettings, SiteSettings } from '../settings.types';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class PrismaPlatformSettingsManagementAdapter implements PlatformSettings
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantConfig: TenantConfigService,
+    private readonly localizationService: LocalizationService,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
   ) {}
@@ -73,11 +75,12 @@ export class PrismaPlatformSettingsManagementAdapter implements PlatformSettings
   }
 
   async getSettings(): Promise<PlatformSiteSettings> {
+    const context = this.tenantContextPort.getRequestContext();
     const [settings, runtimeFlags] = await Promise.all([
       this.ensureSettings(),
       this.resolveRuntimeFlags(),
     ]);
-    return cloneSettings({
+    const normalizedSettings = cloneSettings({
       ...settings,
       services: {
         ...settings.services,
@@ -87,10 +90,52 @@ export class PrismaPlatformSettingsManagementAdapter implements PlatformSettings
       },
       products: { ...settings.products, enabled: runtimeFlags.productsEnabled },
     }) as PlatformSiteSettings;
+
+    const siteSettingsEntityId = context.localId;
+    type LocalizableSiteSettings = SiteSettings & { id: string };
+    const localizableSettings: LocalizableSiteSettings = {
+      id: siteSettingsEntityId,
+      ...(normalizedSettings as SiteSettings),
+    };
+
+    const localized = (
+      await this.localizationService.localizeCollection({
+        context,
+        entityType: 'site_settings',
+        items: [localizableSettings],
+        descriptors: [
+          {
+            fieldKey: 'branding.tagline',
+            getValue: (item) => item.branding.tagline,
+            setValue: (item, value) => {
+              item.branding.tagline = value;
+            },
+          },
+          {
+            fieldKey: 'branding.description',
+            getValue: (item) => item.branding.description,
+            setValue: (item, value) => {
+              item.branding.description = value;
+            },
+          },
+          {
+            fieldKey: 'location.label',
+            getValue: (item) => item.location.label,
+            setValue: (item, value) => {
+              item.location.label = value;
+            },
+          },
+        ],
+      })
+    ).items[0];
+
+    const { id: _ignored, ...localizedSettings } = localized as SiteSettings & { id: string };
+    return localizedSettings as PlatformSiteSettings;
   }
 
   async updateSettings(settings: PlatformSiteSettings): Promise<PlatformSiteSettings> {
     const localId = await this.resolveScopedLocalId();
+    const context = this.tenantContextPort.getRequestContext();
     const normalized = normalizeSettings(settings as SiteSettings);
     const runtimeFlags = await this.resolveRuntimeFlags();
     normalized.products.enabled = runtimeFlags.productsEnabled;
@@ -127,6 +172,19 @@ export class PrismaPlatformSettingsManagementAdapter implements PlatformSettings
       where: { localId },
       update: { data: normalized.openingHours },
       create: { localId, data: normalized.openingHours },
+    });
+    await this.localizationService.syncEntitySourceFields({
+      context: {
+        ...context,
+        localId,
+      },
+      entityType: 'site_settings',
+      entityId: localId,
+      fields: {
+        'branding.tagline': normalized.branding.tagline,
+        'branding.description': normalized.branding.description,
+        'location.label': normalized.location.label,
+      },
     });
     return this.getSettings();
   }

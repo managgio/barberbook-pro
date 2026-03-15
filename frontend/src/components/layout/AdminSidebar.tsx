@@ -12,6 +12,7 @@ import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { adminNavItems, resolveAdminNavItemLabel, sortAdminNavItems } from './adminNavItems';
+import { useI18n } from '@/hooks/useI18n';
 
 
 interface AdminSidebarProps {
@@ -25,6 +26,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
   const copy = useBusinessCopy();
+  const { t } = useI18n();
   const leBlondLogo = '/leBlondLogo.png';
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
   const { isLoading, canAccessSection } = useAdminPermissions();
@@ -81,7 +83,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           {!collapsed && (
             <div>
               <span className="text-base md:text-lg font-bold text-sidebar-foreground">{settings.branding.shortName}</span>
-              <span className="block text-xs text-muted-foreground">Panel Admin</span>
+              <span className="block text-xs text-muted-foreground">{t('admin.sidebar.panel')}</span>
             </div>
           )}
         </Link>
@@ -103,15 +105,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
       {/* Navigation */}
       <nav className={cn('flex-1 min-h-0 p-3 md:p-4 space-y-1 overflow-y-auto overflow-x-visible', collapsed && 'px-2')}>
         {isLoading && !user?.isSuperAdmin && !user?.isPlatformAdmin && (
-          <p className="text-xs text-muted-foreground px-2">Cargando accesos...</p>
+          <p className="text-xs text-muted-foreground px-2">{t('admin.sidebar.loadingAccess')}</p>
         )}
         {showNoAccessMessage && (
           <p className="text-xs text-muted-foreground px-2">
-            No tienes permisos asignados. Contacta con el superadmin.
+            {t('admin.sidebar.noAccess')}
           </p>
         )}
         {visibleNavItems.map((item) => {
-          const label = resolveAdminNavItemLabel(item, copy);
+          const label = resolveAdminNavItemLabel(item, copy, t);
           const link = (
             <Link
               to={item.href}
@@ -172,7 +174,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
           >
             <Link to="/?view=landing">
               <ChevronLeft className="w-4 h-4 mr-1" />
-              {!collapsed && 'Volver'}
+              {!collapsed && t('admin.sidebar.back')}
             </Link>
           </Button>
           <Button
@@ -182,7 +184,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
             className={cn('flex-1', collapsed && 'px-0 justify-center')}
           >
             <LogOut className="w-4 h-4" />
-            {!collapsed && <span className="ml-1">Salir</span>}
+            {!collapsed && <span className="ml-1">{t('admin.sidebar.logout')}</span>}
           </Button>
         </div>
       </div>

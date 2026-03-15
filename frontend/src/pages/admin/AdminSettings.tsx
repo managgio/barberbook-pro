@@ -19,6 +19,8 @@ import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useI18n } from '@/hooks/useI18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 import {
   Loader2,
   MapPin,
@@ -40,15 +42,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 
-const DAY_LABELS: { key: DayKey; label: string }[] = [
-  { key: 'monday', label: 'Lunes' },
-  { key: 'tuesday', label: 'Martes' },
-  { key: 'wednesday', label: 'Miércoles' },
-  { key: 'thursday', label: 'Jueves' },
-  { key: 'friday', label: 'Viernes' },
-  { key: 'saturday', label: 'Sábado' },
-  { key: 'sunday', label: 'Domingo' },
-];
+const DAY_KEYS: DayKey[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 const SHIFT_KEYS = ['morning', 'afternoon'] as const;
 type ShiftKey = (typeof SHIFT_KEYS)[number];
@@ -76,6 +70,7 @@ const AdminSettings: React.FC = () => {
   const { toast } = useToast();
   const { tenant, currentLocationId } = useTenant();
   const copy = useBusinessCopy();
+  const { t, language } = useI18n();
   const productsModuleEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('stock');
   const [settings, setSettings] = useState<SiteSettings>(() => cloneSettings(DEFAULT_SITE_SETTINGS));
   const [isSaving, setIsSaving] = useState(false);
@@ -132,29 +127,29 @@ const AdminSettings: React.FC = () => {
   useEffect(() => {
     if (!settingsQuery.error) return;
     toast({
-      title: 'No se pudo cargar la configuración',
-      description: 'Intenta de nuevo en unos segundos.',
+      title: t('admin.settings.toast.loadSettingsErrorTitle'),
+      description: t('admin.common.tryAgainInSeconds'),
       variant: 'destructive',
     });
-  }, [settingsQuery.error, toast]);
+  }, [settingsQuery.error, t, toast]);
 
   useEffect(() => {
     if (!scheduleQuery.error) return;
     toast({
-      title: 'No se pudo cargar la disponibilidad',
-      description: 'Intenta de nuevo en unos segundos.',
+      title: t('admin.settings.toast.loadAvailabilityErrorTitle'),
+      description: t('admin.common.tryAgainInSeconds'),
       variant: 'destructive',
     });
-  }, [scheduleQuery.error, toast]);
+  }, [scheduleQuery.error, t, toast]);
 
   useEffect(() => {
     if (!stripeConfigQuery.error) return;
     toast({
-      title: 'No se pudo cargar Stripe',
-      description: 'Revisa la conexión e intenta de nuevo.',
+      title: t('admin.settings.toast.loadStripeErrorTitle'),
+      description: t('admin.settings.toast.loadStripeErrorDescription'),
       variant: 'destructive',
     });
-  }, [stripeConfigQuery.error, toast]);
+  }, [stripeConfigQuery.error, t, toast]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -187,13 +182,13 @@ const AdminSettings: React.FC = () => {
       });
       dispatchSiteSettingsUpdated(updated);
       toast({
-        title: 'Configuración actualizada',
-        description: 'Los cambios se han guardado correctamente.',
+        title: t('admin.settings.toast.updatedTitle'),
+        description: t('admin.settings.toast.updatedDescription'),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Revisa los campos e intenta nuevamente.';
+      const message = error instanceof Error ? error.message : t('admin.settings.toast.genericSaveError');
       toast({
-        title: 'Error al guardar',
+        title: t('admin.settings.toast.saveErrorTitle'),
         description: message,
         variant: 'destructive',
       });
@@ -217,13 +212,13 @@ const AdminSettings: React.FC = () => {
       });
       dispatchSiteSettingsUpdated(updated);
       toast({
-        title: 'Preferencias actualizadas',
-        description: 'Los cambios se han guardado correctamente.',
+        title: t('admin.settings.toast.preferencesUpdatedTitle'),
+        description: t('admin.settings.toast.updatedDescription'),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudieron guardar los cambios.';
+      const message = error instanceof Error ? error.message : t('admin.settings.toast.genericSaveError');
       toast({
-        title: 'Error al guardar',
+        title: t('admin.settings.toast.saveErrorTitle'),
         description: message,
         variant: 'destructive',
       });
@@ -239,15 +234,15 @@ const AdminSettings: React.FC = () => {
       await updateAdminStripeConfig(enabled);
       await stripeConfigQuery.refetch();
       toast({
-        title: 'Preferencias de pago actualizadas',
+        title: t('admin.settings.toast.paymentPreferencesUpdatedTitle'),
         description: enabled
-          ? `Stripe quedó habilitado para ${copy.location.definiteSingular}.`
-          : `Stripe quedó deshabilitado para ${copy.location.definiteSingular}.`,
+          ? t('admin.settings.toast.stripeEnabledForLocation', { location: copy.location.definiteSingular })
+          : t('admin.settings.toast.stripeDisabledForLocation', { location: copy.location.definiteSingular }),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo actualizar Stripe',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        title: t('admin.settings.toast.updateStripeErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -266,8 +261,8 @@ const AdminSettings: React.FC = () => {
       await stripeConfigQuery.refetch();
     } catch (error) {
       toast({
-        title: 'No se pudo iniciar Stripe',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        title: t('admin.settings.toast.startStripeErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -317,13 +312,13 @@ const AdminSettings: React.FC = () => {
   };
 
   const ensureBreaksRecord = (current?: Record<DayKey, BreakRange[]>) =>
-    DAY_LABELS.reduce((acc, { key }) => {
+    DAY_KEYS.reduce((acc, key) => {
       acc[key] = current?.[key] ? [...current[key]] : [];
       return acc;
     }, {} as Record<DayKey, BreakRange[]>);
 
   const ensureEndOverflowByDayRecord = (current?: Partial<Record<DayKey, number>>) =>
-    DAY_LABELS.reduce((acc, { key }) => {
+    DAY_KEYS.reduce((acc, key) => {
       const value = current?.[key];
       if (typeof value === 'number' && Number.isFinite(value)) {
         acc[key] = Math.max(0, Math.floor(value));
@@ -440,7 +435,7 @@ const AdminSettings: React.FC = () => {
       if (!prev) return prev;
       const breaks = ensureBreaksRecord(prev.breaks);
       const source = breaks[day].map((range) => ({ ...range }));
-      DAY_LABELS.forEach(({ key }) => {
+      DAY_KEYS.forEach((key) => {
         breaks[key] = [...breaks[key], ...source.map((range) => ({ ...range }))];
       });
       return { ...prev, breaks };
@@ -535,13 +530,13 @@ const AdminSettings: React.FC = () => {
       dispatchSchedulesUpdated({ source: 'admin-settings' });
       dispatchSiteSettingsUpdated(updatedSettings);
       toast({
-        title: 'Agenda y horarios actualizados',
-        description: 'La disponibilidad y el horario informativo se han guardado correctamente.',
+        title: t('admin.settings.toast.scheduleUpdatedTitle'),
+        description: t('admin.settings.toast.scheduleUpdatedDescription'),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudieron guardar los cambios.';
+      const message = error instanceof Error ? error.message : t('admin.settings.toast.genericSaveError');
       toast({
-        title: 'Error al guardar',
+        title: t('admin.settings.toast.saveErrorTitle'),
         description: message,
         variant: 'destructive',
       });
@@ -621,24 +616,34 @@ const AdminSettings: React.FC = () => {
     repeatClientsPercentage: true,
   };
   const statsPreviewItems = [
-    { key: 'experienceYears', icon: Sparkles, label: 'Años de experiencia', value: `${experienceYears}+` },
-    { key: 'averageRating', icon: Star, label: 'Valoración media', value: settings.stats.averageRating.toFixed(1) },
-    { key: 'yearlyBookings', icon: Calendar, label: 'Reservas/año', value: settings.stats.yearlyBookings.toLocaleString('es-ES') },
-    { key: 'repeatClientsPercentage', icon: Repeat, label: 'Clientes que repiten', value: `${settings.stats.repeatClientsPercentage}%` },
+    { key: 'experienceYears', icon: Sparkles, label: t('admin.settings.stats.experienceYears'), value: `${experienceYears}+` },
+    { key: 'averageRating', icon: Star, label: t('admin.settings.stats.averageRating'), value: settings.stats.averageRating.toFixed(1) },
+    {
+      key: 'yearlyBookings',
+      icon: Calendar,
+      label: t('admin.settings.stats.yearlyBookings'),
+      value: settings.stats.yearlyBookings.toLocaleString(language.startsWith('en') ? 'en-US' : 'es-ES'),
+    },
+    {
+      key: 'repeatClientsPercentage',
+      icon: Repeat,
+      label: t('admin.settings.stats.repeatClientsPercentage'),
+      value: `${settings.stats.repeatClientsPercentage}%`,
+    },
   ];
   const stripeReady = Boolean(stripeConfig?.status?.chargesEnabled && stripeConfig?.status?.detailsSubmitted);
   const stripeStatusLabel = !stripeConfig?.brandEnabled
-    ? 'Desactivado por la marca'
+    ? t('admin.settings.stripe.status.disabledByBrand')
     : !stripeConfig?.platformEnabled
-      ? 'Desactivado por la plataforma'
+      ? t('admin.settings.stripe.status.disabledByPlatform')
       : stripeConfig?.accountIdExists
         ? stripeReady
-          ? 'Conectado'
-          : 'Pendiente de completar'
-        : 'Sin conectar';
+          ? t('admin.settings.stripe.status.connected')
+          : t('admin.settings.stripe.status.pending')
+        : t('admin.settings.stripe.status.notConnected');
   const stripeModeLabel = stripeConfig?.mode === 'brand'
-    ? 'Cuenta centralizada de la marca'
-    : `Cuenta propia por ${copy.location.singularLower}`;
+    ? t('admin.settings.stripe.mode.brand')
+    : t('admin.settings.stripe.mode.location', { locationSingularLower: copy.location.singularLower });
   const stripeVisible = Boolean(stripeConfig?.brandEnabled && stripeConfig?.platformEnabled);
   const isCurrentTabSaving = activeTab === 'availability'
     ? (isSavingAvailability || isSavingSchedule)
@@ -651,9 +656,9 @@ const AdminSettings: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Configuración general</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.settings.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Ajusta los datos públicos del sitio, las estadísticas destacadas y el horario de apertura.
+            {t('admin.settings.subtitle')}
           </p>
         </div>
       </div>
@@ -661,7 +666,7 @@ const AdminSettings: React.FC = () => {
       {isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" />
-          Cargando configuración...
+          {t('admin.settings.loading')}
         </div>
       )}
 
@@ -671,24 +676,26 @@ const AdminSettings: React.FC = () => {
         className="space-y-6"
       >
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="overflow-x-auto pb-1">
-            <TabsList className="h-auto w-max justify-start gap-1 rounded-xl bg-muted/60 p-1">
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="h-auto w-max justify-start gap-1 rounded-xl bg-muted/60 p-1">
               <TabsTrigger value="identity" className="min-h-9 whitespace-nowrap">
-                Identidad y landing
+                {t('admin.settings.tabs.identity')}
               </TabsTrigger>
               <TabsTrigger value="operations" className="min-h-9 whitespace-nowrap">
-                Operativa
+                {t('admin.settings.tabs.operations')}
               </TabsTrigger>
               <TabsTrigger value="availability" className="min-h-9 whitespace-nowrap">
-                Agenda y horarios
+                {t('admin.settings.tabs.availability')}
               </TabsTrigger>
             </TabsList>
           </div>
-          <Button onClick={handleSaveByActiveTab} disabled={isCurrentTabSaveDisabled} className="md:shrink-0">
-            {isCurrentTabSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            <Settings className="w-4 h-4 mr-2" />
-            Guardar cambios
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 md:shrink-0">
+            <Button onClick={handleSaveByActiveTab} disabled={isCurrentTabSaveDisabled}>
+              {isCurrentTabSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Settings className="w-4 h-4 mr-2" />
+              {t('admin.settings.saveChanges')}
+            </Button>
+          </div>
         </div>
 
         <TabsContent value="identity" className="mt-0 space-y-6">
@@ -698,13 +705,13 @@ const AdminSettings: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-primary" />
-              Identidad y mensaje
+              {t('admin.settings.section.identityMessage')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Nombre {copy.location.fromWithDefinite}</Label>
+                <Label>{t('admin.settings.identity.fields.locationName', { locationFromWithDefinite: copy.location.fromWithDefinite })}</Label>
                 <Input
                   value={settings.branding.name}
                   onChange={(e) => handleBrandingChange('name', e.target.value)}
@@ -713,7 +720,7 @@ const AdminSettings: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Nombre corto</Label>
+                <Label>{t('admin.settings.identity.fields.shortName')}</Label>
                 <Input
                   value={settings.branding.shortName}
                   onChange={(e) => handleBrandingChange('shortName', e.target.value)}
@@ -723,17 +730,37 @@ const AdminSettings: React.FC = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Tagline</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>{t('admin.settings.identity.fields.tagline')}</Label>
+                <InlineTranslationPopover
+                  entityType="site_settings"
+                  entityId={currentLocationId}
+                  fieldKey="branding.tagline"
+                  onUpdated={async () => {
+                    await settingsQuery.refetch();
+                  }}
+                />
+              </div>
               <Input
                 value={settings.branding.tagline}
                 onChange={(e) => handleBrandingChange('tagline', e.target.value)}
-                placeholder="Tu look, nuestro compromiso."
+                placeholder={t('admin.settings.identity.placeholders.tagline')}
                 disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Descripción breve</Label>
+                <div className="flex items-center gap-2">
+                  <Label>{t('admin.settings.identity.fields.shortDescription')}</Label>
+                  <InlineTranslationPopover
+                    entityType="site_settings"
+                    entityId={currentLocationId}
+                    fieldKey="branding.description"
+                    onUpdated={async () => {
+                      await settingsQuery.refetch();
+                    }}
+                  />
+                </div>
                 <span className="text-xs text-muted-foreground">
                   {settings.branding.description.length}/150
                 </span>
@@ -743,17 +770,27 @@ const AdminSettings: React.FC = () => {
                 onChange={(e) =>
                   handleBrandingChange('description', e.target.value.slice(0, 150))
                 }
-                placeholder="Resumen corto de lo que hacéis (máx. 150 caracteres)"
+                placeholder={t('admin.settings.identity.placeholders.shortDescription')}
                 maxLength={150}
                 rows={3}
                 disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
-              <Label className="flex items-center gap-2 leading-tight">
-                <MapPin className="w-4 h-4 text-muted-foreground" />
-                Ubicación visible
-              </Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-2 leading-tight">
+                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                  {t('admin.settings.identity.fields.visibleLocation')}
+                </Label>
+                <InlineTranslationPopover
+                  entityType="site_settings"
+                  entityId={currentLocationId}
+                  fieldKey="location.label"
+                  onUpdated={async () => {
+                    await settingsQuery.refetch();
+                  }}
+                />
+              </div>
               <Input
                 value={settings.location.label}
                 onChange={(e) => handleLocationChange('label', e.target.value)}
@@ -768,13 +805,13 @@ const AdminSettings: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="w-5 h-5 text-primary" />
-              Contacto y redes
+              {t('admin.settings.identity.contactAndSocial')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Teléfono</Label>
+                <Label>{t('admin.settings.identity.fields.phone')}</Label>
                 <div className="grid grid-cols-3 gap-2">
                   <Input
                     value={PHONE_PREFIX}
@@ -793,7 +830,7 @@ const AdminSettings: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Correo</Label>
+                <Label>{t('admin.settings.identity.fields.email')}</Label>
                 <Input
                   value={settings.contact.email}
                   onChange={(e) => setSettings((prev) => ({ ...prev, contact: { ...prev.contact, email: e.target.value } }))}
@@ -806,7 +843,7 @@ const AdminSettings: React.FC = () => {
               <div className="space-y-2">
                 <Label className="flex items-center gap-2 leading-tight">
                   <Link2 className="w-4 h-4 text-muted-foreground" />
-                  Enlace a Google Maps
+                  {t('admin.settings.identity.fields.googleMapsUrl')}
                 </Label>
                 <Input
                   value={settings.location.mapUrl}
@@ -818,7 +855,7 @@ const AdminSettings: React.FC = () => {
               <div className="space-y-2">
                 <Label className="flex items-center gap-2 leading-tight">
                   <Globe2 className="w-4 h-4 text-muted-foreground" />
-                  Enlace para mapa visual (iframe)
+                  {t('admin.settings.identity.fields.mapEmbedUrl')}
                 </Label>
                 <Input
                   value={settings.location.mapEmbedUrl}
@@ -830,7 +867,7 @@ const AdminSettings: React.FC = () => {
             </div>
 
             <div className="border-t border-border pt-4">
-              <p className="text-sm font-medium mb-3">Redes sociales</p>
+              <p className="text-sm font-medium mb-3">{t('admin.settings.identity.social.title')}</p>
               <div className="grid sm:grid-cols-2 gap-3">
                 <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3">
                   <Instagram className="w-4 h-4 text-primary" />
@@ -838,7 +875,7 @@ const AdminSettings: React.FC = () => {
                     className="border-0 bg-transparent shadow-none focus-visible:ring-0"
                     value={settings.socials.instagram}
                     onChange={(e) => handleSocialChange('instagram', e.target.value)}
-                    placeholder="@usuario en Instagram"
+                    placeholder={t('admin.settings.identity.social.instagramPlaceholder')}
                     disabled={isLoading}
                   />
                 </div>
@@ -848,7 +885,7 @@ const AdminSettings: React.FC = () => {
                     className="border-0 bg-transparent shadow-none focus-visible:ring-0"
                     value={settings.socials.x}
                     onChange={(e) => handleSocialChange('x', e.target.value)}
-                    placeholder="@usuario en X"
+                    placeholder={t('admin.settings.identity.social.xPlaceholder')}
                     disabled={isLoading}
                   />
                 </div>
@@ -858,7 +895,7 @@ const AdminSettings: React.FC = () => {
                     className="border-0 bg-transparent shadow-none focus-visible:ring-0"
                     value={settings.socials.tiktok}
                     onChange={(e) => handleSocialChange('tiktok', e.target.value)}
-                    placeholder="@usuario en TikTok"
+                    placeholder={t('admin.settings.identity.social.tiktokPlaceholder')}
                     disabled={isLoading}
                   />
                 </div>
@@ -868,7 +905,7 @@ const AdminSettings: React.FC = () => {
                     className="border-0 bg-transparent shadow-none focus-visible:ring-0"
                     value={settings.socials.youtube}
                     onChange={(e) => handleSocialChange('youtube', e.target.value)}
-                    placeholder="Canal o usuario en YouTube"
+                    placeholder={t('admin.settings.identity.social.youtubePlaceholder')}
                     disabled={isLoading}
                   />
                 </div>
@@ -878,7 +915,7 @@ const AdminSettings: React.FC = () => {
                     className="border-0 bg-transparent shadow-none focus-visible:ring-0"
                     value={settings.socials.linkedin}
                     onChange={(e) => handleSocialChange('linkedin', e.target.value)}
-                    placeholder="Usuario en LinkedIn"
+                    placeholder={t('admin.settings.identity.social.linkedinPlaceholder')}
                     disabled={isLoading}
                   />
                 </div>
@@ -893,17 +930,17 @@ const AdminSettings: React.FC = () => {
         <CardHeader className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <Star className="w-5 h-5 text-primary" />
-            <CardTitle>Estadísticas destacadas</CardTitle>
+            <CardTitle>{t('admin.settings.stats.title')}</CardTitle>
           </div>
           <p className="text-sm text-muted-foreground">
-            Estas cifras aparecen en la landing.
+            {t('admin.settings.stats.description')}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>Año de inicio</Label>
+                <Label>{t('admin.settings.stats.fields.startYear')}</Label>
                 <Switch
                   checked={statsVisibility.experienceYears}
                   onCheckedChange={(checked) =>
@@ -921,7 +958,7 @@ const AdminSettings: React.FC = () => {
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>Valoración media</Label>
+                <Label>{t('admin.settings.stats.fields.averageRating')}</Label>
                 <Switch
                   checked={statsVisibility.averageRating}
                   onCheckedChange={(checked) =>
@@ -942,7 +979,7 @@ const AdminSettings: React.FC = () => {
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>Reservas / año</Label>
+                <Label>{t('admin.settings.stats.fields.yearlyBookings')}</Label>
                 <Switch
                   checked={statsVisibility.yearlyBookings}
                   onCheckedChange={(checked) =>
@@ -961,7 +998,7 @@ const AdminSettings: React.FC = () => {
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>% clientes que repiten</Label>
+                <Label>{t('admin.settings.stats.fields.repeatClientsPercentage')}</Label>
                 <Switch
                   checked={statsVisibility.repeatClientsPercentage}
                   onCheckedChange={(checked) =>
@@ -1002,7 +1039,7 @@ const AdminSettings: React.FC = () => {
                       <p className="text-sm text-muted-foreground">{stat.label}</p>
                       {!isVisible && (
                         <span className="rounded-md border border-border/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Oculta en landing
+                          {t('admin.settings.stats.hiddenOnLanding')}
                         </span>
                       )}
                     </div>
@@ -1025,22 +1062,22 @@ const AdminSettings: React.FC = () => {
           <CardHeader className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-primary" />
-              <CardTitle>Pagos con tarjeta (Stripe)</CardTitle>
+              <CardTitle>{t('admin.settings.stripe.title')}</CardTitle>
             </div>
             <p className="text-sm text-muted-foreground">
-              Activa los pagos online y permite al cliente pagar antes de la cita.
+              {t('admin.settings.stripe.description')}
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  Habilitar Stripe en {copy.location.definiteSingular}
+                  {t('admin.settings.stripe.enableForLocation', { locationDefiniteSingular: copy.location.definiteSingular })}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {stripeConfig.brandEnabled
-                    ? `Los clientes podrán elegir pagar online o en ${copy.location.definiteSingular}.`
-                    : 'La marca no tiene Stripe activo.'}
+                    ? t('admin.settings.stripe.enableHint', { locationDefiniteSingular: copy.location.definiteSingular })
+                    : t('admin.settings.stripe.brandDisabled')}
                 </p>
               </div>
               <Switch
@@ -1052,11 +1089,11 @@ const AdminSettings: React.FC = () => {
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border border-border/70 bg-background/80 px-4 py-3">
-                <p className="text-xs text-muted-foreground">Estado</p>
+                <p className="text-xs text-muted-foreground">{t('admin.settings.stripe.labels.status')}</p>
                 <p className="text-sm font-semibold text-foreground">{stripeStatusLabel}</p>
               </div>
               <div className="rounded-xl border border-border/70 bg-background/80 px-4 py-3">
-                <p className="text-xs text-muted-foreground">Modo</p>
+                <p className="text-xs text-muted-foreground">{t('admin.settings.stripe.labels.mode')}</p>
                 <p className="text-sm font-semibold text-foreground">{stripeModeLabel}</p>
               </div>
             </div>
@@ -1064,9 +1101,9 @@ const AdminSettings: React.FC = () => {
             {stripeConfig.brandEnabled && stripeConfig.localEnabled && stripeConfig.mode === 'location' && !stripeReady && (
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-2xl border border-dashed border-border/70 px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Conecta tu cuenta Stripe</p>
+                  <p className="text-sm font-medium text-foreground">{t('admin.settings.stripe.connect.title')}</p>
                   <p className="text-xs text-muted-foreground">
-                    Necesitamos completar el onboarding para activar los cobros.
+                    {t('admin.settings.stripe.connect.description')}
                   </p>
                 </div>
                 <Button
@@ -1075,14 +1112,14 @@ const AdminSettings: React.FC = () => {
                   disabled={isStripeConnecting}
                 >
                   {isStripeConnecting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Conectar Stripe
+                  {t('admin.settings.stripe.connect.action')}
                 </Button>
               </div>
             )}
 
             {stripeConfig.brandEnabled && stripeConfig.mode === 'brand' && !stripeReady && (
               <div className="rounded-2xl border border-dashed border-border/70 px-4 py-3 text-sm text-muted-foreground">
-                La cuenta de Stripe la gestiona la marca. Cuando la conexión esté lista, podrás habilitar pagos aquí.
+                {t('admin.settings.stripe.brandModePending')}
               </div>
             )}
           </CardContent>
@@ -1092,7 +1129,7 @@ const AdminSettings: React.FC = () => {
       {isStripeLoading && stripeVisible && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" />
-          Cargando estado de Stripe...
+          {t('admin.settings.stripe.loading')}
         </div>
       )}
 
@@ -1102,18 +1139,18 @@ const AdminSettings: React.FC = () => {
           <CardHeader className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <Boxes className="w-5 h-5 text-primary" />
-              <CardTitle>Productos y stock</CardTitle>
+              <CardTitle>{t('admin.settings.products.title')}</CardTitle>
             </div>
             <p className="text-sm text-muted-foreground">
-              Gestiona la visibilidad pública y la compra desde la app.
+              {t('admin.settings.products.description')}
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium">Compra de clientes</p>
-                  <p className="text-xs text-muted-foreground">Permite añadir productos a la cita.</p>
+                  <p className="text-sm font-medium">{t('admin.settings.products.clientPurchase.title')}</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.settings.products.clientPurchase.description')}</p>
                 </div>
                 <Switch
                   checked={settings.products.clientPurchaseEnabled}
@@ -1125,8 +1162,8 @@ const AdminSettings: React.FC = () => {
               </div>
               <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium">Mostrar en landing</p>
-                  <p className="text-xs text-muted-foreground">Sección pública de productos.</p>
+                  <p className="text-sm font-medium">{t('admin.settings.products.showOnLanding.title')}</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.settings.products.showOnLanding.description')}</p>
                 </div>
                 <Switch
                   checked={settings.products.showOnLanding}
@@ -1146,15 +1183,15 @@ const AdminSettings: React.FC = () => {
         <CardHeader className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-primary" />
-            <CardTitle>Política de cancelación</CardTitle>
+            <CardTitle>{t('admin.settings.cancellation.title')}</CardTitle>
           </div>
           <p className="text-sm text-muted-foreground">
-            Define con cuántas horas de antelación se puede cancelar una cita.
+            {t('admin.settings.cancellation.description')}
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-2 max-w-xs">
-            <Label>Horas mínimas antes de la cita</Label>
+            <Label>{t('admin.settings.cancellation.cutoffHours')}</Label>
             <Input
               type="number"
               min={0}
@@ -1172,7 +1209,7 @@ const AdminSettings: React.FC = () => {
               disabled={isLoading}
             />
             <p className="text-xs text-muted-foreground">
-              Usa 0 si no quieres aplicar límite de cancelación.
+              {t('admin.settings.cancellation.cutoffHint')}
             </p>
           </div>
         </CardContent>
@@ -1188,10 +1225,10 @@ const AdminSettings: React.FC = () => {
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-primary" />
-              Descansos y tiempos entre servicios
+              {t('admin.settings.availability.breaksAndBuffers.title')}
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Bloquea huecos en la agenda y añade minutos de preparación entre citas.
+              {t('admin.settings.availability.breaksAndBuffers.description')}
             </p>
           </div>
         </CardHeader>
@@ -1199,7 +1236,7 @@ const AdminSettings: React.FC = () => {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <div className="space-y-2">
-                <Label>Tiempo entre servicios (minutos)</Label>
+                <Label>{t('admin.settings.availability.bufferMinutes')}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -1210,12 +1247,12 @@ const AdminSettings: React.FC = () => {
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Se aplica {copy.staff.toWithDefinitePlural} para limpieza, preparación o descanso.
+                  {t('admin.settings.availability.bufferHint', { staffToWithDefinitePlural: copy.staff.toWithDefinitePlural })}
                 </p>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Tolerancia fin de jornada (minutos)</Label>
+              <Label>{t('admin.settings.availability.endOverflowMinutes')}</Label>
               <Input
                 type="number"
                 min={0}
@@ -1226,33 +1263,33 @@ const AdminSettings: React.FC = () => {
                 onFocus={(e) => e.currentTarget.select()}
               />
               <p className="text-xs text-muted-foreground">
-                Permite reservar si la cita termina unos minutos después del cierre.
+                {t('admin.settings.availability.endOverflowHint')}
               </p>
             </div>
           </div>
 
           <div className="space-y-4 rounded-xl border border-border/70 bg-muted/20 p-4">
             <div>
-              <p className="text-sm font-semibold text-foreground">Tolerancia por día y fecha</p>
+              <p className="text-sm font-semibold text-foreground">{t('admin.settings.availability.tolerance.title')}</p>
               <p className="text-xs text-muted-foreground">
-                Prioridad de aplicación: fecha concreta, luego día de semana y después global.
+                {t('admin.settings.availability.tolerance.priorityHint')}
               </p>
             </div>
 
             <div className="space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Tolerancia por día de semana
+                {t('admin.settings.availability.tolerance.byDayTitle')}
               </p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {DAY_LABELS.map(({ key, label }) => (
+              {DAY_KEYS.map((key) => (
                 <div key={`overflow-day-${key}`} className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">{label}</Label>
+                  <Label className="text-xs text-muted-foreground">{t(`admin.settings.day.${key}`)}</Label>
                   <Input
                     type="number"
                     min={0}
                     step={5}
                     value={shopSchedule?.endOverflowByDay?.[key] ?? ''}
-                    placeholder="Hereda global"
+                    placeholder={t('admin.settings.availability.tolerance.inheritGlobal')}
                     onChange={(e) => handleEndOverflowByDayChange(key, e.target.value)}
                     disabled={isScheduleLoading || !shopSchedule}
                     onFocus={(e) => e.currentTarget.select()}
@@ -1265,11 +1302,11 @@ const AdminSettings: React.FC = () => {
             <div className="space-y-3 border-t border-border/60 pt-4">
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Tolerancia por fecha concreta
+                  {t('admin.settings.availability.tolerance.byDateTitle')}
                 </p>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Nueva fecha</Label>
+                    <Label className="text-xs text-muted-foreground">{t('admin.settings.availability.newDate')}</Label>
                     <Input
                       type="date"
                       value={newOverflowDate}
@@ -1286,7 +1323,7 @@ const AdminSettings: React.FC = () => {
                     }}
                     disabled={!newOverflowDate || isScheduleLoading || !shopSchedule}
                   >
-                    Añadir fecha
+                    {t('admin.settings.actions.addDate')}
                   </Button>
                 </div>
               </div>
@@ -1303,7 +1340,7 @@ const AdminSettings: React.FC = () => {
                         <p className="text-sm font-medium text-foreground">{dateKey}</p>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Minutos</Label>
+                        <Label className="text-xs text-muted-foreground">{t('admin.settings.availability.minutes')}</Label>
                         <Input
                           type="number"
                           min={0}
@@ -1321,12 +1358,12 @@ const AdminSettings: React.FC = () => {
                         onClick={() => handleRemoveEndOverflowDate(dateKey)}
                         disabled={isScheduleLoading || !shopSchedule}
                       >
-                        Quitar
+                        {t('admin.settings.actions.remove')}
                       </Button>
                     </div>
                   ))}
                 {Object.keys(shopSchedule?.endOverflowByDate ?? {}).length === 0 && (
-                  <p className="text-xs text-muted-foreground">No hay fechas con tolerancia específica.</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.settings.availability.tolerance.noSpecificDates')}</p>
                 )}
               </div>
             </div>
@@ -1334,21 +1371,23 @@ const AdminSettings: React.FC = () => {
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Huecos por día</p>
-              <p className="text-xs text-muted-foreground">Añade tantos huecos como necesites.</p>
+              <p className="text-sm font-semibold text-foreground">{t('admin.settings.availability.breaks.byDayTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.byDayDescription')}</p>
             </div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {DAY_LABELS.map(({ key, label }) => {
+            {DAY_KEYS.map((key) => {
               const dayBreaks = shopSchedule?.breaks?.[key] ?? [];
               return (
                 <div key={key} className="rounded-xl border border-border/70 bg-muted/30 p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-foreground">{label}</p>
+                      <p className="font-semibold text-foreground">{t(`admin.settings.day.${key}`)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {dayBreaks.length ? `${dayBreaks.length} huecos` : 'Sin huecos definidos'}
+                        {dayBreaks.length
+                          ? t('admin.settings.availability.breaks.count', { count: dayBreaks.length })
+                          : t('admin.settings.availability.breaks.none')}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">
@@ -1358,7 +1397,7 @@ const AdminSettings: React.FC = () => {
                         onClick={() => handleCopyBreaksToAll(key)}
                         disabled={isScheduleLoading || !shopSchedule}
                       >
-                        Copiar a toda la semana
+                        {t('admin.settings.actions.copyToWeek')}
                       </Button>
                       <Button
                         variant="outline"
@@ -1368,7 +1407,7 @@ const AdminSettings: React.FC = () => {
                         className="gap-2"
                       >
                         <Plus className="h-4 w-4" />
-                        Añadir hueco
+                        {t('admin.settings.actions.addBreak')}
                       </Button>
                     </div>
                   </div>
@@ -1402,7 +1441,7 @@ const AdminSettings: React.FC = () => {
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-4 text-xs text-muted-foreground">No hay huecos configurados.</p>
+                    <p className="mt-4 text-xs text-muted-foreground">{t('admin.settings.availability.breaks.noneConfigured')}</p>
                   )}
                 </div>
               );
@@ -1412,12 +1451,12 @@ const AdminSettings: React.FC = () => {
           <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
             <div className="space-y-2">
               <div>
-                <p className="text-sm font-semibold text-foreground">Huecos por fecha concreta</p>
-                <p className="text-xs text-muted-foreground">Añade descansos solo para una fecha puntual.</p>
+                <p className="text-sm font-semibold text-foreground">{t('admin.settings.availability.breaks.byDateTitle')}</p>
+                <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.byDateDescription')}</p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Nueva fecha</Label>
+                  <Label className="text-xs text-muted-foreground">{t('admin.settings.availability.newDate')}</Label>
                   <Input
                     type="date"
                     value={newBreakDate}
@@ -1434,7 +1473,7 @@ const AdminSettings: React.FC = () => {
                   }}
                   disabled={!newBreakDate || isScheduleLoading || !shopSchedule}
                 >
-                  Añadir fecha
+                  {t('admin.settings.actions.addDate')}
                 </Button>
               </div>
             </div>
@@ -1448,7 +1487,9 @@ const AdminSettings: React.FC = () => {
                       <div>
                         <p className="font-semibold text-foreground">{dateKey}</p>
                         <p className="text-xs text-muted-foreground">
-                          {ranges.length ? `${ranges.length} huecos` : 'Sin huecos definidos'}
+                          {ranges.length
+                            ? t('admin.settings.availability.breaks.count', { count: ranges.length })
+                            : t('admin.settings.availability.breaks.none')}
                         </p>
                       </div>
                       <div className="flex gap-2 sm:justify-end">
@@ -1459,7 +1500,7 @@ const AdminSettings: React.FC = () => {
                           disabled={isScheduleLoading || !shopSchedule}
                         >
                           <Plus className="h-4 w-4 mr-2" />
-                          Añadir hueco
+                          {t('admin.settings.actions.addBreak')}
                         </Button>
                         <Button
                           variant="ghost"
@@ -1467,7 +1508,7 @@ const AdminSettings: React.FC = () => {
                           onClick={() => handleRemoveBreakDate(dateKey)}
                           disabled={isScheduleLoading || !shopSchedule}
                         >
-                          Quitar fecha
+                          {t('admin.settings.actions.removeDate')}
                         </Button>
                       </div>
                     </div>
@@ -1504,12 +1545,12 @@ const AdminSettings: React.FC = () => {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground">No hay huecos configurados.</p>
+                      <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.noneConfigured')}</p>
                     )}
                   </div>
                 ))}
               {Object.keys(shopSchedule?.breaksByDate ?? {}).length === 0 && (
-                <p className="text-xs text-muted-foreground">No hay fechas con huecos específicos.</p>
+                <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.noSpecificDates')}</p>
               )}
             </div>
           </div>
@@ -1522,26 +1563,28 @@ const AdminSettings: React.FC = () => {
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-primary" />
-              Horario de apertura (informativo)
+              {t('admin.settings.openingHours.title')}
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Este horario se muestra en la web y es independiente de la disponibilidad {copy.staff.fromWithDefinitePlural}.
+              {t('admin.settings.openingHours.description', { staffFromWithDefinitePlural: copy.staff.fromWithDefinitePlural })}
             </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-4 xl:grid-cols-3">
-            {DAY_LABELS.map(({ key, label }) => {
+            {DAY_KEYS.map((key) => {
               const day = settings.openingHours[key];
               return (
                 <div key={key} className="rounded-xl border border-border/70 bg-muted/30 p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-foreground">{label}</p>
-                      <p className="text-xs text-muted-foreground">{day.closed ? 'Cerrado' : 'Abierto'}</p>
+                      <p className="font-semibold text-foreground">{t(`admin.settings.day.${key}`)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {day.closed ? t('admin.settings.openingHours.closed') : t('admin.settings.openingHours.open')}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Cerrar día</span>
+                      <span className="text-xs text-muted-foreground">{t('admin.settings.openingHours.closeDay')}</span>
                       <Switch
                         checked={day.closed}
                         onCheckedChange={(checked) => handleScheduleClosed(key, checked)}
@@ -1556,10 +1599,12 @@ const AdminSettings: React.FC = () => {
                         <div key={shift} className="rounded-lg border border-border/60 bg-background/80 p-3">
                           <div className="flex items-center justify-between gap-2 mb-3">
                             <p className="text-sm font-medium">
-                              {shift === 'morning' ? 'Turno de mañana' : 'Turno de tarde'}
+                              {shift === 'morning'
+                                ? t('admin.settings.openingHours.shiftMorning')
+                                : t('admin.settings.openingHours.shiftAfternoon')}
                             </p>
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">Activo</span>
+                              <span className="text-xs text-muted-foreground">{t('admin.settings.openingHours.active')}</span>
                               <Switch
                                 checked={day[shift].enabled}
                                 onCheckedChange={(checked) => handleShiftToggle(key, shift, checked)}
@@ -1570,7 +1615,7 @@ const AdminSettings: React.FC = () => {
                           {day[shift].enabled ? (
                             <div className="grid grid-cols-2 gap-2">
                               <div className="space-y-1">
-                                <Label className="text-xs text-muted-foreground">Inicio</Label>
+                                <Label className="text-xs text-muted-foreground">{t('admin.settings.openingHours.start')}</Label>
                                 <Input
                                   type="time"
                                   value={day[shift].start}
@@ -1579,7 +1624,7 @@ const AdminSettings: React.FC = () => {
                                 />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs text-muted-foreground">Fin</Label>
+                                <Label className="text-xs text-muted-foreground">{t('admin.settings.openingHours.end')}</Label>
                                 <Input
                                   type="time"
                                   value={day[shift].end}
@@ -1589,7 +1634,7 @@ const AdminSettings: React.FC = () => {
                               </div>
                             </div>
                           ) : (
-                            <p className="text-xs text-muted-foreground">Turno desactivado.</p>
+                            <p className="text-xs text-muted-foreground">{t('admin.settings.openingHours.shiftDisabled')}</p>
                           )}
                         </div>
                       ))}
@@ -1603,6 +1648,7 @@ const AdminSettings: React.FC = () => {
       </Card>
         </TabsContent>
       </Tabs>
+
     </div>
   );
 };

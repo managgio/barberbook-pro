@@ -35,6 +35,9 @@ import { getProducts } from '@/data/api/products';
 import { getServices } from '@/data/api/services';
 import { queryKeys } from '@/lib/queryKeys';
 import { cn } from '@/lib/utils';
+import LanguageSelector from '@/components/common/LanguageSelector';
+import { useLanguage } from '@/hooks/useLanguage';
+import { useI18n } from '@/hooks/useI18n';
 
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
@@ -67,6 +70,8 @@ const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
+  const { supportedLanguages } = useLanguage();
+  const { t } = useI18n();
   const copy = useBusinessCopy();
   const leBlondLogo = '/leBlondLogo.png';
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
@@ -224,10 +229,10 @@ const LandingPage: React.FC = () => {
     repeatClientsPercentage: true,
   };
   const statsHighlights = [
-    { key: 'experienceYears', icon: Scissors, value: `${experienceYears}+`, label: 'Años de experiencia' },
-    { key: 'averageRating', icon: Star, value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
-    { key: 'yearlyBookings', icon: Calendar, value: `${formatYearlyBookings(settings.stats.yearlyBookings)}`, label: 'Reservas/año' },
-    { key: 'repeatClientsPercentage', icon: Repeat, value: `${settings.stats.repeatClientsPercentage}%`, label: 'Clientes que repiten' },
+    { key: 'experienceYears', icon: Scissors, value: `${experienceYears}+`, label: t('landing.stats.experienceYears') },
+    { key: 'averageRating', icon: Star, value: settings.stats.averageRating.toFixed(1), label: t('landing.stats.averageRating') },
+    { key: 'yearlyBookings', icon: Calendar, value: `${formatYearlyBookings(settings.stats.yearlyBookings)}`, label: t('landing.stats.yearlyBookings') },
+    { key: 'repeatClientsPercentage', icon: Repeat, value: `${settings.stats.repeatClientsPercentage}%`, label: t('landing.stats.repeatClients') },
   ].filter((stat) => statsVisibility[stat.key as keyof typeof statsVisibility] !== false);
   const heroTextStyles = HERO_TEXT_COLOR_STYLES[heroTextColor] || HERO_TEXT_COLOR_STYLES.auto;
   const heroLayoutClass = heroImageEnabled
@@ -377,7 +382,7 @@ const LandingPage: React.FC = () => {
           />
           {hasOffer && (
             <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-primary text-primary-foreground text-[10px] sm:text-xs px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full shadow-lg">
-              Oferta
+              {t('landing.products.offer')}
             </div>
           )}
         </div>
@@ -401,12 +406,12 @@ const LandingPage: React.FC = () => {
               <Button variant="outline" size="sm" className="w-full h-6 sm:h-9 text-[10px] sm:text-sm" asChild>
                 <Link to={productLink}>
                   <Package className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                  {isAuthenticated ? 'Añadir a tu cita' : 'Accede para comprar'}
+                  {isAuthenticated ? t('landing.products.addToAppointment') : t('landing.products.loginToBuy')}
                 </Link>
               </Button>
             ) : (
               <div className="text-[10px] sm:text-xs text-muted-foreground text-center border border-dashed border-border rounded-lg py-1 sm:py-2">
-                Disponible en el local
+                {t('landing.products.availableInStore')}
               </div>
             )}
           </div>
@@ -445,10 +450,10 @@ const LandingPage: React.FC = () => {
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
           <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
-            Nuestros servicios
+            {t('landing.services.title')}
           </h2>
           <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
-            Cada servicio incluye una experiencia completa con los mejores productos del mercado.
+            {t('landing.services.description')}
           </p>
         </div>
 
@@ -481,7 +486,7 @@ const LandingPage: React.FC = () => {
           ))}
           {services.length === 0 && (
             <div className="md:col-span-2 lg:col-span-3 text-center text-muted-foreground">
-              Cargando servicios...
+              {t('landing.services.loading')}
             </div>
           )}
         </div>
@@ -489,7 +494,7 @@ const LandingPage: React.FC = () => {
         <div className="text-center mt-5 sm:mt-12">
           <Button variant="outline" size="lg" className="h-8 sm:h-11 text-[11px] sm:text-base" asChild>
             <Link to={isAuthenticated ? '/app/book' : '/auth'}>
-              Ver todos los servicios
+              {t('landing.services.viewAll')}
               <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
             </Link>
           </Button>
@@ -503,10 +508,10 @@ const LandingPage: React.FC = () => {
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
           <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
-            Productos destacados
+            {t('landing.products.title')}
           </h2>
           <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
-            Selección profesional para cuidar tu estilo en casa.
+            {t('landing.products.description')}
           </p>
         </div>
 
@@ -517,14 +522,14 @@ const LandingPage: React.FC = () => {
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <h3 className="text-sm sm:text-xl font-semibold text-foreground">
-                      {group.category?.name ?? 'Otros productos'}
+                      {group.category?.name ?? t('landing.products.otherProducts')}
                     </h3>
                     {group.category?.description && (
                       <p className="hidden sm:block text-sm text-muted-foreground">{group.category.description}</p>
                     )}
                   </div>
                   <span className="text-[11px] sm:text-xs text-muted-foreground">
-                    {group.items.length} producto(s)
+                    {t('landing.products.itemsCount', { count: group.items.length })}
                   </span>
                 </div>
                 <div className="scrollbar-none flex gap-2.5 sm:gap-4 overflow-x-auto pb-1.5 sm:pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex md:flex-wrap md:justify-center md:gap-6">
@@ -563,10 +568,10 @@ const LandingPage: React.FC = () => {
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
           <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
-            {copy.staff.plural}
+            {t('landing.barbers.title', { staffPlural: copy.staff.plural })}
           </h2>
           <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
-            Profesionales apasionados por su oficio, siempre al día con las últimas tendencias.
+            {t('landing.barbers.description')}
           </p>
         </div>
 
@@ -602,7 +607,7 @@ const LandingPage: React.FC = () => {
           ))}
           {barbers.length === 0 && (
             <div className="w-full text-center text-muted-foreground">
-              Cargando {copy.staff.pluralLower}...
+              {t('landing.barbers.loading', { staffPluralLower: copy.staff.pluralLower })}
             </div>
           )}
         </div>
@@ -624,16 +629,16 @@ const LandingPage: React.FC = () => {
       <div className="container px-4 relative z-10">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-xl sm:text-3xl md:text-5xl font-bold text-foreground mb-2 sm:mb-6">
-            ¿Listo para tu<br />
-            <span className="text-gradient">nuevo look?</span>
+            {t('landing.cta.titlePrefix')}<br />
+            <span className="text-gradient">{t('landing.cta.titleEmphasis')}</span>
           </h2>
             <p className="text-xs sm:text-xl text-muted-foreground mb-4 sm:mb-10">
-              Reserva tu cita en menos de un minuto y vive la experiencia {settings.branding.name}.
+              {t('landing.cta.description', { brandName: settings.branding.name })}
             </p>
           <Button variant="hero" size="xl" className="h-7 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
             <Link to={isAuthenticated ? '/app/book' : '/auth?tab=signup'}>
               <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-              Reservar mi cita
+              {t('landing.cta.book')}
             </Link>
           </Button>
         </div>
@@ -670,7 +675,7 @@ const LandingPage: React.FC = () => {
               {heroBadgeEnabled && (
                 <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 rounded-full bg-primary/10 border border-primary/20 mb-3 sm:mb-8">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="text-[10px] sm:text-sm text-primary font-medium">Reserva online disponible</span>
+                  <span className="text-[10px] sm:text-sm text-primary font-medium">{t('landing.badges.onlineBooking')}</span>
                 </div>
               )}
               
@@ -690,7 +695,7 @@ const LandingPage: React.FC = () => {
                   <Button variant="hero" size="xl" className="h-7 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                     <Link to={user?.role === 'admin' ? '/admin' : '/app/book'}>
                       <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-                      {user?.role === 'admin' ? 'Panel Admin' : 'Reservar ahora'}
+                      {user?.role === 'admin' ? t('landing.hero.adminPanel') : t('landing.hero.bookNow')}
                     </Link>
                   </Button>
                 ) : (
@@ -698,12 +703,12 @@ const LandingPage: React.FC = () => {
                     <Button variant="hero" size="xl" className="h-7 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                       <Link to="/auth?tab=signup">
                         <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-                        Reservar ahora
+                        {t('landing.hero.bookNow')}
                       </Link>
                     </Button>
                     <Button variant="outline" size="xl" className="h-8 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
                       <Link to="/book">
-                        Reserva sin registro
+                        {t('landing.hero.bookWithoutAccount')}
                       </Link>
                     </Button>
                   </>
@@ -737,7 +742,7 @@ const LandingPage: React.FC = () => {
                   >
                       <MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-primary" />
                       <div className="flex flex-col gap-0.5 sm:gap-1">
-                        <p className="text-[8px] sm:text-xs leading-none uppercase tracking-wide text-muted-foreground">Visítanos</p>
+                        <p className="text-[8px] sm:text-xs leading-none uppercase tracking-wide text-muted-foreground">{t('landing.hero.visitUs')}</p>
                         <span className="text-[10px] sm:text-sm leading-tight font-semibold text-foreground">
                           {settings.location.label}
                         </span>
@@ -807,23 +812,28 @@ const LandingPage: React.FC = () => {
                 <span className="text-sm sm:text-xl font-bold text-foreground">{settings.branding.name}</span>
               </Link>
               <p className="text-[11px] sm:text-sm text-muted-foreground">
-                Citas rápidas, experiencia premium y un equipo que cuida cada detalle.
+                {t('landing.footer.tagline')}
               </p>
+              {supportedLanguages.length > 1 && (
+                <div className="mt-3 sm:mt-4 max-w-[220px]">
+                  <LanguageSelector compact className="w-full" persistForUser={Boolean(user?.id)} />
+                </div>
+              )}
             </div>
             
             <div>
-              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Enlaces</h4>
+              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">{t('landing.footer.links')}</h4>
               <ul className="space-y-1 sm:space-y-2 text-[11px] sm:text-sm text-muted-foreground">
-                <li><Link to="/hours-location" className="hover:text-primary transition-colors">Horario y ubicación</Link></li>
-                <li><Link to="/auth" className="hover:text-primary transition-colors">Iniciar sesión</Link></li>
-                <li><Link to="/legal/notice" className="hover:text-primary transition-colors">Aviso legal</Link></li>
-                <li><Link to="/legal/privacy" className="hover:text-primary transition-colors">Política de privacidad</Link></li>
-                <li><Link to="/legal/cookies" className="hover:text-primary transition-colors">Política de cookies</Link></li>
+                <li><Link to="/hours-location" className="hover:text-primary transition-colors">{t('landing.footer.hoursLocation')}</Link></li>
+                <li><Link to="/auth" className="hover:text-primary transition-colors">{t('landing.footer.login')}</Link></li>
+                <li><Link to="/legal/notice" className="hover:text-primary transition-colors">{t('landing.footer.legalNotice')}</Link></li>
+                <li><Link to="/legal/privacy" className="hover:text-primary transition-colors">{t('landing.footer.privacyPolicy')}</Link></li>
+                <li><Link to="/legal/cookies" className="hover:text-primary transition-colors">{t('landing.footer.cookiesPolicy')}</Link></li>
               </ul>
             </div>
             
             <div>
-              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Contacto</h4>
+              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">{t('landing.footer.contact')}</h4>
               <ul className="space-y-1 sm:space-y-2 text-[11px] sm:text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <MapPin className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
@@ -857,7 +867,7 @@ const LandingPage: React.FC = () => {
 
             {hasSocials && (
               <div>
-              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">Síguenos</h4>
+              <h4 className="text-xs sm:text-base font-semibold text-foreground mb-2.5 sm:mb-4">{t('landing.footer.followUs')}</h4>
               <div className="flex flex-wrap gap-1.5 sm:gap-3">
                 {socials.map((social) => (
                   <a
@@ -886,7 +896,7 @@ const LandingPage: React.FC = () => {
                 className="text-muted-foreground underline-offset-4 hover:text-primary hover:underline transition-colors"
               >
                 Managgio
-              </a>. Todos los derechos reservados.
+              </a>. {t('landing.footer.rightsReserved')}
             </p>
           </div>
         </div>

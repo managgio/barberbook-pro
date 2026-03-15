@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { storeReferralAttribution, getStoredReferralAttribution } from '@/lib/referrals';
 import { Gift, UserPlus, ArrowRight } from 'lucide-react';
+import { useI18n } from '@/hooks/useI18n';
 
 type ReferralLandingPayload = Awaited<ReturnType<typeof resolveReferralCode>>;
 
@@ -15,6 +16,7 @@ const ReferralLandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const [isLoading, setIsLoading] = useState(true);
   const [payload, setPayload] = useState<ReferralLandingPayload | null>(null);
 
@@ -55,17 +57,17 @@ const ReferralLandingPage: React.FC = () => {
       })
       .catch((error) => {
         toast({
-          title: 'No se pudo registrar el referido',
-          description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+          title: t('referralLanding.toast.attributeErrorTitle'),
+          description: error instanceof Error ? error.message : t('referralLanding.toast.attributeErrorDescription'),
           variant: 'destructive',
         });
       });
-  }, [code, stored?.code, toast, user?.id, payload?.programEnabled]);
+  }, [code, stored?.code, toast, user?.id, payload?.programEnabled, t]);
 
   if (isLoading) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center text-muted-foreground">
-        Cargando invitación...
+        {t('referralLanding.loading')}
       </div>
     );
   }
@@ -73,7 +75,7 @@ const ReferralLandingPage: React.FC = () => {
   if (!payload || !payload.programEnabled) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center text-muted-foreground">
-        Esta invitación no está disponible en este momento.
+        {t('referralLanding.unavailable')}
       </div>
     );
   }
@@ -87,19 +89,19 @@ const ReferralLandingPage: React.FC = () => {
           </div>
           <div className="space-y-2">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-              Te invitó {payload.referrerDisplayName}
+              {t('referralLanding.title', { name: payload.referrerDisplayName })}
             </h1>
             <p className="text-muted-foreground">
-              Reserva tu primera cita. Cuando la completes, desbloqueas tu recompensa.
+              {t('referralLanding.subtitle')}
             </p>
           </div>
           <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tú ganas:</span>
+              <span className="text-muted-foreground">{t('referralLanding.youWin')}</span>
               <span className="font-semibold text-foreground">{payload.rewardSummary.referred.text}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tu amigo gana:</span>
+              <span className="text-muted-foreground">{t('referralLanding.friendWins')}</span>
               <span className="font-semibold text-foreground">{payload.rewardSummary.referrer.text}</span>
             </div>
           </div>
@@ -110,13 +112,13 @@ const ReferralLandingPage: React.FC = () => {
               className="w-full"
               onClick={() => navigate('/app/book')}
             >
-              Reservar ahora
+              {t('referralLanding.actions.bookNow')}
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
             <div className="space-y-3">
               <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                Para guardar tu recompensa necesitas crear una cuenta e iniciar sesión antes de reservar.
+                {t('referralLanding.signUpHint')}
               </div>
               <Button
                 size="lg"
@@ -124,7 +126,7 @@ const ReferralLandingPage: React.FC = () => {
                 className="w-full"
                 onClick={() => navigate('/auth?tab=signup&redirect=/app/book')}
               >
-                Crear cuenta y reservar
+                {t('referralLanding.actions.signUpAndBook')}
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Button
@@ -133,7 +135,7 @@ const ReferralLandingPage: React.FC = () => {
                 className="w-full"
                 onClick={() => navigate('/auth?redirect=/app/book')}
               >
-                Ya tengo cuenta
+                {t('referralLanding.actions.alreadyHaveAccount')}
               </Button>
             </div>
           )}

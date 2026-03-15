@@ -50,9 +50,10 @@ Infra/Dev:
 - Soporta `customDomain` por marca.
 - `PLATFORM_SUBDOMAIN` redirige al panel de plataforma.
 - Contexto de tenant via `AsyncLocalStorage` (brandId/localId/host/subdomain).
+- El idioma solicitado por request también entra en contexto (`requestedLanguage`) y se resuelve por prioridad: `?lang` -> `x-app-language` -> `Accept-Language`.
 - `TenantPrismaService` centraliza helpers de scoping (`localWhere`, `brandWhere`, `localData`, `brandData`) para reducir riesgo de queries sin tenant en código nuevo.
 - `PrismaService` aplica un runtime guard tenant-safe en operaciones Prisma masivas de modelos tenant-scoped: exige `localId` y falla rápido si falta (bypass explícito solo para casos cross-tenant controlados).
-- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing/features/business, logos por modo, flags de hero y visibilidad de acciones flotantes admin).
+- `TenantConfigService` combina configuracion de marca y de local (JSON) y expone config publica (branding/theme/adminSidebar/landing/features/business/i18n, logos por modo, flags de hero y visibilidad de acciones flotantes admin).
 - `business.type` (brand-level, hereda a todos los locales) define el vocabulario usado en UI para staff y local.
 
 **Frontend**
@@ -60,7 +61,7 @@ Infra/Dev:
 - Guarda `localId` en localStorage (`managgio.localId`).
 - Aplica theme por marca/local (`theme.primary`) y modo visual (`theme.mode` light/dark).
 - Ajusta metadatos runtime (`title/description/og/twitter/favicon`) por tenant/plataforma tras bootstrap para navegación browser.
-- Config publica incluye landing (orden + secciones ocultas) con override por local.
+- Config publica incluye landing (orden + secciones ocultas) e i18n (`defaultLanguage`, `supportedLanguages`, `autoTranslate`) con override por local.
 - Puede forzar subdominio con `VITE_TENANT_SUBDOMAIN`.
 - `useBusinessCopy` normaliza el copy de staff/local (articulos y plurales) segun `business.type` y se usa en landing, reservas y panel admin.
 
@@ -102,6 +103,7 @@ Modulos principales:
 - **Cash Register**: movimientos de caja y agregados diarios por local/barbero.
 - **Payments (Stripe)**: Stripe Connect, checkout y webhooks por local/marca.
 - **AI Assistant**: chat/admin con tools y transcripcion.
+- **Localization**: pipeline multiidioma tenant-aware (persistencia de traducciones, fallback, edición manual, regeneración y cron asíncrono).
 - **Platform Admin**: gestion de marcas, locales y configuracion global.
 - **Observability**: métricas UX/API por tenant y alerting operativo para plataforma.
 
@@ -126,6 +128,15 @@ Entradas y layouts:
 Contextos principales:
 - **AuthContext**: autentica con Firebase y sincroniza usuario con backend.
 - **TenantContext**: carga tenant y configura theme.
+- **LanguageContext**: resuelve idioma activo por tenant/navegador/storage, actualiza `document.lang` y dispara invalidación de cache al cambiar idioma. En tenant `Platform` queda hard-locked a `es` (selector/storage/browser no alteran idioma de plataforma).
+- **UI I18N (fixed copy)**: capa frontend desacoplada para textos fijos del producto con catálogo en JSON por idioma (`frontend/src/i18n/locales/es.json`, `frontend/src/i18n/locales/en.json`) cargado vía `frontend/src/i18n/messages.ts`, y runtime de fallback en `frontend/src/lib/i18n.ts`/`frontend/src/hooks/useI18n.ts` (`idioma solicitado -> idioma default tenant -> es`).
+- **Cobertura fixed-copy i18n cerrada en runtime**: rutas públicas/cliente/admin tenant migradas con patrón `useI18n + keys`, incluyendo módulos admin operativos (`Settings`, `AiAssistant`, `Stock`, `Referrals`, `Loyalty`, `Reviews`, `Alerts`) y componentes transversales (`ErrorBoundary`, `Session/Network monitors`, `Review prompt`, `Referral landing`, `Legal footer/page`).
+- **Guardrail i18n frontend**: `npm --prefix frontend run i18n:check` ejecuta `frontend/scripts/i18n-key-coverage.mjs` para validar automáticamente que todas las claves usadas vía `t('...')` existan en `es/en` y que la interpolación (`{placeholders}`) sea consistente entre idiomas.
+- **Smoke tests i18n frontend**: `npm --prefix frontend run test:smoke:i18n` valida comportamiento crítico de idioma (`LanguageProvider`, `LanguageSelector`, `language utils`) para evitar regresiones de selección/persistencia/fallback.
+- **Checklist de copy i18n**: `docs/FRONTEND_I18N_COPY_CHECKLIST.md` define el gate de revisión por PR para nuevas pantallas tenant (`landing`, `client`, `admin`).
+- **UI de traducciones dinámicas por módulo (patrón unificado)**: `AdminServices`, `AdminStock`, `AdminAlerts`, `AdminSettings`, `AdminOffers`, `AdminLoyalty`, `AdminSubscriptions`, `AdminBarbers` y `AdminReviews` usan `InlineTranslationPopover` por input textual traducible con icono discreto, estado inmediato, edición manual y regeneración contextual; en creación no se renderiza y en tenant monolingüe tampoco.
+- **Regla de implementación admin**: todo input de texto editable de dominio en panel admin (no numérico) debe seguir patrón inline de traducción cuando la entidad pertenezca al pipeline de localización.
+- **Regla de copy fijo (tenant app)**: cualquier texto fijo de UI en landing/app cliente/admin tenant debe salir de `frontend/src/i18n/locales/*.json` vía `useI18n`; `Platform` permanece hard-locked en español.
 - **AdminPermissionsContext**: permisos por rol (AdminRole + adminSidebar oculto por config).
 - **NetworkStatusMonitor**: monitor global de conectividad (`online/offline`) con feedback inmediato al usuario.
 - **AppErrorBoundary**: captura errores no controlados del arbol React y muestra fallback consistente con accion de recarga.
@@ -136,6 +147,10 @@ Caching y sincronizacion frontend:
 - **React Query como cache de dominio**: catalogos y settings usan claves por dominio y por `localId` (evita mezcla de datos entre locales).
 - **Wrappers de cache compatibles con `refetch`/`invalidate`**: `catalogQuery`, `platformQuery`, `operationalQuery` y `siteSettingsQuery` no reutilizan cache cuando la query está `fetching` o `isInvalidated`, evitando listas congeladas tras altas/ediciones en admin/plataforma.
 - **Capa API modular por dominio**: los consumidores frontend importan desde `frontend/src/data/api/<dominio>.ts` (ej. `appointments`, `platform`, `payments`, `referrals`, `reviews`, `users`) sobre `frontend/src/data/api/request.ts`; `frontend/src/data/api.ts` queda solo como compatibilidad temporal para no romper migraciones.
+- **Idioma en capa API**: `apiRequest` adjunta `x-app-language` con el idioma activo para que backend devuelva contenido localizado sin traducción en tiempo real en frontend.
+- **Separación de i18n por capas**:
+  - Textos fijos de UI del producto: frontend dictionary/hook (`useI18n`).
+  - Contenido editable del negocio: backend localization persistida en DB + fallback.
 - **CatalogQuery** (`frontend/src/lib/catalogQuery.ts`): acceso cacheado para servicios, barberos, categorias y productos (publico/admin), con `staleTime` corto para UX fluida.
 - **OperationalQuery** (`frontend/src/lib/operationalQuery.ts`): cache compartida para consultas operativas acotadas (`appointments` por rango y `users` por `ids`) en vistas admin de alta frecuencia (dashboard, calendar, search, clients, quick appointment).
 - **API paginada en frontend**: `frontend/src/data/api/users.ts` expone `getUsersPage` y `frontend/src/data/api/appointments.ts` expone `getAppointmentsPage` (respuesta `PaginatedResponse<T>`) como contrato principal para vistas admin masivas.
@@ -159,6 +174,7 @@ Caching y sincronizacion frontend:
 - **Alertas admin query-driven**: `AdminAlerts` consume `useQuery` (`adminAlerts`) para listado de avisos y elimina listeners manuales de `window`; las mutaciones (crear/editar/borrar/activar) refrescan por invalidación de dominio.
 - **Festivos admin query-driven**: `AdminHolidays` consume `useQuery` para festivos generales (`adminGeneralHolidays`), festivos por staff (`adminBarberHolidays`) y catálogo de barberos (`barbers`), eliminando carga manual inicial y refrescando por `focus/visibility`.
 - **PlatformBrands query-driven**: `PlatformBrands` consume `useQuery` con claves dedicadas (`platform-brands`, `platform-brand*`, `platform-location-config`) y `useMutation` para escrituras críticas (guardar marca/legal, CRUD de marca/local, asignación de admins), eliminando `load*` imperativos y centralizando refresco con `refetch` + `setQueryData`.
+- **PlatformBrands (pestaña Idiomas dedicada)**: el gobierno i18n por tenant se gestiona en la pestaña `Idiomas` (idioma principal, idiomas habilitados, auto-traducción y controles operativos); la pestaña `Config` queda sin controles i18n para evitar duplicidad y estado transitorio.
 - **Acceso directo a web del cliente (Platform > Clientes > Datos)**: la pestaña `Datos` calcula y expone un enlace "Abrir web" para la marca seleccionada (prioriza `customDomain`; fallback a `{subdomain}.{baseDomain}` según entorno), permitiendo validar rápidamente la web pública sin salir del flujo de plataforma.
 - **Controles flotantes por tenant (marca/local)**: `PlatformBrands` permite activar/desactivar por marca y con override por local la visibilidad de los iconos flotantes de admin (`Spotlight`/lupa y `Asistente IA`); `AdminLayout` consume los flags públicos `branding.adminSpotlightFloatingEnabled` y `branding.adminAssistantFloatingEnabled` (default visible).
 - **Orden resiliente del sidebar admin**: `resolveAdminNavOrder` inserta secciones nuevas faltantes respetando orden base y, en migraciones con orden guardado antiguo, recoloca `subscriptions` antes de `loyalty` para mantener una jerarquía operativa coherente por defecto.
@@ -183,9 +199,10 @@ Observabilidad UX:
 - Envio de Web Vitals a backend (`POST /api/observability/web-vitals`) con `keepalive` para no bloquear navegacion.
 - Emision de evento `window` `web-vital` para extensiones de analitica no acopladas.
 - Interceptor global de API (`ApiMetricsInterceptor`) registra latencia/estado por ruta en backend.
-- Resumen operativo solo plataforma: `GET /api/platform/observability/web-vitals?minutes=<n>` y `GET /api/platform/observability/api?minutes=<n>`.
+- Resumen operativo solo plataforma: `GET /api/platform/observability/web-vitals?minutes=<n>`, `GET /api/platform/observability/api?minutes=<n>` y `GET /api/platform/observability/i18n?minutes=<n>`.
 - Persistencia de métricas en DB (`web_vital_events`, `api_metric_events`) con flush por lotes y retención configurable para no perder histórico en reinicios ni escalar horizontal.
 - **UI operativa de observabilidad en plataforma**: ruta `GET /platform/observability` (frontend) con selector temporal `60 min | 24 h | 7 dias`, tablas de Web Vitals agregadas (`avg`, `p95`, `samples`) y Top endpoints API (`subdomain`, `avg`, `p95`, `errorRate`, `hits`) con `React Query` (`platform-observability-webvitals`, `platform-observability-api`), botón de refresco manual, tooltips discretos por card para interpretación rápida, leyenda breve de métricas UX, cards con altura máxima + scroll interno, layout responsive sin desbordes laterales en móvil y semáforo visual por fila (`OK`/`Vigilar`/`Crítico`) con resumen agregado por card para detección rápida.
+- **Panel i18n cross-tenant en Observabilidad**: la misma vista incluye card operativa de localización con KPIs globales (`críticos`, `pausados`, `cola total`, `cerca de límite`, `fallo alto`) y tabla por tenant (estado, cola `pending`, fallo en ventana, consumo mensual requests/chars, acción `Pausar/Reanudar` inline).
 - **Persistencia de navegación en Platform**: `PlatformLayout` guarda en `sessionStorage` (`platform:last-route:session`) la última sección (`/platform`, `/platform/brands`, `/platform/observability`) y restaura en primera carga si aterriza en `/platform`; `AuthPage` además respeta `location.state.from` (cuando `ProtectedRoute` envía a `/auth`) para volver directamente a la sección original tras refresco/login.
 - **Redirección automática al detectar sesión activa**: la ruta raíz (`/`) ya no deja al usuario autenticado en la landing. Si tiene perfil admin/superadmin/platform-admin se redirige a `/admin`; si es cliente se redirige a `/app/book` (reserva directa). `AuthPage` mantiene la misma resolución para evitar incoherencias de destino tras login.
 - **Acceso explícito a landing con sesión iniciada**: para evitar bloquear navegación voluntaria, `/?view=landing` fuerza render de landing aun con sesión activa. El logo principal del `Navbar` usa ese target cuando el usuario está autenticado.
@@ -209,6 +226,8 @@ BrandUser | Membresia marca-usuario | Vinculo usuario <-> marca + `isBlocked`
 LocationStaff | Staff local | Vinculo usuario <-> local y rol admin
 BrandConfig | Configuracion por marca | JSON (branding, theme, landing order/hidden, notification prefs, features, business.type, twilio, email, imagekit, ai, etc)
 LocationConfig | Configuracion por local | JSON (branding overrides, theme, landing order/hidden, notification prefs, features, imagekit folder, adminSidebar)
+LocalizedContent | Fuente traducible versionada | Texto base por entidad/campo (`entityType`, `entityId`, `fieldKey`, `sourceLanguage`, `sourceVersion`, `sourceHash`)
+LocalizedContentTranslation | Traducción persistida | Traducciones por idioma con estado (`pending/ready/failed/stale`), origen (`ai/manual`), `manualLocked`, trazabilidad de proveedor/modelo
 Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
 Service | Servicio | Precio, duracion, categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
@@ -422,7 +441,24 @@ Documentos de referencia creados durante la migracion (detalle operativo y evide
    - Recompensas: wallet y/o cupon personal (%/fijo/servicio gratis).
    - Wallet usa HOLD/RELEASE/DEBIT para preparar pago real.
 
-15) **Sincronizacion de cache UI (React Query + eventos admin)**
+15) **Localizacion multiidioma tenant-aware**
+   - Config i18n por tenant en Platform (`BrandConfig.data.i18n`) gestionada desde pestaña dedicada `Idiomas` (no desde `Config`), con `defaultLanguage`, `supportedLanguages` y `autoTranslate`; `LocationConfig.data.i18n` puede override por local.
+   - `autoTranslate` incorpora controles operativos enterprise por tenant: `paused`, `pauseUntil`, `pauseReason`, `retryAttempts`, `monthlyRequestLimit`, `monthlyCharacterLimit` y `circuitBreaker` (`enabled`, `failureRateThreshold`, `minSamples`, `consecutiveFailures`, `windowMinutes`, `pauseMinutes`).
+   - Frontend permite selector de idioma en footer de landing y en `Mi perfil`; la preferencia se persiste en `localStorage` por sesión activa, por marca y opcionalmente por usuario. En `Platform` el idioma está fijado a español para mantener consistencia operativa de Managgio.
+   - UI fixed-copy migrada en flujo cliente y core de panel admin tenant (sidebar/layout + `Dashboard`, `Calendar`, `Search`, `Clients`, `Settings`) mediante claves de catálogo `es/en` en `frontend/src/i18n/locales/*`.
+   - Endurecimiento QA frontend activo: guardrails de claves/placeholder (`i18n:check`), smoke tests de idioma (`test:smoke:i18n`) y checklist operativa de copy para PRs.
+   - Control operativo de traducciones dinámicas disponible en admin (`AdminServices`, `AdminStock`, `AdminAlerts`, `AdminSettings`, `AdminOffers`, `AdminLoyalty`, `AdminSubscriptions`, `AdminBarbers`, `AdminReviews`): edición manual, `manualLocked` y regeneración granular (`idioma/campo/entidad`) usando endpoints de `LocalizationController`, con UX inline por campo en todos los módulos integrados.
+   - Resumen agregado por entidad (`GET /api/localization/summary/:entityType?ids=...`) habilita badges de estado en listados sin abrir modal.
+   - Backend sincroniza automáticamente texto fuente al crear/editar entidades traducibles (`service`, `service_category`, `product`, `product_category`, `alert`, `site_settings`, `offer`, `loyalty_program`, `subscription_plan`, `barber`, `review_config`).
+   - Las traducciones se guardan de forma persistida (no runtime on-render) en `LocalizedContentTranslation` y se aplican en lectura con fallback robusto al idioma fuente.
+   - Si el texto base cambia: traducciones AI pasan a `pending`; traducciones manuales con `manualLocked=true` pasan a `stale` y no se sobrescriben automáticamente.
+   - Endpoints admin de localización: lectura por entidad, edición manual y regeneración controlada (`forceManual` opcional).
+   - Pipeline asíncrono por cron (`*/1 * * * *`) con lock distribuido: procesa lotes `pending`, usa provider IA desacoplado por puerto, registra fallos por traducción y aplica enforcement de pausa/cuotas/reintentos/circuit breaker a nivel tenant.
+   - Gobierno global desde Platform Observability:
+     - `GET /api/platform/observability/i18n` agrega salud/cola/límites por tenant,
+     - `POST /api/platform/observability/i18n/:brandId/pause` y `POST /api/platform/observability/i18n/:brandId/resume` permiten control operativo inmediato sin entrar tenant por tenant.
+
+16) **Sincronizacion de cache UI (React Query + eventos admin)**
    - Cambios de citas disparan `dispatchAppointmentsUpdated` e invalidan `appointments` para refresco coherente en dashboard/calendar/search/clients.
    - Cambios de usuarios (bloqueos/rol admin/asignacion de rol) disparan `dispatchUsersUpdated` e invalidan `users` para sincronizar selectores y listados admin.
    - Cambios de servicios/categorias disparan `dispatchServicesUpdated` y se invalidan claves `services` + `service-categories`.
@@ -462,7 +498,7 @@ Documentos de referencia creados durante la migracion (detalle operativo y evide
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local; al reemplazar activos se elimina el archivo anterior.
 - **Twilio**: SMS y WhatsApp (templates) 24h antes de la cita.
 - **Firebase**: Auth en frontend + Admin SDK en backend (borrado usuario).
-- **OpenAI**: chat + transcripcion para asistente admin.
+- **OpenAI**: chat + transcripcion para asistente admin y traducción asíncrona de contenido de negocio (vía `LocalizationService` + adapter por puerto).
 - **SMTP (Nodemailer)**: emails transaccionales.
 - **Stripe**: pagos online con Stripe Connect + webhooks (visible solo si marca y local lo habilitan).
 - **Google Maps**: URLs guardadas en SiteSettings para ubicacion.
@@ -569,6 +605,7 @@ Frontend (`frontend/.env*`):
 - Observabilidad backend:
   - `POST /api/observability/web-vitals` recibe métricas UX de cliente.
   - `GET /api/platform/observability/web-vitals` y `GET /api/platform/observability/api` exponen resumen de Web Vitals y latencia/errores por ruta para plataforma; el resumen API incluye dimensión `subdomain` por fila.
+  - `GET /api/platform/observability/i18n` expone resumen i18n cross-tenant (cola, fallos ventana, consumo mensual/límites y estado operativo por tenant) + acciones `pause/resume` por brand.
   - Persistencia: los eventos se almacenan en MySQL (`web_vital_events`, `api_metric_events`) con cola/batch en memoria para escritura eficiente y tolerancia a reinicios.
   - Alertas email automáticas (sin cron): disparo por evento degradado con cooldown configurable para evitar ruido.
 - Indices de consultas calientes en `Appointment`:

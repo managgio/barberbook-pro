@@ -77,6 +77,32 @@ export type TenantFeaturesConfig = {
   barberServiceAssignmentEnabled?: boolean;
 };
 
+export type TenantLanguageCode = string;
+
+export type TenantI18nAutoTranslateConfig = {
+  enabled?: boolean;
+  paused?: boolean;
+  pauseUntil?: string;
+  pauseReason?: string;
+  retryAttempts?: number;
+  monthlyRequestLimit?: number;
+  monthlyCharacterLimit?: number;
+  circuitBreaker?: {
+    enabled?: boolean;
+    failureRateThreshold?: number;
+    minSamples?: number;
+    consecutiveFailures?: number;
+    windowMinutes?: number;
+    pauseMinutes?: number;
+  };
+};
+
+export type TenantI18nConfig = {
+  defaultLanguage?: TenantLanguageCode;
+  supportedLanguages?: TenantLanguageCode[];
+  autoTranslate?: TenantI18nAutoTranslateConfig;
+};
+
 export type TenantBusinessType =
   | 'barbershop'
   | 'hair_salon'
@@ -153,6 +179,7 @@ export type BrandConfigData = {
   landing?: TenantLandingConfig;
   notificationPrefs?: TenantNotificationPrefs;
   features?: TenantFeaturesConfig;
+  i18n?: TenantI18nConfig;
   business?: TenantBusinessConfig;
   branding?: TenantBrandingConfig;
   theme?: TenantThemeConfig;
@@ -164,6 +191,7 @@ export type LocationConfigData = {
   adminSidebar?: TenantAdminSidebarConfig;
   landing?: TenantLandingConfig;
   features?: TenantFeaturesConfig;
+  i18n?: TenantI18nConfig;
   branding?: Partial<TenantBrandingConfig>;
   theme?: TenantThemeConfig;
   notificationPrefs?: TenantNotificationPrefs;

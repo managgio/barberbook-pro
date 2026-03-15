@@ -19,6 +19,8 @@ import {
 } from '@/lib/firebaseConfig';
 import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/data/api/users';
 import { useTenant } from './TenantContext';
+import { translateUi } from '@/lib/i18n';
+import { getRequestLanguage } from '@/lib/language';
 
 interface AuthContextType {
   user: User | null;
@@ -40,6 +42,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const defaultNotificationPrefs = { email: true, whatsapp: true, sms: true };
+
+const tAuth = (key: string) =>
+  translateUi({
+    language: getRequestLanguage(),
+    defaultLanguage: 'es',
+    key,
+  });
 
 const getFirebaseFallback = () => ({
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -131,26 +140,26 @@ const getFriendlyError = (error: unknown) => {
     case 'auth/invalid-credential':
     case 'auth/user-not-found':
     case 'auth/wrong-password':
-      return 'Credenciales inválidas. Verifica tu email y contraseña.';
+      return tAuth('auth.errors.invalidCredentials');
     case 'auth/popup-closed-by-user':
-      return 'La ventana de inicio de sesión se cerró antes de completar el proceso.';
+      return tAuth('auth.errors.popupClosed');
     case 'auth/email-already-in-use':
-      return 'Ya existe una cuenta con ese email.';
+      return tAuth('auth.errors.emailInUse');
     case 'auth/invalid-email':
-      return 'Introduce un email válido.';
+      return tAuth('auth.errors.invalidEmail');
     case 'auth/requires-recent-login':
-      return 'Por seguridad, vuelve a iniciar sesión y repite la acción.';
+      return tAuth('auth.errors.recentLoginRequired');
     case 'auth/invalid-continue-uri':
     case 'auth/missing-continue-uri':
     case 'auth/unauthorized-continue-uri':
-      return 'El dominio de recuperación no está autorizado en Firebase Auth.';
+      return tAuth('auth.errors.recoveryDomainNotAuthorized');
     case 'auth/too-many-requests':
-      return 'Demasiados intentos. Inténtalo más tarde.';
+      return tAuth('auth.errors.tooManyRequests');
     default:
       if (error instanceof Error && error.message === 'FIREBASE_CONFIG_MISSING') {
-        return 'Falta la configuración de Firebase. Revisa las variables VITE_FIREBASE_*.';
+        return tAuth('auth.errors.firebaseConfigMissing');
       }
-      return 'No se pudo completar la autenticación. Inténtalo de nuevo.';
+      return tAuth('auth.errors.genericAuthError');
   }
 };
 
@@ -228,7 +237,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const authenticateAndSync = useCallback(
     async (firebaseUser: FirebaseUser | null): Promise<{ success: boolean; error?: string }> => {
       if (!firebaseUser) {
-        return { success: false, error: 'No se pudo completar el inicio de sesión.' };
+        return { success: false, error: tAuth('auth.errors.loginFailed') };
       }
       try {
         await syncFirebaseProfile(firebaseUser);
@@ -364,7 +373,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     async (email: string): Promise<{ success: boolean; error?: string }> => {
       const normalizedEmail = email.trim().toLowerCase();
       if (!normalizedEmail) {
-        return { success: false, error: 'Introduce un email válido.' };
+        return { success: false, error: tAuth('auth.errors.invalidEmail') };
       }
       try {
         await ensureFirebaseReady();
@@ -401,27 +410,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       currentPassword?: string,
     ): Promise<{ success: boolean; error?: string; requiresPassword?: boolean }> => {
       if (!user) {
-        return { success: false, error: 'Debes iniciar sesión para cambiar el correo.' };
+        return { success: false, error: tAuth('auth.errors.mustBeLoggedInToChangeEmail') };
       }
 
       const normalizedEmail = newEmail.trim().toLowerCase();
       if (!normalizedEmail) {
-        return { success: false, error: 'Introduce un email válido.' };
+        return { success: false, error: tAuth('auth.errors.invalidEmail') };
       }
 
       try {
         const auth = await ensureFirebaseReady();
         const currentUser = auth.currentUser;
         if (!currentUser) {
-          return { success: false, error: 'Tu sesión ha caducado. Vuelve a iniciar sesión.' };
+          return { success: false, error: tAuth('auth.errors.sessionExpired') };
         }
         if (user.firebaseUid && currentUser.uid !== user.firebaseUid) {
-          return { success: false, error: 'La sesión actual no coincide con tu perfil.' };
+          return { success: false, error: tAuth('auth.errors.sessionMismatch') };
         }
 
         const currentEmail = (currentUser.email || user.email || '').toLowerCase();
         if (normalizedEmail === currentEmail) {
-          return { success: false, error: 'Ese correo ya es tu correo actual.' };
+          return { success: false, error: tAuth('auth.errors.sameEmail') };
         }
 
         const providerIds = getProviderIds(currentUser);
@@ -465,7 +474,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               return {
                 success: false,
                 requiresPassword: true,
-                error: 'Por seguridad, confirma tu contraseña actual para cambiar el correo.',
+                error: tAuth('auth.errors.confirmCurrentPassword'),
               };
             }
 

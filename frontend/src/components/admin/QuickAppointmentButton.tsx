@@ -14,6 +14,7 @@ import { ADMIN_EVENTS, dispatchAppointmentsUpdated } from '@/lib/adminEvents';
 import ProductSelector from '@/components/common/ProductSelector';
 import { isBarberEligibleForService } from '@/lib/barberServiceAssignment';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { useI18n } from '@/hooks/useI18n';
 import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import {
   fetchAdminProductsCached,
@@ -26,9 +27,7 @@ import {
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
-  const compatibleStaffLabel = copy.staff.isCollective
-    ? `${copy.staff.singularLower} compatible`
-    : `${copy.staff.pluralLower} compatibles`;
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [hasLoadedData, setHasLoadedData] = useState(false);
@@ -87,8 +86,8 @@ const QuickAppointmentButton: React.FC = () => {
     } catch (error) {
       console.error(error);
       toast({
-        title: 'Error',
-        description: 'No se pudo cargar la información para crear citas.',
+        title: t('quickAppointment.toast.errorTitle'),
+        description: t('quickAppointment.toast.loadDataError'),
         variant: 'destructive',
       });
     } finally {
@@ -96,7 +95,7 @@ const QuickAppointmentButton: React.FC = () => {
         setIsLoadingData(false);
       }
     }
-  }, [toast]);
+  }, [t, toast]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -177,8 +176,8 @@ const QuickAppointmentButton: React.FC = () => {
       } catch (error) {
         if (!options?.silent) {
           toast({
-            title: 'Error',
-            description: `No se pudo cargar la disponibilidad ${copy.staff.fromWithDefinite}.`,
+            title: t('quickAppointment.toast.errorTitle'),
+            description: t('quickAppointment.toast.loadAvailabilityError', { staffFromWithDefinite: copy.staff.fromWithDefinite }),
             variant: 'destructive',
           });
         }
@@ -187,7 +186,7 @@ const QuickAppointmentButton: React.FC = () => {
         setSlotsLoading(false);
       }
     },
-    [selectedBarberId, selectedDate, selectedServiceId, selectedTime, toast, copy],
+    [selectedBarberId, selectedDate, selectedServiceId, selectedTime, toast, copy, t],
   );
 
   useEffect(() => {
@@ -354,27 +353,32 @@ const QuickAppointmentButton: React.FC = () => {
       });
       dispatchAppointmentsUpdated({ source: 'quick-appointment' });
       toast({
-        title: 'Cita creada',
-        description: 'La reserva se ha registrado correctamente.',
+        title: t('quickAppointment.toast.createdTitle'),
+        description: t('quickAppointment.toast.createdDescription'),
       });
       handleOpenChange(false);
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : '';
-      const isSlotConflict = message.toLowerCase().includes('horario no disponible');
-      const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
+      const normalizedMessage = message.toLowerCase();
+      const isSlotConflict =
+        normalizedMessage.includes('horario no disponible') ||
+        normalizedMessage.includes('time slot not available');
+      const isBarberMismatch =
+        normalizedMessage.includes('no está disponible para este servicio') ||
+        normalizedMessage.includes('is not available for this service');
       if (isSlotConflict) {
         toast({
-          title: 'Horario ocupado',
-          description: 'Ese horario se acaba de reservar. Hemos actualizado la disponibilidad.',
+          title: t('appointmentEditor.toast.slotTakenTitle'),
+          description: t('appointmentEditor.toast.slotTakenDescription'),
           variant: 'destructive',
         });
         setSelectedTime('');
         await refreshSlots({ silent: true });
       } else if (isBarberMismatch) {
         toast({
-          title: `${copy.staff.singular} no disponible`,
-          description: `Selecciona otro ${copy.staff.singularLower} para este servicio.`,
+          title: t('appointmentEditor.toast.staffUnavailableTitle', { staffSingular: copy.staff.singular }),
+          description: t('appointmentEditor.toast.staffUnavailableDescription', { staffSingularLower: copy.staff.singularLower }),
           variant: 'destructive',
         });
         setSelectedBarberId('');
@@ -383,8 +387,8 @@ const QuickAppointmentButton: React.FC = () => {
         setAvailableSlots([]);
       } else {
         toast({
-          title: 'Error',
-          description: 'No se pudo crear la cita. Intenta de nuevo.',
+          title: t('quickAppointment.toast.errorTitle'),
+          description: t('quickAppointment.toast.createError'),
           variant: 'destructive',
         });
       }
@@ -408,9 +412,9 @@ const QuickAppointmentButton: React.FC = () => {
         <DialogContent className="max-w-3xl p-0 max-h-[85vh] flex flex-col gap-0">
           <div className="sticky top-0 z-10 border-b bg-background px-6 py-4">
             <DialogHeader>
-              <DialogTitle>Crear nueva cita</DialogTitle>
+              <DialogTitle>{t('quickAppointment.title')}</DialogTitle>
               <DialogDescription>
-                Registra una cita manual para clientes habituales o visitas sin cuenta.
+                {t('quickAppointment.description')}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -423,7 +427,7 @@ const QuickAppointmentButton: React.FC = () => {
             <div className="space-y-6 overflow-y-auto px-6 py-4">
               {/* Client selection */}
               <div className="space-y-3">
-                <Label className="text-base text-foreground block">Cliente</Label>
+                <Label className="text-base text-foreground block">{t('quickAppointment.client.title')}</Label>
                 <div className="inline-flex rounded-2xl border border-border bg-muted/50 p-1">
                   <button
                     type="button"
@@ -436,7 +440,7 @@ const QuickAppointmentButton: React.FC = () => {
                     )}
                   >
                     <UserCircle2 className="w-4 h-4" />
-                    Registrado
+                    {t('quickAppointment.client.registered')}
                   </button>
                   <button
                     type="button"
@@ -452,7 +456,7 @@ const QuickAppointmentButton: React.FC = () => {
                     )}
                   >
                     <Plus className="w-4 h-4" />
-                    Sin cuenta
+                    {t('quickAppointment.client.guest')}
                   </button>
                 </div>
 
@@ -461,7 +465,7 @@ const QuickAppointmentButton: React.FC = () => {
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
-                        placeholder="Busca por nombre, email o teléfono"
+                        placeholder={t('quickAppointment.client.searchPlaceholder')}
                         value={clientSearch}
                         onChange={(e) => setClientSearch(e.target.value)}
                         className="pl-9"
@@ -471,11 +475,11 @@ const QuickAppointmentButton: React.FC = () => {
                       <div className="max-h-48 overflow-y-auto rounded-2xl border border-border divide-y divide-border/60">
                         {isClientSearchLoading ? (
                           <p className="text-sm text-muted-foreground px-4 py-3">
-                            Buscando clientes...
+                            {t('quickAppointment.client.searching')}
                           </p>
                         ) : clientSearchResults.length === 0 ? (
                           <p className="text-sm text-muted-foreground px-4 py-3">
-                            No se encontraron clientes
+                            {t('quickAppointment.client.noResults')}
                           </p>
                         ) : (
                           clientSearchResults.map((client) => (
@@ -495,9 +499,9 @@ const QuickAppointmentButton: React.FC = () => {
                       </div>
                     ) : selectedClientId ? (
                       <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3">
-                        <p className="text-xs text-muted-foreground mb-1">Cliente seleccionado</p>
+                        <p className="text-xs text-muted-foreground mb-1">{t('quickAppointment.client.selected')}</p>
                         <p className="font-medium text-foreground">
-                          {selectedClient?.name || 'Cliente seleccionado'}
+                          {selectedClient?.name || t('quickAppointment.client.selected')}
                         </p>
                       </div>
                     ) : null}
@@ -505,19 +509,19 @@ const QuickAppointmentButton: React.FC = () => {
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="guestName">Nombre completo</Label>
+                      <Label htmlFor="guestName">{t('quickAppointment.client.guestName')}</Label>
                       <Input
                         id="guestName"
-                        placeholder="Introduce el nombre del cliente"
+                        placeholder={t('quickAppointment.client.guestNamePlaceholder')}
                         value={guestName}
                         onChange={(e) => setGuestName(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="guestContact">Contacto (teléfono o email)</Label>
+                      <Label htmlFor="guestContact">{t('quickAppointment.client.guestContact')}</Label>
                       <Input
                         id="guestContact"
-                        placeholder="Opcional, pero recomendado"
+                        placeholder={t('quickAppointment.client.guestContactPlaceholder')}
                         value={guestContact}
                         onChange={(e) => setGuestContact(e.target.value)}
                       />
@@ -529,7 +533,7 @@ const QuickAppointmentButton: React.FC = () => {
               {/* Service & barber */}
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Servicio</Label>
+                  <Label>{t('appointmentEditor.service')}</Label>
                   <Select
                     value={selectedServiceId}
                     onValueChange={(value) => {
@@ -539,7 +543,7 @@ const QuickAppointmentButton: React.FC = () => {
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un servicio" />
+                      <SelectValue placeholder={t('appointmentEditor.servicePlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
                       {categoriesEnabled && orderedCategories.length > 0 ? (
@@ -557,7 +561,7 @@ const QuickAppointmentButton: React.FC = () => {
                                   <SelectLabel>{category.name}</SelectLabel>
                                   {servicesByCategory.map((service) => (
                                   <SelectItem key={service.id} value={service.id}>
-                                    {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                    {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
                                   </SelectItem>
                                 ))}
                               </SelectGroup>
@@ -567,10 +571,10 @@ const QuickAppointmentButton: React.FC = () => {
                           })}
                           {uncategorizedServices.length > 0 && (
                             <SelectGroup>
-                              <SelectLabel>Otros</SelectLabel>
+                              <SelectLabel>{t('appointmentEditor.otherServices')}</SelectLabel>
                               {uncategorizedServices.map((service) => (
                                 <SelectItem key={service.id} value={service.id}>
-                                  {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                                  {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
@@ -579,7 +583,7 @@ const QuickAppointmentButton: React.FC = () => {
                       ) : (
                         services.map((service) => (
                           <SelectItem key={service.id} value={service.id}>
-                            {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {service.duration} min
+                            {service.name} · {(service.finalPrice ?? service.price).toFixed(2)}€ · {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
                           </SelectItem>
                         ))
                       )}
@@ -594,12 +598,18 @@ const QuickAppointmentButton: React.FC = () => {
                     setSelectedTime('');
                   }}>
                     <SelectTrigger>
-                      <SelectValue placeholder={`Selecciona ${copy.staff.indefiniteSingular}`} />
+                      <SelectValue placeholder={t('appointmentEditor.staffPlaceholder', { staffIndefiniteSingular: copy.staff.indefiniteSingular })} />
                     </SelectTrigger>
                     <SelectContent>
                       {eligibleBarbers.length === 0 ? (
                         <SelectItem value="__none__" disabled>
-                          No hay {compatibleStaffLabel}
+                          {copy.staff.isCollective
+                            ? t('quickAppointment.noCompatibleStaffCollective', {
+                                staffSingularLower: copy.staff.singularLower,
+                              })
+                            : t('quickAppointment.noCompatibleStaffPlural', {
+                                staffPluralLower: copy.staff.pluralLower,
+                              })}
                         </SelectItem>
                       ) : (
                         eligibleBarbers.map((barber) => (
@@ -617,14 +627,14 @@ const QuickAppointmentButton: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <Label className="text-base">Productos</Label>
+                      <Label className="text-base">{t('quickAppointment.products.title')}</Label>
                       <p className="text-xs text-muted-foreground">
-                        Añade productos opcionales a la cita.
+                        {t('quickAppointment.products.description')}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">
-                        Total productos: {selectedProductsTotal.toFixed(2)}€
+                        {t('appointmentEditor.productsTotal', { total: selectedProductsTotal.toFixed(2) })}
                       </span>
                       <Button
                         type="button"
@@ -632,7 +642,7 @@ const QuickAppointmentButton: React.FC = () => {
                         size="sm"
                         onClick={() => setIsProductsDialogOpen(true)}
                       >
-                        {selectedProducts.length > 0 ? 'Editar productos' : 'Añadir productos'}
+                        {selectedProducts.length > 0 ? t('appointmentEditor.editProducts') : t('appointmentEditor.addProducts')}
                       </Button>
                     </div>
                   </div>
@@ -654,7 +664,7 @@ const QuickAppointmentButton: React.FC = () => {
                                     className="h-full w-full object-cover"
                                   />
                                 ) : (
-                                  <span className="text-[11px] text-muted-foreground">Sin foto</span>
+                                  <span className="text-[11px] text-muted-foreground">{t('appointmentEditor.noPhoto')}</span>
                                 )}
                               </div>
                               <div>
@@ -669,7 +679,7 @@ const QuickAppointmentButton: React.FC = () => {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
+                      <p className="text-sm text-muted-foreground">{t('appointmentEditor.noAddedProducts')}</p>
                     )}
                   </div>
                 </div>
@@ -677,12 +687,12 @@ const QuickAppointmentButton: React.FC = () => {
 
               {/* Date & time */}
               <div className="space-y-3">
-                <Label className="text-base">Fecha y hora</Label>
+                <Label className="text-base">{t('quickAppointment.dateTime.title')}</Label>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="appointment-date" className="text-sm text-muted-foreground flex items-center gap-2">
                       <CalendarIcon className="w-4 h-4" />
-                      Selecciona el día
+                      {t('appointmentEditor.selectDay')}
                     </Label>
                     <Input
                       id="appointment-date"
@@ -696,12 +706,12 @@ const QuickAppointmentButton: React.FC = () => {
                   <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground flex items-center gap-2">
                       <Clock className="w-4 h-4" />
-                      Selecciona la hora
+                      {t('appointmentEditor.selectTime')}
                     </Label>
                     <div className="min-h-[100px] rounded-2xl border border-dashed border-border p-3">
                       {!selectedServiceId || !selectedBarberId || !selectedDate ? (
                         <p className="text-sm text-muted-foreground">
-                          Selecciona servicio, {copy.staff.singularLower} y fecha para ver la disponibilidad.
+                          {t('appointmentEditor.selectServiceStaffDate', { staffSingularLower: copy.staff.singularLower })}
                         </p>
                       ) : slotsLoading ? (
                         <div className="flex items-center justify-center py-6">
@@ -709,13 +719,13 @@ const QuickAppointmentButton: React.FC = () => {
                         </div>
                       ) : availableSlots.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
-                          No hay horarios disponibles para ese día.
+                          {t('appointmentEditor.noTimesForDay')}
                         </p>
                       ) : (
                         <div className="space-y-3">
                           {slotGroups.morning.length > 0 && (
                             <div>
-                              <p className="text-xs uppercase text-muted-foreground mb-2">Mañana</p>
+                              <p className="text-xs uppercase text-muted-foreground mb-2">{t('appointmentEditor.morning')}</p>
                               <div className="flex flex-wrap gap-2">
                                 {slotGroups.morning.map((slot) => (
                                   <button
@@ -737,7 +747,7 @@ const QuickAppointmentButton: React.FC = () => {
                           )}
                           {slotGroups.afternoon.length > 0 && (
                             <div>
-                              <p className="text-xs uppercase text-muted-foreground mb-2">Tarde</p>
+                              <p className="text-xs uppercase text-muted-foreground mb-2">{t('appointmentEditor.afternoon')}</p>
                               <div className="flex flex-wrap gap-2">
                                 {slotGroups.afternoon.map((slot) => (
                                   <button
@@ -767,11 +777,11 @@ const QuickAppointmentButton: React.FC = () => {
               {/* Actions */}
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => handleOpenChange(false)}>
-                  Cancelar
+                  {t('appointmentEditor.cancel')}
                 </Button>
                 <Button onClick={handleCreateAppointment} disabled={!canCreate}>
                   {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Crear cita
+                  {t('quickAppointment.actions.create')}
                 </Button>
               </div>
             </div>
@@ -781,9 +791,9 @@ const QuickAppointmentButton: React.FC = () => {
       <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Seleccionar productos</DialogTitle>
+            <DialogTitle>{t('appointmentEditor.productsDialogTitle')}</DialogTitle>
             <DialogDescription>
-              Busca y añade productos a la cita. Solo se guardarán los seleccionados.
+              {t('appointmentEditor.productsDialogDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto pr-2">
@@ -796,7 +806,7 @@ const QuickAppointmentButton: React.FC = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setIsProductsDialogOpen(false)}>
-              Listo
+              {t('appointmentEditor.done')}
             </Button>
           </DialogFooter>
         </DialogContent>

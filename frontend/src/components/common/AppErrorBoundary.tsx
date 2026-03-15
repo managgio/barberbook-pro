@@ -1,4 +1,6 @@
 import React from 'react';
+import { translateUi } from '@/lib/i18n';
+import { getRequestLanguage } from '@/lib/language';
 
 type AppErrorBoundaryState = {
   hasError: boolean;
@@ -18,7 +20,7 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('AppErrorBoundary capturó un error', error, info);
+    console.error('AppErrorBoundary captured an error', error, info);
   }
 
   private handleReload = () => {
@@ -28,6 +30,13 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
   };
 
   render() {
+    const t = (key: string) =>
+      translateUi({
+        language: getRequestLanguage(),
+        defaultLanguage: 'es',
+        key,
+      });
+
     if (!this.state.hasError) {
       return this.props.children;
     }
@@ -35,16 +44,16 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
         <div className="max-w-lg w-full rounded-2xl border border-border bg-card p-8 shadow-lg text-center space-y-4">
-          <h1 className="text-2xl font-semibold">Algo salió mal</h1>
+          <h1 className="text-2xl font-semibold">{t('appErrorBoundary.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Ocurrió un error inesperado. Recarga la página para seguir usando la aplicación.
+            {t('appErrorBoundary.description')}
           </p>
           <button
             type="button"
             onClick={this.handleReload}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm font-medium"
           >
-            Recargar
+            {t('appErrorBoundary.actions.reload')}
           </button>
         </div>
       </div>

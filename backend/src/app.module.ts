@@ -35,6 +35,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { LocalizationModule } from './modules/localization/localization.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
     PaymentsModule,
     ObservabilityModule,
     SubscriptionsModule,
+    LocalizationModule,
   ],
   providers: [
     { provide: TENANT_CONTEXT_PORT, useClass: AlsTenantContextAdapter },

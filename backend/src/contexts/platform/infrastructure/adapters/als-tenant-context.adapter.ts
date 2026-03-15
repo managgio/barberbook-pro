@@ -16,6 +16,7 @@ export class AlsTenantContextAdapter implements TenantContextPort {
       brandId,
       localId: currentContext.localId || DEFAULT_LOCAL_ID,
       isPlatform: Boolean(currentContext.isPlatform),
+      requestedLanguage: currentContext.requestedLanguage || null,
       actorUserId: params?.actorUserId ?? null,
       timezone: APP_TIMEZONE,
       correlationId: params?.correlationId || randomUUID(),

@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Minus, Plus, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/hooks/useI18n';
 
 type SelectedProduct = { productId: string; quantity: number };
 
@@ -29,6 +30,7 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({
   allowOverstock = false,
   className,
 }) => {
+  const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const selectedMap = useMemo(
@@ -71,17 +73,17 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar producto"
+            placeholder={t('productSelector.searchPlaceholder')}
             className="pl-9"
             disabled={disabled}
           />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="w-full md:w-60">
-            <SelectValue placeholder="Categorías" />
+            <SelectValue placeholder={t('productSelector.categoriesPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas las categorías</SelectItem>
+            <SelectItem value="all">{t('productSelector.allCategories')}</SelectItem>
             {categories.map((category) => (
               <SelectItem key={category.id} value={category.id}>
                 {category.name}
@@ -120,7 +122,7 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <span className="text-xs text-muted-foreground">Sin foto</span>
+                    <span className="text-xs text-muted-foreground">{t('productSelector.noPhoto')}</span>
                   )}
                 </div>
                 <div>
@@ -137,7 +139,7 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({
                     )}
                     {showStock && (
                       <span className={cn('text-[11px]', isLowStock ? 'text-destructive' : 'text-muted-foreground')}>
-                        Stock: {product.stock}
+                        {t('productSelector.stock', { count: product.stock })}
                       </span>
                     )}
                   </div>
@@ -180,14 +182,14 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({
         })}
         {filteredProducts.length === 0 && (
           <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            No hay productos que coincidan con el filtro.
+            {t('productSelector.empty')}
           </div>
         )}
       </div>
 
       <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/30 px-4 py-3 text-sm">
         <span className="text-muted-foreground">
-          {selected.length} producto(s) añadidos
+          {t('productSelector.selectedCount', { count: selected.length })}
         </span>
         <span className="font-semibold text-foreground">{totalAmount.toFixed(2)}€</span>
       </div>

@@ -8,6 +8,23 @@ const parseNumber = (value?: string) => {
 
 export const buildBrandConfigFromEnv = (): BrandConfigData => ({
   superAdminEmail: process.env.SUPER_ADMIN_EMAIL?.toLowerCase(),
+  i18n: {
+    defaultLanguage: 'es',
+    supportedLanguages: ['es'],
+    autoTranslate: {
+      enabled: true,
+      paused: false,
+      retryAttempts: 2,
+      circuitBreaker: {
+        enabled: true,
+        failureRateThreshold: 0.6,
+        minSamples: 12,
+        consecutiveFailures: 6,
+        windowMinutes: 30,
+        pauseMinutes: 30,
+      },
+    },
+  },
   business: {
     type: 'barbershop',
   },

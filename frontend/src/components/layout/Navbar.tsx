@@ -8,11 +8,13 @@ import LocationSwitcher from '@/components/common/LocationSwitcher';
 import { useTenant } from '@/context/TenantContext';
 import { cn } from '@/lib/utils';
 import { resolveBrandLogo } from '@/lib/branding';
+import { useI18n } from '@/hooks/useI18n';
 
 const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const { settings } = useSiteSettings();
   const { tenant, locations } = useTenant();
+  const { t } = useI18n();
   const location = useLocation();
   const leBlondLogo = '/leBlondLogo.png';
   const logoUrl = resolveBrandLogo(tenant, leBlondLogo);
@@ -88,16 +90,16 @@ const Navbar: React.FC = () => {
                 </Link>
                 <Button variant="ghost" size="sm" onClick={logout} className="flex items-center gap-2">
                   <LogOut className="h-2.5 w-2.5 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Salir</span>
+                  <span className="hidden sm:inline">{t('navbar.logout')}</span>
                 </Button>
               </>
             ) : (
               <>
                 <Button variant="ghost" className="h-8 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" asChild>
-                  <Link to="/auth">Iniciar sesión</Link>
+                  <Link to="/auth">{t('navbar.login')}</Link>
                 </Button>
                 <Button className="hidden sm:inline-flex" asChild>
-                  <Link to="/auth?tab=signup">Reservar</Link>
+                  <Link to="/auth?tab=signup">{t('navbar.book')}</Link>
                 </Button>
               </>
             )}

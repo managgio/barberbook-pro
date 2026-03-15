@@ -198,6 +198,16 @@ export const queryKeys = {
     ["shop-schedule", localId || "default"] as const,
   productCategories: (localId: string | null | undefined, withProducts = true) =>
     ["product-categories", localId || "default", withProducts ? "with-products" : "plain"] as const,
+  localizationEntity: (
+    localId: string | null | undefined,
+    entityType: string,
+    entityId: string,
+  ) => ["localization", localId || "default", entityType, entityId] as const,
+  localizationSummary: (
+    localId: string | null | undefined,
+    entityType: string,
+    entityIdsKey: string,
+  ) => ["localization-summary", localId || "default", entityType, entityIdsKey || "none"] as const,
   platformBrands: () => ["platform-brands"] as const,
   platformBrand: (brandId: string | null | undefined) =>
     ["platform-brand", brandId || "none"] as const,
@@ -216,4 +226,6 @@ export const queryKeys = {
     ["platform-observability-webvitals", windowMinutes] as const,
   platformObservabilityApi: (windowMinutes: number) =>
     ["platform-observability-api", windowMinutes] as const,
+  platformObservabilityI18n: (windowMinutes: number) =>
+    ["platform-observability-i18n", windowMinutes] as const,
 };

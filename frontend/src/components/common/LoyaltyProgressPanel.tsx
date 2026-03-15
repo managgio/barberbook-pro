@@ -3,33 +3,13 @@ import { LoyaltyProgram, LoyaltyProgramProgress } from '@/data/types';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/hooks/useI18n';
 
 type LoyaltyProgressPanelProps = {
   program: LoyaltyProgram;
   progress: LoyaltyProgramProgress;
   variant?: 'full' | 'compact';
   className?: string;
-};
-
-const getScopeLabel = (program: LoyaltyProgram) => {
-  if (program.scope === 'service') {
-    return program.serviceName ? `Servicio: ${program.serviceName}` : 'Servicio específico';
-  }
-  if (program.scope === 'category') {
-    return program.categoryName ? `Categoría: ${program.categoryName}` : 'Categoría de servicios';
-  }
-  return 'Todos los servicios';
-};
-
-const buildMessage = (progress: LoyaltyProgramProgress) => {
-  if (progress.totalVisitsAccumulated > 0 && progress.cycleVisits === 0) {
-    return 'Has completado una tarjeta. ¡Empieza una nueva!';
-  }
-  if (progress.isRewardNext) {
-    return 'Tu próxima cita será gratis.';
-  }
-  const remaining = progress.nextFreeIn;
-  return `Te faltan ${remaining} ${remaining === 1 ? 'visita' : 'visitas'} para conseguir una gratis.`;
 };
 
 const LoyaltyProgressPanel: React.FC<LoyaltyProgressPanelProps> = ({
@@ -39,10 +19,33 @@ const LoyaltyProgressPanel: React.FC<LoyaltyProgressPanelProps> = ({
   className,
 }) => {
   const { tenant } = useTenant();
+  const { t } = useI18n();
   const logoUrl = resolveBrandLogo(tenant, '/leBlondLogo.png');
   const sizeClass = variant === 'compact' ? 'h-8 w-8' : 'h-10 w-10';
   const imageClass = variant === 'compact' ? 'h-4 w-4' : 'h-5 w-5';
   const stamps = Array.from({ length: Math.max(1, progress.totalVisits) });
+  const getScopeLabel = () => {
+    if (program.scope === 'service') {
+      return program.serviceName
+        ? t('loyalty.scope.service', { serviceName: program.serviceName })
+        : t('loyalty.scope.serviceFallback');
+    }
+    if (program.scope === 'category') {
+      return program.categoryName
+        ? t('loyalty.scope.category', { categoryName: program.categoryName })
+        : t('loyalty.scope.categoryFallback');
+    }
+    return t('loyalty.scope.allServices');
+  };
+  const buildMessage = () => {
+    if (progress.totalVisitsAccumulated > 0 && progress.cycleVisits === 0) {
+      return t('loyalty.message.cardCompleted');
+    }
+    if (progress.isRewardNext) {
+      return t('loyalty.message.nextIsFree');
+    }
+    return t('loyalty.message.remainingVisits', { count: progress.nextFreeIn });
+  };
 
   return (
     <div className={cn('space-y-3', className)}>
@@ -53,7 +56,7 @@ const LoyaltyProgressPanel: React.FC<LoyaltyProgressPanelProps> = ({
             {progress.cycleVisits}/{progress.totalVisits}
           </span>
         </div>
-        <p className="text-xs text-muted-foreground">{getScopeLabel(program)}</p>
+        <p className="text-xs text-muted-foreground">{getScopeLabel()}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {stamps.map((_, index) => {
@@ -91,10 +94,10 @@ const LoyaltyProgressPanel: React.FC<LoyaltyProgressPanelProps> = ({
         })}
       </div>
       {variant === 'full' && (
-        <p className="text-xs text-muted-foreground">{buildMessage(progress)}</p>
+        <p className="text-xs text-muted-foreground">{buildMessage()}</p>
       )}
       {variant === 'compact' && (
-        <p className="text-[11px] text-muted-foreground">{buildMessage(progress)}</p>
+        <p className="text-[11px] text-muted-foreground">{buildMessage()}</p>
       )}
     </div>
   );

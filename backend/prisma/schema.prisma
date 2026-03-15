@@ -162,6 +162,23 @@ enum ProviderUsageType {
   imagekit
 }
 
+enum LocalizedContentScope {
+  brand
+  location
+}
+
+enum LocalizedTranslationSource {
+  ai
+  manual
+}
+
+enum LocalizedTranslationStatus {
+  pending
+  ready
+  failed
+  stale
+}
+
 model User {
   id                     String                @id @default(cuid())
   firebaseUid            String?               @unique
@@ -213,6 +230,8 @@ model Brand {
   consentRecords     ConsentRecord[]
   auditLogs          AuditLog[]
   providerUsageDaily ProviderUsageDaily[]
+  localizedContents  LocalizedContent[]
+  localizedTranslations LocalizedContentTranslation[]
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 }
@@ -259,6 +278,8 @@ model Location {
   config                LocationConfig?
   consentRecords        ConsentRecord[]
   auditLogs             AuditLog[]
+  localizedContents     LocalizedContent[]
+  localizedTranslations LocalizedContentTranslation[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
@@ -348,6 +369,54 @@ model LocationConfig {
   data      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model LocalizedContent {
+  id             String                @id @default(cuid())
+  scope          LocalizedContentScope @default(location)
+  brandId        String
+  brand          Brand                 @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  localId        String?
+  local          Location?             @relation(fields: [localId], references: [id], onDelete: Cascade)
+  entityType     String                @db.VarChar(64)
+  entityId       String                @db.VarChar(64)
+  fieldKey       String                @db.VarChar(64)
+  sourceLanguage String                @db.VarChar(10)
+  sourceText     String                @db.Text
+  sourceHash     String                @db.VarChar(64)
+  sourceVersion  Int                   @default(1)
+  translations   LocalizedContentTranslation[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([scope, brandId, localId, entityType, entityId, fieldKey])
+  @@index([brandId, localId, entityType, entityId])
+  @@index([brandId, localId, fieldKey])
+}
+
+model LocalizedContentTranslation {
+  id                   String                    @id @default(cuid())
+  contentId            String
+  content              LocalizedContent          @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  brandId              String
+  brand                Brand                     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  localId              String?
+  local                Location?                 @relation(fields: [localId], references: [id], onDelete: Cascade)
+  language             String                    @db.VarChar(10)
+  translatedText       String                    @db.Text
+  status               LocalizedTranslationStatus @default(pending)
+  source               LocalizedTranslationSource @default(ai)
+  manualLocked         Boolean                   @default(false)
+  basedOnSourceVersion Int                       @default(1)
+  provider             String?
+  model                String?
+  errorMessage         String?                   @db.Text
+  lastGeneratedAt      DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@unique([contentId, language])
+  @@index([brandId, localId, language, status])
 }
 
 model Barber {

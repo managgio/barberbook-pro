@@ -11,6 +11,7 @@ import {
   getAppointmentStatusLabel,
 } from '@/lib/appointmentStatus';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/hooks/useI18n';
 
 const COMPLETION_GRACE_MS = 60 * 1000;
 
@@ -28,6 +29,7 @@ const AppointmentStatusPicker: React.FC<AppointmentStatusPickerProps> = ({
   className,
 }) => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const [isSaving, setIsSaving] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -52,15 +54,17 @@ const AppointmentStatusPicker: React.FC<AppointmentStatusPickerProps> = ({
     try {
       const updated = await updateAppointment(appointment.id, { status });
       toast({
-        title: 'Estado actualizado',
-        description: `La cita quedó como ${getAppointmentStatusLabel(status).toLowerCase()}.`,
+        title: t('appointmentStatusPicker.toast.updatedTitle'),
+        description: t('appointmentStatusPicker.toast.updatedDescription', {
+          status: getAppointmentStatusLabel(status).toLowerCase(),
+        }),
       });
       onStatusUpdated?.(updated);
       setOpen(false);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el estado de la cita.',
+        title: t('admin.common.error'),
+        description: t('appointmentStatusPicker.toast.updateError'),
         variant: 'destructive',
       });
     } finally {
@@ -79,7 +83,7 @@ const AppointmentStatusPicker: React.FC<AppointmentStatusPickerProps> = ({
             'hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             className,
           )}
-          aria-label="Cambiar estado de la cita"
+          aria-label={t('appointmentStatusPicker.aria.changeStatus')}
           disabled={isSaving}
         >
           {getAppointmentStatusLabel(appointment.status)}

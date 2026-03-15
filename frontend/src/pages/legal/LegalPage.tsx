@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import Navbar from '@/components/layout/Navbar';
 import LegalFooter from '@/components/layout/LegalFooter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { LegalPolicyResponse } from '@/data/types';
 import MarkdownContent from '@/components/common/MarkdownContent';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 type LegalPageProps = {
   loadPolicy: () => Promise<LegalPolicyResponse>;
 };
 
 const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
+  const { t, language } = useI18n();
   const [policy, setPolicy] = useState<LegalPolicyResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
         }
       } catch (err) {
         if (active) {
-          const message = err instanceof Error ? err.message : 'No se pudo cargar el contenido legal.';
+          const message = err instanceof Error ? err.message : t('legal.page.loadError');
           setError(message);
         }
       } finally {
@@ -42,10 +44,12 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
     return () => {
       active = false;
     };
-  }, [loadPolicy]);
+  }, [loadPolicy, t]);
 
   const formattedDate =
-    policy?.effectiveDate ? format(parseISO(policy.effectiveDate), "d 'de' MMMM, yyyy", { locale: es }) : '';
+    policy?.effectiveDate
+      ? format(parseISO(policy.effectiveDate), 'PPP', { locale: resolveDateLocale(language) })
+      : '';
 
   return (
     <div className="min-h-screen bg-background">
@@ -55,7 +59,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
           {isLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Cargando contenido legal...
+              {t('legal.page.loading')}
             </div>
           )}
           {error && (
@@ -66,21 +70,33 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
               <div>
                 <h1 className="text-3xl font-bold text-foreground">{policy.title}</h1>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Version {policy.version} - Vigente desde {formattedDate}
+                  {t('legal.page.versionAndEffective', { version: policy.version, date: formattedDate })}
                 </p>
               </div>
 
               <Card variant="elevated">
                 <CardHeader>
-                  <CardTitle>Identidad del titular</CardTitle>
+                  <CardTitle>{t('legal.page.ownerIdentity')}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-3 text-sm text-muted-foreground">
-                  <div><span className="text-foreground font-medium">Responsable:</span> {policy.businessIdentity.ownerName || 'Pendiente de configurar'}</div>
-                  <div><span className="text-foreground font-medium">NIF/CIF:</span> {policy.businessIdentity.taxId || 'Pendiente de configurar'}</div>
-                  <div><span className="text-foreground font-medium">Direccion:</span> {policy.businessIdentity.address || 'Pendiente de configurar'}</div>
-                  <div><span className="text-foreground font-medium">Email:</span> {policy.businessIdentity.contactEmail || 'Pendiente de configurar'}</div>
+                  <div>
+                    <span className="text-foreground font-medium">{t('legal.page.fields.owner')}:</span>{' '}
+                    {policy.businessIdentity.ownerName || t('legal.page.pending')}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">{t('legal.page.fields.taxId')}:</span>{' '}
+                    {policy.businessIdentity.taxId || t('legal.page.pending')}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">{t('legal.page.fields.address')}:</span>{' '}
+                    {policy.businessIdentity.address || t('legal.page.pending')}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">{t('legal.page.fields.email')}:</span>{' '}
+                    {policy.businessIdentity.contactEmail || t('legal.page.pending')}
+                  </div>
                   {policy.businessIdentity.contactPhone && (
-                    <div><span className="text-foreground font-medium">Telefono:</span> {policy.businessIdentity.contactPhone}</div>
+                    <div><span className="text-foreground font-medium">{t('legal.page.fields.phone')}:</span> {policy.businessIdentity.contactPhone}</div>
                   )}
                 </CardContent>
               </Card>
@@ -103,7 +119,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
                     <MarkdownContent markdown={policy.aiDisclosure.bodyMarkdown} />
                     {policy.aiDisclosure.providerNames.length > 0 && (
                       <div className="text-sm text-muted-foreground">
-                        Proveedores: {policy.aiDisclosure.providerNames.join(', ')}.
+                        {t('legal.page.providers', { providers: policy.aiDisclosure.providerNames.join(', ') })}
                       </div>
                     )}
                   </CardContent>
@@ -113,7 +129,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
               {policy.subProcessors && policy.subProcessors.length > 0 && (
                 <Card variant="elevated">
                   <CardHeader>
-                    <CardTitle>Subprocesadores</CardTitle>
+                    <CardTitle>{t('legal.page.subprocessors.title')}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="grid gap-3 text-sm text-muted-foreground">
@@ -121,8 +137,8 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
                         <div key={processor.name} className="rounded-lg border border-border/60 p-3">
                           <div className="text-foreground font-medium">{processor.name}</div>
                           <div className="mt-1">{processor.purpose}</div>
-                          <div className="mt-1">Pais: {processor.country}</div>
-                          <div className="mt-1">Datos: {processor.dataTypes}</div>
+                          <div className="mt-1">{t('legal.page.subprocessors.country', { country: processor.country })}</div>
+                          <div className="mt-1">{t('legal.page.subprocessors.data', { data: processor.dataTypes })}</div>
                           {processor.link && (
                             <a
                               href={processor.link}
@@ -130,7 +146,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ loadPolicy }) => {
                               rel="noopener noreferrer"
                               className="mt-1 inline-block text-primary underline underline-offset-4"
                             >
-                              Ver mas
+                              {t('legal.page.subprocessors.viewMore')}
                             </a>
                           )}
                         </div>

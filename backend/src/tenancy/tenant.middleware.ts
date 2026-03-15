@@ -69,6 +69,14 @@ const getHostnameFromUrlHeader = (value?: string) => {
 const getHostnameFromUnknown = (value?: string) =>
   getHostnameFromUrlHeader(value) || normalizeHost(value);
 
+const normalizeLanguageCode = (value?: string | null) => {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  const compact = normalized.replace(/[^a-z0-9-]/g, '');
+  return compact.slice(0, 10) || null;
+};
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantService: TenantService) {}
@@ -81,6 +89,7 @@ export class TenantMiddleware implements NestMiddleware {
           localId: DEFAULT_LOCAL_ID,
           host: typeof req.headers.host === 'string' ? req.headers.host : undefined,
           subdomain: null,
+          requestedLanguage: null,
           isPlatform: false,
         },
         () => {
@@ -143,6 +152,10 @@ export class TenantMiddleware implements NestMiddleware {
         : headerSubdomain && publicRequestSubdomain === headerSubdomain
           ? headerSubdomain
           : null;
+    const requestedLanguage =
+      normalizeLanguageCode(firstQueryValue((req.query as Record<string, unknown> | undefined)?.lang)) ||
+      normalizeLanguageCode(firstHeaderValue(req.headers['x-app-language'])) ||
+      normalizeLanguageCode(firstHeaderValue(req.headers['accept-language'])?.split(',')[0]?.split(';')[0]);
     const localIdOverride =
       TENANT_ALLOW_HEADER_OVERRIDES &&
       typeof req.headers['x-local-id'] === 'string'
@@ -170,6 +183,7 @@ export class TenantMiddleware implements NestMiddleware {
           localId: resolution.localId,
           host: host,
           subdomain: resolution.subdomain,
+          requestedLanguage,
           isPlatform: resolution.isPlatform,
         },
       () => {

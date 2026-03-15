@@ -8,19 +8,21 @@ import { Calendar, User, LayoutDashboard, Users, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getReferralSummary } from '@/data/api/referrals';
 import ReviewPromptModal from '@/components/reviews/ReviewPromptModal';
+import { useI18n } from '@/hooks/useI18n';
 
 const clientNavItems = [
-  { href: '/app', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/app/appointments', label: 'Mis Citas', icon: Calendar },
-  { href: '/app/subscriptions', label: 'Suscripciones', icon: Repeat },
-  { href: '/app/referrals', label: 'Invita y gana', icon: Users },
-  { href: '/app/profile', label: 'Mi Perfil', icon: User },
+  { href: '/app', labelKey: 'clientNav.dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/app/appointments', labelKey: 'clientNav.appointments', icon: Calendar },
+  { href: '/app/subscriptions', labelKey: 'clientNav.subscriptions', icon: Repeat },
+  { href: '/app/referrals', labelKey: 'clientNav.referrals', icon: Users },
+  { href: '/app/profile', labelKey: 'clientNav.profile', icon: User },
 ];
 
 const ClientLayout: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
   const { tenant } = useTenant();
+  const { t } = useI18n();
   const [referralsEnabled, setReferralsEnabled] = useState<boolean | null>(null);
   const subscriptionsEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('subscriptions');
 
@@ -81,7 +83,7 @@ const ClientLayout: React.FC = () => {
                   )}
                 >
                   <item.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               ))}
             </div>

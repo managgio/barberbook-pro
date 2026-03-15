@@ -19,6 +19,7 @@ import {
 } from '../../contexts/commerce/ports/outbound/product-read.port';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { rethrowDomainErrorAsHttp } from '../../shared/interfaces/http/rethrow-domain-error-as-http';
+import { LocalizationService } from '../localization/localization.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { mapProduct } from './products.mapper';
@@ -41,6 +42,7 @@ export class ProductsService {
     private readonly productMediaStoragePort: CommerceProductMediaStoragePort,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
+    private readonly localizationService: LocalizationService,
   ) {
     this.getProductsAdminUseCase = new GetProductsAdminUseCase(this.productReadPort);
     this.getProductsPublicUseCase = new GetProductsPublicUseCase(this.productReadPort);
@@ -51,24 +53,71 @@ export class ProductsService {
   }
 
   async findAllAdmin() {
+    const context = this.tenantContextPort.getRequestContext();
     const products = await this.getProductsAdminUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
     });
-    return products.map((product) => mapProduct(product));
+    const mapped = products.map((product) => mapProduct(product));
+    const { items } = await this.localizationService.localizeCollection({
+      context,
+      entityType: 'product',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'name',
+          getValue: (item) => item.name,
+          setValue: (item, value) => {
+            item.name = value;
+          },
+        },
+        {
+          fieldKey: 'description',
+          getValue: (item) => item.description,
+          setValue: (item, value) => {
+            item.description = value;
+          },
+        },
+      ],
+    });
+    return items;
   }
 
   async findPublic(context: 'landing' | 'booking' = 'booking') {
+    const requestContext = this.tenantContextPort.getRequestContext();
     const products = await this.getProductsPublicUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context: requestContext,
       contextView: context,
     });
-    return products.map((product) => mapProduct(product));
+    const mapped = products.map((product) => mapProduct(product));
+    const { items } = await this.localizationService.localizeCollection({
+      context: requestContext,
+      entityType: 'product',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'name',
+          getValue: (item) => item.name,
+          setValue: (item, value) => {
+            item.name = value;
+          },
+        },
+        {
+          fieldKey: 'description',
+          getValue: (item) => item.description,
+          setValue: (item, value) => {
+            item.description = value;
+          },
+        },
+      ],
+    });
+    return items;
   }
 
   async create(data: CreateProductDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const product = await this.createProductUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         name: data.name,
         description: data.description,
         sku: data.sku,
@@ -80,6 +129,15 @@ export class ProductsService {
         imageFileId: data.imageFileId,
         isActive: data.isActive,
         isPublic: data.isPublic,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'product',
+        entityId: product.id,
+        fields: {
+          name: product.name,
+          description: product.description,
+        },
       });
       return mapProduct(product);
     } catch (error) {
@@ -96,9 +154,10 @@ export class ProductsService {
   }
 
   async update(id: string, data: UpdateProductDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const product = await this.updateProductUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         productId: id,
         name: data.name,
         description: data.description,
@@ -111,6 +170,15 @@ export class ProductsService {
         imageFileId: data.imageFileId,
         isActive: data.isActive,
         isPublic: data.isPublic,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'product',
+        entityId: product.id,
+        fields: {
+          name: product.name,
+          description: product.description,
+        },
       });
       return mapProduct(product);
     } catch (error) {

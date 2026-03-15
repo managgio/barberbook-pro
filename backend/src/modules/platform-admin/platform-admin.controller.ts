@@ -9,6 +9,8 @@ import { UpdateConfigDto } from './dto/update-config.dto';
 import { AssignBrandAdminDto } from './dto/assign-brand-admin.dto';
 import { RemoveBrandAdminDto } from './dto/remove-brand-admin.dto';
 import { ObservabilityService } from '../observability/observability.service';
+import { PlatformI18nObservabilityService } from './platform-i18n-observability.service';
+import { PauseTenantI18nDto } from './dto/pause-tenant-i18n.dto';
 
 @Controller('platform')
 @UseGuards(PlatformAdminGuard)
@@ -16,6 +18,7 @@ export class PlatformAdminController {
   constructor(
     private readonly platformService: PlatformAdminService,
     private readonly observability: ObservabilityService,
+    private readonly i18nObservability: PlatformI18nObservabilityService,
   ) {}
 
   private parseWindowMinutes(raw?: string) {
@@ -54,6 +57,31 @@ export class PlatformAdminController {
   @Get('observability/api')
   getApiMetricsSummary(@Query('minutes') minutes?: string) {
     return this.observability.getApiMetricsSummary(this.parseWindowMinutes(minutes));
+  }
+
+  @Get('observability/i18n')
+  getI18nOperationalOverview(@Query('minutes') minutes?: string) {
+    return this.i18nObservability.getI18nOperationalOverview(this.parseWindowMinutes(minutes));
+  }
+
+  @Post('observability/i18n/:brandId/pause')
+  pauseTenantI18n(
+    @Param('brandId') brandId: string,
+    @Body() body: PauseTenantI18nDto,
+  ) {
+    return this.i18nObservability.setTenantAutoTranslatePaused({
+      brandId,
+      paused: true,
+      reason: body.reason,
+    });
+  }
+
+  @Post('observability/i18n/:brandId/resume')
+  resumeTenantI18n(@Param('brandId') brandId: string) {
+    return this.i18nObservability.setTenantAutoTranslatePaused({
+      brandId,
+      paused: false,
+    });
   }
 
   @Get('brands/:id')

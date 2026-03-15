@@ -27,6 +27,8 @@ import { fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalog
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
+import { useI18n } from '@/hooks/useI18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
 const UNCATEGORIZED_VALUE = 'none';
 const EMPTY_SERVICES: Service[] = [];
@@ -34,6 +36,7 @@ const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
 
 const AdminServices: React.FC = () => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const { currentLocationId } = useTenant();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
@@ -86,11 +89,11 @@ const AdminServices: React.FC = () => {
   useEffect(() => {
     if (!servicesQuery.error && !categoriesQuery.error && !settingsQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudo cargar la configuración de servicios.',
+      title: t('admin.common.error'),
+      description: t('admin.services.toast.loadConfigError'),
       variant: 'destructive',
     });
-  }, [categoriesQuery.error, servicesQuery.error, settingsQuery.error, toast]);
+  }, [categoriesQuery.error, servicesQuery.error, settingsQuery.error, t, toast]);
 
   const orderedCategories = useMemo(
     () =>
@@ -164,21 +167,29 @@ const AdminServices: React.FC = () => {
       const categoryId = formData.categoryId === UNCATEGORIZED_VALUE ? null : formData.categoryId;
 
       if (Number.isNaN(parsedDuration) || parsedDuration <= 0) {
-        toast({ title: 'Duración inválida', description: 'Define la duración en minutos.', variant: 'destructive' });
+        toast({
+          title: t('admin.services.toast.invalidDurationTitle'),
+          description: t('admin.services.toast.invalidDurationDescription'),
+          variant: 'destructive',
+        });
         setIsSubmitting(false);
         return;
       }
 
       if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
-        toast({ title: 'Precio inválido', description: 'Introduce un precio válido.', variant: 'destructive' });
+        toast({
+          title: t('admin.services.toast.invalidPriceTitle'),
+          description: t('admin.services.toast.invalidPriceDescription'),
+          variant: 'destructive',
+        });
         setIsSubmitting(false);
         return;
       }
 
       if (categoriesEnabled && !categoryId) {
         toast({
-          title: 'Falta la categoría',
-          description: 'Activa una categoría antes de guardar el servicio.',
+          title: t('admin.services.toast.missingCategoryTitle'),
+          description: t('admin.services.toast.missingCategoryDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -193,7 +204,7 @@ const AdminServices: React.FC = () => {
           duration: parsedDuration,
           categoryId,
         });
-        toast({ title: 'Servicio actualizado', description: 'Los cambios han sido guardados.' });
+        toast({ title: t('admin.services.toast.serviceUpdatedTitle'), description: t('admin.services.toast.changesSavedDescription') });
       } else {
         await createService({
           name: formData.name,
@@ -202,14 +213,17 @@ const AdminServices: React.FC = () => {
           duration: parsedDuration,
           categoryId,
         });
-        toast({ title: 'Servicio creado', description: 'El nuevo servicio ha sido añadido.' });
+        toast({ title: t('admin.services.toast.serviceCreatedTitle'), description: t('admin.services.toast.serviceCreatedDescription') });
       }
       
-      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
+      await Promise.all([
+        servicesQuery.refetch(),
+        categoriesQuery.refetch(),
+      ]);
       dispatchServicesUpdated({ source: 'admin-services' });
       setIsDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar el servicio.', variant: 'destructive' });
+      toast({ title: t('admin.common.error'), description: t('admin.services.toast.saveServiceError'), variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -226,16 +240,19 @@ const AdminServices: React.FC = () => {
       };
       if (editingCategory) {
         await updateServiceCategory(editingCategory.id, payload);
-        toast({ title: 'Categoría actualizada', description: 'Los cambios se han guardado.' });
+        toast({ title: t('admin.services.toast.categoryUpdatedTitle'), description: t('admin.services.toast.changesSavedDescription') });
       } else {
         await createServiceCategory(payload);
-        toast({ title: 'Categoría creada', description: 'Añade servicios dentro de ella.' });
+        toast({ title: t('admin.services.toast.categoryCreatedTitle'), description: t('admin.services.toast.categoryCreatedDescription') });
       }
-      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
+      await Promise.all([
+        servicesQuery.refetch(),
+        categoriesQuery.refetch(),
+      ]);
       dispatchServicesUpdated({ source: 'admin-services' });
       setIsCategoryDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar la categoría.', variant: 'destructive' });
+      toast({ title: t('admin.common.error'), description: t('admin.services.toast.saveCategoryError'), variant: 'destructive' });
     } finally {
       setIsCategorySubmitting(false);
     }
@@ -246,11 +263,14 @@ const AdminServices: React.FC = () => {
     
     try {
       await deleteService(deletingServiceId);
-      toast({ title: 'Servicio eliminado', description: 'El servicio ha sido eliminado.' });
-      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
+      toast({ title: t('admin.services.toast.serviceDeletedTitle'), description: t('admin.services.toast.serviceDeletedDescription') });
+      await Promise.all([
+        servicesQuery.refetch(),
+        categoriesQuery.refetch(),
+      ]);
       dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar el servicio.', variant: 'destructive' });
+      toast({ title: t('admin.common.error'), description: t('admin.services.toast.deleteServiceError'), variant: 'destructive' });
     } finally {
       setIsDeleteDialogOpen(false);
       setDeletingServiceId(null);
@@ -261,16 +281,19 @@ const AdminServices: React.FC = () => {
     if (!deletingCategoryId) return;
     try {
       await deleteServiceCategory(deletingCategoryId);
-      toast({ title: 'Categoría eliminada', description: 'Los servicios asociados quedan sin categoría.' });
-      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
+      toast({ title: t('admin.services.toast.categoryDeletedTitle'), description: t('admin.services.toast.categoryDeletedDescription') });
+      await Promise.all([
+        servicesQuery.refetch(),
+        categoriesQuery.refetch(),
+      ]);
       dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
       toast({
-        title: 'No se pudo eliminar',
+        title: t('admin.services.toast.deleteErrorTitle'),
         description:
           error instanceof Error
             ? error.message
-            : 'Asegúrate de mover o desactivar la categorización antes de borrar.',
+            : t('admin.services.toast.deleteCategoryHint'),
         variant: 'destructive',
       });
     } finally {
@@ -284,8 +307,8 @@ const AdminServices: React.FC = () => {
 
     if (categoriesEnabled && !normalizedCategoryId) {
       toast({
-        title: 'Falta categoría',
-        description: 'Asigna una categoría para mantener la experiencia organizada.',
+        title: t('admin.services.toast.missingCategoryTitle'),
+        description: t('admin.services.toast.assignCategoryDescription'),
         variant: 'destructive',
       });
       return;
@@ -294,11 +317,14 @@ const AdminServices: React.FC = () => {
     setUpdatingServiceCategoryId(service.id);
     try {
       await updateService(service.id, { categoryId: normalizedCategoryId });
-      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
-      toast({ title: 'Servicio actualizado', description: 'Categoría asignada correctamente.' });
+      await Promise.all([
+        servicesQuery.refetch(),
+        categoriesQuery.refetch(),
+      ]);
+      toast({ title: t('admin.services.toast.serviceUpdatedTitle'), description: t('admin.services.toast.categoryAssignedDescription') });
       dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo actualizar la categoría.', variant: 'destructive' });
+      toast({ title: t('admin.common.error'), description: t('admin.services.toast.updateCategoryError'), variant: 'destructive' });
     } finally {
       setUpdatingServiceCategoryId(null);
     }
@@ -318,24 +344,26 @@ const AdminServices: React.FC = () => {
       dispatchSiteSettingsUpdated(updated);
       dispatchServicesUpdated({ source: 'admin-services' });
       const pendingNotice = enabled && uncategorizedServices.length > 0
-        ? `Tienes ${uncategorizedServices.length} servicio(s) sin categoría. Asignalos para completar la vista.`
+        ? t('admin.services.toast.pendingUncategorizedNotice', { count: uncategorizedServices.length })
         : '';
       toast({
-        title: enabled ? 'Categorización activada' : 'Categorización desactivada',
+        title: enabled ? t('admin.services.toast.categorizationEnabledTitle') : t('admin.services.toast.categorizationDisabledTitle'),
         description: enabled
-          ? `Los clientes verán los servicios agrupados por categoría.${pendingNotice ? ` ${pendingNotice}` : ''}`
-          : 'Los servicios se mostrarán en lista simple.',
+          ? t('admin.services.toast.categorizationEnabledDescription', {
+              pendingNotice: pendingNotice ? ` ${pendingNotice}` : '',
+            })
+          : t('admin.services.toast.categorizationDisabledDescription'),
       });
       if (enabled && uncategorizedServices.length > 0) {
         toast({
-          title: 'Asigna las categorías pendientes',
-          description: 'Puedes crear categorías y asignarlas a los servicios sin categoría.',
+          title: t('admin.services.toast.assignPendingCategoriesTitle'),
+          description: t('admin.services.toast.assignPendingCategoriesDescription'),
         });
       }
     } catch (error) {
       toast({
-        title: 'No se pudo actualizar',
-        description: error instanceof Error ? error.message : 'Revisa las categorías antes de continuar.',
+        title: t('admin.services.toast.updateSettingsErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.services.toast.updateSettingsErrorDescription'),
         variant: 'destructive',
       });
     } finally {
@@ -348,21 +376,21 @@ const AdminServices: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Servicios</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.services.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Diseña la carta de servicios y cómo se presentan a los clientes.
+            {t('admin.services.subtitle')}
           </p>
         </div>
         <div className="flex gap-2">
           {categoriesEnabled && (
             <Button variant="outline" onClick={() => openCategoryDialog()}>
               <FolderTree className="w-4 h-4 mr-2" />
-              Nueva categoría
+              {t('admin.services.actions.newCategory')}
             </Button>
           )}
           <Button onClick={openCreateDialog}>
             <Plus className="w-4 h-4 mr-2" />
-            Nuevo servicio
+            {t('admin.services.actions.newService')}
           </Button>
         </div>
       </div>
@@ -373,15 +401,15 @@ const AdminServices: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" />
-              Presentación
+              {t('admin.services.presentation.title')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between rounded-xl border border-border p-3">
               <div>
-                <p className="font-medium text-sm text-foreground">Agrupar por categorías</p>
+                <p className="font-medium text-sm text-foreground">{t('admin.services.presentation.groupByCategories')}</p>
                 <p className="text-xs text-muted-foreground">
-                  Si está activo, los clientes verán servicios ordenados por categoría.
+                  {t('admin.services.presentation.groupByCategoriesDescription')}
                 </p>
               </div>
               <Switch
@@ -395,15 +423,15 @@ const AdminServices: React.FC = () => {
                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
                   <div className="flex items-center gap-2 text-primary font-medium">
                     <CheckCircle2 className="w-4 h-4" />
-                    Categorización activa
+                    {t('admin.services.presentation.categorizationActive')}
                   </div>
                   <p className="mt-2">
-                    Asegúrate de que todos los servicios tengan categoría asignada para una experiencia limpia.
+                    {t('admin.services.presentation.categorizationActiveDescription')}
                   </p>
                 </div>
                 {uncategorizedServices.length > 0 && (
                   <div className="rounded-xl border border-amber-200/60 bg-amber-50 text-amber-700 text-xs p-3">
-                    Tienes {uncategorizedServices.length} servicio(s) sin categoría. Asígnalos para activar la vista agrupada.
+                    {t('admin.services.presentation.uncategorizedWarning', { count: uncategorizedServices.length })}
                   </div>
                 )}
               </>
@@ -418,10 +446,10 @@ const AdminServices: React.FC = () => {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <FolderTree className="w-4 h-4 text-primary" />
-                  Categorías
+                  {t('admin.services.categories.title')}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Agrupa servicios por familias para una navegación más ligera.
+                  {t('admin.services.categories.description')}
                 </p>
               </div>
             </CardHeader>
@@ -445,7 +473,7 @@ const AdminServices: React.FC = () => {
                           <div className="space-y-1">
                             <p className="font-semibold text-foreground">{category.name}</p>
                             <p className="text-xs text-muted-foreground line-clamp-2">
-                              {category.description || 'Sin descripción'}
+                              {category.description || t('admin.services.categories.noDescription')}
                             </p>
                           </div>
                           <div className="flex gap-1">
@@ -462,9 +490,9 @@ const AdminServices: React.FC = () => {
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{count} servicio(s)</span>
+                          <span>{t('admin.services.categories.serviceCount', { count })}</span>
                           <span className="px-2 py-1 rounded-full border border-border">
-                            Orden {category.position ?? 0}
+                            {t('admin.services.categories.order', { position: category.position ?? 0 })}
                           </span>
                         </div>
                       </div>
@@ -474,9 +502,9 @@ const AdminServices: React.FC = () => {
               ) : (
                 <EmptyState
                   icon={FolderTree}
-                  title="Sin categorías aún"
-                  description="Crea categorías para organizar el catálogo."
-                  action={{ label: 'Crear categoría', onClick: () => openCategoryDialog() }}
+                  title={t('admin.services.categories.emptyTitle')}
+                  description={t('admin.services.categories.emptyDescription')}
+                  action={{ label: t('admin.services.actions.createCategory'), onClick: () => openCategoryDialog() }}
                 />
               )}
             </CardContent>
@@ -514,7 +542,7 @@ const AdminServices: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center text-sm text-muted-foreground">
                     <Clock className="w-4 h-4 mr-1" />
-                    {service.duration} min
+                    {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
                   </div>
                   <div className="text-right">
                     {getPriceDisplay(service).hasOffer && (
@@ -528,17 +556,20 @@ const AdminServices: React.FC = () => {
                 {getPriceDisplay(service).hasOffer && service.appliedOffer && (
                   <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
                     <Percent className="w-3 h-3" />
-                    {service.appliedOffer.name} · ahorras {service.appliedOffer.amountOff.toFixed(2)}€
+                    {t('admin.services.offerSavings', {
+                      offerName: service.appliedOffer.name,
+                      amount: service.appliedOffer.amountOff.toFixed(2),
+                    })}
                   </div>
                 )}
                 {categoriesEnabled && (
                   <div className="flex items-center justify-between rounded-xl border border-dashed border-border px-3 py-2">
                     <div className="flex flex-col gap-1">
-                      <span className="text-xs text-muted-foreground">Categoría</span>
+                      <span className="text-xs text-muted-foreground">{t('admin.services.fields.category')}</span>
                       {service.category ? (
                         <Badge variant="secondary" className="w-fit">{service.category.name}</Badge>
                       ) : (
-                        <Badge variant="outline" className="w-fit">Sin categoría</Badge>
+                        <Badge variant="outline" className="w-fit">{t('admin.services.uncategorized')}</Badge>
                       )}
                     </div>
                     <Select
@@ -546,7 +577,7 @@ const AdminServices: React.FC = () => {
                       onValueChange={(value) => handleAssignCategory(service, value)}
                     >
                       <SelectTrigger className="w-[160px]">
-                        <SelectValue placeholder="Asignar" />
+                        <SelectValue placeholder={t('admin.services.assignCategory')} />
                       </SelectTrigger>
                       <SelectContent align="end">
                         {orderedCategories.map((category) => (
@@ -568,9 +599,9 @@ const AdminServices: React.FC = () => {
       ) : (
         <EmptyState
           icon={Scissors}
-          title="Sin servicios"
-          description="Añade servicios para que los clientes puedan reservar."
-          action={{ label: 'Crear servicio', onClick: openCreateDialog }}
+          title={t('admin.services.emptyTitle')}
+          description={t('admin.services.emptyDescription')}
+          action={{ label: t('admin.services.actions.createService'), onClick: openCreateDialog }}
         />
       )}
 
@@ -579,37 +610,57 @@ const AdminServices: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingService ? 'Editar servicio' : 'Nuevo servicio'}
+              {editingService ? t('admin.services.dialog.editServiceTitle') : t('admin.services.dialog.newServiceTitle')}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Completa nombre, descripción, precio, duración y categoría del servicio.
+              {t('admin.services.dialog.serviceDescription')}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nombre</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="name">{t('admin.services.fields.name')}</Label>
+                  <InlineTranslationPopover
+                    entityType="service"
+                    entityId={editingService?.id}
+                    fieldKey="name"
+                    onUpdated={async () => {
+                      await servicesQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Ej: Corte clásico"
+                  placeholder={t('admin.services.fields.namePlaceholder')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description">Descripción</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="description">{t('admin.services.fields.description')}</Label>
+                  <InlineTranslationPopover
+                    entityType="service"
+                    entityId={editingService?.id}
+                    fieldKey="description"
+                    onUpdated={async () => {
+                      await servicesQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Describe el servicio..."
+                  placeholder={t('admin.services.fields.descriptionPlaceholder')}
                   required
                 />
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Precio (€)</Label>
+                  <Label htmlFor="price">{t('admin.services.fields.price')}</Label>
                   <Input
                     id="price"
                     type="number"
@@ -622,7 +673,7 @@ const AdminServices: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duración (minutos)</Label>
+                  <Label htmlFor="duration">{t('admin.services.fields.duration')}</Label>
                   <Input
                     id="duration"
                     type="number"
@@ -635,19 +686,19 @@ const AdminServices: React.FC = () => {
                   />
                   <p className="text-xs text-muted-foreground flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    Define cuánto dura este servicio para calcular los huecos disponibles.
+                    {t('admin.services.fields.durationHint')}
                   </p>
                 </div>
               </div>
               {categoriesEnabled && (
                 <div className="space-y-2">
-                  <Label>Categoría</Label>
+                  <Label>{t('admin.services.fields.category')}</Label>
                   <Select
                     value={formData.categoryId}
                     onValueChange={(value) => setFormData((prev) => ({ ...prev, categoryId: value }))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona una categoría" />
+                      <SelectValue placeholder={t('admin.services.fields.selectCategory')} />
                     </SelectTrigger>
                     <SelectContent>
                       {orderedCategories.map((category) => (
@@ -658,18 +709,18 @@ const AdminServices: React.FC = () => {
                     </SelectContent>
                   </Select>
                   {orderedCategories.length === 0 && (
-                    <p className="text-xs text-destructive">Crea una categoría antes de añadir servicios.</p>
+                    <p className="text-xs text-destructive">{t('admin.services.fields.createCategoryFirst')}</p>
                   )}
                 </div>
               )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editingService ? 'Guardar cambios' : 'Crear servicio'}
+                {editingService ? t('admin.services.actions.saveChanges') : t('admin.services.actions.createService')}
               </Button>
             </DialogFooter>
           </form>
@@ -680,34 +731,54 @@ const AdminServices: React.FC = () => {
       <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingCategory ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle>
+            <DialogTitle>{editingCategory ? t('admin.services.dialog.editCategoryTitle') : t('admin.services.dialog.newCategoryTitle')}</DialogTitle>
             <DialogDescription className="sr-only">
-              Crea o edita categorías para agrupar servicios.
+              {t('admin.services.dialog.categoryDescription')}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCategorySubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="category-name">Nombre</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="category-name">{t('admin.services.fields.name')}</Label>
+                  <InlineTranslationPopover
+                    entityType="service_category"
+                    entityId={editingCategory?.id}
+                    fieldKey="name"
+                    onUpdated={async () => {
+                      await categoriesQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Input
                   id="category-name"
                   value={categoryForm.name}
                   onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                  placeholder="Color, Cortes, Tratamientos..."
+                  placeholder={t('admin.services.dialog.categoryNamePlaceholder')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="category-description">Descripción</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="category-description">{t('admin.services.fields.description')}</Label>
+                  <InlineTranslationPopover
+                    entityType="service_category"
+                    entityId={editingCategory?.id}
+                    fieldKey="description"
+                    onUpdated={async () => {
+                      await categoriesQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Textarea
                   id="category-description"
                   value={categoryForm.description}
                   onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
-                  placeholder="Texto breve para contextualizar."
+                  placeholder={t('admin.services.dialog.categoryDescriptionPlaceholder')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="category-position">Orden</Label>
+                <Label htmlFor="category-position">{t('admin.services.fields.order')}</Label>
                 <Input
                   id="category-position"
                   type="number"
@@ -715,16 +786,16 @@ const AdminServices: React.FC = () => {
                   value={categoryForm.position}
                   onChange={(e) => setCategoryForm({ ...categoryForm, position: Number(e.target.value) })}
                 />
-                <p className="text-xs text-muted-foreground">Controla el orden en el que se muestran.</p>
+                <p className="text-xs text-muted-foreground">{t('admin.services.fields.orderHint')}</p>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isCategorySubmitting}>
                 {isCategorySubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editingCategory ? 'Guardar cambios' : 'Crear categoría'}
+                {editingCategory ? t('admin.services.actions.saveChanges') : t('admin.services.actions.createCategory')}
               </Button>
             </DialogFooter>
           </form>
@@ -735,15 +806,15 @@ const AdminServices: React.FC = () => {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar servicio?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.services.deleteServiceDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. El servicio será eliminado permanentemente.
+              {t('admin.services.deleteServiceDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -752,18 +823,18 @@ const AdminServices: React.FC = () => {
       <AlertDialog open={isCategoryDeleteDialogOpen} onOpenChange={setIsCategoryDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.services.deleteCategoryDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Las citas no se verán afectadas, pero los servicios asociados quedarán sin categoría.
+              {t('admin.services.deleteCategoryDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteCategory}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

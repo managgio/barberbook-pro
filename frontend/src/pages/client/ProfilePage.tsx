@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { User, Mail, Phone, Bell, Loader2, Award } from 'lucide-react';
+import { User, Mail, Phone, Bell, Loader2, Award, Languages } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getLoyaltySummary } from '@/data/api/loyalty';
@@ -14,14 +14,20 @@ import { deleteUser } from '@/data/api/users';
 import { LoyaltySummary } from '@/data/types';
 import LoyaltyProgressPanel from '@/components/common/LoyaltyProgressPanel';
 import { format, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import LanguageSelector from '@/components/common/LanguageSelector';
+import { useLanguage } from '@/hooks/useLanguage';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
   const { tenant, currentLocationId } = useTenant();
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const { language, supportedLanguages } = useLanguage();
+  const { t } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -101,13 +107,13 @@ const ProfilePage: React.FC = () => {
       });
 
       toast({
-        title: 'Perfil actualizado',
-        description: 'Tus datos han sido guardados correctamente.',
+        title: t('profile.toast.updatedTitle'),
+        description: t('profile.toast.updatedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo actualizar',
-        description: 'Inténtalo de nuevo en unos segundos.',
+        title: t('profile.toast.updateErrorTitle'),
+        description: t('profile.toast.updateErrorDescription'),
         variant: 'destructive',
       });
     } finally {
@@ -122,13 +128,13 @@ const ProfilePage: React.FC = () => {
       await deleteUser(user.id);
       await logout();
       toast({
-        title: 'Perfil eliminado',
-        description: 'Tu cuenta y citas asociadas se han eliminado.',
+        title: t('profile.toast.deletedTitle'),
+        description: t('profile.toast.deletedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo eliminar',
-        description: 'Inténtalo de nuevo en unos segundos.',
+        title: t('profile.toast.deleteErrorTitle'),
+        description: t('profile.toast.deleteErrorDescription'),
         variant: 'destructive',
       });
     } finally {
@@ -140,9 +146,9 @@ const ProfilePage: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Mi perfil</h1>
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('profile.title')}</h1>
         <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
-          Actualiza tu información personal y preferencias.
+          {t('profile.subtitle')}
         </p>
       </div>
 
@@ -152,21 +158,21 @@ const ProfilePage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-              Información personal
+              {t('profile.section.personalInfo')}
             </CardTitle>
             <CardDescription className="hidden sm:block">
-              Actualiza tus datos de contacto.
+              {t('profile.section.personalInfoDescription')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Nombre completo</Label>
+              <Label htmlFor="name">{t('profile.field.fullName')}</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="name"
                   type="text"
-                  placeholder="Tu nombre"
+                  placeholder={t('profile.field.fullNamePlaceholder')}
                   className="h-9 sm:h-10 pl-9 sm:pl-10 text-sm"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -175,31 +181,31 @@ const ProfilePage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Correo actual</Label>
+              <Label htmlFor="email">{t('profile.field.email')}</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="tu@email.com"
+                  placeholder={t('profile.field.emailPlaceholder')}
                   className="h-9 sm:h-10 pl-9 sm:pl-10 text-sm"
                   value={user?.email || ''}
                   disabled
                 />
               </div>
               <p className="text-[11px] sm:text-xs text-muted-foreground">
-                El cambio de correo estará disponible próximamente.
+                {t('profile.field.emailHint')}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Teléfono móvil</Label>
+              <Label htmlFor="phone">{t('profile.field.phone')}</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="+34 600 000 000"
+                  placeholder={t('profile.field.phonePlaceholder')}
                   className="h-9 sm:h-10 pl-9 sm:pl-10 text-sm"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -214,16 +220,16 @@ const ProfilePage: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Award className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                Fidelización
+                {t('profile.section.loyalty')}
               </CardTitle>
               <CardDescription className="hidden sm:block">
-                Consulta tu progreso y las recompensas disponibles.
+                {t('profile.section.loyaltyDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 sm:space-y-4">
               {loyaltySummary.programs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No hay tarjetas activas en este momento.
+                  {t('profile.loyalty.noPrograms')}
                 </p>
               ) : (
                 <div className="grid gap-3 sm:gap-4">
@@ -233,17 +239,20 @@ const ProfilePage: React.FC = () => {
                       <div className="mt-3 sm:mt-4 border-t border-border/60 pt-2.5 sm:pt-3">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Historial de recompensas
+                            {t('profile.loyalty.history')}
                           </p>
                           {rewards.length > 0 && (
                             <span className="text-[11px] text-muted-foreground">
-                              {rewards.length} recompensa{rewards.length === 1 ? '' : 's'}
+                              {t('profile.loyalty.rewardCount', {
+                                count: rewards.length,
+                                suffix: rewards.length === 1 ? '' : 's',
+                              })}
                             </span>
                           )}
                         </div>
                         {rewards.length === 0 ? (
                           <p className="mt-2 text-[11px] sm:text-xs text-muted-foreground">
-                            Aún no has canjeado recompensas en esta tarjeta.
+                            {t('profile.loyalty.noRewards')}
                           </p>
                         ) : (
                           <div className="mt-3 space-y-2">
@@ -254,14 +263,14 @@ const ProfilePage: React.FC = () => {
                               >
                                 <div className="min-w-0">
                                   <p className="truncate text-xs sm:text-sm font-medium text-foreground">
-                                    {reward.serviceName ?? 'Servicio'}
+                                    {reward.serviceName ?? t('profile.loyalty.defaultService')}
                                   </p>
                                   <p className="text-[11px] sm:text-xs text-muted-foreground">
-                                    {format(parseISO(reward.startDateTime), 'd MMM yyyy', { locale: es })}
+                                    {format(parseISO(reward.startDateTime), 'd MMM yyyy', { locale: dateLocale })}
                                   </p>
                                 </div>
                                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                                  Gratis
+                                  {t('profile.loyalty.free')}
                                 </span>
                               </div>
                             ))}
@@ -276,25 +285,45 @@ const ProfilePage: React.FC = () => {
           </Card>
         )}
 
+        {supportedLanguages.length > 1 && (
+          <Card variant="elevated">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Languages className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                {t('profile.section.language')}
+              </CardTitle>
+              <CardDescription className="hidden sm:block">
+                {t('profile.section.languageDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <LanguageSelector persistForUser className="w-full sm:max-w-xs" />
+              <p className="text-xs text-muted-foreground">
+                {t('profile.language.current')} <span className="font-medium uppercase text-foreground">{language}</span>
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Notification Preferences */}
         {(allowEmail || allowWhatsapp || allowSms) && (
           <Card variant="elevated">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                Preferencias de notificación
+                {t('profile.section.notifications')}
               </CardTitle>
               <CardDescription className="hidden sm:block">
-                Elige cómo quieres recibir recordatorios de tus citas.
+                {t('profile.section.notificationsDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2.5 sm:space-y-4">
               {allowEmail && (
                 <div className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
-                    <Label htmlFor="email-notif">Notificaciones por email</Label>
+                    <Label htmlFor="email-notif">{t('profile.notifications.email')}</Label>
                     <p className="hidden sm:block text-sm text-muted-foreground">
-                      Recibe recordatorios por correo electrónico.
+                      {t('profile.notifications.emailDescription')}
                     </p>
                   </div>
                   <Switch
@@ -312,9 +341,9 @@ const ProfilePage: React.FC = () => {
               {allowWhatsapp && (
                 <div className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
-                    <Label htmlFor="whatsapp-notif">Notificaciones por WhatsApp</Label>
+                    <Label htmlFor="whatsapp-notif">{t('profile.notifications.whatsapp')}</Label>
                     <p className="hidden sm:block text-sm text-muted-foreground">
-                      Recibe recordatorios por WhatsApp.
+                      {t('profile.notifications.whatsappDescription')}
                     </p>
                   </div>
                   <Switch
@@ -332,9 +361,9 @@ const ProfilePage: React.FC = () => {
               {allowSms && (
                 <div className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
-                    <Label htmlFor="sms-notif">Notificaciones por SMS</Label>
+                    <Label htmlFor="sms-notif">{t('profile.notifications.sms')}</Label>
                     <p className="hidden sm:block text-sm text-muted-foreground">
-                      Recibe recordatorios por mensaje de texto.
+                      {t('profile.notifications.smsDescription')}
                     </p>
                   </div>
                   <Switch
@@ -354,18 +383,20 @@ const ProfilePage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-              Preferencias de reserva
+              {t('profile.bookingPreferences.title')}
             </CardTitle>
             <CardDescription className="hidden sm:block">
-              Decide si quieres elegir {copy.staff.singularLower} al pedir tu cita.
+              {t('profile.bookingPreferences.description', { staffSingularLower: copy.staff.singularLower })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4">
             <div className="flex items-center justify-between py-2">
               <div className="space-y-0.5">
-                <Label htmlFor="barber-select-pref">Elegir {copy.staff.singularLower}</Label>
+                <Label htmlFor="barber-select-pref">
+                  {t('profile.bookingPreferences.selectStaffLabel', { staffSingularLower: copy.staff.singularLower })}
+                </Label>
                 <p className="hidden sm:block text-sm text-muted-foreground">
-                  Si lo desactivas, asignaremos automáticamente a {copy.staff.indefiniteSingular} disponible.
+                  {t('profile.bookingPreferences.selectStaffHelp', { staffIndefiniteSingular: copy.staff.indefiniteSingular })}
                 </p>
               </div>
               <Switch
@@ -375,22 +406,22 @@ const ProfilePage: React.FC = () => {
               />
             </div>
             <p className="hidden sm:block text-xs text-muted-foreground">
-              Podrás cambiar esta decisión en cada reserva.
+              {t('profile.bookingPreferences.changeEachBooking')}
             </p>
           </CardContent>
         </Card>
 
         <Button type="submit" className="w-full h-9 sm:h-11 text-xs sm:text-base" size="lg" disabled={isLoading}>
           {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          Guardar cambios
+          {t('profile.actions.save')}
         </Button>
 
         {/* Danger zone */}
         <Card variant="elevated" className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-destructive text-base sm:text-lg">Zona peligrosa</CardTitle>
+            <CardTitle className="text-destructive text-base sm:text-lg">{t('profile.danger.title')}</CardTitle>
             <CardDescription className="text-xs sm:text-sm">
-              Eliminar tu perfil borrará también todas tus citas asociadas. Esta acción no se puede deshacer.
+              {t('profile.danger.description')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -401,7 +432,7 @@ const ProfilePage: React.FC = () => {
               onClick={() => setDeleteDialogOpen(true)}
               disabled={isDeleting}
             >
-              Eliminar mi cuenta
+              {t('profile.danger.deleteButton')}
             </Button>
           </CardContent>
         </Card>
@@ -410,20 +441,20 @@ const ProfilePage: React.FC = () => {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar tu cuenta?</AlertDialogTitle>
+            <AlertDialogTitle>{t('profile.danger.dialogTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Se eliminarán tu perfil y todas tus citas asociadas. Esta acción no se puede deshacer.
+              {t('profile.danger.dialogDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t('profile.danger.dialogCancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               type="button"
               onClick={handleDeleteAccount}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? t('profile.danger.dialogDeleting') : t('profile.danger.dialogConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

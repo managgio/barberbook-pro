@@ -10,7 +10,6 @@ import { getAdminStripeConfig } from '@/data/api/payments';
 import { AdminSearchAppointmentsResponse, Appointment, Barber, PaymentMethod, Service } from '@/data/types';
 import { Search, Loader2, Pencil, RefreshCcw, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
@@ -26,6 +25,8 @@ import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 const PAGE_SIZE = 25;
@@ -56,6 +57,8 @@ const getTodayIsoDate = () => format(new Date(), 'yyyy-MM-dd');
 const AdminSearch: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const { currentLocationId } = useTenant();
   const queryClient = useQueryClient();
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
@@ -121,20 +124,20 @@ const AdminSearch: React.FC = () => {
   useEffect(() => {
     if (!appointmentsQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudieron cargar las citas. Inténtalo de nuevo.',
+      title: t('admin.common.error'),
+      description: t('admin.search.toast.loadAppointmentsError'),
       variant: 'destructive',
     });
-  }, [appointmentsQuery.error, toast]);
+  }, [appointmentsQuery.error, t, toast]);
 
   useEffect(() => {
     if (!barbersQuery.error && !servicesQuery.error && !stripeConfigQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudieron cargar algunos datos de soporte.',
+      title: t('admin.common.error'),
+      description: t('admin.common.toast.supportDataError'),
       variant: 'destructive',
     });
-  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, toast]);
+  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, t, toast]);
 
   useEffect(() => {
     const pageData = appointmentsQuery.data;
@@ -223,12 +226,12 @@ const AdminSearch: React.FC = () => {
   const resolveBarberName = (appointment: Appointment) =>
     getBarber(appointment.barberId)?.name ||
     appointment.barberNameSnapshot ||
-    `${copy.staff.singular} eliminado`;
+    t('admin.common.removedStaff', { staffSingular: copy.staff.singular });
   const getClientInfo = (appointment: Appointment) => {
     const user = clients.find((client) => client.id === appointment.userId);
     return {
-      name: user?.name || appointment.guestName || 'Cliente sin cuenta',
-      contact: user?.email || user?.phone || appointment.guestContact || 'Sin datos de contacto',
+      name: user?.name || appointment.guestName || t('admin.common.guestClient'),
+      contact: user?.email || user?.phone || appointment.guestContact || t('admin.common.noContactData'),
       isGuest: !user,
     };
   };
@@ -295,8 +298,8 @@ const AdminSearch: React.FC = () => {
       applyAppointmentUpdate(updated);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el método de pago.',
+        title: t('admin.common.error'),
+        description: t('admin.common.toast.paymentMethodError'),
         variant: 'destructive',
       });
       setPaymentMethodDrafts((prev) => ({
@@ -320,8 +323,8 @@ const AdminSearch: React.FC = () => {
     const parsed = Number(normalized);
     if (Number.isNaN(parsed) || parsed < 0) {
       toast({
-        title: 'Precio inválido',
-        description: 'Introduce un importe válido para la cita.',
+        title: t('admin.common.invalidPrice'),
+        description: t('admin.common.toast.invalidPriceDescription'),
         variant: 'destructive',
       });
       setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
@@ -337,8 +340,8 @@ const AdminSearch: React.FC = () => {
       applyAppointmentUpdate(updated);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el precio final.',
+        title: t('admin.common.error'),
+        description: t('admin.common.toast.finalPriceError'),
         variant: 'destructive',
       });
       setPriceDrafts((prev) => ({ ...prev, [appointment.id]: formatPriceInput(currentPrice) }));
@@ -355,9 +358,9 @@ const AdminSearch: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="pl-12 md:pl-0">
-        <h1 className="text-3xl font-bold text-foreground">Buscar citas</h1>
+        <h1 className="text-3xl font-bold text-foreground">{t('admin.search.title')}</h1>
         <p className="text-muted-foreground mt-1">
-          Busca citas por {copy.staff.singularLower} y fecha.
+          {t('admin.search.subtitle', { staffSingularLower: copy.staff.singularLower })}
         </p>
       </div>
 
@@ -376,7 +379,7 @@ const AdminSearch: React.FC = () => {
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={`Seleccionar ${copy.staff.singularLower}`} />
+                    <SelectValue placeholder={t('admin.search.filters.selectStaff', { staffSingularLower: copy.staff.singularLower })} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
@@ -389,7 +392,7 @@ const AdminSearch: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              <Label>Fecha</Label>
+              <Label>{t('admin.search.filters.date')}</Label>
               <Input
                 type="date"
                 value={selectedDate}
@@ -410,12 +413,12 @@ const AdminSearch: React.FC = () => {
                 {isRefreshingSearch ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Recargando...
+                    {t('admin.common.reloading')}
                   </>
                 ) : (
                   <>
                     <RefreshCcw className="mr-2 h-4 w-4" />
-                    Recargar
+                    {t('admin.common.reload')}
                   </>
                 )}
               </Button>
@@ -423,7 +426,7 @@ const AdminSearch: React.FC = () => {
 
             <div className="flex items-end">
               <Button variant="outline" onClick={clearFilters} className="w-full">
-                Limpiar filtros
+                {t('admin.common.clearFilters')}
               </Button>
             </div>
           </div>
@@ -435,7 +438,7 @@ const AdminSearch: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="w-5 h-5 text-primary" />
-            Resultados ({totalAppointments})
+            {t('admin.search.results', { total: totalAppointments })}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -447,17 +450,17 @@ const AdminSearch: React.FC = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Fecha</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Hora</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Cliente</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Servicio</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.date')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.time')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.client')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.service')}</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
                       {copy.staff.singular}
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Estado</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Método</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Precio final</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Acciones</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.status')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.paymentMethod')}</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.finalPrice')}</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">{t('admin.common.table.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -467,7 +470,7 @@ const AdminSearch: React.FC = () => {
                       <tr key={apt.id} className="border-b border-border hover:bg-secondary/30 transition-colors">
                       <td className="py-3 px-4">
                         <span className="font-medium text-foreground">
-                          {format(parseISO(apt.startDateTime), 'd MMM yyyy', { locale: es })}
+                          {format(parseISO(apt.startDateTime), 'd MMM yyyy', { locale: dateLocale })}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-foreground">
@@ -478,7 +481,7 @@ const AdminSearch: React.FC = () => {
                           {clientInfo.name}
                           {clientInfo.isGuest && (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">
-                              Invitado
+                              {t('admin.common.guest')}
                             </span>
                           )}
                         </p>
@@ -489,7 +492,7 @@ const AdminSearch: React.FC = () => {
                           <span>{getService(apt.serviceId)?.name}</span>
                           {apt.subscriptionApplied && (
                             <Badge variant="secondary" className="h-5 px-2 text-[10px]">
-                              Suscripción
+                              {t('admin.common.subscription')}
                             </Badge>
                           )}
                           <AppointmentNoteIndicator note={apt.notes} variant="icon" />
@@ -524,11 +527,11 @@ const AdminSearch: React.FC = () => {
                             disabled={Boolean(savingPayment[apt.id])}
                           >
                             <SelectTrigger className="h-8 w-[120px] rounded-full bg-background/70 px-3 text-xs">
-                              <SelectValue placeholder="Método de pago" />
+                              <SelectValue placeholder={t('admin.common.paymentMethod.placeholder')} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="cash">Efectivo</SelectItem>
-                              <SelectItem value="card">Tarjeta</SelectItem>
+                              <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
+                              <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
                               <SelectItem value="bizum">Bizum</SelectItem>
                               {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
                               {!stripeEnabled && (paymentMethodDrafts[apt.id] ?? apt.paymentMethod) === 'stripe' && (
@@ -536,7 +539,7 @@ const AdminSearch: React.FC = () => {
                                   Stripe
                                 </SelectItem>
                               )}
-                              <SelectItem value="none">Sin método</SelectItem>
+                              <SelectItem value="none">{t('admin.common.paymentMethod.none')}</SelectItem>
                             </SelectContent>
                           </Select>
                           {savingPayment[apt.id] && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -573,7 +576,7 @@ const AdminSearch: React.FC = () => {
                                 }
                               }}
                               className="w-[60px] bg-transparent text-center text-base font-semibold text-primary outline-none"
-                              aria-label="Precio final"
+                              aria-label={t('admin.common.table.finalPrice')}
                               disabled={Boolean(savingPrice[apt.id])}
                             />
                             <span className="text-xs font-semibold text-primary">€</span>
@@ -611,7 +614,11 @@ const AdminSearch: React.FC = () => {
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Mostrando {firstResultIndex}-{lastResultIndex} de {totalAppointments}
+                  {t('admin.search.pagination.showing', {
+                    first: firstResultIndex,
+                    last: lastResultIndex,
+                    total: totalAppointments,
+                  })}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -621,10 +628,10 @@ const AdminSearch: React.FC = () => {
                     onClick={() => setCurrentPage((previousPage) => Math.max(1, previousPage - 1))}
                     disabled={currentPage <= 1}
                   >
-                    Anterior
+                    {t('admin.common.previous')}
                   </Button>
                   <span className="text-sm text-muted-foreground">
-                    Página {currentPage} de {totalPages}
+                    {t('admin.common.pagination.pageOf', { page: currentPage, total: totalPages })}
                   </span>
                   <Button
                     type="button"
@@ -635,7 +642,7 @@ const AdminSearch: React.FC = () => {
                     }
                     disabled={currentPage >= totalPages}
                   >
-                    Siguiente
+                    {t('admin.common.next')}
                   </Button>
                 </div>
               </div>
@@ -643,8 +650,8 @@ const AdminSearch: React.FC = () => {
           ) : (
             <EmptyState
               icon={Search}
-              title="Sin resultados"
-              description="No se encontraron citas con los filtros seleccionados."
+              title={t('admin.search.empty.title')}
+              description={t('admin.search.empty.description')}
             />
           )}
         </CardContent>
@@ -667,13 +674,13 @@ const AdminSearch: React.FC = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.common.cancelDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
+              {t('admin.common.cancelDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t('admin.common.cancelDialog.back')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
@@ -681,19 +688,26 @@ const AdminSearch: React.FC = () => {
                 setIsDeleting(true);
                 try {
                   await updateAppointment(deleteTarget.id, { status: 'cancelled' });
-                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
+                  toast({
+                    title: t('admin.common.toast.appointmentCancelledTitle'),
+                    description: t('admin.common.toast.appointmentCancelledDescription'),
+                  });
                   setDeleteTarget(null);
                   dispatchAppointmentsUpdated({ source: 'admin-search' });
                   await appointmentsQuery.refetch();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
+                  toast({
+                    title: t('admin.common.error'),
+                    description: t('admin.common.toast.cancelAppointmentError'),
+                    variant: 'destructive',
+                  });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Cancelando...' : 'Cancelar'}
+              {isDeleting ? t('admin.common.cancelDialog.cancelling') : t('admin.common.cancelDialog.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

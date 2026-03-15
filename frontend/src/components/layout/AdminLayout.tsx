@@ -9,6 +9,7 @@ import { useTenant } from '@/context/TenantContext';
 import { Button } from '@/components/ui/button';
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { AdminSpotlightProvider } from '@/components/admin/AdminSpotlightContext';
+import { useI18n } from '@/hooks/useI18n';
 
 const AiAssistantFloatingButton = lazy(() => import('@/components/admin/AiAssistantFloatingButton'));
 const QuickAppointmentButton = lazy(() => import('@/components/admin/QuickAppointmentButton'));
@@ -20,6 +21,7 @@ const AdminLayoutContent: React.FC = () => {
   });
   const { canAccessSection } = useAdminPermissions();
   const { tenant } = useTenant();
+  const { t } = useI18n();
 
   const showFloatingActions =
     canAccessSection('calendar') ||
@@ -47,7 +49,7 @@ const AdminLayoutContent: React.FC = () => {
           collapsed ? 'left-[.8rem]' : 'left-[16.5rem] -translate-x-1/2'
         )}
         onClick={() => setCollapsed((prev) => !prev)}
-        aria-label={collapsed ? 'Abrir menú' : 'Cerrar menú'}
+        aria-label={collapsed ? t('admin.layout.openMenu') : t('admin.layout.closeMenu')}
       >
         {collapsed ? <ChevronsRight className="h-5 w-5" /> : <ChevronsLeft className="h-5 w-5" />}
       </Button>
@@ -59,7 +61,7 @@ const AdminLayoutContent: React.FC = () => {
           collapsed ? 'left-20 -translate-x-1/2' : 'left-64 -translate-x-1/2'
         )}
         onClick={() => setCollapsed((prev) => !prev)}
-        aria-label={collapsed ? 'Expandir sidebar' : 'Contraer sidebar'}
+        aria-label={collapsed ? t('admin.layout.expandSidebar') : t('admin.layout.collapseSidebar')}
       >
         {collapsed ? <ChevronsRight className="h-5 w-5" /> : <ChevronsLeft className="h-5 w-5" />}
       </Button>

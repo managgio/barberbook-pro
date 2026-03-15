@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { dispatchAlertsUpdated, dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { useTenant } from '@/context/TenantContext';
+import { useI18n } from '@/hooks/useI18n';
 
 interface ChatMessage {
   id: string;
@@ -68,12 +69,12 @@ type BrowserSpeechWindow = Window & {
 
 const LEGACY_STORAGE_KEY = 'ai-assistant-session-id';
 const STORAGE_KEY_PREFIX = 'ai-assistant-session-id';
-const SEND_COMMAND = 'enviar';
 const AdminAiAssistant: React.FC = () => {
   const { user } = useAuth();
   const { currentLocationId } = useTenant();
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const { t, language } = useI18n();
   const { canAccessSection } = useAdminPermissions();
   const canCreateAlerts = canAccessSection('alerts');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -102,13 +103,26 @@ const AdminAiAssistant: React.FC = () => {
   const supportsSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const supportsVoiceCommand = typeof window !== 'undefined'
     && Boolean((window as BrowserSpeechWindow).SpeechRecognition || (window as BrowserSpeechWindow).webkitSpeechRecognition);
-  const staffSingularLabel = copy.staff.isCollective ? 'miembro del equipo' : copy.staff.singularLower;
-  const staffPluralLabel = copy.staff.isCollective ? 'miembros del equipo' : copy.staff.pluralLower;
-  const staffNameExample = copy.staff.isCollective ? 'con Juan.' : `con ${copy.staff.singularLower} Juan.`;
-  const staffNameExampleAlt = copy.staff.isCollective ? 'con Alejandro.' : `con ${copy.staff.singularLower} Alejandro.`;
+  const staffSingularLabel = copy.staff.isCollective
+    ? t('admin.aiAssistant.copy.staffSingularCollective')
+    : copy.staff.singularLower;
+  const staffPluralLabel = copy.staff.isCollective
+    ? t('admin.aiAssistant.copy.staffPluralCollective')
+    : copy.staff.pluralLower;
+  const staffNameExample = copy.staff.isCollective
+    ? t('admin.aiAssistant.copy.staffNameExampleCollective', { name: 'Juan' })
+    : t('admin.aiAssistant.copy.staffNameExample', { staffSingularLower: copy.staff.singularLower, name: 'Juan' });
+  const staffNameExampleAlt = copy.staff.isCollective
+    ? t('admin.aiAssistant.copy.staffNameExampleCollective', { name: 'Alejandro' })
+    : t('admin.aiAssistant.copy.staffNameExample', { staffSingularLower: copy.staff.singularLower, name: 'Alejandro' });
   const staffHolidayPlaceholder = copy.staff.isCollective
-    ? `miembro del equipo o ${copy.location.singularLower}`
-    : `${copy.staff.singularLower} o ${copy.location.singularLower}`;
+    ? t('admin.aiAssistant.copy.staffOrLocationCollective', { locationSingularLower: copy.location.singularLower })
+    : t('admin.aiAssistant.copy.staffOrLocation', {
+      staffSingularLower: copy.staff.singularLower,
+      locationSingularLower: copy.location.singularLower,
+    });
+  const sendCommands = language.startsWith('en') ? ['send', 'enviar'] : ['enviar', 'send'];
+  const primarySendCommand = sendCommands[0];
   const scopedLocationKey = `${STORAGE_KEY_PREFIX}:${currentLocationId || 'default'}`;
   const storageKey = `${scopedLocationKey}:${user?.id || 'anonymous'}`;
 
@@ -136,11 +150,11 @@ const AdminAiAssistant: React.FC = () => {
     const normalized = normalizeCommandText(text);
     if (!normalized) return false;
     const parts = normalized.split(/\s+/);
-    return parts[parts.length - 1] === SEND_COMMAND;
+    return sendCommands.includes(parts[parts.length - 1]);
   };
 
   const stripSendCommand = (text: string) =>
-    text.replace(new RegExp(`(?:\\s|^)${SEND_COMMAND}[\\s.,!?;:]*$`, 'i'), '').trim();
+    text.replace(new RegExp(`(?:\\s|^)(${sendCommands.join('|')})[\\s.,!?;:]*$`, 'i'), '').trim();
 
   const stopVoiceCommandListener = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -164,7 +178,7 @@ const AdminAiAssistant: React.FC = () => {
       speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognitionConstructor) return;
     const recognition = new SpeechRecognitionConstructor();
-    recognition.lang = 'es-ES';
+    recognition.lang = language.startsWith('en') ? 'en-US' : 'es-ES';
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event) => {
@@ -255,8 +269,8 @@ const AdminAiAssistant: React.FC = () => {
           return;
         }
         toast({
-          title: 'Historial no disponible',
-          description: 'No se pudo cargar la sesión más reciente del asistente.',
+          title: t('admin.aiAssistant.toast.historyUnavailableTitle'),
+          description: t('admin.aiAssistant.toast.latestHistoryUnavailableDescription'),
           variant: 'destructive',
         });
       } finally {
@@ -269,7 +283,7 @@ const AdminAiAssistant: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [currentLocationId, persistSession, sessionId, toast, user]);
+  }, [currentLocationId, persistSession, sessionId, t, toast, user]);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -293,15 +307,15 @@ const AdminAiAssistant: React.FC = () => {
         if (isApiRequestError(error) && error.status >= 500) {
           clearPersistedSession();
           toast({
-            title: 'Historial reiniciado',
-            description: 'La sesión anterior no pudo recuperarse y se ha iniciado una nueva.',
+            title: t('admin.aiAssistant.toast.historyResetTitle'),
+            description: t('admin.aiAssistant.toast.historyResetDescription'),
             variant: 'destructive',
           });
           return;
         }
         toast({
-          title: 'Historial no disponible',
-          description: 'No se pudo cargar la sesión anterior del asistente.',
+          title: t('admin.aiAssistant.toast.historyUnavailableTitle'),
+          description: t('admin.aiAssistant.toast.previousHistoryUnavailableDescription'),
           variant: 'destructive',
         });
         loadedSessionRef.current = null;
@@ -310,7 +324,7 @@ const AdminAiAssistant: React.FC = () => {
       }
     };
     loadSession();
-  }, [clearPersistedSession, sessionId, toast, user]);
+  }, [clearPersistedSession, sessionId, t, toast, user]);
 
   const handleResponse = (response: AiChatResponse) => {
     if (response.sessionId && response.sessionId !== sessionId) {
@@ -344,8 +358,8 @@ const AdminAiAssistant: React.FC = () => {
     );
     if (!hasAdminAccess) {
       toast({
-        title: 'Acceso restringido',
-        description: 'Solo los administradores pueden usar el asistente.',
+        title: t('admin.aiAssistant.toast.restrictedTitle'),
+        description: t('admin.aiAssistant.toast.restrictedDescription'),
         variant: 'destructive',
       });
       return;
@@ -365,9 +379,9 @@ const AdminAiAssistant: React.FC = () => {
       });
       handleResponse(response);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'No se pudo completar la solicitud.';
+      const errorMessage = error instanceof Error ? error.message : t('admin.aiAssistant.toast.requestErrorDefault');
       toast({
-        title: 'Error del asistente',
+        title: t('admin.aiAssistant.toast.assistantErrorTitle'),
         description: errorMessage,
         variant: 'destructive',
       });
@@ -395,7 +409,7 @@ const AdminAiAssistant: React.FC = () => {
   const speakMessage = (text: string, messageId: string) => {
     if (!supportsSpeech) return;
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-ES';
+    utterance.lang = language.startsWith('en') ? 'en-US' : 'es-ES';
     utterance.onend = () => {
       setSpeakingMessageId((current) => (current === messageId ? null : current));
     };
@@ -448,8 +462,8 @@ const AdminAiAssistant: React.FC = () => {
       chunksRef.current = [];
       if (blob.size === 0) {
         toast({
-          title: 'Audio vacío',
-          description: 'No se detectó audio para transcribir.',
+          title: t('admin.aiAssistant.toast.emptyAudioTitle'),
+          description: t('admin.aiAssistant.toast.emptyAudioDescription'),
           variant: 'destructive',
         });
         return;
@@ -462,16 +476,16 @@ const AdminAiAssistant: React.FC = () => {
       const response = await postAiAssistantTranscribe({ file });
       if (!response.text.trim()) {
         toast({
-          title: 'Sin texto',
-          description: 'No pude transcribir el audio. Intenta de nuevo.',
+          title: t('admin.aiAssistant.toast.noTextTitle'),
+          description: t('admin.aiAssistant.toast.noTextDescription'),
         });
         return;
       }
       const cleaned = response.text.trim();
       if (!cleaned.trim()) {
         toast({
-          title: 'Sin texto',
-          description: 'No se detecto texto util en el audio.',
+          title: t('admin.aiAssistant.toast.noTextTitle'),
+          description: t('admin.aiAssistant.toast.noUsefulTextDescription'),
         });
         return;
       }
@@ -479,8 +493,8 @@ const AdminAiAssistant: React.FC = () => {
       const payload = wantsAutoSend ? stripSendCommand(cleaned) : cleaned;
       if (!payload.trim()) {
         toast({
-          title: 'Sin mensaje',
-          description: 'No se detecto contenido antes de "enviar".',
+          title: t('admin.aiAssistant.toast.noMessageTitle'),
+          description: t('admin.aiAssistant.toast.noMessageBeforeSend', { command: primarySendCommand }),
         });
         return;
       }
@@ -492,8 +506,8 @@ const AdminAiAssistant: React.FC = () => {
       inputRef.current?.focus();
     } catch (error) {
       toast({
-        title: 'Error al transcribir',
-        description: error instanceof Error ? error.message : 'No se pudo transcribir el audio.',
+        title: t('admin.aiAssistant.toast.transcribeErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.aiAssistant.toast.transcribeErrorDescription'),
         variant: 'destructive',
       });
     } finally {
@@ -505,8 +519,8 @@ const AdminAiAssistant: React.FC = () => {
   const startRecording = async () => {
     if (!supportsAudio) {
       toast({
-        title: 'Audio no disponible',
-        description: 'Tu navegador no soporta grabación de audio.',
+        title: t('admin.aiAssistant.toast.audioUnavailableTitle'),
+        description: t('admin.aiAssistant.toast.audioUnavailableDescription'),
       });
       return;
     }
@@ -538,8 +552,8 @@ const AdminAiAssistant: React.FC = () => {
       }, 1000);
     } catch (error) {
       toast({
-        title: 'Permiso denegado',
-        description: 'No se pudo acceder al micrófono.',
+        title: t('admin.aiAssistant.toast.micDeniedTitle'),
+        description: t('admin.aiAssistant.toast.micDeniedDescription'),
         variant: 'destructive',
       });
     }
@@ -570,8 +584,8 @@ const AdminAiAssistant: React.FC = () => {
             <Sparkles className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <CardTitle>Asistente IA</CardTitle>
-            <p className="text-sm text-muted-foreground">Habla normal y crea gestiones en segundos.</p>
+            <CardTitle>{t('admin.aiAssistant.title')}</CardTitle>
+            <p className="text-sm text-muted-foreground">{t('admin.aiAssistant.subtitle')}</p>
           </div>
         </div>
         <Button
@@ -583,7 +597,7 @@ const AdminAiAssistant: React.FC = () => {
           disabled={activeView === 'guide'}
         >
           <BookOpen className="h-4 w-4 mr-2" />
-          Guia rapida
+          {t('admin.aiAssistant.actions.quickGuide')}
         </Button>
       </div>
 
@@ -606,26 +620,29 @@ const AdminAiAssistant: React.FC = () => {
                 </Button>
               </div>
               <div>
-                <CardTitle className="text-lg">Guia rapida del asistente</CardTitle>
+                <CardTitle className="text-lg">{t('admin.aiAssistant.guide.title')}</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Como pedir tareas de forma simple, sin tecnicismos.
+                  {t('admin.aiAssistant.guide.subtitle')}
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 pt-3">
               <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
-                Citas nuevas
+                {t('admin.aiAssistant.guide.chips.newAppointments')}
               </span>
               <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
-                Festivos {copy.location.singularLower} o {staffPluralLabel}
+                {t('admin.aiAssistant.guide.chips.holidays', {
+                  locationSingularLower: copy.location.singularLower,
+                  staffPluralLabel,
+                })}
               </span>
               {canCreateAlerts && (
                 <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
-                  Alertas y avisos
+                  {t('admin.aiAssistant.guide.chips.alerts')}
                 </span>
               )}
               <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
-                Audio y escucha
+                {t('admin.aiAssistant.guide.chips.audio')}
               </span>
             </div>
           </CardHeader>
@@ -637,23 +654,21 @@ const AdminAiAssistant: React.FC = () => {
               className="rounded-xl border border-border/60 bg-card/40 px-4"
             >
               <AccordionItem value="citas" className="border-border/60">
-                <AccordionTrigger className="text-sm">Citas: que pedir y como pedirlo</AccordionTrigger>
+                <AccordionTrigger className="text-sm">{t('admin.aiAssistant.guide.appointments.title')}</AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Puedes escribir como hablas normalmente. No necesitas frases exactas.
-                      El servicio es obligatorio. Si no indicas {staffSingularLabel}, se asigna automaticamente
-                      el menos ocupado. Si el cliente no existe, se crea como invitado.
+                      {t('admin.aiAssistant.guide.appointments.description', { staffSingularLabel })}
                     </p>
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea una cita para Marta Sancho manana por la tarde con corte clasico y {staffNameExample}
+                        {t('admin.aiAssistant.guide.appointments.example1', { staffNameExample })}
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Reserva para Carlos Lopez lo antes posible con arreglo de barba.
+                        {t('admin.aiAssistant.guide.appointments.example2')}
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Cita para el cliente Luis Martinez este martes a las 10:00 con corte clasico y {staffNameExampleAlt}.
+                        {t('admin.aiAssistant.guide.appointments.example3', { staffNameExampleAlt })}
                       </div>
                     </div>
                   </div>
@@ -661,24 +676,29 @@ const AdminAiAssistant: React.FC = () => {
               </AccordionItem>
               <AccordionItem value="festivos" className="border-border/60">
                 <AccordionTrigger className="text-sm">
-                  Festivos flexibles: {copy.location.singularLower}, {staffPluralLabel} y rangos
+                  {t('admin.aiAssistant.guide.holidays.title', {
+                    locationSingularLower: copy.location.singularLower,
+                    staffPluralLabel,
+                  })}
                 </AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Puedes crear festivos para {copy.location.definiteSingular} o para uno o varios {staffPluralLabel}.
-                      Si no dices el alcance, se entiende {copy.location.singularLower}. Puedes usar fechas sueltas,
-                      rangos y varios festivos en el mismo mensaje.
+                      {t('admin.aiAssistant.guide.holidays.description', {
+                        locationDefiniteSingular: copy.location.definiteSingular,
+                        staffPluralLabel,
+                        locationSingularLower: copy.location.singularLower,
+                      })}
                     </p>
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea un festivo para {copy.location.definiteSingular} el martes que viene.
+                        {t('admin.aiAssistant.guide.holidays.example1', { locationDefiniteSingular: copy.location.definiteSingular })}
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Festivo del 15 al 18 de este mes para Alejandro y Pablo.
+                        {t('admin.aiAssistant.guide.holidays.example2')}
                       </div>
                       <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                        Crea un festivo para {copy.location.definiteSingular} el 5 y otro del 8 al 10 de marzo para Ana.
+                        {t('admin.aiAssistant.guide.holidays.example3', { locationDefiniteSingular: copy.location.definiteSingular })}
                       </div>
                     </div>
                   </div>
@@ -686,26 +706,24 @@ const AdminAiAssistant: React.FC = () => {
               </AccordionItem>
               {canCreateAlerts && (
                 <AccordionItem value="alertas" className="border-border/60">
-                  <AccordionTrigger className="text-sm">Alertas: anuncios, avisos y novedades</AccordionTrigger>
+                  <AccordionTrigger className="text-sm">{t('admin.aiAssistant.guide.alerts.title')}</AccordionTrigger>
                   <AccordionContent>
                     <div className="space-y-3">
                       <p className="text-sm text-muted-foreground">
-                        Describe el tema y el asistente redacta titulo y mensaje automaticamente.
-                        Si no indicas fechas, la alerta queda activa desde ahora.
-                        Si indicas tiempo o rango, se programa sola.
+                        {t('admin.aiAssistant.guide.alerts.description')}
                       </p>
                       <div className="space-y-2 text-xs text-muted-foreground">
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Crea una alerta para anunciar un nuevo servicio de color premium.
+                          {t('admin.aiAssistant.guide.alerts.example1')}
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Avisa del cierre {copy.location.fromWithDefinite} este sabado por la tarde.
+                          {t('admin.aiAssistant.guide.alerts.example2', { locationFromWithDefinite: copy.location.fromWithDefinite })}
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Alerta informativa para felicitar San Valentin a los clientes.
+                          {t('admin.aiAssistant.guide.alerts.example3')}
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-                          Activa una alerta de aviso durante dos dias desde manana.
+                          {t('admin.aiAssistant.guide.alerts.example4')}
                         </div>
                       </div>
                     </div>
@@ -713,23 +731,21 @@ const AdminAiAssistant: React.FC = () => {
                 </AccordionItem>
               )}
               <AccordionItem value="audio" className="border-border/60">
-                <AccordionTrigger className="text-sm">Audio y escucha: manos libres</AccordionTrigger>
+                <AccordionTrigger className="text-sm">{t('admin.aiAssistant.guide.audio.title')}</AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Pulsa el microfono para dictar y vuelve a pulsarlo para detener. Si dices "enviar" al final, el
-                      mensaje se enviara automaticamente. Si no, la transcripcion quedara en el campo de texto para
-                      revisarla y luego enviarla. Ademas, puedes escuchar cualquier respuesta del asistente.
+                      {t('admin.aiAssistant.guide.audio.description', { command: primarySendCommand })}
                     </p>
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                        Dictado rapido
+                        {t('admin.aiAssistant.guide.audio.chip1')}
                       </span>
                       <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                        Transcripcion automatica
+                        {t('admin.aiAssistant.guide.audio.chip2')}
                       </span>
                       <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1">
-                        Escuchar respuesta
+                        {t('admin.aiAssistant.guide.audio.chip3')}
                       </span>
                     </div>
                   </div>
@@ -750,7 +766,7 @@ const AdminAiAssistant: React.FC = () => {
           ) : messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground">
               <Bot className="w-10 h-10 mb-3" />
-              <p className="text-sm">Escribe una solicitud o usa un atajo.</p>
+              <p className="text-sm">{t('admin.aiAssistant.empty')}</p>
             </div>
           ) : (
             messages.map((msg) => (
@@ -773,7 +789,7 @@ const AdminAiAssistant: React.FC = () => {
                       disabled={speakingMessageId === msg.id}
                     >
                       <Volume2 className="w-3.5 h-3.5" />
-                      Escuchar
+                      {t('admin.aiAssistant.actions.listen')}
                     </button>
                     <button
                       type="button"
@@ -782,7 +798,7 @@ const AdminAiAssistant: React.FC = () => {
                       disabled={!speakingMessageId}
                     >
                       <Square className="w-3.5 h-3.5" />
-                      Detener
+                      {t('admin.aiAssistant.actions.stop')}
                     </button>
                   </div>
                 )}
@@ -791,12 +807,12 @@ const AdminAiAssistant: React.FC = () => {
           )}
           {isSending && (
             <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-secondary text-foreground text-sm">
-              Pensando...
+              {t('admin.aiAssistant.status.thinking')}
             </div>
           )}
           {isTranscribing && (
             <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-secondary text-foreground text-sm">
-              Transcribiendo audio...
+              {t('admin.aiAssistant.status.transcribing')}
             </div>
           )}
           <div ref={bottomRef} />
@@ -808,22 +824,22 @@ const AdminAiAssistant: React.FC = () => {
                 size="sm"
                 className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                 onClick={() =>
-                  applyTemplate(`Crea una cita para [cliente] el [fecha] a las [hora] con [servicio] y [${staffSingularLabel}].`)
+                  applyTemplate(t('admin.aiAssistant.templates.appointment', { staffSingularLabel }))
                 }
                 disabled={isSending || isTranscribing || isRecording}
               >
-                Crear cita
+                {t('admin.aiAssistant.actions.createAppointment')}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                 onClick={() =>
-                  applyTemplate(`Crea un festivo para [${staffHolidayPlaceholder}] del [fecha inicio] al [fecha fin].`)
+                  applyTemplate(t('admin.aiAssistant.templates.holiday', { staffHolidayPlaceholder }))
                 }
                 disabled={isSending || isTranscribing || isRecording}
               >
-                Crear festivo
+                {t('admin.aiAssistant.actions.createHoliday')}
               </Button>
               {canCreateAlerts && (
                 <Button
@@ -831,11 +847,11 @@ const AdminAiAssistant: React.FC = () => {
                   size="sm"
                   className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                   onClick={() =>
-                    applyTemplate('Crea una alerta para [motivo o anuncio] dirigida a los clientes.')
+                    applyTemplate(t('admin.aiAssistant.templates.alert'))
                   }
                   disabled={isSending || isTranscribing || isRecording}
                 >
-                  Crear alerta
+                  {t('admin.aiAssistant.actions.createAlert')}
                 </Button>
               )}
             </div>
@@ -845,7 +861,7 @@ const AdminAiAssistant: React.FC = () => {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Describe la cita o el festivo..."
+                placeholder={t('admin.aiAssistant.composer.placeholder')}
                 className="min-h-[48px] w-full resize-none sm:flex-1"
                 disabled={isRecording}
               />
@@ -858,7 +874,11 @@ const AdminAiAssistant: React.FC = () => {
                   onClick={startRecording}
                   disabled={!supportsAudio || isSending || isTranscribing}
                   aria-pressed={isRecording}
-                  aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
+                  aria-label={
+                    isRecording
+                      ? t('admin.aiAssistant.aria.stopRecording')
+                      : t('admin.aiAssistant.aria.startRecording')
+                  }
                 >
                   {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </Button>
@@ -874,7 +894,7 @@ const AdminAiAssistant: React.FC = () => {
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
                 {isRecording
-                  ? `Grabando audio… ${Math.min(recordingSeconds, 599)}s`
+                  ? t('admin.aiAssistant.status.recording', { seconds: Math.min(recordingSeconds, 599) })
                   : ' '}
               </span>
               {isRecording && (
@@ -883,7 +903,7 @@ const AdminAiAssistant: React.FC = () => {
                   className="text-xs text-foreground underline"
                   onClick={stopRecording}
                 >
-                  Detener
+                  {t('admin.aiAssistant.actions.stop')}
                 </button>
               )}
             </div>

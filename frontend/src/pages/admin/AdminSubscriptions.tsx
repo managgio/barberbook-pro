@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { CalendarDays, Loader2, Pencil, Plus, Repeat, Search, Trash2, User as UserIcon } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,6 +30,9 @@ import { getUserById, getUsersPage } from '@/data/api/users';
 import { SubscriptionDurationUnit, SubscriptionPlan, User, UserSubscription } from '@/data/types';
 import EmptyState from '@/components/common/EmptyState';
 import { CardSkeleton } from '@/components/common/Skeleton';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
 const EMPTY_PLANS: SubscriptionPlan[] = [];
 const EMPTY_CLIENTS: User[] = [];
@@ -39,10 +41,10 @@ const CLIENTS_PAGE_SIZE = 10;
 const SUBSCRIPTIONS_PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 300;
 
-const durationUnitLabels: Record<SubscriptionDurationUnit, string> = {
-  days: 'día(s)',
-  weeks: 'semana(s)',
-  months: 'mes(es)',
+const DURATION_UNIT_KEYS: Record<SubscriptionDurationUnit, string> = {
+  days: 'admin.subscriptions.durationUnit.days',
+  weeks: 'admin.subscriptions.durationUnit.weeks',
+  months: 'admin.subscriptions.durationUnit.months',
 };
 
 const statusVariant: Record<UserSubscription['status'], 'default' | 'secondary' | 'outline'> = {
@@ -51,10 +53,10 @@ const statusVariant: Record<UserSubscription['status'], 'default' | 'secondary' 
   expired: 'secondary',
 };
 
-const statusLabel: Record<UserSubscription['status'], string> = {
-  active: 'Activa',
-  cancelled: 'Cancelada',
-  expired: 'Expirada',
+const STATUS_LABEL_KEYS: Record<UserSubscription['status'], string> = {
+  active: 'admin.subscriptions.status.active',
+  cancelled: 'admin.subscriptions.status.cancelled',
+  expired: 'admin.subscriptions.status.expired',
 };
 
 const paymentStatusVariant: Record<
@@ -69,17 +71,19 @@ const paymentStatusVariant: Record<
   exempt: 'outline',
 };
 
-const paymentStatusLabel: Record<UserSubscription['paymentStatus'], string> = {
-  paid: 'Pagada',
-  in_person: 'Pendiente próxima cita',
-  pending: 'Pendiente Stripe',
-  failed: 'Pago fallido',
-  cancelled: 'Pago cancelado',
-  exempt: 'Exenta',
+const PAYMENT_STATUS_LABEL_KEYS: Record<UserSubscription['paymentStatus'], string> = {
+  paid: 'admin.subscriptions.paymentStatus.paid',
+  in_person: 'admin.subscriptions.paymentStatus.inPerson',
+  pending: 'admin.subscriptions.paymentStatus.pending',
+  failed: 'admin.subscriptions.paymentStatus.failed',
+  cancelled: 'admin.subscriptions.paymentStatus.cancelled',
+  exempt: 'admin.subscriptions.paymentStatus.exempt',
 };
 
 const AdminSubscriptions: React.FC = () => {
   const { toast } = useToast();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const { currentLocationId } = useTenant();
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false);
   const [isSubmittingPlan, setIsSubmittingPlan] = useState(false);
@@ -200,6 +204,41 @@ const AdminSubscriptions: React.FC = () => {
     () => plans.filter((plan) => !plan.isArchived && plan.isActive),
     [plans],
   );
+  const durationUnitLabels = useMemo(
+    () =>
+      (Object.entries(DURATION_UNIT_KEYS) as Array<[SubscriptionDurationUnit, string]>).reduce(
+        (acc, [key, labelKey]) => {
+          acc[key] = t(labelKey);
+          return acc;
+        },
+        {} as Record<SubscriptionDurationUnit, string>,
+      ),
+    [t],
+  );
+  const statusLabel = useMemo(
+    () =>
+      (Object.entries(STATUS_LABEL_KEYS) as Array<[UserSubscription['status'], string]>).reduce(
+        (acc, [key, labelKey]) => {
+          acc[key] = t(labelKey);
+          return acc;
+        },
+        {} as Record<UserSubscription['status'], string>,
+      ),
+    [t],
+  );
+  const paymentStatusLabel = useMemo(
+    () =>
+      (Object.entries(PAYMENT_STATUS_LABEL_KEYS) as Array<
+        [UserSubscription['paymentStatus'], string]
+      >).reduce(
+        (acc, [key, labelKey]) => {
+          acc[key] = t(labelKey);
+          return acc;
+        },
+        {} as Record<UserSubscription['paymentStatus'], string>,
+      ),
+    [t],
+  );
   const isClientSearchActive = clientSearchTerm.length > 0;
   const isAssignClientSearchActive = assignClientSearchTerm.length > 0;
   const visibleClients = isClientSearchActive
@@ -229,11 +268,11 @@ const AdminSubscriptions: React.FC = () => {
   useEffect(() => {
     if (!plansQuery.error && !clientsQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudieron cargar las suscripciones.',
+      title: t('admin.common.error'),
+      description: t('admin.subscriptions.toast.loadError'),
       variant: 'destructive',
     });
-  }, [clientsQuery.error, plansQuery.error, toast]);
+  }, [clientsQuery.error, plansQuery.error, t, toast]);
 
   useEffect(() => {
     setSubscriptionsPage(1);
@@ -265,32 +304,32 @@ const AdminSubscriptions: React.FC = () => {
 
     if (!name) {
       toast({
-        title: 'Nombre requerido',
-        description: 'Indica el nombre del plan.',
+        title: t('admin.subscriptions.toast.requiredNameTitle'),
+        description: t('admin.subscriptions.toast.requiredNameDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
       toast({
-        title: 'Precio inválido',
-        description: 'Introduce un precio válido (0 o mayor).',
+        title: t('admin.subscriptions.toast.invalidPriceTitle'),
+        description: t('admin.subscriptions.toast.invalidPriceDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (!Number.isFinite(durationValue) || durationValue < 1) {
       toast({
-        title: 'Duración inválida',
-        description: 'La duración debe ser un número mayor o igual a 1.',
+        title: t('admin.subscriptions.toast.invalidDurationTitle'),
+        description: t('admin.subscriptions.toast.invalidDurationDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (!Number.isFinite(displayOrder)) {
       toast({
-        title: 'Orden inválido',
-        description: 'El orden debe ser numérico.',
+        title: t('admin.subscriptions.toast.invalidOrderTitle'),
+        description: t('admin.subscriptions.toast.invalidOrderDescription'),
         variant: 'destructive',
       });
       return;
@@ -301,8 +340,8 @@ const AdminSubscriptions: React.FC = () => {
       planForm.availabilityEndDate < planForm.availabilityStartDate
     ) {
       toast({
-        title: 'Disponibilidad inválida',
-        description: 'La fecha de fin no puede ser anterior a la fecha de inicio.',
+        title: t('admin.subscriptions.toast.invalidAvailabilityTitle'),
+        description: t('admin.subscriptions.toast.invalidAvailabilityDescription'),
         variant: 'destructive',
       });
       return;
@@ -328,14 +367,16 @@ const AdminSubscriptions: React.FC = () => {
       }
       await plansQuery.refetch();
       toast({
-        title: editingPlan ? 'Plan actualizado' : 'Plan creado',
-        description: 'Los cambios se guardaron correctamente.',
+        title: editingPlan
+          ? t('admin.subscriptions.toast.planUpdatedTitle')
+          : t('admin.subscriptions.toast.planCreatedTitle'),
+        description: t('admin.subscriptions.toast.savedDescription'),
       });
       setIsPlanDialogOpen(false);
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.subscriptions.toast.saveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -349,13 +390,13 @@ const AdminSubscriptions: React.FC = () => {
       await archiveSubscriptionPlan(planToArchive.id);
       await plansQuery.refetch();
       toast({
-        title: 'Plan archivado',
-        description: 'El plan ya no estará disponible para nuevas altas.',
+        title: t('admin.subscriptions.toast.planArchivedTitle'),
+        description: t('admin.subscriptions.toast.planArchivedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo archivar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.subscriptions.toast.archiveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -369,8 +410,8 @@ const AdminSubscriptions: React.FC = () => {
       await plansQuery.refetch();
     } catch (error) {
       toast({
-        title: 'No se pudo cambiar el estado',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        title: t('admin.subscriptions.toast.toggleErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.subscriptions.toast.tryAgainLater'),
         variant: 'destructive',
       });
     }
@@ -395,16 +436,16 @@ const AdminSubscriptions: React.FC = () => {
     event.preventDefault();
     if (assignForm.userId === 'none') {
       toast({
-        title: 'Cliente requerido',
-        description: 'Selecciona un cliente para asignar la suscripción.',
+        title: t('admin.subscriptions.toast.requiredClientTitle'),
+        description: t('admin.subscriptions.toast.requiredClientDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (assignForm.planId === 'none') {
       toast({
-        title: 'Plan requerido',
-        description: 'Selecciona el plan que quieres asignar.',
+        title: t('admin.subscriptions.toast.requiredPlanTitle'),
+        description: t('admin.subscriptions.toast.requiredPlanDescription'),
         variant: 'destructive',
       });
       return;
@@ -428,14 +469,14 @@ const AdminSubscriptions: React.FC = () => {
         setSubscriptionsPage(1);
       }
       toast({
-        title: 'Suscripción asignada',
-        description: 'La suscripción quedó activa para ese cliente.',
+        title: t('admin.subscriptions.toast.assignedTitle'),
+        description: t('admin.subscriptions.toast.assignedDescription'),
       });
       setIsAssignDialogOpen(false);
     } catch (error) {
       toast({
-        title: 'No se pudo asignar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.subscriptions.toast.assignErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -450,13 +491,13 @@ const AdminSubscriptions: React.FC = () => {
       await markUserSubscriptionPaid(selectedClientId, subscription.id);
       await Promise.all([userSubscriptionsQuery.refetch(), userActiveSubscriptionQuery.refetch()]);
       toast({
-        title: 'Pago actualizado',
-        description: 'La suscripción quedó marcada como pagada.',
+        title: t('admin.subscriptions.toast.paymentUpdatedTitle'),
+        description: t('admin.subscriptions.toast.paymentUpdatedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo actualizar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.subscriptions.toast.updateErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -470,19 +511,19 @@ const AdminSubscriptions: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Suscripciones</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.subscriptions.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Configura planes por local y asigna suscripciones a clientes.
+            {t('admin.subscriptions.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={openAssignDialog} disabled={activePlans.length === 0}>
             <UserIcon className="w-4 h-4 mr-2" />
-            Asignar plan
+            {t('admin.subscriptions.actions.assignPlan')}
           </Button>
           <Button variant="glow" onClick={() => openPlanDialog()}>
             <Plus className="w-4 h-4 mr-2" />
-            Nuevo plan
+            {t('admin.subscriptions.actions.newPlan')}
           </Button>
         </div>
       </div>
@@ -495,9 +536,9 @@ const AdminSubscriptions: React.FC = () => {
       ) : plans.length === 0 ? (
         <EmptyState
           icon={Repeat}
-          title="Sin planes de suscripción"
-          description="Crea tu primer plan para empezar a gestionar clientes suscritos."
-          action={{ label: 'Crear plan', onClick: () => openPlanDialog() }}
+          title={t('admin.subscriptions.emptyPlans.title')}
+          description={t('admin.subscriptions.emptyPlans.description')}
+          action={{ label: t('admin.subscriptions.actions.createPlan'), onClick: () => openPlanDialog() }}
         />
       ) : (
         <>
@@ -523,28 +564,32 @@ const AdminSubscriptions: React.FC = () => {
                   )}
                   {(plan.availabilityStartDate || plan.availabilityEndDate) && (
                     <p className="text-xs text-muted-foreground">
-                      Ventana de alta:{' '}
+                      {t('admin.subscriptions.plan.availabilityWindow')}{' '}
                       {plan.availabilityStartDate
-                        ? format(parseISO(plan.availabilityStartDate), 'd MMM yyyy', { locale: es })
-                        : 'sin inicio'}{' '}
+                        ? format(parseISO(plan.availabilityStartDate), 'd MMM yyyy', { locale: dateLocale })
+                        : t('admin.subscriptions.plan.noStart')}{' '}
                       -{' '}
                       {plan.availabilityEndDate
-                        ? format(parseISO(plan.availabilityEndDate), 'd MMM yyyy', { locale: es })
-                        : 'sin fin'}
+                        ? format(parseISO(plan.availabilityEndDate), 'd MMM yyyy', { locale: dateLocale })
+                        : t('admin.subscriptions.plan.noEnd')}
                     </p>
                   )}
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Badge variant={plan.isActive ? 'default' : 'secondary'}>
-                      {plan.isActive ? 'Activo' : 'Inactivo'}
+                      {plan.isActive
+                        ? t('admin.subscriptions.plan.active')
+                        : t('admin.subscriptions.plan.inactive')}
                     </Badge>
-                    {plan.isArchived && <Badge variant="outline">Archivado</Badge>}
+                    {plan.isArchived && (
+                      <Badge variant="outline">{t('admin.subscriptions.plan.archived')}</Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => openPlanDialog(plan)} disabled={plan.isArchived}>
                       <Pencil className="w-4 h-4 mr-1" />
-                      Editar
+                      {t('admin.common.edit')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -554,7 +599,7 @@ const AdminSubscriptions: React.FC = () => {
                       disabled={plan.isArchived}
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
-                      Archivar
+                      {t('admin.subscriptions.actions.archive')}
                     </Button>
                   </div>
                 </CardContent>
@@ -566,16 +611,18 @@ const AdminSubscriptions: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <CalendarDays className="w-5 h-5 text-primary" />
-                Suscripciones por cliente
+                {t('admin.subscriptions.clients.title')}
               </CardTitle>
               <CardDescription>
-                Consulta qué cliente está suscrito actualmente y su historial de planes.
+                {t('admin.subscriptions.clients.description')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-[320px,1fr] lg:items-start">
                 <div className="space-y-3">
-                  <Label htmlFor="subscriptions-client-search">Buscar cliente</Label>
+                  <Label htmlFor="subscriptions-client-search">
+                    {t('admin.subscriptions.clients.searchLabel')}
+                  </Label>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -585,27 +632,29 @@ const AdminSubscriptions: React.FC = () => {
                         setClientSearchDraft(event.target.value);
                         setClientsPage(1);
                       }}
-                      placeholder="Nombre, email o teléfono..."
+                      placeholder={t('admin.subscriptions.clients.searchPlaceholder')}
                       className="pl-10"
                     />
                   </div>
                   <div className="max-h-80 overflow-y-auto rounded-lg border border-border/70">
                     {!isClientSearchActive && selectedClientId === 'none' ? (
                       <p className="p-3 text-sm text-muted-foreground">
-                        Escribe para buscar un cliente.
+                        {t('admin.subscriptions.clients.searchHint')}
                       </p>
                     ) : !isClientSearchActive && selectedClientId !== 'none' && selectedClientQuery.isLoading ? (
                       <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Cargando cliente seleccionado...
+                        {t('admin.subscriptions.clients.loadingSelected')}
                       </div>
                     ) : clientsQuery.isLoading ? (
                       <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Buscando clientes...
+                        {t('admin.subscriptions.clients.loadingSearch')}
                       </div>
                     ) : visibleClients.length === 0 ? (
-                      <p className="p-3 text-sm text-muted-foreground">No se encontraron clientes.</p>
+                      <p className="p-3 text-sm text-muted-foreground">
+                        {t('admin.subscriptions.clients.noResults')}
+                      </p>
                     ) : (
                       visibleClients.map((client) => (
                         <button
@@ -623,16 +672,16 @@ const AdminSubscriptions: React.FC = () => {
                           }`}
                         >
                           <p className="text-sm font-medium text-foreground">{client.name}</p>
-                          <p className="text-xs text-muted-foreground">{client.email || 'Sin email'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {client.email || t('admin.clients.noEmail')}
+                          </p>
                         </button>
                       ))
                     )}
                   </div>
                   {isClientSearchActive && (
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        Página {Math.min(clientsPage, clientsTotalPages)} de {clientsTotalPages}
-                      </span>
+                      <span>{t('admin.common.pagination.pageOf', { page: Math.min(clientsPage, clientsTotalPages), total: clientsTotalPages })}</span>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -641,7 +690,7 @@ const AdminSubscriptions: React.FC = () => {
                           onClick={() => setClientsPage((page) => Math.max(1, page - 1))}
                           disabled={clientsPage <= 1}
                         >
-                          Anterior
+                          {t('admin.common.previous')}
                         </Button>
                         <Button
                           type="button"
@@ -650,7 +699,7 @@ const AdminSubscriptions: React.FC = () => {
                           onClick={() => setClientsPage((page) => Math.min(clientsTotalPages, page + 1))}
                           disabled={clientsPage >= clientsTotalPages}
                         >
-                          Siguiente
+                          {t('admin.common.next')}
                         </Button>
                       </div>
                     </div>
@@ -660,12 +709,12 @@ const AdminSubscriptions: React.FC = () => {
                 <div className="space-y-4 rounded-lg border border-border/70 bg-muted/20 p-3">
                   {selectedClientId === 'none' ? (
                     <p className="text-sm text-muted-foreground">
-                      Selecciona un cliente para ver sus suscripciones.
+                      {t('admin.subscriptions.clients.selectHint')}
                     </p>
                   ) : selectedClientQuery.isLoading ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Cargando cliente...
+                      {t('admin.subscriptions.clients.loading')}
                     </div>
                   ) : selectedClient ? (
                     <>
@@ -678,34 +727,36 @@ const AdminSubscriptions: React.FC = () => {
                           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                         ) : activeSubscription ? (
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge>Activa: {activeSubscription.plan.name}</Badge>
+                            <Badge>
+                              {t('admin.subscriptions.activeBadge', { planName: activeSubscription.plan.name })}
+                            </Badge>
                             <Badge variant={paymentStatusVariant[activeSubscription.paymentStatus]}>
                               {paymentStatusLabel[activeSubscription.paymentStatus]}
                             </Badge>
                           </div>
                         ) : (
-                          <Badge variant="outline">Sin suscripción activa</Badge>
+                          <Badge variant="outline">{t('admin.subscriptions.noActive')}</Badge>
                         )}
                       </div>
                       <div className="rounded-md border border-border/70 bg-background/70">
                         {userSubscriptionsQuery.isLoading ? (
                           <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Cargando historial...
+                            {t('admin.subscriptions.history.loading')}
                           </div>
                         ) : selectedClientSubscriptions.length === 0 ? (
                           <p className="p-3 text-sm text-muted-foreground">
-                            Este cliente aún no tiene suscripciones registradas.
+                            {t('admin.subscriptions.history.empty')}
                           </p>
                         ) : (
                           <Table>
                             <TableHeader>
                               <TableRow>
-                                <TableHead>Plan</TableHead>
-                                <TableHead>Periodo</TableHead>
-                                <TableHead>Estado</TableHead>
-                                <TableHead>Pago</TableHead>
-                                <TableHead>Alta</TableHead>
+                                <TableHead>{t('admin.subscriptions.table.plan')}</TableHead>
+                                <TableHead>{t('admin.subscriptions.table.period')}</TableHead>
+                                <TableHead>{t('admin.subscriptions.table.status')}</TableHead>
+                                <TableHead>{t('admin.subscriptions.table.payment')}</TableHead>
+                                <TableHead>{t('admin.subscriptions.table.source')}</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -713,8 +764,8 @@ const AdminSubscriptions: React.FC = () => {
                                 <TableRow key={subscription.id}>
                                   <TableCell className="font-medium">{subscription.plan.name}</TableCell>
                                   <TableCell className="text-xs text-muted-foreground">
-                                    {format(parseISO(subscription.startDate), 'd MMM yyyy', { locale: es })} -{' '}
-                                    {format(parseISO(subscription.endDate), 'd MMM yyyy', { locale: es })}
+                                    {format(parseISO(subscription.startDate), 'd MMM yyyy', { locale: dateLocale })} -{' '}
+                                    {format(parseISO(subscription.endDate), 'd MMM yyyy', { locale: dateLocale })}
                                   </TableCell>
                                   <TableCell>
                                     <Badge variant={statusVariant[subscription.status]}>
@@ -737,13 +788,15 @@ const AdminSubscriptions: React.FC = () => {
                                           {markingPaidSubscriptionId === subscription.id && (
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                           )}
-                                          Marcar pagada
+                                          {t('admin.subscriptions.actions.markPaid')}
                                         </Button>
                                       )}
                                     </div>
                                   </TableCell>
                                   <TableCell className="text-xs text-muted-foreground">
-                                    {subscription.source === 'admin' ? 'Admin' : 'Cliente'}
+                                    {subscription.source === 'admin'
+                                      ? t('admin.subscriptions.source.admin')
+                                      : t('admin.subscriptions.source.client')}
                                   </TableCell>
                                 </TableRow>
                               ))}
@@ -754,10 +807,12 @@ const AdminSubscriptions: React.FC = () => {
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>
                           {subscriptionsTotal === 0
-                            ? 'Sin registros'
-                            : `${(subscriptionsPage - 1) * SUBSCRIPTIONS_PAGE_SIZE + 1}-${
-                                Math.min(subscriptionsPage * SUBSCRIPTIONS_PAGE_SIZE, subscriptionsTotal)
-                              } de ${subscriptionsTotal}`}
+                            ? t('admin.subscriptions.pagination.noRecords')
+                            : t('admin.subscriptions.pagination.range', {
+                                from: (subscriptionsPage - 1) * SUBSCRIPTIONS_PAGE_SIZE + 1,
+                                to: Math.min(subscriptionsPage * SUBSCRIPTIONS_PAGE_SIZE, subscriptionsTotal),
+                                total: subscriptionsTotal,
+                              })}
                         </span>
                         <div className="flex items-center gap-2">
                           <Button
@@ -767,11 +822,9 @@ const AdminSubscriptions: React.FC = () => {
                             onClick={() => setSubscriptionsPage((page) => Math.max(1, page - 1))}
                             disabled={subscriptionsPage <= 1}
                           >
-                            Anterior
+                            {t('admin.common.previous')}
                           </Button>
-                          <span>
-                            Página {Math.min(subscriptionsPage, subscriptionsTotalPages)} de {subscriptionsTotalPages}
-                          </span>
+                          <span>{t('admin.common.pagination.pageOf', { page: Math.min(subscriptionsPage, subscriptionsTotalPages), total: subscriptionsTotalPages })}</span>
                           <Button
                             type="button"
                             size="sm"
@@ -779,14 +832,14 @@ const AdminSubscriptions: React.FC = () => {
                             onClick={() => setSubscriptionsPage((page) => Math.min(subscriptionsTotalPages, page + 1))}
                             disabled={subscriptionsPage >= subscriptionsTotalPages}
                           >
-                            Siguiente
+                            {t('admin.common.next')}
                           </Button>
                         </div>
                       </div>
                     </>
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      No se pudo cargar el cliente seleccionado.
+                      {t('admin.subscriptions.clients.loadSelectedError')}
                     </p>
                   )}
                 </div>
@@ -799,34 +852,58 @@ const AdminSubscriptions: React.FC = () => {
       <Dialog open={isPlanDialogOpen} onOpenChange={setIsPlanDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingPlan ? 'Editar plan' : 'Nuevo plan'}</DialogTitle>
+            <DialogTitle>
+              {editingPlan
+                ? t('admin.subscriptions.dialog.editPlanTitle')
+                : t('admin.subscriptions.dialog.newPlanTitle')}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              Configura precio, duración y estado del plan de suscripción.
+              {t('admin.subscriptions.dialog.planDescription')}
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmitPlan}>
             <div className="space-y-2">
-              <Label htmlFor="subscription-name">Nombre</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="subscription-name">{t('admin.subscriptions.fields.name')}</Label>
+                <InlineTranslationPopover
+                  entityType="subscription_plan"
+                  entityId={editingPlan?.id}
+                  fieldKey="name"
+                  onUpdated={async () => {
+                    await plansQuery.refetch();
+                  }}
+                />
+              </div>
               <Input
                 id="subscription-name"
                 value={planForm.name}
                 onChange={(event) => setPlanForm((prev) => ({ ...prev, name: event.target.value }))}
-                placeholder="Ej. Plan trimestral ilimitado"
+                placeholder={t('admin.subscriptions.fields.namePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="subscription-description">Descripción</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="subscription-description">{t('admin.subscriptions.fields.description')}</Label>
+                <InlineTranslationPopover
+                  entityType="subscription_plan"
+                  entityId={editingPlan?.id}
+                  fieldKey="description"
+                  onUpdated={async () => {
+                    await plansQuery.refetch();
+                  }}
+                />
+              </div>
               <Textarea
                 id="subscription-description"
                 value={planForm.description}
                 onChange={(event) => setPlanForm((prev) => ({ ...prev, description: event.target.value }))}
                 className="min-h-[90px]"
-                placeholder="Describe qué incluye este plan."
+                placeholder={t('admin.subscriptions.fields.descriptionPlaceholder')}
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="subscription-price">Precio (€)</Label>
+                <Label htmlFor="subscription-price">{t('admin.subscriptions.fields.price')}</Label>
                 <Input
                   id="subscription-price"
                   type="number"
@@ -837,7 +914,7 @@ const AdminSubscriptions: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="subscription-display-order">Orden</Label>
+                <Label htmlFor="subscription-display-order">{t('admin.subscriptions.fields.order')}</Label>
                 <Input
                   id="subscription-display-order"
                   type="number"
@@ -849,7 +926,7 @@ const AdminSubscriptions: React.FC = () => {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="subscription-duration-value">Duración</Label>
+                <Label htmlFor="subscription-duration-value">{t('admin.subscriptions.fields.duration')}</Label>
                 <Input
                   id="subscription-duration-value"
                   type="number"
@@ -860,7 +937,7 @@ const AdminSubscriptions: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Unidad</Label>
+                <Label>{t('admin.subscriptions.fields.durationUnit')}</Label>
                 <Select
                   value={planForm.durationUnit}
                   onValueChange={(value) =>
@@ -871,16 +948,18 @@ const AdminSubscriptions: React.FC = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="days">Días</SelectItem>
-                    <SelectItem value="weeks">Semanas</SelectItem>
-                    <SelectItem value="months">Meses</SelectItem>
+                    <SelectItem value="days">{t('admin.subscriptions.durationUnit.daysPlural')}</SelectItem>
+                    <SelectItem value="weeks">{t('admin.subscriptions.durationUnit.weeksPlural')}</SelectItem>
+                    <SelectItem value="months">{t('admin.subscriptions.durationUnit.monthsPlural')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="subscription-availability-start">Alta desde (opcional)</Label>
+                <Label htmlFor="subscription-availability-start">
+                  {t('admin.subscriptions.fields.availabilityStart')}
+                </Label>
                 <Input
                   id="subscription-availability-start"
                   type="date"
@@ -891,7 +970,9 @@ const AdminSubscriptions: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="subscription-availability-end">Alta hasta (opcional)</Label>
+                <Label htmlFor="subscription-availability-end">
+                  {t('admin.subscriptions.fields.availabilityEnd')}
+                </Label>
                 <Input
                   id="subscription-availability-end"
                   type="date"
@@ -904,8 +985,8 @@ const AdminSubscriptions: React.FC = () => {
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2">
               <div>
-                <p className="text-sm font-medium text-foreground">Plan activo</p>
-                <p className="text-xs text-muted-foreground">Disponible para nuevas altas.</p>
+                <p className="text-sm font-medium text-foreground">{t('admin.subscriptions.fields.planActive')}</p>
+                <p className="text-xs text-muted-foreground">{t('admin.subscriptions.fields.planActiveHint')}</p>
               </div>
               <Switch
                 checked={planForm.isActive}
@@ -914,11 +995,11 @@ const AdminSubscriptions: React.FC = () => {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsPlanDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmittingPlan}>
                 {isSubmittingPlan && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                Guardar plan
+                {t('admin.subscriptions.actions.savePlan')}
               </Button>
             </DialogFooter>
           </form>
@@ -928,14 +1009,14 @@ const AdminSubscriptions: React.FC = () => {
       <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Asignar suscripción</DialogTitle>
+            <DialogTitle>{t('admin.subscriptions.dialog.assignTitle')}</DialogTitle>
             <DialogDescription className="sr-only">
-              Selecciona cliente, plan y fecha de inicio para activar una suscripción.
+              {t('admin.subscriptions.dialog.assignDescription')}
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleAssignPlan}>
             <div className="space-y-2">
-              <Label htmlFor="assign-client-search">Cliente</Label>
+              <Label htmlFor="assign-client-search">{t('admin.common.client')}</Label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -945,25 +1026,25 @@ const AdminSubscriptions: React.FC = () => {
                     setAssignClientSearchDraft(event.target.value);
                     setAssignClientsPage(1);
                   }}
-                  placeholder="Buscar cliente..."
+                  placeholder={t('admin.subscriptions.assign.searchPlaceholder')}
                   className="pl-10"
                 />
               </div>
               <div className="max-h-52 overflow-y-auto rounded-md border border-border/70">
                 {!isAssignClientSearchActive && assignForm.userId === 'none' ? (
-                  <p className="p-3 text-sm text-muted-foreground">Escribe para buscar cliente.</p>
+                  <p className="p-3 text-sm text-muted-foreground">{t('admin.subscriptions.assign.searchHint')}</p>
                 ) : !isAssignClientSearchActive && assignForm.userId !== 'none' && assignSelectedClientQuery.isLoading ? (
                   <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Cargando cliente seleccionado...
+                    {t('admin.subscriptions.clients.loadingSelected')}
                   </div>
                 ) : assignClientsQuery.isLoading ? (
                   <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Buscando clientes...
+                    {t('admin.subscriptions.clients.loadingSearch')}
                   </div>
                 ) : visibleAssignClients.length === 0 ? (
-                  <p className="p-3 text-sm text-muted-foreground">Sin resultados.</p>
+                  <p className="p-3 text-sm text-muted-foreground">{t('admin.search.empty.title')}</p>
                 ) : (
                   visibleAssignClients.map((client) => (
                     <button
@@ -980,16 +1061,14 @@ const AdminSubscriptions: React.FC = () => {
                       }`}
                     >
                       <p className="text-sm font-medium text-foreground">{client.name}</p>
-                      <p className="text-xs text-muted-foreground">{client.email || 'Sin email'}</p>
+                      <p className="text-xs text-muted-foreground">{client.email || t('admin.clients.noEmail')}</p>
                     </button>
                   ))
                 )}
               </div>
               {isAssignClientSearchActive && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    Página {Math.min(assignClientsPage, assignClientsTotalPages)} de {assignClientsTotalPages}
-                  </span>
+                  <span>{t('admin.common.pagination.pageOf', { page: Math.min(assignClientsPage, assignClientsTotalPages), total: assignClientsTotalPages })}</span>
                   <div className="flex items-center gap-2">
                     <Button
                       type="button"
@@ -998,7 +1077,7 @@ const AdminSubscriptions: React.FC = () => {
                       onClick={() => setAssignClientsPage((page) => Math.max(1, page - 1))}
                       disabled={assignClientsPage <= 1}
                     >
-                      Anterior
+                      {t('admin.common.previous')}
                     </Button>
                     <Button
                       type="button"
@@ -1007,28 +1086,31 @@ const AdminSubscriptions: React.FC = () => {
                       onClick={() => setAssignClientsPage((page) => Math.min(assignClientsTotalPages, page + 1))}
                       disabled={assignClientsPage >= assignClientsTotalPages}
                     >
-                      Siguiente
+                      {t('admin.common.next')}
                     </Button>
                   </div>
                 </div>
               )}
               {assignSelectedClient && (
                 <p className="text-xs text-muted-foreground">
-                  Seleccionado: <span className="font-medium text-foreground">{assignSelectedClient.name}</span>
+                  {t('admin.subscriptions.assign.selected')}{' '}
+                  <span className="font-medium text-foreground">{assignSelectedClient.name}</span>
                 </p>
               )}
             </div>
             <div className="space-y-2">
-              <Label>Plan</Label>
+              <Label>{t('admin.subscriptions.fields.plan')}</Label>
               <Select
                 value={assignForm.planId}
                 onValueChange={(value) => setAssignForm((prev) => ({ ...prev, planId: value }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona plan" />
+                  <SelectValue placeholder={t('admin.subscriptions.fields.selectPlan')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {activePlans.length === 0 && <SelectItem value="none">Sin planes activos</SelectItem>}
+                  {activePlans.length === 0 && (
+                    <SelectItem value="none">{t('admin.subscriptions.assign.noActivePlans')}</SelectItem>
+                  )}
                   {activePlans.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       {plan.name}
@@ -1038,7 +1120,7 @@ const AdminSubscriptions: React.FC = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="assign-start-date">Fecha de inicio (opcional)</Label>
+              <Label htmlFor="assign-start-date">{t('admin.subscriptions.fields.startDate')}</Label>
               <Input
                 id="assign-start-date"
                 type="date"
@@ -1047,22 +1129,22 @@ const AdminSubscriptions: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="assign-notes">Nota interna (opcional)</Label>
+              <Label htmlFor="assign-notes">{t('admin.subscriptions.fields.internalNote')}</Label>
               <Textarea
                 id="assign-notes"
                 value={assignForm.notes}
                 onChange={(event) => setAssignForm((prev) => ({ ...prev, notes: event.target.value }))}
                 className="min-h-[90px]"
-                placeholder="Ej. Alta manual en mostrador."
+                placeholder={t('admin.subscriptions.fields.internalNotePlaceholder')}
               />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsAssignDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isAssigning}>
                 {isAssigning && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                Asignar
+                {t('admin.subscriptions.actions.assign')}
               </Button>
             </DialogFooter>
           </form>
@@ -1072,15 +1154,15 @@ const AdminSubscriptions: React.FC = () => {
       <AlertDialog open={Boolean(planToArchive)} onOpenChange={(open) => !open && setPlanToArchive(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Archivar plan</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.subscriptions.archiveDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Este plan no aparecerá para nuevas altas, pero se mantendrá en el historial de clientes.
+              {t('admin.subscriptions.archiveDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleArchivePlan}>
-              Archivar
+              {t('admin.subscriptions.actions.archive')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

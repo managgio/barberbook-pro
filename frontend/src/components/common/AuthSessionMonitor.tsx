@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { AUTH_SESSION_ERROR_EVENT } from '@/data/api/request';
 import { toast } from '@/hooks/use-toast';
+import { useI18n } from '@/hooks/useI18n';
 
 const COOLDOWN_MS = 3_000;
 
@@ -12,6 +13,7 @@ const AuthSessionMonitor = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isHandlingRef = useRef(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     const handleAuthSessionError = (event: Event) => {
@@ -29,14 +31,14 @@ const AuthSessionMonitor = () => {
         : `/auth?reason=session-expired&redirect=${encodeURIComponent(currentPath)}`;
 
       toast({
-        title: 'Sesión expirada',
-        description: 'Vuelve a iniciar sesión para continuar.',
+        title: t('authSession.toast.expiredTitle'),
+        description: t('authSession.toast.expiredDescription'),
         variant: 'destructive',
       });
 
       void logout()
         .catch((error) => {
-          console.error('Error cerrando sesión tras 401/403', error);
+          console.error('Error closing session after 401/403', error);
         })
         .finally(() => {
           navigate(redirectPath, { replace: true });
@@ -50,7 +52,7 @@ const AuthSessionMonitor = () => {
     return () => {
       window.removeEventListener(AUTH_SESSION_ERROR_EVENT, handleAuthSessionError as EventListener);
     };
-  }, [isAuthenticated, location.pathname, location.search, logout, navigate]);
+  }, [isAuthenticated, location.pathname, location.search, logout, navigate, t]);
 
   return null;
 };

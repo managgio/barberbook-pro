@@ -23,6 +23,8 @@ import { ReviewProgramConfig, ReviewMetrics, ReviewFeedbackItem } from '@/data/t
 import { Info } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { useI18n } from '@/hooks/useI18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
 const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
 const FEEDBACK_PAGE = 1;
@@ -31,6 +33,7 @@ const EMPTY_FEEDBACK: { total: number; items: ReviewFeedbackItem[] } = { total: 
 
 const AdminReviews: React.FC = () => {
   const { toast } = useToast();
+  const { t, language } = useI18n();
   const { currentLocationId } = useTenant();
   const queryClient = useQueryClient();
   const copy = useBusinessCopy();
@@ -48,42 +51,44 @@ const AdminReviews: React.FC = () => {
     'googleUrl' | 'cooldown' | 'minVisits' | 'delay' | 'maxSnoozes' | 'snoozeHours' | 'metrics' | null
   >(null);
 
-  const infoContent = {
-    googleUrl: {
-      title: 'URL de reseña en Google',
-      body: `Enlace directo para escribir una reseña ${copy.location.fromWithDefinite} en Google. Se abre en nueva pestaña cuando el cliente acepta.`,
-    },
-    cooldown: {
-      title: 'Cooldown',
-      body: `Tiempo mínimo entre solicitudes de reseña para el mismo cliente en ${copy.location.definiteSingular}.`,
-    },
-    minVisits: {
-      title: 'Mínimo de visitas',
-      body: 'Número de citas COMPLETED necesarias antes de pedir una reseña.',
-    },
-    delay: {
-      title: 'Retraso tras completar',
-      body: 'Minutos de espera después de completar la cita antes de poder mostrar el modal.',
-    },
-    maxSnoozes: {
-      title: 'Máximo de recordatorios',
-      body: 'Cuántas veces puede pulsar “Ahora no” antes de dejar de mostrar el modal.',
-    },
-    snoozeHours: {
-      title: 'Horas para reintentar',
-      body: 'Horas que se espera tras un “Ahora no” antes de volver a mostrar el modal.',
-    },
-    metrics: {
-      title: 'Cómo se calculan las métricas',
-      body:
-        'Solicitudes: veces que se creó la petición de reseña en esas fechas.\n' +
-        'Mostradas: veces que el aviso apareció en pantalla.\n' +
-        'Valoradas: clientes que dejaron estrellas.\n' +
-        'Clicks Google: clientes que hicieron clic para ir a Google (no significa que hayan escrito la reseña).\n' +
-        'Feedback privado: clientes que pusieron 1–3 estrellas y dejaron un comentario.\n' +
-        'Conversión: porcentaje de clics a Google sobre las mostradas.',
-    },
-  } as const;
+  const infoContent = useMemo(
+    () =>
+      ({
+        googleUrl: {
+          title: t('admin.reviews.info.googleUrl.title'),
+          body: t('admin.reviews.info.googleUrl.body', {
+            locationFromWithDefinite: copy.location.fromWithDefinite,
+          }),
+        },
+        cooldown: {
+          title: t('admin.reviews.info.cooldown.title'),
+          body: t('admin.reviews.info.cooldown.body', {
+            locationDefiniteSingular: copy.location.definiteSingular,
+          }),
+        },
+        minVisits: {
+          title: t('admin.reviews.info.minVisits.title'),
+          body: t('admin.reviews.info.minVisits.body'),
+        },
+        delay: {
+          title: t('admin.reviews.info.delay.title'),
+          body: t('admin.reviews.info.delay.body'),
+        },
+        maxSnoozes: {
+          title: t('admin.reviews.info.maxSnoozes.title'),
+          body: t('admin.reviews.info.maxSnoozes.body'),
+        },
+        snoozeHours: {
+          title: t('admin.reviews.info.snoozeHours.title'),
+          body: t('admin.reviews.info.snoozeHours.body'),
+        },
+        metrics: {
+          title: t('admin.reviews.info.metrics.title'),
+          body: t('admin.reviews.info.metrics.body'),
+        },
+      }) as const,
+    [copy.location.definiteSingular, copy.location.fromWithDefinite, t],
+  );
 
   const openInfo = (key: typeof infoKey) => {
     setInfoKey(key);
@@ -122,24 +127,25 @@ const AdminReviews: React.FC = () => {
   useEffect(() => {
     if (!configQuery.error && !metricsQuery.error) return;
     toast({
-      title: 'No se pudo cargar reseñas',
-      description: 'Inténtalo de nuevo.',
+      title: t('admin.reviews.toast.loadErrorTitle'),
+      description: t('admin.reviews.toast.tryAgain'),
       variant: 'destructive',
     });
-  }, [configQuery.error, metricsQuery.error, toast]);
+  }, [configQuery.error, metricsQuery.error, t, toast]);
 
   useEffect(() => {
     if (!feedbackQuery.error) return;
     toast({
-      title: 'No se pudo cargar feedback',
-      description: 'Inténtalo de nuevo.',
+      title: t('admin.reviews.toast.loadFeedbackErrorTitle'),
+      description: t('admin.reviews.toast.tryAgain'),
       variant: 'destructive',
     });
-  }, [feedbackQuery.error, toast]);
+  }, [feedbackQuery.error, t, toast]);
 
   const metrics = metricsQuery.data ?? null;
   const feedback = feedbackQuery.data ?? EMPTY_FEEDBACK;
   const isLoading = configQuery.isLoading || metricsQuery.isLoading || !config;
+  const reviewConfigEntityId = config?.localId;
 
   const updateConfigField = <K extends keyof ReviewProgramConfig>(key: K, value: ReviewProgramConfig[K]) => {
     if (!config) return;
@@ -154,13 +160,13 @@ const AdminReviews: React.FC = () => {
       setConfig(updated);
       queryClient.setQueryData(queryKeys.adminReviewConfig(currentLocationId), updated);
       toast({
-        title: 'Configuración guardada',
-        description: 'Reseñas inteligentes actualizadas.',
+        title: t('admin.reviews.toast.savedTitle'),
+        description: t('admin.reviews.toast.savedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
-        description: error instanceof Error ? error.message : 'Revisa los datos.',
+        title: t('admin.reviews.toast.saveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.reviews.toast.reviewData'),
         variant: 'destructive',
       });
     } finally {
@@ -178,13 +184,13 @@ const AdminReviews: React.FC = () => {
         ),
       }));
       toast({
-        title: 'Feedback resuelto',
-        description: 'Se marcó como resuelto.',
+        title: t('admin.reviews.toast.feedbackResolvedTitle'),
+        description: t('admin.reviews.toast.feedbackResolvedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo resolver',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        title: t('admin.reviews.toast.resolveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.reviews.toast.tryAgain'),
         variant: 'destructive',
       });
     }
@@ -193,17 +199,17 @@ const AdminReviews: React.FC = () => {
   const metricsCards = useMemo(() => {
     if (!metrics) return [];
     return [
-      { label: 'Solicitudes', value: metrics.createdCount },
-      { label: 'Mostradas', value: metrics.shownCount },
-      { label: 'Valoradas', value: metrics.ratedCount },
-      { label: 'Clicks Google', value: metrics.googleClicksCount },
-      { label: 'Feedback privado', value: metrics.feedbackCount },
-      { label: 'Conversión', value: `${(metrics.conversionRate * 100).toFixed(1)}%` },
+      { label: t('admin.reviews.metrics.requests'), value: metrics.createdCount },
+      { label: t('admin.reviews.metrics.shown'), value: metrics.shownCount },
+      { label: t('admin.reviews.metrics.rated'), value: metrics.ratedCount },
+      { label: t('admin.reviews.metrics.googleClicks'), value: metrics.googleClicksCount },
+      { label: t('admin.reviews.metrics.privateFeedback'), value: metrics.feedbackCount },
+      { label: t('admin.reviews.metrics.conversion'), value: `${(metrics.conversionRate * 100).toFixed(1)}%` },
     ];
-  }, [metrics]);
+  }, [metrics, t]);
 
   if (isLoading || !config) {
-    return <div className="text-muted-foreground">Cargando reseñas...</div>;
+    return <div className="text-muted-foreground">{t('admin.reviews.loading')}</div>;
   }
 
   return (
@@ -211,27 +217,27 @@ const AdminReviews: React.FC = () => {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="pl-12 md:pl-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold text-foreground">Reseñas inteligentes</h1>
+            <h1 className="text-3xl font-bold text-foreground">{t('admin.reviews.title')}</h1>
             <button
               type="button"
               className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-              aria-label="Cómo se calculan las métricas"
+              aria-label={t('admin.reviews.aria.metricsInfo')}
               onClick={() => openInfo('metrics')}
             >
               <Info className="h-4 w-4" />
             </button>
           </div>
           <p className="text-muted-foreground">
-            Pide reseñas en el momento perfecto, sin molestar.
+            {t('admin.reviews.subtitle')}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Desde</span>
+            <span>{t('admin.reviews.filters.from')}</span>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Hasta</span>
+            <span>{t('admin.reviews.filters.to')}</span>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
         </div>
@@ -250,23 +256,23 @@ const AdminReviews: React.FC = () => {
 
       <Tabs defaultValue="config" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="config">Configuración</TabsTrigger>
-          <TabsTrigger value="feedback">Feedback privado</TabsTrigger>
+          <TabsTrigger value="config">{t('admin.reviews.tabs.config')}</TabsTrigger>
+          <TabsTrigger value="feedback">{t('admin.reviews.tabs.feedback')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="config" className="space-y-4">
           <Card variant="elevated">
             <CardHeader>
-              <CardTitle>Programa de reseñas</CardTitle>
+              <CardTitle>{t('admin.reviews.program.title')}</CardTitle>
               <CardDescription>
-                Configura cuándo y cómo pedir reseñas in-app.
+                {t('admin.reviews.program.description')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Activar reseñas inteligentes</p>
-                  <p className="text-xs text-muted-foreground">Solo se mostrarán tras citas completadas.</p>
+                  <p className="text-sm font-semibold text-foreground">{t('admin.reviews.fields.enable')}</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.reviews.fields.enableHint')}</p>
                 </div>
                 <Switch
                   checked={config.enabled}
@@ -277,11 +283,11 @@ const AdminReviews: React.FC = () => {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>URL de reseña en Google</Label>
+                    <Label>{t('admin.reviews.fields.googleUrl')}</Label>
                     <button
                       type="button"
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Más información sobre URL de reseña"
+                      aria-label={t('admin.reviews.aria.googleUrlInfo')}
                       onClick={() => openInfo('googleUrl')}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -295,11 +301,11 @@ const AdminReviews: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>Cooldown (días)</Label>
+                    <Label>{t('admin.reviews.fields.cooldownDays')}</Label>
                     <button
                       type="button"
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Más información sobre cooldown"
+                      aria-label={t('admin.reviews.aria.cooldownInfo')}
                       onClick={() => openInfo('cooldown')}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -314,11 +320,11 @@ const AdminReviews: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>Mínimo de visitas</Label>
+                    <Label>{t('admin.reviews.fields.minVisits')}</Label>
                     <button
                       type="button"
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Más información sobre mínimo de visitas"
+                      aria-label={t('admin.reviews.aria.minVisitsInfo')}
                       onClick={() => openInfo('minVisits')}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -333,11 +339,11 @@ const AdminReviews: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>Retraso tras completar (min)</Label>
+                    <Label>{t('admin.reviews.fields.delayMinutes')}</Label>
                     <button
                       type="button"
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Más información sobre retraso"
+                      aria-label={t('admin.reviews.aria.delayInfo')}
                       onClick={() => openInfo('delay')}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -352,11 +358,11 @@ const AdminReviews: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>Máx. recordatorios</Label>
+                    <Label>{t('admin.reviews.fields.maxSnoozes')}</Label>
                     <button
                       type="button"
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Más información sobre recordatorios"
+                      aria-label={t('admin.reviews.aria.maxSnoozesInfo')}
                       onClick={() => openInfo('maxSnoozes')}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -371,11 +377,11 @@ const AdminReviews: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Label>Horas para reintentar</Label>
+                    <Label>{t('admin.reviews.fields.snoozeHours')}</Label>
                     <button
                       type="button"
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Más información sobre reintento"
+                      aria-label={t('admin.reviews.aria.snoozeHoursInfo')}
                       onClick={() => openInfo('snoozeHours')}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -393,12 +399,22 @@ const AdminReviews: React.FC = () => {
               <Separator />
               <div className="space-y-3">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Textos del modal</p>
-                  <p className="text-xs text-muted-foreground">Personaliza el copy visible al cliente.</p>
+                  <p className="text-sm font-semibold text-foreground">{t('admin.reviews.modalCopy.title')}</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.reviews.modalCopy.description')}</p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2 md:col-span-2">
-                    <Label>Título</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>{t('admin.reviews.modalCopy.fields.title')}</Label>
+                      <InlineTranslationPopover
+                        entityType="review_config"
+                        entityId={reviewConfigEntityId}
+                        fieldKey="copyJson.title"
+                        onUpdated={async () => {
+                          await configQuery.refetch();
+                        }}
+                      />
+                    </div>
                     <Input
                       value={config.copyJson.title}
                       onChange={(e) =>
@@ -407,7 +423,17 @@ const AdminReviews: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2 md:col-span-2">
-                    <Label>Subtítulo</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>{t('admin.reviews.modalCopy.fields.subtitle')}</Label>
+                      <InlineTranslationPopover
+                        entityType="review_config"
+                        entityId={reviewConfigEntityId}
+                        fieldKey="copyJson.subtitle"
+                        onUpdated={async () => {
+                          await configQuery.refetch();
+                        }}
+                      />
+                    </div>
                     <Textarea
                       value={config.copyJson.subtitle}
                       onChange={(e) =>
@@ -416,7 +442,17 @@ const AdminReviews: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Texto positivo</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>{t('admin.reviews.modalCopy.fields.positiveText')}</Label>
+                      <InlineTranslationPopover
+                        entityType="review_config"
+                        entityId={reviewConfigEntityId}
+                        fieldKey="copyJson.positiveText"
+                        onUpdated={async () => {
+                          await configQuery.refetch();
+                        }}
+                      />
+                    </div>
                     <Textarea
                       value={config.copyJson.positiveText}
                       onChange={(e) =>
@@ -425,7 +461,17 @@ const AdminReviews: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Texto negativo</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>{t('admin.reviews.modalCopy.fields.negativeText')}</Label>
+                      <InlineTranslationPopover
+                        entityType="review_config"
+                        entityId={reviewConfigEntityId}
+                        fieldKey="copyJson.negativeText"
+                        onUpdated={async () => {
+                          await configQuery.refetch();
+                        }}
+                      />
+                    </div>
                     <Textarea
                       value={config.copyJson.negativeText}
                       onChange={(e) =>
@@ -438,7 +484,7 @@ const AdminReviews: React.FC = () => {
 
               <div className="flex justify-end">
                 <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? 'Guardando...' : 'Guardar cambios'}
+                  {isSaving ? t('admin.common.saving') : t('admin.services.actions.saveChanges')}
                 </Button>
               </div>
             </CardContent>
@@ -448,9 +494,9 @@ const AdminReviews: React.FC = () => {
         <TabsContent value="feedback" className="space-y-4">
           <Card variant="elevated">
             <CardHeader>
-              <CardTitle>Feedback privado</CardTitle>
+              <CardTitle>{t('admin.reviews.feedback.title')}</CardTitle>
               <CardDescription>
-                Comentarios de clientes con valoraciones de 1 a 3 estrellas.
+                {t('admin.reviews.feedback.description')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -461,13 +507,17 @@ const AdminReviews: React.FC = () => {
                     variant={feedbackStatus === status ? 'default' : 'outline'}
                     onClick={() => setFeedbackStatus(status)}
                   >
-                    {status === 'OPEN' ? 'Abierto' : status === 'RESOLVED' ? 'Resuelto' : 'Todos'}
+                    {status === 'OPEN'
+                      ? t('admin.reviews.feedback.status.open')
+                      : status === 'RESOLVED'
+                        ? t('admin.reviews.feedback.status.resolved')
+                        : t('admin.reviews.feedback.status.all')}
                   </Button>
                 ))}
               </div>
 
               {feedback.items.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay feedback pendiente.</p>
+                <p className="text-sm text-muted-foreground">{t('admin.reviews.feedback.empty')}</p>
               ) : (
                 <div className="space-y-3">
                   {feedback.items.map((item) => (
@@ -475,25 +525,33 @@ const AdminReviews: React.FC = () => {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1">
                           <p className="text-sm font-semibold text-foreground">
-                            {item.clientName || item.guestContact || 'Invitado'}
+                            {item.clientName || item.guestContact || t('admin.common.guest')}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {item.serviceName || 'Servicio'} · {item.barberName || copy.staff.singular}
+                            {item.serviceName || t('admin.common.table.service')} · {item.barberName || copy.staff.singular}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {item.appointmentDate ? new Date(item.appointmentDate).toLocaleString() : ''}
+                            {item.appointmentDate
+                              ? new Date(item.appointmentDate).toLocaleString(
+                                  language.startsWith('en') ? 'en-US' : 'es-ES',
+                                )
+                              : ''}
                           </p>
                         </div>
                         <Badge variant={item.feedbackStatus === 'OPEN' ? 'destructive' : 'secondary'}>
-                          {item.feedbackStatus === 'OPEN' ? 'Abierto' : 'Resuelto'}
+                          {item.feedbackStatus === 'OPEN'
+                            ? t('admin.reviews.feedback.status.open')
+                            : t('admin.reviews.feedback.status.resolved')}
                         </Badge>
                       </div>
                       <p className="mt-3 text-sm text-foreground/90">{item.privateFeedback}</p>
                       <div className="mt-4 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Rating: {item.rating ?? '-'}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t('admin.reviews.feedback.rating', { rating: item.rating ?? '-' })}
+                        </span>
                         {item.feedbackStatus === 'OPEN' && (
                           <Button size="sm" onClick={() => handleResolve(item.id)}>
-                            Marcar resuelto
+                            {t('admin.reviews.actions.markResolved')}
                           </Button>
                         )}
                       </div>
@@ -509,7 +567,7 @@ const AdminReviews: React.FC = () => {
       <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{infoKey ? infoContent[infoKey].title : 'Información'}</DialogTitle>
+            <DialogTitle>{infoKey ? infoContent[infoKey].title : t('admin.alerts.type.info')}</DialogTitle>
             <DialogDescription className="whitespace-pre-line">
               {infoKey ? infoContent[infoKey].body : ''}
             </DialogDescription>

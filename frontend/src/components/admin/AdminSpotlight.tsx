@@ -27,6 +27,7 @@ import { AdminSectionKey } from '@/data/types';
 import { GripVertical, Loader2, RotateCcw } from 'lucide-react';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
+import { useI18n } from '@/hooks/useI18n';
 
 const isHotkey = (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
@@ -59,6 +60,7 @@ const AdminSpotlight: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { t } = useI18n();
   const copy = useBusinessCopy();
   const { settings } = useSiteSettings();
   const { canAccessSection, isLoading } = useAdminPermissions();
@@ -136,7 +138,7 @@ const AdminSpotlight: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKey);
   }, [open, suppressDefaultSelection]);
 
-  const emptyLabel = isLoading ? 'Cargando accesos...' : 'No hay coincidencias.';
+  const emptyLabel = isLoading ? t('admin.spotlight.loadingAccess') : t('admin.spotlight.noMatches');
 
   const persistSidebarOrder = useCallback(
     async (nextOrder: AdminSectionKey[]) => {
@@ -155,15 +157,15 @@ const AdminSpotlight: React.FC = () => {
       } catch (error) {
         setSidebarOrder(resolvedStoredOrder);
         toast({
-          title: 'No se pudo guardar el orden',
-          description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+          title: t('admin.spotlight.toast.saveOrderErrorTitle'),
+          description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
           variant: 'destructive',
         });
       } finally {
         setIsSavingOrder(false);
       }
     },
-    [canManageSidebarOrder, resolvedStoredOrder, settings, toast],
+    [canManageSidebarOrder, resolvedStoredOrder, settings, t, toast],
   );
 
   const handleSidebarDragStart = (event: React.DragEvent<HTMLElement>, index: number, section: AdminSectionKey) => {
@@ -229,7 +231,7 @@ const AdminSpotlight: React.FC = () => {
     <CommandDialog
       open={open}
       onOpenChange={setOpen}
-      title="Spotlight"
+      title={t('admin.spotlight.title')}
       contentClassName="lg:max-w-2xl xl:max-w-3xl lg:h-[68vh] lg:max-h-[68vh]"
     >
       <div className="border-b border-border px-4 py-3">
@@ -244,18 +246,18 @@ const AdminSpotlight: React.FC = () => {
                 className="h-6 w-6 text-muted-foreground hover:text-foreground"
                 onClick={handleResetSidebarOrder}
                 disabled={isSavingOrder || isDefaultSidebarOrder}
-                title="Restablecer orden por defecto"
-                aria-label="Restablecer orden por defecto del sidebar"
+                title={t('admin.spotlight.resetOrder')}
+                aria-label={t('admin.spotlight.resetOrderAria')}
               >
                 {isSavingOrder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
               </Button>
             )}
           </div>
-          <div className="text-xs text-muted-foreground">Busca, navega y reordena desde el asa lateral.</div>
+          <div className="text-xs text-muted-foreground">{t('admin.spotlight.subtitle')}</div>
         </div>
       </div>
       <CommandInput
-        placeholder="Escribe una seccion..."
+        placeholder={t('admin.spotlight.searchPlaceholder')}
         value={query}
         onValueChange={setQuery}
       />
@@ -266,7 +268,7 @@ const AdminSpotlight: React.FC = () => {
         }}
       >
         <CommandEmpty>{emptyLabel}</CommandEmpty>
-        <CommandGroup heading="Secciones">
+        <CommandGroup heading={t('admin.spotlight.sectionsHeading')}>
           {items.map((item, index) => {
             const isDragging = draggingSection === item.section;
             const isDragOver = dragOverSection === item.section && draggingSection !== item.section;
@@ -322,8 +324,12 @@ const AdminSpotlight: React.FC = () => {
                       'mr-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground/80',
                       canDragSidebar ? 'cursor-grab active:cursor-grabbing hover:bg-accent/70 hover:text-foreground' : 'cursor-not-allowed opacity-40',
                     )}
-                    aria-label={`Reordenar ${item.label}`}
-                    title={canDragSidebar ? 'Arrastra para reordenar' : 'Limpia la búsqueda para reordenar'}
+                    aria-label={t('admin.spotlight.reorderAria', { label: item.label })}
+                    title={
+                      canDragSidebar
+                        ? t('admin.spotlight.dragToReorder')
+                        : t('admin.spotlight.clearSearchToReorder')
+                    }
                   >
                     <GripVertical className="h-3.5 w-3.5" />
                   </button>
@@ -339,7 +345,7 @@ const AdminSpotlight: React.FC = () => {
       <CommandSeparator />
       <div className="flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
         <span>Ctrl/Cmd + B</span>
-        <span>Esc para cerrar</span>
+        <span>{t('admin.spotlight.escToClose')}</span>
       </div>
     </CommandDialog>
   );

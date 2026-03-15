@@ -4,6 +4,7 @@ export type TenantContext = {
   localId?: string;
   host?: string;
   subdomain?: string | null;
+  requestedLanguage?: string | null;
   isPlatform?: boolean;
   scopeGuardBypass?: boolean;
 };

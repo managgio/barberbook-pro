@@ -1,5 +1,6 @@
 import {
   PlatformObservabilityApiSummary,
+  PlatformI18nObservabilitySummary,
   PlatformObservabilityWebVitalsSummary,
 } from '@/data/types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
@@ -44,4 +45,27 @@ export const getPlatformApiMetricsSummary = async (
 ): Promise<PlatformObservabilityApiSummary> =>
   apiRequest('/platform/observability/api', {
     query: { minutes },
+  });
+
+export const getPlatformI18nObservabilitySummary = async (
+  minutes: number,
+): Promise<PlatformI18nObservabilitySummary> =>
+  apiRequest('/platform/observability/i18n', {
+    query: { minutes },
+  });
+
+export const pausePlatformTenantAutoTranslate = async (
+  brandId: string,
+  reason?: string,
+): Promise<{ success: boolean; brandId: string; paused: boolean; reason: string | null }> =>
+  apiRequest(`/platform/observability/i18n/${brandId}/pause`, {
+    method: 'POST',
+    body: reason ? { reason } : undefined,
+  });
+
+export const resumePlatformTenantAutoTranslate = async (
+  brandId: string,
+): Promise<{ success: boolean; brandId: string; paused: boolean; reason: string | null }> =>
+  apiRequest(`/platform/observability/i18n/${brandId}/resume`, {
+    method: 'POST',
   });

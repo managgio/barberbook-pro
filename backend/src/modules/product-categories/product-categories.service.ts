@@ -10,6 +10,7 @@ import {
 } from '../../contexts/commerce/ports/outbound/product-category-repository.port';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { rethrowDomainErrorAsHttp } from '../../shared/interfaces/http/rethrow-domain-error-as-http';
+import { LocalizationService } from '../localization/localization.service';
 import { CreateProductCategoryDto } from './dto/create-product-category.dto';
 import { UpdateProductCategoryDto } from './dto/update-product-category.dto';
 import { mapProductCategory } from './product-categories.mapper';
@@ -27,6 +28,7 @@ export class ProductCategoriesService {
     private readonly productCategoryRepositoryPort: ProductCategoryRepositoryPort,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
+    private readonly localizationService: LocalizationService,
   ) {
     this.getProductCategoriesUseCase = new GetProductCategoriesUseCase(this.productCategoryRepositoryPort);
     this.getProductCategoryByIdUseCase = new GetProductCategoryByIdUseCase(this.productCategoryRepositoryPort);
@@ -36,21 +38,120 @@ export class ProductCategoriesService {
   }
 
   async findAll(withProducts = true) {
+    const context = this.tenantContextPort.getRequestContext();
     const categories = await this.getProductCategoriesUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       withProducts,
     });
-    return categories.map((category) => mapProductCategory(category, { includeProducts: withProducts }));
+    const mapped = categories.map((category) => mapProductCategory(category, { includeProducts: withProducts }));
+    const { items } = await this.localizationService.localizeCollection({
+      context,
+      entityType: 'product_category',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'name',
+          getValue: (item) => item.name,
+          setValue: (item, value) => {
+            item.name = value;
+          },
+        },
+        {
+          fieldKey: 'description',
+          getValue: (item) => item.description,
+          setValue: (item, value) => {
+            item.description = value;
+          },
+        },
+      ],
+    });
+
+    if (withProducts) {
+      const nestedProducts = items.flatMap((category) => category.products || []);
+      await this.localizationService.localizeCollection({
+        context,
+        entityType: 'product',
+        items: nestedProducts,
+        descriptors: [
+          {
+            fieldKey: 'name',
+            getValue: (item) => item.name,
+            setValue: (item, value) => {
+              item.name = value;
+            },
+          },
+          {
+            fieldKey: 'description',
+            getValue: (item) => item.description,
+            setValue: (item, value) => {
+              item.description = value;
+            },
+          },
+        ],
+      });
+    }
+
+    return items;
   }
 
   async findOne(id: string, withProducts = true) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const category = await this.getProductCategoryByIdUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         categoryId: id,
         withProducts,
       });
-      return mapProductCategory(category, { includeProducts: withProducts });
+      const mapped = mapProductCategory(category, { includeProducts: withProducts });
+      const localizedCategory = (
+        await this.localizationService.localizeCollection({
+          context,
+          entityType: 'product_category',
+          items: [mapped],
+          descriptors: [
+            {
+              fieldKey: 'name',
+              getValue: (item) => item.name,
+              setValue: (item, value) => {
+                item.name = value;
+              },
+            },
+            {
+              fieldKey: 'description',
+              getValue: (item) => item.description,
+              setValue: (item, value) => {
+                item.description = value;
+              },
+            },
+          ],
+        })
+      ).items[0];
+
+      if (withProducts && localizedCategory?.products) {
+        await this.localizationService.localizeCollection({
+          context,
+          entityType: 'product',
+          items: localizedCategory.products,
+          descriptors: [
+            {
+              fieldKey: 'name',
+              getValue: (item) => item.name,
+              setValue: (item, value) => {
+                item.name = value;
+              },
+            },
+            {
+              fieldKey: 'description',
+              getValue: (item) => item.description,
+              setValue: (item, value) => {
+                item.description = value;
+              },
+            },
+          ],
+        });
+      }
+
+      return localizedCategory;
     } catch (error) {
       this.rethrowHttpError(error);
       throw error;
@@ -58,23 +159,43 @@ export class ProductCategoriesService {
   }
 
   async create(data: CreateProductCategoryDto) {
+    const context = this.tenantContextPort.getRequestContext();
     const created = await this.createProductCategoryUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       name: data.name,
       description: data.description,
       position: data.position,
+    });
+    await this.localizationService.syncEntitySourceFields({
+      context,
+      entityType: 'product_category',
+      entityId: created.id,
+      fields: {
+        name: created.name,
+        description: created.description,
+      },
     });
     return mapProductCategory(created, { includeProducts: false });
   }
 
   async update(id: string, data: UpdateProductCategoryDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const updated = await this.updateProductCategoryUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         categoryId: id,
         name: data.name,
         description: data.description,
         position: data.position,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'product_category',
+        entityId: updated.id,
+        fields: {
+          name: updated.name,
+          description: updated.description,
+        },
       });
       return mapProductCategory(updated, { includeProducts: false });
     } catch (error) {

@@ -9,6 +9,7 @@ import {
 } from '../../contexts/engagement/ports/outbound/alert-repository.port';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { rethrowDomainErrorAsHttp } from '../../shared/interfaces/http/rethrow-domain-error-as-http';
+import { LocalizationService } from '../localization/localization.service';
 import { CreateAlertDto } from './dto/create-alert.dto';
 import { UpdateAlertDto } from './dto/update-alert.dto';
 import { mapAlert } from './alerts.mapper';
@@ -25,6 +26,7 @@ export class AlertsService {
     private readonly alertRepositoryPort: AlertRepositoryPort,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
+    private readonly localizationService: LocalizationService,
   ) {
     this.getAlertsUseCase = new GetAlertsUseCase(this.alertRepositoryPort);
     this.createAlertUseCase = new CreateAlertUseCase(this.alertRepositoryPort);
@@ -33,31 +35,87 @@ export class AlertsService {
   }
 
   async findAll() {
+    const context = this.tenantContextPort.getRequestContext();
     const alerts = await this.getAlertsUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       onlyActive: false,
     });
-    return alerts.map(mapAlert);
+    const mapped = alerts.map(mapAlert);
+    const { items } = await this.localizationService.localizeCollection({
+      context,
+      entityType: 'alert',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'title',
+          getValue: (item) => item.title,
+          setValue: (item, value) => {
+            item.title = value;
+          },
+        },
+        {
+          fieldKey: 'message',
+          getValue: (item) => item.message,
+          setValue: (item, value) => {
+            item.message = value;
+          },
+        },
+      ],
+    });
+    return items;
   }
 
   async findActive() {
+    const context = this.tenantContextPort.getRequestContext();
     const alerts = await this.getAlertsUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       onlyActive: true,
     });
-    return alerts.map(mapAlert);
+    const mapped = alerts.map(mapAlert);
+    const { items } = await this.localizationService.localizeCollection({
+      context,
+      entityType: 'alert',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'title',
+          getValue: (item) => item.title,
+          setValue: (item, value) => {
+            item.title = value;
+          },
+        },
+        {
+          fieldKey: 'message',
+          getValue: (item) => item.message,
+          setValue: (item, value) => {
+            item.message = value;
+          },
+        },
+      ],
+    });
+    return items;
   }
 
   async create(data: CreateAlertDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const created = await this.createAlertUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         title: data.title,
         message: data.message,
         active: data.active,
         type: data.type,
         startDate: data.startDate,
         endDate: data.endDate,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'alert',
+        entityId: created.id,
+        fields: {
+          title: created.title,
+          message: created.message,
+        },
       });
       return mapAlert(created);
     } catch (error) {
@@ -67,9 +125,10 @@ export class AlertsService {
   }
 
   async update(id: string, data: UpdateAlertDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const updated = await this.updateAlertUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         alertId: id,
         title: data.title,
         message: data.message,
@@ -77,6 +136,15 @@ export class AlertsService {
         type: data.type,
         startDate: data.startDate,
         endDate: data.endDate,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'alert',
+        entityId: updated.id,
+        fields: {
+          title: updated.title,
+          message: updated.message,
+        },
       });
       return mapAlert(updated);
     } catch (error) {

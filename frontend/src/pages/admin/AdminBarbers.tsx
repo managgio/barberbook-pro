@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { format, parseISO } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,29 +38,32 @@ import { fetchBarbersCached, fetchServiceCategoriesCached, fetchServicesCached }
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { resolveBarberAccentColor } from '@/lib/barberColors';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
-const DAY_LABELS: { key: DayKey; label: string; short: string }[] = [
-  { key: 'monday', label: 'Lunes', short: 'Lun' },
-  { key: 'tuesday', label: 'Martes', short: 'Mar' },
-  { key: 'wednesday', label: 'Miércoles', short: 'Mié' },
-  { key: 'thursday', label: 'Jueves', short: 'Jue' },
-  { key: 'friday', label: 'Viernes', short: 'Vie' },
-  { key: 'saturday', label: 'Sábado', short: 'Sáb' },
-  { key: 'sunday', label: 'Domingo', short: 'Dom' },
+const DAY_KEYS: DayKey[] = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
 ];
 
 const SHIFT_KEYS = ['morning', 'afternoon'] as const;
 type ShiftKey = (typeof SHIFT_KEYS)[number];
 type ScheduleDialogTab = 'hours' | 'tolerance';
 
-const SHIFT_LABELS: Record<ShiftKey, { label: string; hint: string }> = {
+const SHIFT_LABEL_KEYS: Record<ShiftKey, { labelKey: string; hintKey: string }> = {
   morning: {
-    label: 'Turno de mañana',
-    hint: 'Configura el bloque matutino.',
+    labelKey: 'admin.barbers.shift.morning.label',
+    hintKey: 'admin.barbers.shift.morning.hint',
   },
   afternoon: {
-    label: 'Turno de tarde',
-    hint: 'Configura el bloque vespertino.',
+    labelKey: 'admin.barbers.shift.afternoon.label',
+    hintKey: 'admin.barbers.shift.afternoon.hint',
   },
 };
 
@@ -72,17 +76,54 @@ const EMPTY_CATEGORIES: ServiceCategory[] = [];
 
 const AdminBarbers: React.FC = () => {
   const { toast } = useToast();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const { tenant, currentLocationId } = useTenant();
   const copy = useBusinessCopy();
+  const dayLabels = useMemo(
+    () =>
+      DAY_KEYS.map((key) => ({
+        key,
+        label: t(`admin.barbers.day.${key}.label`),
+        short: t(`admin.barbers.day.${key}.short`),
+      })),
+    [t],
+  );
+  const shiftLabels = useMemo(
+    () =>
+      (Object.entries(SHIFT_LABEL_KEYS) as Array<
+        [ShiftKey, { labelKey: string; hintKey: string }]
+      >).reduce(
+        (acc, [key, value]) => {
+          acc[key] = {
+            label: t(value.labelKey),
+            hint: t(value.hintKey),
+          };
+          return acc;
+        },
+        {} as Record<ShiftKey, { label: string; hint: string }>,
+      ),
+    [t],
+  );
   const staffCompatibleLabel = copy.staff.isCollective
-    ? `${copy.staff.singularLower} compatible`
-    : `${copy.staff.pluralLower} compatibles`;
+    ? t('admin.barbers.assignment.staffCompatibleSingular', {
+        staffSingularLower: copy.staff.singularLower,
+      })
+    : t('admin.barbers.assignment.staffCompatiblePlural', {
+        staffPluralLower: copy.staff.pluralLower,
+      });
   const staffResetAvailabilityLabel = copy.staff.isCollective
-    ? `${copy.staff.definiteSingular} volverá a estar disponible para cualquier servicio.`
-    : `${copy.staff.definitePlural} volverán a estar disponibles para cualquier servicio.`;
+    ? t('admin.barbers.assignment.resetAvailabilitySingular', {
+        staffDefiniteSingular: copy.staff.definiteSingular,
+      })
+    : t('admin.barbers.assignment.resetAvailabilityPlural', {
+        staffDefinitePlural: copy.staff.definitePlural,
+      });
   const emptyStaffDescription = copy.staff.isCollective
-    ? 'Añade miembros del equipo para gestionar la agenda.'
-    : `Añade ${copy.staff.pluralLower} para gestionar el equipo.`;
+    ? t('admin.barbers.empty.descriptionCollective')
+    : t('admin.barbers.empty.descriptionPlural', {
+        staffPluralLower: copy.staff.pluralLower,
+      });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -160,17 +201,21 @@ const AdminBarbers: React.FC = () => {
 
   useEffect(() => {
     if (!barbersQuery.error) return;
-    toast({ title: 'Error', description: 'No se pudo cargar el equipo.', variant: 'destructive' });
-  }, [barbersQuery.error, toast]);
+    toast({
+      title: t('admin.common.error'),
+      description: t('admin.barbers.toast.loadStaffError'),
+      variant: 'destructive',
+    });
+  }, [barbersQuery.error, t, toast]);
 
   useEffect(() => {
     if (!servicesQuery.error && !categoriesQuery.error && !settingsQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudo cargar la configuración de asignaciones.',
+      title: t('admin.common.error'),
+      description: t('admin.barbers.toast.loadAssignmentConfigError'),
       variant: 'destructive',
     });
-  }, [categoriesQuery.error, servicesQuery.error, settingsQuery.error, toast]);
+  }, [categoriesQuery.error, servicesQuery.error, settingsQuery.error, t, toast]);
 
   const openCreateDialog = () => {
     setEditingBarber(null);
@@ -234,8 +279,8 @@ const AdminBarbers: React.FC = () => {
       dispatchBarbersUpdated({ source: 'admin-barbers' });
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el color del calendario.',
+        title: t('admin.common.error'),
+        description: t('admin.barbers.toast.updateCalendarColorError'),
         variant: 'destructive',
       });
     } finally {
@@ -255,7 +300,11 @@ const AdminBarbers: React.FC = () => {
       }
       setScheduleForm(cloneSchedule(schedule));
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo cargar el horario.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.barbers.toast.loadScheduleError'),
+        variant: 'destructive',
+      });
       setScheduleDialog({ open: false, barber: null });
     } finally {
       setIsScheduleLoading(false);
@@ -346,14 +395,17 @@ const AdminBarbers: React.FC = () => {
       await barbersQuery.refetch();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
       toast({
-        title: 'Asignaciones guardadas',
-        description: `La configuración ${copy.staff.fromWithDefinite} se ha actualizado.`,
+        title: t('admin.barbers.toast.assignmentsSavedTitle'),
+        description: t('admin.barbers.toast.assignmentsSavedDescription', {
+          staffFromWithDefinite: copy.staff.fromWithDefinite,
+        }),
       });
       closeAssignmentDialog();
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
-        description: error instanceof Error ? error.message : 'Revisa los servicios y categorías seleccionados.',
+        title: t('admin.barbers.toast.saveErrorTitle'),
+        description:
+          error instanceof Error ? error.message : t('admin.barbers.toast.assignmentReviewSelections'),
         variant: 'destructive',
       });
       setIsAssignmentSaving(false);
@@ -374,15 +426,19 @@ const AdminBarbers: React.FC = () => {
       await settingsQuery.refetch();
       dispatchSiteSettingsUpdated(updated);
       toast({
-        title: enabled ? 'Asignación activada' : 'Asignación desactivada',
+        title: enabled
+          ? t('admin.barbers.toast.assignmentEnabledTitle')
+          : t('admin.barbers.toast.assignmentDisabledTitle'),
         description: enabled
-          ? `Los clientes verán solo ${staffCompatibleLabel} con el servicio elegido.`
+          ? t('admin.barbers.toast.assignmentEnabledDescription', {
+              staffCompatibleLabel,
+            })
           : staffResetAvailabilityLabel,
       });
     } catch (error) {
       toast({
-        title: 'No se pudo actualizar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.barbers.toast.updateErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -463,10 +519,10 @@ const AdminBarbers: React.FC = () => {
   };
 
   const ensureEndOverflowByDay = (current?: Partial<Record<DayKey, number>>) =>
-    DAY_LABELS.reduce((acc, day) => {
-      const value = current?.[day.key];
+    DAY_KEYS.reduce((acc, day) => {
+      const value = current?.[day];
       if (typeof value === 'number' && Number.isFinite(value)) {
-        acc[day.key] = Math.max(0, Math.floor(value));
+        acc[day] = Math.max(0, Math.floor(value));
       }
       return acc;
     }, {} as Partial<Record<DayKey, number>>);
@@ -536,7 +592,12 @@ const AdminBarbers: React.FC = () => {
   const handleCopySchedule = () => {
     if (scheduleForm) {
       setCopiedSchedule(cloneSchedule(scheduleForm));
-    toast({ title: 'Horario copiado', description: `Ahora puedes pegarlo en otro ${copy.staff.singularLower}.` });
+      toast({
+        title: t('admin.barbers.toast.scheduleCopiedTitle'),
+        description: t('admin.barbers.toast.scheduleCopiedDescription', {
+          staffSingularLower: copy.staff.singularLower,
+        }),
+      });
     }
   };
 
@@ -555,9 +616,16 @@ const AdminBarbers: React.FC = () => {
         setScheduleCache(prev => ({ ...prev, [barberId]: schedule }));
       }
       setScheduleForm(cloneSchedule(schedule));
-      toast({ title: 'Horario aplicado', description: 'Se ha copiado el horario seleccionado.' });
+      toast({
+        title: t('admin.barbers.toast.scheduleAppliedTitle'),
+        description: t('admin.barbers.toast.scheduleAppliedDescription'),
+      });
     } catch {
-      toast({ title: 'Error', description: 'No se pudo copiar el horario.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.barbers.toast.copyScheduleError'),
+        variant: 'destructive',
+      });
     } finally {
       setCopySource(prev => prev + 1);
     }
@@ -570,10 +638,19 @@ const AdminBarbers: React.FC = () => {
       const updated = await updateBarberSchedule(scheduleDialog.barber.id, scheduleForm);
       setScheduleCache(prev => ({ ...prev, [scheduleDialog.barber!.id]: updated }));
       dispatchSchedulesUpdated({ source: 'admin-barbers' });
-    toast({ title: 'Horario guardado', description: `Se ha actualizado el horario ${copy.staff.fromWithDefinite}.` });
+      toast({
+        title: t('admin.barbers.toast.scheduleSavedTitle'),
+        description: t('admin.barbers.toast.scheduleSavedDescription', {
+          staffFromWithDefinite: copy.staff.fromWithDefinite,
+        }),
+      });
       closeScheduleDialog();
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar el horario.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.barbers.toast.saveScheduleError'),
+        variant: 'destructive',
+      });
       setIsScheduleSaving(false);
     }
   };
@@ -593,8 +670,8 @@ const AdminBarbers: React.FC = () => {
           } catch (cleanupError) {
             console.error(cleanupError);
             toast({
-              title: 'Aviso',
-              description: 'No se pudo borrar la foto anterior. Revisa el almacenamiento.',
+              title: t('admin.common.warning'),
+              description: t('admin.barbers.toast.cleanupPreviousPhotoError'),
               variant: 'destructive',
             });
           }
@@ -614,8 +691,8 @@ const AdminBarbers: React.FC = () => {
           } catch (cleanupError) {
             console.error(cleanupError);
             toast({
-              title: 'Aviso',
-              description: 'No se pudo borrar la foto anterior. Revisa el almacenamiento.',
+              title: t('admin.common.warning'),
+              description: t('admin.barbers.toast.cleanupPreviousPhotoError'),
               variant: 'destructive',
             });
           }
@@ -634,7 +711,12 @@ const AdminBarbers: React.FC = () => {
           endDate: formData.endDate ? formData.endDate : null,
           isActive: formData.isActive,
         });
-        toast({ title: `${copy.staff.singular} actualizado`, description: 'Los cambios han sido guardados.' });
+        toast({
+          title: t('admin.barbers.toast.staffUpdatedTitle', {
+            staffSingular: copy.staff.singular,
+          }),
+          description: t('admin.barbers.toast.changesSavedDescription'),
+        });
       } else {
         await createBarber({
           name: formData.name,
@@ -647,14 +729,27 @@ const AdminBarbers: React.FC = () => {
           endDate: formData.endDate ? formData.endDate : null,
           isActive: formData.isActive,
         });
-        toast({ title: `${copy.staff.singular} añadido`, description: `El nuevo ${copy.staff.singularLower} ha sido añadido.` });
+        toast({
+          title: t('admin.barbers.toast.staffAddedTitle', {
+            staffSingular: copy.staff.singular,
+          }),
+          description: t('admin.barbers.toast.staffAddedDescription', {
+            staffSingularLower: copy.staff.singularLower,
+          }),
+        });
       }
       
       await barbersQuery.refetch();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
       setIsDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: `No se pudo guardar ${copy.staff.definiteSingular}.`, variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.barbers.toast.saveStaffError', {
+          staffDefiniteSingular: copy.staff.definiteSingular,
+        }),
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -665,11 +760,24 @@ const AdminBarbers: React.FC = () => {
     
     try {
       await deleteBarber(deletingBarberId);
-      toast({ title: `${copy.staff.singular} eliminado`, description: `${copy.staff.definiteSingular} ha sido eliminado.` });
+      toast({
+        title: t('admin.barbers.toast.staffDeletedTitle', {
+          staffSingular: copy.staff.singular,
+        }),
+        description: t('admin.barbers.toast.staffDeletedDescription', {
+          staffDefiniteSingular: copy.staff.definiteSingular,
+        }),
+      });
       await barbersQuery.refetch();
       dispatchBarbersUpdated({ source: 'admin-barbers' });
     } catch (error) {
-      toast({ title: 'Error', description: `No se pudo eliminar ${copy.staff.definiteSingular}.`, variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.barbers.toast.deleteStaffError', {
+          staffDefiniteSingular: copy.staff.definiteSingular,
+        }),
+        variant: 'destructive',
+      });
     } finally {
       setIsDeleteDialogOpen(false);
       setDeletingBarberId(null);
@@ -683,26 +791,30 @@ const AdminBarbers: React.FC = () => {
         <div className="pl-12 md:pl-0">
           <h1 className="text-3xl font-bold text-foreground">{copy.staff.plural}</h1>
           <p className="text-muted-foreground mt-1">
-            Gestiona el equipo y sus festivos.
+            {t('admin.barbers.subtitle')}
           </p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="w-4 h-4 mr-2" />
-          Nuevo {copy.staff.singularLower}
+          {t('admin.barbers.actions.newStaff', { staffSingularLower: copy.staff.singularLower })}
         </Button>
       </div>
 
       {assignmentFeatureVisible && (
         <Card variant="elevated">
           <CardHeader>
-            <CardTitle className="text-base">Asignación de servicios por {copy.staff.singularLower}</CardTitle>
+            <CardTitle className="text-base">
+              {t('admin.barbers.assignment.title', { staffSingularLower: copy.staff.singularLower })}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-xl border border-border p-3">
               <div>
-                <p className="font-medium text-sm text-foreground">Activar reglas de asignación</p>
+                <p className="font-medium text-sm text-foreground">
+                  {t('admin.barbers.assignment.enableRules')}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Si está activo, en reservas solo aparecerán {staffCompatibleLabel} con el servicio elegido.
+                  {t('admin.barbers.assignment.enableRulesHint', { staffCompatibleLabel })}
                 </p>
               </div>
               <Switch
@@ -712,7 +824,7 @@ const AdminBarbers: React.FC = () => {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-            Regla automática: si {copy.staff.indefiniteSingular} no tiene ninguna categoría ni servicio asignado, se considera disponible para todos los servicios.
+              {t('admin.barbers.assignment.autoRule', { staffIndefiniteSingular: copy.staff.indefiniteSingular })}
             </p>
           </CardContent>
         </Card>
@@ -750,8 +862,8 @@ const AdminBarbers: React.FC = () => {
                               const input = document.getElementById(`barber-calendar-color-${barber.id}`) as HTMLInputElement | null;
                               input?.click();
                             }}
-                            title="Color del calendario"
-                            aria-label={`Editar color del calendario de ${barber.name}`}
+                            title={t('admin.barbers.calendarColor.title')}
+                            aria-label={t('admin.barbers.calendarColor.ariaLabel', { barberName: barber.name })}
                           />
                           <input
                             id={`barber-calendar-color-${barber.id}`}
@@ -775,7 +887,7 @@ const AdminBarbers: React.FC = () => {
                                   <WandSparkles className="w-4 h-4" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Asignar servicios</TooltipContent>
+                              <TooltipContent>{t('admin.barbers.actions.assignServices')}</TooltipContent>
                             </Tooltip>
                           )}
                           <Tooltip>
@@ -784,7 +896,7 @@ const AdminBarbers: React.FC = () => {
                                 <CalendarClock className="w-4 h-4" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Editar horario</TooltipContent>
+                            <TooltipContent>{t('admin.barbers.actions.editSchedule')}</TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -792,7 +904,7 @@ const AdminBarbers: React.FC = () => {
                                 <Pencil className="w-4 h-4" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Editar perfil</TooltipContent>
+                            <TooltipContent>{t('admin.barbers.actions.editProfile')}</TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -800,7 +912,7 @@ const AdminBarbers: React.FC = () => {
                                 <Trash2 className="w-4 h-4 text-destructive" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Eliminar</TooltipContent>
+                            <TooltipContent>{t('admin.roles.actions.delete')}</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       </div>
@@ -814,24 +926,24 @@ const AdminBarbers: React.FC = () => {
                           <DropdownMenuContent align="end" className="w-52">
                             {assignmentFeatureVisible && (
                               <DropdownMenuItem onClick={() => openAssignmentDialog(barber)}>
-                                <WandSparkles className="mr-2 w-4 h-4" />
-                                Asignar servicios
+                              <WandSparkles className="mr-2 w-4 h-4" />
+                                {t('admin.barbers.actions.assignServices')}
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem onClick={() => openScheduleDialog(barber)}>
                               <CalendarClock className="mr-2 w-4 h-4" />
-                              Editar horario
+                              {t('admin.barbers.actions.editSchedule')}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEditDialog(barber)}>
                               <Pencil className="mr-2 w-4 h-4" />
-                              Editar perfil
+                              {t('admin.barbers.actions.editProfile')}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={() => openDeleteDialog(barber.id)}
                             >
                               <Trash2 className="mr-2 w-4 h-4" />
-                              Eliminar
+                              {t('admin.roles.actions.delete')}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -843,13 +955,18 @@ const AdminBarbers: React.FC = () => {
                           ? 'bg-rose-500/10 text-rose-400'
                           : 'bg-green-500/10 text-green-400'
                       }`}>
-                        {barber.isActive === false ? 'Oculto' : 'Activo'}
+                        {barber.isActive === false
+                          ? t('admin.barbers.status.hidden')
+                          : t('admin.barbers.status.active')}
                       </span>
                       {assignmentFeatureVisible && assignmentEnabled && (
                         <span className="text-xs text-muted-foreground">
                           {!barber.hasAnyServiceAssignment
-                            ? 'Sin asignaciones (atiende todos los servicios)'
-                            : `${barber.assignedServiceIds?.length ?? 0} servicio(s) + ${barber.assignedCategoryIds?.length ?? 0} categoría(s)`}
+                            ? t('admin.barbers.assignment.noAssignments')
+                            : t('admin.barbers.assignment.summary', {
+                                services: barber.assignedServiceIds?.length ?? 0,
+                                categories: barber.assignedCategoryIds?.length ?? 0,
+                              })}
                         </span>
                       )}
                     </div>
@@ -857,8 +974,15 @@ const AdminBarbers: React.FC = () => {
                       <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{barber.bio}</p>
                     )}
                     <p className="text-xs text-muted-foreground mt-2">
-                      Inicio: {barber.startDate ? new Date(barber.startDate).toLocaleDateString() : 'Sin definir'}
-                      {barber.endDate && ` · Fin: ${new Date(barber.endDate).toLocaleDateString()}`}
+                      {t('admin.barbers.dates.start', {
+                        date: barber.startDate
+                          ? format(parseISO(barber.startDate), 'd MMM yyyy', { locale: dateLocale })
+                          : t('admin.barbers.dates.undefined'),
+                      })}
+                      {barber.endDate &&
+                        t('admin.barbers.dates.end', {
+                          date: format(parseISO(barber.endDate), 'd MMM yyyy', { locale: dateLocale }),
+                        })}
                     </p>
                   </div>
                 </div>
@@ -869,9 +993,12 @@ const AdminBarbers: React.FC = () => {
       ) : (
         <EmptyState
           icon={UserCircle}
-          title={`Sin ${copy.staff.pluralLower}`}
+          title={t('admin.barbers.empty.title', { staffPluralLower: copy.staff.pluralLower })}
           description={emptyStaffDescription}
-          action={{ label: `Añadir ${copy.staff.singularLower}`, onClick: openCreateDialog }}
+          action={{
+            label: t('admin.barbers.actions.addStaff', { staffSingularLower: copy.staff.singularLower }),
+            onClick: openCreateDialog,
+          }}
         />
       )}
 
@@ -880,21 +1007,33 @@ const AdminBarbers: React.FC = () => {
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingBarber ? `Editar ${copy.staff.singularLower}` : `Nuevo ${copy.staff.singularLower}`}
+              {editingBarber
+                ? t('admin.barbers.dialog.editTitle', { staffSingularLower: copy.staff.singularLower })
+                : t('admin.barbers.dialog.newTitle', { staffSingularLower: copy.staff.singularLower })}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Formulario para crear o editar profesionales del equipo.
+              {t('admin.barbers.dialog.description')}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nombre</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="name">{t('admin.barbers.fields.name')}</Label>
+                  <InlineTranslationPopover
+                    entityType="barber"
+                    entityId={editingBarber?.id}
+                    fieldKey="name"
+                    onUpdated={async () => {
+                      await barbersQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Nombre completo"
+                  placeholder={t('admin.barbers.fields.namePlaceholder')}
                   required
                 />
               </div>
@@ -905,28 +1044,48 @@ const AdminBarbers: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="specialty">Especialidad</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="specialty">{t('admin.barbers.fields.specialty')}</Label>
+                  <InlineTranslationPopover
+                    entityType="barber"
+                    entityId={editingBarber?.id}
+                    fieldKey="specialty"
+                    onUpdated={async () => {
+                      await barbersQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Input
                   id="specialty"
                   value={formData.specialty}
                   onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                  placeholder="Ej: Cortes clásicos"
+                  placeholder={t('admin.barbers.fields.specialtyPlaceholder')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="bio">Biografía</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="bio">{t('admin.barbers.fields.bio')}</Label>
+                  <InlineTranslationPopover
+                    entityType="barber"
+                    entityId={editingBarber?.id}
+                    fieldKey="bio"
+                    onUpdated={async () => {
+                      await barbersQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Textarea
                   id="bio"
                   value={formData.bio}
                   onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                  placeholder="Breve descripción..."
+                  placeholder={t('admin.barbers.fields.bioPlaceholder')}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Visible para clientes</Label>
+                <Label>{t('admin.barbers.fields.visibleForClients')}</Label>
                 <div className="flex items-center justify-between rounded-lg border p-2">
-                  <span className="text-sm text-muted-foreground">Mostrar en el panel de reservas</span>
+                  <span className="text-sm text-muted-foreground">{t('admin.barbers.fields.visibleHint')}</span>
                   <Switch
                     checked={formData.isActive}
                     onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
@@ -935,7 +1094,7 @@ const AdminBarbers: React.FC = () => {
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="startDate">Fecha inicio</Label>
+                  <Label htmlFor="startDate">{t('admin.barbers.fields.startDate')}</Label>
                   <Input
                     id="startDate"
                     type="date"
@@ -945,7 +1104,7 @@ const AdminBarbers: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="endDate">Fecha fin (opcional)</Label>
+                  <Label htmlFor="endDate">{t('admin.barbers.fields.endDate')}</Label>
                   <Input
                     id="endDate"
                     type="date"
@@ -957,11 +1116,13 @@ const AdminBarbers: React.FC = () => {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editingBarber ? 'Guardar cambios' : `Añadir ${copy.staff.singularLower}`}
+                {editingBarber
+                  ? t('admin.services.actions.saveChanges')
+                  : t('admin.barbers.actions.addStaff', { staffSingularLower: copy.staff.singularLower })}
               </Button>
             </DialogFooter>
           </form>
@@ -979,24 +1140,31 @@ const AdminBarbers: React.FC = () => {
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Asignaciones de {assignmentDialog.barber?.name}
+              {t('admin.barbers.assignment.dialogTitle', { barberName: assignmentDialog.barber?.name ?? '' })}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Configura qué servicios y categorías puede atender este profesional.
+              {t('admin.barbers.assignment.dialogDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5">
             <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
               {!assignmentForm.serviceIds.length && !assignmentForm.categoryIds.length
-                ? `Sin asignaciones explícitas: ${copy.staff.definiteSingular} estará disponible para todos los servicios.`
-                : `Asignaciones actuales: ${assignmentForm.serviceIds.length} servicio(s) y ${assignmentForm.categoryIds.length} categoría(s).`}
+                ? t('admin.barbers.assignment.noAssignmentsExplicit', {
+                    staffDefiniteSingular: copy.staff.definiteSingular,
+                  })
+                : t('admin.barbers.assignment.currentAssignments', {
+                    services: assignmentForm.serviceIds.length,
+                    categories: assignmentForm.categoryIds.length,
+                  })}
             </div>
 
             <div className="space-y-3">
-              <Label className="text-sm">Categorías completas</Label>
+              <Label className="text-sm">{t('admin.barbers.assignment.fullCategories')}</Label>
               {orderedCategories.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No hay categorías creadas en {copy.location.definiteSingular}.
+                  {t('admin.barbers.assignment.noCategories', {
+                    locationDefiniteSingular: copy.location.definiteSingular,
+                  })}
                 </p>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-2">
@@ -1012,7 +1180,9 @@ const AdminBarbers: React.FC = () => {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">{category.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {servicesByCategory[category.id]?.length ?? 0} servicio(s)
+                          {t('admin.barbers.assignment.servicesCount', {
+                            count: servicesByCategory[category.id]?.length ?? 0,
+                          })}
                         </p>
                       </div>
                     </label>
@@ -1022,9 +1192,9 @@ const AdminBarbers: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-sm">Servicios individuales</Label>
+              <Label className="text-sm">{t('admin.barbers.assignment.individualServices')}</Label>
               {services.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay servicios disponibles.</p>
+                <p className="text-sm text-muted-foreground">{t('admin.barbers.assignment.noServices')}</p>
               ) : (
                 <div className="space-y-3">
                   {orderedCategories.map((category) => {
@@ -1053,7 +1223,7 @@ const AdminBarbers: React.FC = () => {
 
                   {uncategorizedServices.length > 0 && (
                     <div className="rounded-xl border border-border p-3 space-y-2">
-                      <p className="text-sm font-medium text-foreground">Sin categoría</p>
+                      <p className="text-sm font-medium text-foreground">{t('admin.services.uncategorized')}</p>
                       <div className="grid sm:grid-cols-2 gap-2">
                         {uncategorizedServices.map((service) => (
                           <label
@@ -1076,11 +1246,11 @@ const AdminBarbers: React.FC = () => {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closeAssignmentDialog}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button onClick={handleSaveAssignment} disabled={isAssignmentSaving}>
                 {isAssignmentSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Guardar asignaciones
+                {t('admin.barbers.actions.saveAssignments')}
               </Button>
             </DialogFooter>
           </div>
@@ -1095,10 +1265,10 @@ const AdminBarbers: React.FC = () => {
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Horario de {scheduleDialog.barber?.name}
+              {t('admin.barbers.schedule.title', { barberName: scheduleDialog.barber?.name ?? '' })}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Ajusta horario semanal, descansos y tolerancia de cierre para este profesional.
+              {t('admin.barbers.schedule.description')}
             </DialogDescription>
           </DialogHeader>
           {isScheduleLoading || !scheduleForm ? (
@@ -1114,10 +1284,10 @@ const AdminBarbers: React.FC = () => {
               >
                 <TabsList className="inline-flex h-auto w-auto rounded-lg border border-border/60 bg-muted/30 p-1">
                   <TabsTrigger value="hours" className="rounded-md px-3 py-1.5 text-xs sm:text-sm">
-                    Horario
+                    {t('admin.barbers.schedule.tabs.hours')}
                   </TabsTrigger>
                   <TabsTrigger value="tolerance" className="rounded-md px-3 py-1.5 text-xs sm:text-sm">
-                    Tolerancia
+                    {t('admin.barbers.schedule.tabs.tolerance')}
                   </TabsTrigger>
                 </TabsList>
 
@@ -1125,7 +1295,7 @@ const AdminBarbers: React.FC = () => {
                   <div className="flex flex-wrap gap-3 items-center">
                     <Button variant="outline" size="sm" onClick={handleCopySchedule}>
                       <Copy className="w-4 h-4 mr-2" />
-                      Copiar horario
+                      {t('admin.barbers.actions.copySchedule')}
                     </Button>
                     <Button
                       variant="outline"
@@ -1134,11 +1304,15 @@ const AdminBarbers: React.FC = () => {
                       disabled={!copiedSchedule}
                     >
                       <ClipboardPaste className="w-4 h-4 mr-2" />
-                      Pegar horario copiado
+                      {t('admin.barbers.actions.pasteSchedule')}
                     </Button>
                     <Select key={copySource} onValueChange={handleCopyFromBarber} disabled={otherBarbers.length === 0}>
                       <SelectTrigger className="w-full sm:w-64">
-                        <SelectValue placeholder={`Copiar desde otro ${copy.staff.singularLower}`} />
+                        <SelectValue
+                          placeholder={t('admin.barbers.actions.copyFromOther', {
+                            staffSingularLower: copy.staff.singularLower,
+                          })}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         {otherBarbers.map((barber) => (
@@ -1151,14 +1325,14 @@ const AdminBarbers: React.FC = () => {
                   </div>
 
                   <div className="space-y-3">
-                    {DAY_LABELS.map((day) => {
+                    {dayLabels.map((day) => {
                       const dayData = scheduleForm[day.key];
                       return (
                         <div key={day.key} className="space-y-3 border rounded-2xl p-3 bg-muted/30">
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             <div>
                               <p className="font-semibold text-foreground">{day.label}</p>
-                              <p className="text-xs text-muted-foreground">Define turnos independientes para mañana y tarde.</p>
+                              <p className="text-xs text-muted-foreground">{t('admin.barbers.schedule.dayHint')}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <Switch
@@ -1166,14 +1340,14 @@ const AdminBarbers: React.FC = () => {
                                 onCheckedChange={(checked) => handleScheduleClosed(day.key, !checked)}
                               />
                               <span className="text-xs text-muted-foreground">
-                                {dayData.closed ? 'Cerrado' : 'Abierto'}
+                                {dayData.closed ? t('admin.barbers.schedule.closed') : t('admin.barbers.schedule.open')}
                               </span>
                             </div>
                           </div>
                           <div className="space-y-2">
                             {SHIFT_KEYS.map((shiftKey) => {
                               const shift = dayData[shiftKey];
-                              const info = SHIFT_LABELS[shiftKey];
+                              const info = shiftLabels[shiftKey];
                               return (
                                 <div key={shiftKey} className="rounded-2xl border border-border/60 bg-background/40 p-2.5">
                                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -1188,13 +1362,17 @@ const AdminBarbers: React.FC = () => {
                                         disabled={dayData.closed}
                                       />
                                       <span className="text-xs text-muted-foreground">
-                                        {shift.enabled ? 'Activo' : 'Inactivo'}
+                                        {shift.enabled
+                                          ? t('admin.barbers.schedule.active')
+                                          : t('admin.barbers.schedule.inactive')}
                                       </span>
                                     </div>
                                   </div>
                                   <div className="grid sm:grid-cols-[repeat(2,minmax(140px,1fr))] gap-3 mt-2">
                                     <div className="space-y-1 w-full sm:max-w-[200px]">
-                                      <Label className="text-xs text-muted-foreground">Inicio</Label>
+                                      <Label className="text-xs text-muted-foreground">
+                                        {t('admin.barbers.schedule.start')}
+                                      </Label>
                                       <Input
                                         type="time"
                                         value={shift.start}
@@ -1204,7 +1382,9 @@ const AdminBarbers: React.FC = () => {
                                       />
                                     </div>
                                     <div className="space-y-1 w-full sm:max-w-[200px]">
-                                      <Label className="text-xs text-muted-foreground">Fin</Label>
+                                      <Label className="text-xs text-muted-foreground">
+                                        {t('admin.barbers.schedule.end')}
+                                      </Label>
                                       <Input
                                         type="time"
                                         value={shift.end}
@@ -1228,7 +1408,7 @@ const AdminBarbers: React.FC = () => {
                   <div className="rounded-2xl border border-border/60 bg-muted/30 p-3">
                     <div className="space-y-4">
                       <div className="space-y-2 max-w-xs">
-                        <Label className="text-sm">Tolerancia fin de jornada (minutos)</Label>
+                        <Label className="text-sm">{t('admin.barbers.tolerance.endOfDayMinutes')}</Label>
                         <Input
                           type="number"
                           min={0}
@@ -1238,14 +1418,16 @@ const AdminBarbers: React.FC = () => {
                           onFocus={(e) => e.currentTarget.select()}
                         />
                         <p className="text-xs text-muted-foreground">
-                          Si lo dejas vacío, se usa el valor configurado en {copy.location.definiteSingular}.
+                          {t('admin.barbers.tolerance.endOfDayHint', {
+                            locationDefiniteSingular: copy.location.definiteSingular,
+                          })}
                         </p>
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-foreground">Ajuste por día de semana</p>
+                        <p className="text-xs font-medium text-foreground">{t('admin.barbers.tolerance.byDayTitle')}</p>
                         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                          {DAY_LABELS.map((day) => (
+                          {dayLabels.map((day) => (
                             <div key={`barber-overflow-${day.key}`} className="space-y-1">
                               <Label className="text-xs text-muted-foreground">{day.short}</Label>
                               <Input
@@ -1253,7 +1435,7 @@ const AdminBarbers: React.FC = () => {
                                 min={0}
                                 step={5}
                                 value={scheduleForm.endOverflowByDay?.[day.key] ?? ''}
-                                placeholder="Hereda local"
+                                placeholder={t('admin.barbers.tolerance.inheritLocation')}
                                 onChange={(e) => handleEndOverflowByDayChange(day.key, e.target.value)}
                                 onFocus={(e) => e.currentTarget.select()}
                               />
@@ -1263,10 +1445,10 @@ const AdminBarbers: React.FC = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-foreground">Ajuste por fecha concreta</p>
+                        <p className="text-xs font-medium text-foreground">{t('admin.barbers.tolerance.byDateTitle')}</p>
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                           <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Fecha</Label>
+                            <Label className="text-xs text-muted-foreground">{t('admin.common.table.date')}</Label>
                             <Input
                               type="date"
                               value={newScheduleOverflowDate}
@@ -1283,7 +1465,7 @@ const AdminBarbers: React.FC = () => {
                             }}
                             disabled={!newScheduleOverflowDate}
                           >
-                            Añadir fecha
+                            {t('admin.barbers.actions.addDate')}
                           </Button>
                         </div>
                         <div className="space-y-2">
@@ -1298,7 +1480,7 @@ const AdminBarbers: React.FC = () => {
                                   <p className="text-xs font-medium text-foreground">{dateKey}</p>
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs text-muted-foreground">Minutos</Label>
+                                  <Label className="text-xs text-muted-foreground">{t('admin.barbers.tolerance.minutes')}</Label>
                                   <Input
                                     type="number"
                                     min={0}
@@ -1314,12 +1496,12 @@ const AdminBarbers: React.FC = () => {
                                   size="sm"
                                   onClick={() => handleRemoveEndOverflowDate(dateKey)}
                                 >
-                                  Quitar
+                                  {t('admin.barbers.actions.remove')}
                                 </Button>
                               </div>
                             ))}
                           {Object.keys(scheduleForm.endOverflowByDate ?? {}).length === 0 && (
-                            <p className="text-xs text-muted-foreground">Sin fechas específicas.</p>
+                            <p className="text-xs text-muted-foreground">{t('admin.barbers.tolerance.noSpecificDates')}</p>
                           )}
                         </div>
                       </div>
@@ -1330,11 +1512,11 @@ const AdminBarbers: React.FC = () => {
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closeScheduleDialog}>
-                  Cancelar
+                  {t('appointmentEditor.cancel')}
                 </Button>
                 <Button onClick={handleSaveSchedule} disabled={isScheduleSaving}>
                   {isScheduleSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Guardar horario
+                  {t('admin.barbers.actions.saveSchedule')}
                 </Button>
               </DialogFooter>
             </div>
@@ -1346,15 +1528,19 @@ const AdminBarbers: React.FC = () => {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar {copy.staff.singularLower}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('admin.barbers.deleteDialog.title', { staffSingularLower: copy.staff.singularLower })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. {copy.staff.definiteSingular} será eliminado permanentemente.
+              {t('admin.barbers.deleteDialog.description', {
+                staffDefiniteSingular: copy.staff.definiteSingular,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

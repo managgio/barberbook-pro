@@ -33,6 +33,7 @@ import { useTenant } from '@/context/TenantContext';
 import { queryKeys } from '@/lib/queryKeys';
 import { adminNavItems } from '@/components/layout/adminNavItems';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
+import { useI18n } from '@/hooks/useI18n';
 
 const isSuperAdminUser = (candidate: User) => Boolean(candidate.isSuperAdmin || candidate.isPlatformAdmin);
 const USER_SEARCH_DEBOUNCE_MS = 250;
@@ -42,10 +43,11 @@ const EMPTY_USERS: User[] = [];
 const AdminRoles: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const copy = useBusinessCopy();
   const { currentLocationId } = useTenant();
   const { canAccessSection } = useAdminPermissions();
-  const adminSections = useMemo(() => getAdminSections(copy), [copy]);
+  const adminSections = useMemo(() => getAdminSections(copy, t), [copy, t]);
   const visibleSidebarSectionKeys = useMemo(
     () => new Set(adminNavItems.filter((item) => canAccessSection(item.section)).map((item) => item.section)),
     [canAccessSection],
@@ -142,20 +144,20 @@ const AdminRoles: React.FC = () => {
   useEffect(() => {
     if (!rolesQuery.error && !adminUsersQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudo cargar la información de roles.',
+      title: t('admin.common.error'),
+      description: t('admin.roles.toast.loadDataError'),
       variant: 'destructive',
     });
-  }, [adminUsersQuery.error, rolesQuery.error, toast]);
+  }, [adminUsersQuery.error, rolesQuery.error, t, toast]);
 
   useEffect(() => {
     if (!searchUsersQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudo completar la búsqueda de usuarios.',
+      title: t('admin.common.error'),
+      description: t('admin.roles.toast.searchUsersError'),
       variant: 'destructive',
     });
-  }, [searchUsersQuery.error, toast]);
+  }, [searchUsersQuery.error, t, toast]);
 
   const openCreateDialog = () => {
     setEditingRole(null);
@@ -196,8 +198,8 @@ const AdminRoles: React.FC = () => {
     const sanitizedPermissions = sanitizePermissions(formData.permissions);
     if (sanitizedPermissions.length === 0) {
       toast({
-        title: 'Selecciona permisos',
-        description: 'Cada rol debe tener al menos una sección asignada.',
+        title: t('admin.roles.toast.selectPermissionsTitle'),
+        description: t('admin.roles.toast.selectPermissionsDescription'),
         variant: 'destructive',
       });
       return;
@@ -210,17 +212,17 @@ const AdminRoles: React.FC = () => {
       };
       if (editingRole) {
         await updateAdminRole(editingRole.id, payload);
-        toast({ title: 'Rol actualizado', description: 'Los cambios se han guardado.' });
+        toast({ title: t('admin.roles.toast.roleUpdatedTitle'), description: t('admin.roles.toast.changesSavedDescription') });
       } else {
         await createAdminRole(payload);
-        toast({ title: 'Rol creado', description: 'El nuevo rol ya está disponible.' });
+        toast({ title: t('admin.roles.toast.roleCreatedTitle'), description: t('admin.roles.toast.roleCreatedDescription') });
       }
       setIsDialogOpen(false);
       await Promise.all([rolesQuery.refetch(), adminUsersQuery.refetch()]);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo guardar el rol.',
+        title: t('admin.common.error'),
+        description: t('admin.roles.toast.saveRoleError'),
         variant: 'destructive',
       });
     } finally {
@@ -233,13 +235,13 @@ const AdminRoles: React.FC = () => {
     try {
       await deleteAdminRole(isDeletingRole.id);
       dispatchUsersUpdated({ source: 'admin-roles' });
-      toast({ title: 'Rol eliminado', description: 'Los usuarios asignados han quedado sin rol.' });
+      toast({ title: t('admin.roles.toast.roleDeletedTitle'), description: t('admin.roles.toast.roleDeletedDescription') });
       setIsDeletingRole(null);
       await Promise.all([rolesQuery.refetch(), adminUsersQuery.refetch()]);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo eliminar el rol.',
+        title: t('admin.common.error'),
+        description: t('admin.roles.toast.deleteRoleError'),
         variant: 'destructive',
       });
     }
@@ -254,8 +256,8 @@ const AdminRoles: React.FC = () => {
       });
       dispatchUsersUpdated({ source: 'admin-roles' });
       toast({
-        title: isAdmin ? 'Usuario ascendido' : 'Usuario actualizado',
-        description: isAdmin ? 'Ahora tiene acceso al panel admin.' : 'Se ha revocado el acceso admin.',
+        title: isAdmin ? t('admin.roles.toast.userPromotedTitle') : t('admin.roles.toast.userUpdatedTitle'),
+        description: isAdmin ? t('admin.roles.toast.userPromotedDescription') : t('admin.roles.toast.userRevokedDescription'),
       });
       await Promise.all([
         adminUsersQuery.refetch(),
@@ -263,8 +265,8 @@ const AdminRoles: React.FC = () => {
       ]);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar al usuario.',
+        title: t('admin.common.error'),
+        description: t('admin.roles.toast.updateUserError'),
         variant: 'destructive',
       });
     } finally {
@@ -277,15 +279,15 @@ const AdminRoles: React.FC = () => {
     try {
       await updateUser(userId, { adminRoleId: roleId });
       dispatchUsersUpdated({ source: 'admin-roles' });
-      toast({ title: 'Rol asignado', description: 'El usuario ya tiene permisos actualizados.' });
+      toast({ title: t('admin.roles.toast.roleAssignedTitle'), description: t('admin.roles.toast.roleAssignedDescription') });
       await Promise.all([
         adminUsersQuery.refetch(),
         debouncedUserSearch.length > 0 ? searchUsersQuery.refetch() : Promise.resolve(),
       ]);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo asignar el rol.',
+        title: t('admin.common.error'),
+        description: t('admin.roles.toast.assignRoleError'),
         variant: 'destructive',
       });
     } finally {
@@ -318,11 +320,11 @@ const AdminRoles: React.FC = () => {
           <div className="flex items-center gap-3">
             {isSuperAdminUser && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                Superadmin
+                {t('admin.roles.user.superadmin')}
               </span>
             )}
             <div className="flex items-center gap-2">
-              <span className="text-xs uppercase text-muted-foreground">Acceso admin</span>
+              <span className="text-xs uppercase text-muted-foreground">{t('admin.roles.user.adminAccess')}</span>
               <Switch
                 checked={isAdmin}
                 onCheckedChange={(checked) => handleToggleAdmin(currentUser, checked)}
@@ -334,14 +336,16 @@ const AdminRoles: React.FC = () => {
 
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
-            <Label className="text-xs text-muted-foreground">Rol asignado</Label>
+            <Label className="text-xs text-muted-foreground">{t('admin.roles.user.assignedRole')}</Label>
             <Select
               value={currentUser.adminRoleId || ''}
               onValueChange={(value) => handleAssignRole(currentUser.id, value)}
               disabled={!isAdmin || isSuperAdminUser || roles.length === 0 || isUpdating}
             >
               <SelectTrigger className="mt-1">
-                <SelectValue placeholder={roles.length === 0 ? 'Sin roles disponibles' : 'Selecciona un rol'} />
+                <SelectValue
+                  placeholder={roles.length === 0 ? t('admin.roles.user.noRolesAvailable') : t('admin.roles.user.selectRole')}
+                />
               </SelectTrigger>
               <SelectContent>
                 {roles.map((role) => (
@@ -353,7 +357,7 @@ const AdminRoles: React.FC = () => {
             </Select>
             {!currentUser.adminRoleId && isAdmin && !isSuperAdminUser && roles.length > 0 && (
               <p className="text-xs text-amber-500 mt-1">
-                Asigna un rol para que pueda ver secciones del sidebar.
+                {t('admin.roles.user.assignRoleHint')}
               </p>
             )}
           </div>
@@ -361,9 +365,11 @@ const AdminRoles: React.FC = () => {
             <p className="text-xs text-muted-foreground">
               {isAdmin
                 ? currentUser.adminRoleId
-                  ? `Puede ver ${roles.find((r) => r.id === currentUser.adminRoleId)?.permissions.length || 0} secciones.`
-                  : 'Sin permisos hasta asignar un rol.'
-                : 'Usuario sin acceso al panel admin.'}
+                  ? t('admin.roles.user.canSeeSections', {
+                      count: roles.find((r) => r.id === currentUser.adminRoleId)?.permissions.length || 0,
+                    })
+                  : t('admin.roles.user.noPermissionsYet')
+                : t('admin.roles.user.noAdminAccess')}
             </p>
           </div>
         </div>
@@ -376,11 +382,11 @@ const AdminRoles: React.FC = () => {
       <div className="max-w-3xl mx-auto mt-10">
         <Card>
           <CardHeader>
-            <CardTitle>Acceso restringido</CardTitle>
+            <CardTitle>{t('admin.roles.restricted.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">
-              Solo los superadministradores pueden gestionar roles y permisos.
+              {t('admin.roles.restricted.description')}
             </p>
           </CardContent>
         </Card>
@@ -391,9 +397,9 @@ const AdminRoles: React.FC = () => {
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col gap-2 pl-12 md:pl-0">
-        <h1 className="text-3xl font-bold text-foreground">Roles y permisos</h1>
+        <h1 className="text-3xl font-bold text-foreground">{t('admin.roles.title')}</h1>
         <p className="text-muted-foreground">
-          Define qué secciones del panel puede ver cada administrador y asigna roles personalizados.
+          {t('admin.roles.subtitle')}
         </p>
       </div>
 
@@ -403,11 +409,11 @@ const AdminRoles: React.FC = () => {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-primary" />
-                Roles disponibles
+                {t('admin.roles.available.title')}
               </CardTitle>
-              <p className="text-sm text-muted-foreground">Configura las secciones visibles para cada rol.</p>
+              <p className="text-sm text-muted-foreground">{t('admin.roles.available.description')}</p>
             </div>
-            <Button onClick={openCreateDialog}>Nuevo rol</Button>
+            <Button onClick={openCreateDialog}>{t('admin.roles.actions.newRole')}</Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading ? (
@@ -417,8 +423,8 @@ const AdminRoles: React.FC = () => {
             ) : roles.length === 0 ? (
               <EmptyState
                 icon={Shield}
-                title="Sin roles"
-                description="Crea un rol para empezar a asignar permisos."
+                title={t('admin.roles.empty.title')}
+                description={t('admin.roles.empty.description')}
               />
             ) : (
               roles.map((role) => (
@@ -430,7 +436,7 @@ const AdminRoles: React.FC = () => {
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => openEditDialog(role)}>
-                        Editar
+                        {t('admin.common.edit')}
                       </Button>
                       <Button
                         size="sm"
@@ -438,7 +444,7 @@ const AdminRoles: React.FC = () => {
                         className="text-destructive"
                         onClick={() => setIsDeletingRole(role)}
                       >
-                        Eliminar
+                        {t('admin.roles.actions.delete')}
                       </Button>
                     </div>
                   </div>
@@ -456,7 +462,9 @@ const AdminRoles: React.FC = () => {
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Asignado a {adminUsers.filter((u) => u.adminRoleId === role.id).length} administradores.
+                    {t('admin.roles.assignedCount', {
+                      count: adminUsers.filter((u) => u.adminRoleId === role.id).length,
+                    })}
                   </p>
                 </div>
               ))
@@ -468,10 +476,10 @@ const AdminRoles: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5 text-primary" />
-              Administradores
+              {t('admin.roles.admins.title')}
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Activa el acceso al panel y asigna un rol a cada usuario.
+              {t('admin.roles.admins.description')}
             </p>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -482,43 +490,43 @@ const AdminRoles: React.FC = () => {
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="user-search">Buscar usuario</Label>
+                  <Label htmlFor="user-search">{t('admin.roles.search.label')}</Label>
                   <Input
                     id="user-search"
-                    placeholder="Nombre, email o teléfono..."
+                    placeholder={t('admin.roles.search.placeholder')}
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Usa el buscador para dar acceso admin solo a quien lo necesite.
+                    {t('admin.roles.search.hint')}
                   </p>
                 </div>
 
                 {userSearch.trim().length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs uppercase text-muted-foreground tracking-wide">Resultados</p>
+                    <p className="text-xs uppercase text-muted-foreground tracking-wide">{t('admin.roles.search.results')}</p>
                     {isSearchingUsers ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Buscando usuarios...
+                        {t('admin.roles.search.loading')}
                       </div>
                     ) : searchResults.length > 0 ? (
                       searchResults.map((result) => renderUserCard(result, true))
                     ) : (
                       <p className="text-sm text-muted-foreground">
-                        No encontramos usuarios que coincidan con la búsqueda.
+                        {t('admin.roles.search.noResults')}
                       </p>
                     )}
                   </div>
                 )}
 
                 <div className="border-t border-border pt-4 space-y-3">
-                  <p className="text-xs uppercase text-muted-foreground tracking-wide">Administradores activos</p>
+                  <p className="text-xs uppercase text-muted-foreground tracking-wide">{t('admin.roles.activeAdmins')}</p>
                   {activeAdminUsers.length > 0 ? (
                     activeAdminUsers.map((admin) => renderUserCard(admin))
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      Aún no hay administradores asignados. Activa alguno con el buscador.
+                      {t('admin.roles.activeAdminsEmpty')}
                     </p>
                   )}
                 </div>
@@ -532,15 +540,15 @@ const AdminRoles: React.FC = () => {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl h-[85vh] max-h-[760px] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>{editingRole ? 'Editar rol' : 'Nuevo rol'}</DialogTitle>
+            <DialogTitle>{editingRole ? t('admin.roles.dialog.editTitle') : t('admin.roles.dialog.newTitle')}</DialogTitle>
             <DialogDescription className="sr-only">
-              Define permisos y descripción del rol para administradores del local.
+              {t('admin.roles.dialog.description')}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveRole} className="flex flex-1 min-h-0 flex-col gap-5 overflow-hidden">
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="role-name">Nombre del rol</Label>
+                <Label htmlFor="role-name">{t('admin.roles.dialog.roleName')}</Label>
                 <Input
                   id="role-name"
                   value={formData.name}
@@ -549,7 +557,7 @@ const AdminRoles: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="role-description">Descripción</Label>
+                <Label htmlFor="role-description">{t('admin.roles.dialog.roleDescription')}</Label>
                 <Textarea
                   id="role-description"
                   value={formData.description}
@@ -560,7 +568,7 @@ const AdminRoles: React.FC = () => {
             </div>
 
             <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1">
-              <Label>Permisos del sidebar</Label>
+              <Label>{t('admin.roles.dialog.sidebarPermissions')}</Label>
               <div className="grid sm:grid-cols-2 gap-2">
                 {rolePermissionSections.map((section) => (
                   <label
@@ -587,11 +595,11 @@ const AdminRoles: React.FC = () => {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isSavingRole}>
                 {isSavingRole && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Guardar rol
+                {t('admin.roles.dialog.saveRole')}
               </Button>
             </DialogFooter>
           </form>
@@ -602,15 +610,15 @@ const AdminRoles: React.FC = () => {
       <AlertDialog open={!!isDeletingRole} onOpenChange={() => setIsDeletingRole(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar rol?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.roles.deleteDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Los administradores asignados a este rol quedarán sin permisos hasta que les asignes otro.
+              {t('admin.roles.deleteDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDeleteRole}>
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

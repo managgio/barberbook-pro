@@ -7,6 +7,13 @@ const STATUS_LABELS: Record<AppointmentStatus, string> = {
   no_show: 'Ausencia',
 };
 
+const STATUS_MESSAGE_KEYS: Record<AppointmentStatus, string> = {
+  scheduled: 'appointmentStatus.scheduled',
+  completed: 'appointmentStatus.completed',
+  cancelled: 'appointmentStatus.cancelled',
+  no_show: 'appointmentStatus.noShow',
+};
+
 const STATUS_BADGE_CLASSES: Record<AppointmentStatus, string> = {
   scheduled: 'bg-amber-500/10 text-amber-500',
   completed: 'bg-green-500/10 text-green-500',
@@ -24,6 +31,7 @@ const STATUS_DOT_CLASSES: Record<AppointmentStatus, string> = {
 export const APPOINTMENT_STATUSES: AppointmentStatus[] = ['scheduled', 'completed', 'no_show', 'cancelled'];
 
 export const getAppointmentStatusLabel = (status: AppointmentStatus) => STATUS_LABELS[status];
+export const getAppointmentStatusMessageKey = (status: AppointmentStatus) => STATUS_MESSAGE_KEYS[status];
 
 export const getAppointmentStatusBadgeClass = (status: AppointmentStatus) => STATUS_BADGE_CLASSES[status];
 

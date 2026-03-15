@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { getAdminCalendarData, updateAppointment } from '@/data/api/appointments';
 import { getAdminStripeConfig } from '@/data/api/payments';
 import { AdminCalendarResponse, Appointment, Barber, PaymentMethod, Service } from '@/data/types';
-import { 
+import {
   ChevronLeft, 
   ChevronRight, 
   Clock,
@@ -34,7 +34,6 @@ import {
   setHours,
   setMinutes,
 } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
@@ -49,6 +48,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
 import { resolveBarberAccentColor } from '@/lib/barberColors';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const START_HOUR = 9;
 const END_HOUR = 20;
@@ -57,11 +58,6 @@ const HOUR_HEIGHT = 60;
 const MINUTES_IN_DAY_VIEW = HOURS.length * 60;
 const BARBER_FILTER_STORAGE_PREFIX = 'admin:calendar:barber-filter';
 const NOW_INDICATOR_STORAGE_PREFIX = 'admin:calendar:now-indicator';
-const currencyFormatter = new Intl.NumberFormat('es-ES', {
-  style: 'currency',
-  currency: 'EUR',
-  minimumFractionDigits: 2,
-});
 const formatPriceInput = (value: number) => value.toFixed(2).replace('.', ',');
 const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_BARBERS: Barber[] = [];
@@ -93,7 +89,18 @@ const resolveCalendarPreferenceKey = (prefix: string, locationId?: string | null
 const AdminCalendar: React.FC = () => {
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const { currentLocationId } = useTenant();
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(language.startsWith('en') ? 'en-US' : 'es-ES', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+      }),
+    [language],
+  );
   const queryClient = useQueryClient();
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
@@ -165,20 +172,20 @@ const AdminCalendar: React.FC = () => {
   useEffect(() => {
     if (!appointmentsQuery.error) return;
     toast({
-      title: 'No se pudo cargar el calendario',
-      description: 'Inténtalo de nuevo en unos segundos.',
+      title: t('admin.calendar.toast.loadErrorTitle'),
+      description: t('admin.common.tryAgainInSeconds'),
       variant: 'destructive',
     });
-  }, [appointmentsQuery.error, toast]);
+  }, [appointmentsQuery.error, t, toast]);
 
   useEffect(() => {
     if (!barbersQuery.error && !servicesQuery.error && !stripeConfigQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudieron cargar algunos datos de soporte.',
+      title: t('admin.common.error'),
+      description: t('admin.common.toast.supportDataError'),
       variant: 'destructive',
     });
-  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, toast]);
+  }, [barbersQuery.error, servicesQuery.error, stripeConfigQuery.error, t, toast]);
 
   useForegroundRefresh(() => {
     void Promise.all([
@@ -229,13 +236,13 @@ const AdminCalendar: React.FC = () => {
   const getAppointmentBarberName = (appointment: Appointment) =>
     getBarber(appointment.barberId)?.name ||
     appointment.barberNameSnapshot ||
-    `${copy.staff.singular} eliminado`;
+    t('admin.common.removedStaff', { staffSingular: copy.staff.singular });
   const getClientInfo = (appointment: Appointment) => {
     const user = clients.find((client) => client.id === appointment.userId);
     const isGuest = !user;
     return {
-      name: user?.name || appointment.guestName || 'Cliente sin cuenta',
-      contact: user?.email || user?.phone || appointment.guestContact || 'Sin datos de contacto',
+      name: user?.name || appointment.guestName || t('admin.common.guestClient'),
+      contact: user?.email || user?.phone || appointment.guestContact || t('admin.common.noContactData'),
       isGuest,
     };
   };
@@ -298,8 +305,8 @@ const AdminCalendar: React.FC = () => {
       applyAppointmentUpdate(updated);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el método de pago.',
+        title: t('admin.common.error'),
+        description: t('admin.common.toast.paymentMethodError'),
         variant: 'destructive',
       });
       setPaymentMethodDraft(selectedAppointment.paymentMethod ?? 'none');
@@ -319,8 +326,8 @@ const AdminCalendar: React.FC = () => {
     const parsed = Number(normalized);
     if (Number.isNaN(parsed) || parsed < 0) {
       toast({
-        title: 'Precio inválido',
-        description: 'Introduce un importe válido para la cita.',
+        title: t('admin.common.invalidPrice'),
+        description: t('admin.common.toast.invalidPriceDescription'),
         variant: 'destructive',
       });
       setPriceDraft(formatPriceInput(currentPrice));
@@ -337,8 +344,8 @@ const AdminCalendar: React.FC = () => {
       setPriceDraft(formatPriceInput(updated.price ?? parsed));
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar el precio final.',
+        title: t('admin.common.error'),
+        description: t('admin.common.toast.finalPriceError'),
         variant: 'destructive',
       });
       setPriceDraft(formatPriceInput(currentPrice));
@@ -420,7 +427,7 @@ const AdminCalendar: React.FC = () => {
   };
   const getAppointmentClientName = (apt: Appointment) => {
     const client = apt.userId ? clientsById.get(apt.userId) : undefined;
-    return client?.name || apt.guestName || 'Cliente';
+    return client?.name || apt.guestName || t('admin.common.client');
   };
 
   const buildDayEvents = (day: Date) => {
@@ -492,9 +499,9 @@ const AdminCalendar: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Calendario</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.calendar.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Gestiona las citas {copy.location.fromWithDefinite}.
+            {t('admin.calendar.subtitle', { locationFromWithDefinite: copy.location.fromWithDefinite })}
           </p>
         </div>
 
@@ -502,7 +509,7 @@ const AdminCalendar: React.FC = () => {
           {hasMultipleBarbers && (
             <Select value={selectedBarberId} onValueChange={setSelectedBarberId}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
+                <SelectValue placeholder={t('admin.calendar.filterStaff', { staffSingularLower: copy.staff.singularLower })} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
@@ -517,11 +524,11 @@ const AdminCalendar: React.FC = () => {
               checked={isCurrentTimeIndicatorEnabled}
               onCheckedChange={setIsCurrentTimeIndicatorEnabled}
             />
-            Indicador hora actual
+            {t('admin.calendar.currentTimeIndicator')}
           </label>
           <Button variant="outline" size="sm" onClick={() => void handleManualRefresh()} disabled={isRefreshingCalendar}>
             <RefreshCcw className={cn('mr-2 h-4 w-4', isRefreshingCalendar && 'animate-spin')} />
-            Recargar
+            {t('admin.common.reload')}
           </Button>
         </div>
       </div>
@@ -533,7 +540,7 @@ const AdminCalendar: React.FC = () => {
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <CardTitle className="text-lg">
-            {format(currentWeekStart, "d 'de' MMMM", { locale: es })} - {format(addDays(currentWeekStart, 6), "d 'de' MMMM yyyy", { locale: es })}
+            {format(currentWeekStart, "d 'de' MMMM", { locale: dateLocale })} - {format(addDays(currentWeekStart, 6), "d 'de' MMMM yyyy", { locale: dateLocale })}
           </CardTitle>
           <Button variant="outline" size="icon" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>
             <ChevronRight className="w-4 h-4" />
@@ -546,7 +553,7 @@ const AdminCalendar: React.FC = () => {
               className="grid border-b border-border"
               style={{ gridTemplateColumns: '64px repeat(7, minmax(0, 1fr))' }}
             >
-              <div className="p-3 text-center text-sm text-muted-foreground">Hora</div>
+              <div className="p-3 text-center text-sm text-muted-foreground">{t('admin.common.table.time')}</div>
               {weekDays.map((day) => (
                 <div 
                   key={day.toISOString()} 
@@ -556,7 +563,7 @@ const AdminCalendar: React.FC = () => {
                   )}
                 >
                   <p className="text-xs text-muted-foreground uppercase">
-                    {format(day, 'EEE', { locale: es })}
+                    {format(day, 'EEE', { locale: dateLocale })}
                   </p>
                   <p className={cn(
                     'text-lg font-semibold',
@@ -622,7 +629,7 @@ const AdminCalendar: React.FC = () => {
                         <button
                           key={event.appointment.id}
                           onClick={() => setSelectedAppointment(event.appointment)}
-                          title={`${startLabel} - ${endLabel} · ${service?.name || 'Servicio'}`}
+                          title={`${startLabel} - ${endLabel} · ${service?.name || t('admin.common.table.service')}`}
                           className={cn(
                             'absolute overflow-hidden rounded-sm border px-2 py-1 text-left text-[11px] leading-tight text-white shadow-sm transition-all',
                             'hover:-translate-y-[1px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-1',
@@ -648,11 +655,11 @@ const AdminCalendar: React.FC = () => {
                               {!isCompact && <span className="text-white/70">- {endLabel}</span>}
                             </div>
                             <div className={cn('truncate font-medium text-white/95', isCompact && 'text-[10px]')}>
-                              {service?.name || 'Servicio'}
+                              {service?.name || t('admin.common.table.service')}
                             </div>
                             {!isCompact && event.appointment.subscriptionApplied && (
                               <div className="mt-0.5 inline-flex rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-100">
-                                Susc
+                                {t('admin.common.subscriptionCompact')}
                               </div>
                             )}
                             {showClient && (
@@ -690,9 +697,9 @@ const AdminCalendar: React.FC = () => {
       <Dialog open={!!selectedAppointment} onOpenChange={() => setSelectedAppointment(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Detalle de cita</DialogTitle>
+            <DialogTitle>{t('admin.calendar.detail.title')}</DialogTitle>
             <DialogDescription className="sr-only">
-              Vista completa de la cita, estado, cliente, servicio y método de pago.
+              {t('admin.calendar.detail.description')}
             </DialogDescription>
           </DialogHeader>
           {selectedAppointment && (
@@ -700,13 +707,13 @@ const AdminCalendar: React.FC = () => {
               <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
                 <Scissors className="w-5 h-5 text-primary" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Servicio</p>
+                  <p className="text-sm text-muted-foreground">{t('admin.common.table.service')}</p>
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-foreground">
                       {getService(selectedAppointment.serviceId)?.name}
                     </p>
                     {selectedAppointment.subscriptionApplied && (
-                      <Badge variant="secondary">Suscripción</Badge>
+                      <Badge variant="secondary">{t('admin.common.subscription')}</Badge>
                     )}
                   </div>
                 </div>
@@ -717,10 +724,10 @@ const AdminCalendar: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                       <Package className="w-4 h-4 text-primary" />
-                      Productos añadidos
+                      {t('admin.calendar.detail.productsAdded')}
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      Total productos: {currencyFormatter.format(selectedProductsTotal)}
+                      {t('admin.calendar.detail.productsTotal', { amount: currencyFormatter.format(selectedProductsTotal) })}
                     </span>
                   </div>
                   <div className="space-y-2">
@@ -744,7 +751,7 @@ const AdminCalendar: React.FC = () => {
               <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
                 <UserIcon className="w-5 h-5 text-primary" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Cliente</p>
+                  <p className="text-sm text-muted-foreground">{t('admin.common.table.client')}</p>
                   <p className="font-medium text-foreground">
                     {selectedClientInfo?.name}
                   </p>
@@ -753,7 +760,7 @@ const AdminCalendar: React.FC = () => {
                   </p>
                   {selectedClientInfo?.isGuest && (
                     <span className="inline-flex items-center mt-2 px-2 py-0.5 rounded-full text-xs bg-amber-500/10 text-amber-400">
-                      Invitado sin cuenta
+                      {t('admin.common.guestWithoutAccount')}
                     </span>
                   )}
                 </div>
@@ -780,9 +787,9 @@ const AdminCalendar: React.FC = () => {
               <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
                 <Clock className="w-5 h-5 text-primary" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Fecha y hora</p>
+                  <p className="text-sm text-muted-foreground">{t('admin.calendar.detail.dateTime')}</p>
                   <p className="font-medium text-foreground">
-                    {format(parseISO(selectedAppointment.startDateTime), "EEEE d 'de' MMMM, HH:mm", { locale: es })}
+                    {format(parseISO(selectedAppointment.startDateTime), "EEEE d 'de' MMMM, HH:mm", { locale: dateLocale })}
                   </p>
                 </div>
               </div>
@@ -791,7 +798,7 @@ const AdminCalendar: React.FC = () => {
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-primary">
                     <MessageSquare className="h-4 w-4" />
-                    Comentario del cliente
+                    {t('admin.calendar.detail.clientComment')}
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
                     {selectedAppointment.notes}
@@ -812,11 +819,11 @@ const AdminCalendar: React.FC = () => {
                     disabled={isSavingPayment}
                   >
                     <SelectTrigger className="h-8 w-[140px] rounded-full bg-background/70 px-3 text-xs">
-                      <SelectValue placeholder="Método de pago" />
+                      <SelectValue placeholder={t('admin.common.paymentMethod.placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cash">Efectivo</SelectItem>
-                      <SelectItem value="card">Tarjeta</SelectItem>
+                      <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
+                      <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
                       <SelectItem value="bizum">Bizum</SelectItem>
                       {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
                       {!stripeEnabled && paymentMethodDraft === 'stripe' && (
@@ -824,7 +831,7 @@ const AdminCalendar: React.FC = () => {
                           Stripe
                         </SelectItem>
                       )}
-                      <SelectItem value="none">Sin método</SelectItem>
+                      <SelectItem value="none">{t('admin.common.paymentMethod.none')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -853,7 +860,7 @@ const AdminCalendar: React.FC = () => {
                         }
                       }}
                       className="w-[60px] bg-transparent text-center text-xl font-bold text-primary outline-none sm:w-[72px]"
-                      aria-label="Precio final"
+                      aria-label={t('admin.common.table.finalPrice')}
                       disabled={isSavingPrice}
                     />
                     <span className="text-sm font-semibold text-primary">€</span>
@@ -861,7 +868,7 @@ const AdminCalendar: React.FC = () => {
                   </div>
                   {hasSelectedProducts && (
                     <p className="text-xs text-muted-foreground">
-                      Incluye {currencyFormatter.format(selectedProductsTotal)} en productos
+                      {t('admin.calendar.detail.includesProducts', { amount: currencyFormatter.format(selectedProductsTotal) })}
                     </p>
                   )}
                 </div>
@@ -869,7 +876,7 @@ const AdminCalendar: React.FC = () => {
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setSelectedAppointment(null)}>
-                  Cerrar
+                  {t('admin.common.close')}
                 </Button>
                 <Button
                   variant="outline"
@@ -878,10 +885,10 @@ const AdminCalendar: React.FC = () => {
                     setIsEditorOpen(true);
                   }}
                 >
-                  Editar
+                  {t('admin.common.edit')}
                 </Button>
                 <Button variant="ghost" className="text-destructive" onClick={() => setDeleteTarget(selectedAppointment)}>
-                  Cancelar
+                  {t('admin.common.cancelDialog.confirm')}
                 </Button>
               </div>
             </div>
@@ -907,13 +914,13 @@ const AdminCalendar: React.FC = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.common.cancelDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
+              {t('admin.common.cancelDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t('admin.common.cancelDialog.back')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
@@ -921,20 +928,27 @@ const AdminCalendar: React.FC = () => {
                 setIsDeleting(true);
                 try {
                   await updateAppointment(deleteTarget.id, { status: 'cancelled' });
-                  toast({ title: 'Cita cancelada', description: 'La cita ha sido cancelada.' });
+                  toast({
+                    title: t('admin.common.toast.appointmentCancelledTitle'),
+                    description: t('admin.common.toast.appointmentCancelledDescription'),
+                  });
                   setDeleteTarget(null);
                   setSelectedAppointment(null);
                   dispatchAppointmentsUpdated({ source: 'admin-calendar' });
                   await appointmentsQuery.refetch();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
+                  toast({
+                    title: t('admin.common.error'),
+                    description: t('admin.common.toast.cancelAppointmentError'),
+                    variant: 'destructive',
+                  });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Cancelando...' : 'Cancelar'}
+              {isDeleting ? t('admin.common.cancelDialog.cancelling') : t('admin.common.cancelDialog.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

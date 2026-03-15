@@ -1,18 +1,20 @@
-import { useEffect, useRef } from "react";
-import { toast } from "@/hooks/use-toast";
+import { useEffect, useRef } from 'react';
+import { toast } from '@/hooks/use-toast';
+import { useI18n } from '@/hooks/useI18n';
 
 const NetworkStatusMonitor: React.FC = () => {
   const wasOfflineRef = useRef(false);
+  const { t } = useI18n();
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
 
     const notifyOffline = () => {
       wasOfflineRef.current = true;
       toast({
-        title: "Sin conexión",
-        description: "No hay red disponible. Mostraremos datos en caché cuando existan.",
-        variant: "destructive",
+        title: t('networkStatus.toast.offlineTitle'),
+        description: t('networkStatus.toast.offlineDescription'),
+        variant: 'destructive',
       });
     };
 
@@ -20,8 +22,8 @@ const NetworkStatusMonitor: React.FC = () => {
       if (!wasOfflineRef.current) return;
       wasOfflineRef.current = false;
       toast({
-        title: "Conexión restablecida",
-        description: "Tu conexión volvió. Ya puedes continuar normalmente.",
+        title: t('networkStatus.toast.onlineTitle'),
+        description: t('networkStatus.toast.onlineDescription'),
       });
     };
 
@@ -29,13 +31,13 @@ const NetworkStatusMonitor: React.FC = () => {
       notifyOffline();
     }
 
-    window.addEventListener("offline", notifyOffline);
-    window.addEventListener("online", notifyOnline);
+    window.addEventListener('offline', notifyOffline);
+    window.addEventListener('online', notifyOnline);
     return () => {
-      window.removeEventListener("offline", notifyOffline);
-      window.removeEventListener("online", notifyOnline);
+      window.removeEventListener('offline', notifyOffline);
+      window.removeEventListener('online', notifyOnline);
     };
-  }, []);
+  }, [t]);
 
   return null;
 };

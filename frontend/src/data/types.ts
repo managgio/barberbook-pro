@@ -119,6 +119,27 @@ export interface TenantBootstrap {
     features?: {
       barberServiceAssignmentEnabled?: boolean;
     } | null;
+    i18n?: {
+      defaultLanguage?: string;
+      supportedLanguages?: string[];
+      autoTranslate?: {
+        enabled?: boolean;
+        paused?: boolean;
+        pauseUntil?: string;
+        pauseReason?: string;
+        retryAttempts?: number;
+        monthlyRequestLimit?: number;
+        monthlyCharacterLimit?: number;
+        circuitBreaker?: {
+          enabled?: boolean;
+          failureRateThreshold?: number;
+          minSamples?: number;
+          consecutiveFailures?: number;
+          windowMinutes?: number;
+          pauseMinutes?: number;
+        } | null;
+      } | null;
+    } | null;
     business?: {
       type?: TenantBusinessType;
     } | null;
@@ -507,6 +528,60 @@ export interface SiteSettings {
     order?: AdminSectionKey[];
   };
   qrSticker: QrSticker | null;
+}
+
+export type LocalizableEntityType =
+  | 'service'
+  | 'service_category'
+  | 'product'
+  | 'product_category'
+  | 'alert'
+  | 'site_settings'
+  | 'offer'
+  | 'loyalty_program'
+  | 'subscription_plan'
+  | 'barber'
+  | 'review_config';
+
+export type LocalizedTranslationStatus = 'pending' | 'ready' | 'failed' | 'stale';
+export type LocalizedTranslationSource = 'ai' | 'manual';
+
+export interface LocalizedEntityTranslation {
+  language: string;
+  translatedText: string;
+  status: LocalizedTranslationStatus;
+  source: LocalizedTranslationSource;
+  manualLocked: boolean;
+  basedOnSourceVersion: number;
+  errorMessage?: string | null;
+  updatedAt: string;
+}
+
+export interface LocalizedEntityField {
+  fieldKey: string;
+  sourceLanguage: string;
+  sourceText: string;
+  sourceVersion: number;
+  translations: LocalizedEntityTranslation[];
+}
+
+export interface QueueLocalizationRegenerationResult {
+  queued: number;
+  skippedManual: number;
+}
+
+export type LocalizedSummaryStatus = 'ready' | 'pending' | 'failed' | 'stale' | 'missing';
+
+export interface LocalizedEntitySummary {
+  entityId: string;
+  status: LocalizedSummaryStatus;
+  trackedFieldCount: number;
+  targetCount: number;
+  readyCount: number;
+  pendingCount: number;
+  failedCount: number;
+  staleCount: number;
+  missingCount: number;
 }
 
 export type DiscountType = 'percentage' | 'amount';
@@ -1137,6 +1212,71 @@ export interface PlatformObservabilityApiSummary {
     durationMs: number;
     timestamp: number;
   }>;
+}
+
+export type PlatformI18nTenantStatus = 'ok' | 'warning' | 'critical' | 'paused';
+
+export interface PlatformI18nObservabilityTenantRow {
+  brandId: string;
+  brandName: string;
+  subdomain: string;
+  isActive: boolean;
+  status: PlatformI18nTenantStatus;
+  autoTranslateEnabled: boolean;
+  paused: boolean;
+  pauseUntil: string | null;
+  pauseReason: string | null;
+  languages: {
+    defaultLanguage: string;
+    supportedCount: number;
+    supported: string[];
+  };
+  queue: {
+    pending: number;
+  };
+  failureWindow: {
+    windowMinutes: number;
+    totalSamples: number;
+    failedSamples: number;
+    failureRate: number;
+    highFailure: boolean;
+    threshold: number;
+    minSamples: number;
+    latestErrorMessage: string | null;
+    latestErrorAt: string | null;
+  };
+  monthlyRequests: {
+    used: number;
+    limit: number | null;
+    ratio: number | null;
+    nearLimit: boolean;
+    overLimit: boolean;
+  };
+  monthlyCharacters: {
+    used: number;
+    limit: number | null;
+    ratio: number | null;
+    nearLimit: boolean;
+    overLimit: boolean;
+  };
+}
+
+export interface PlatformI18nObservabilitySummary {
+  generatedAt: string;
+  windowMinutes: number;
+  nearLimitThreshold: number;
+  summary: {
+    totalTenants: number;
+    activeTenants: number;
+    pausedTenants: number;
+    nearLimitTenants: number;
+    overLimitTenants: number;
+    highFailureTenants: number;
+    autoTranslateDisabledTenants: number;
+    pendingQueueTotal: number;
+    statuses: Record<PlatformI18nTenantStatus, number>;
+  };
+  tenants: PlatformI18nObservabilityTenantRow[];
 }
 
 export interface AdminDashboardTodayAppointment {

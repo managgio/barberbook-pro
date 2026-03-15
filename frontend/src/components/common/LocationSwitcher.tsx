@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBusinessCopy } from '@/lib/businessCopy';
+import { useI18n } from '@/hooks/useI18n';
 
 const LocationSwitcher: React.FC<{
   compact?: boolean;
@@ -18,6 +19,7 @@ const LocationSwitcher: React.FC<{
 }) => {
   const { locations, currentLocationId, selectLocation } = useTenant();
   const copy = useBusinessCopy();
+  const { t } = useI18n();
   const currentLocation = locations.find((location) => location.id === currentLocationId) ?? locations[0] ?? null;
 
   if (locations.length <= 1) {
@@ -60,7 +62,7 @@ const LocationSwitcher: React.FC<{
       >
         <div className="mr-1 sm:mr-1.5 flex items-center gap-1.5 sm:gap-2">
           <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
-          <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
+          <SelectValue placeholder={t('common.selectNoun', { noun: copy.location.indefiniteSingular })} />
         </div>
       </SelectTrigger>
       <SelectContent className={compact ? 'border-border/60 bg-background/75 backdrop-blur-xl' : undefined}>

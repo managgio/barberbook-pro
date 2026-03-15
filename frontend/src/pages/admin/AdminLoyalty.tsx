@@ -23,11 +23,13 @@ import { fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalog
 import { useTenant } from '@/context/TenantContext';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { useI18n } from '@/hooks/useI18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
-const scopeLabels: Record<LoyaltyScope, string> = {
-  global: 'Global',
-  service: 'Por servicio',
-  category: 'Por categoría',
+const SCOPE_KEYS: Record<LoyaltyScope, string> = {
+  global: 'admin.loyalty.scope.global',
+  service: 'admin.loyalty.scope.service',
+  category: 'admin.loyalty.scope.category',
 };
 const EMPTY_PROGRAMS: LoyaltyProgram[] = [];
 const EMPTY_SERVICES: Service[] = [];
@@ -35,6 +37,7 @@ const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
 
 const AdminLoyalty: React.FC = () => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const copy = useBusinessCopy();
   const { currentLocationId } = useTenant();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -78,15 +81,26 @@ const AdminLoyalty: React.FC = () => {
     [categoriesQuery.data],
   );
   const isLoading = programsQuery.isLoading || servicesQuery.isLoading || categoriesQuery.isLoading;
+  const scopeLabels = useMemo(
+    () =>
+      (Object.entries(SCOPE_KEYS) as Array<[LoyaltyScope, string]>).reduce(
+        (acc, [key, labelKey]) => {
+          acc[key] = t(labelKey);
+          return acc;
+        },
+        {} as Record<LoyaltyScope, string>,
+      ),
+    [t],
+  );
 
   useEffect(() => {
     if (!programsQuery.error && !servicesQuery.error && !categoriesQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudo cargar la fidelización. Revisa si está habilitada en la plataforma.',
+      title: t('admin.common.error'),
+      description: t('admin.loyalty.toast.loadError'),
       variant: 'destructive',
     });
-  }, [categoriesQuery.error, programsQuery.error, servicesQuery.error, toast]);
+  }, [categoriesQuery.error, programsQuery.error, servicesQuery.error, t, toast]);
 
   const openDialog = (program?: LoyaltyProgram) => {
     setEditingProgram(program || null);
@@ -114,15 +128,19 @@ const AdminLoyalty: React.FC = () => {
     setIsSubmitting(true);
     try {
       if (!form.name.trim()) {
-        toast({ title: 'Nombre requerido', description: 'Indica el nombre de la tarjeta.', variant: 'destructive' });
+        toast({
+          title: t('admin.loyalty.toast.requiredNameTitle'),
+          description: t('admin.loyalty.toast.requiredNameDescription'),
+          variant: 'destructive',
+        });
         setIsSubmitting(false);
         return;
       }
       const requiredVisits = Number(form.requiredVisits);
       if (!Number.isFinite(requiredVisits) || requiredVisits < 1) {
         toast({
-          title: 'Cupos inválidos',
-          description: 'Introduce un número de visitas válido.',
+          title: t('admin.loyalty.toast.invalidVisitsTitle'),
+          description: t('admin.loyalty.toast.invalidVisitsDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -131,8 +149,8 @@ const AdminLoyalty: React.FC = () => {
       const priorityValue = Number(form.priority);
       if (!Number.isFinite(priorityValue)) {
         toast({
-          title: 'Prioridad inválida',
-          description: 'La prioridad debe ser un número.',
+          title: t('admin.loyalty.toast.invalidPriorityTitle'),
+          description: t('admin.loyalty.toast.invalidPriorityDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -143,8 +161,8 @@ const AdminLoyalty: React.FC = () => {
         : Number(form.maxCyclesPerClient);
       if (maxCyclesValue !== null && (!Number.isFinite(maxCyclesValue) || maxCyclesValue < 1)) {
         toast({
-          title: 'Límite inválido',
-          description: 'El límite por cliente debe ser un número mayor o igual a 1.',
+          title: t('admin.loyalty.toast.invalidLimitTitle'),
+          description: t('admin.loyalty.toast.invalidLimitDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -171,12 +189,16 @@ const AdminLoyalty: React.FC = () => {
       await programsQuery.refetch();
 
       toast({
-        title: 'Tarjeta guardada',
-        description: 'La configuración de fidelización se actualizó.',
+        title: t('admin.loyalty.toast.savedTitle'),
+        description: t('admin.loyalty.toast.savedDescription'),
       });
       setIsDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar la tarjeta.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.loyalty.toast.saveError'),
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -187,9 +209,13 @@ const AdminLoyalty: React.FC = () => {
     try {
       await deleteLoyaltyProgram(deletingProgramId);
       await programsQuery.refetch();
-      toast({ title: 'Tarjeta eliminada' });
+      toast({ title: t('admin.loyalty.toast.deletedTitle') });
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar la tarjeta.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.loyalty.toast.deleteError'),
+        variant: 'destructive',
+      });
     } finally {
       setDeletingProgramId(null);
       setIsDeleteDialogOpen(false);
@@ -197,23 +223,23 @@ const AdminLoyalty: React.FC = () => {
   };
 
   const scopeHelper = useMemo(() => {
-    if (form.scope === 'service') return 'Se aplicará solo al servicio seleccionado.';
-    if (form.scope === 'category') return 'Se aplicará a cualquier servicio de la categoría.';
-    return `Se aplicará a cualquier servicio ${copy.location.fromWithDefinite}.`;
-  }, [form.scope, copy.location.fromWithDefinite]);
+    if (form.scope === 'service') return t('admin.loyalty.scopeHelper.service');
+    if (form.scope === 'category') return t('admin.loyalty.scopeHelper.category');
+    return t('admin.loyalty.scopeHelper.global', { locationFromWithDefinite: copy.location.fromWithDefinite });
+  }, [form.scope, copy.location.fromWithDefinite, t]);
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div  className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Fidelización</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.loyalty.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Configura tarjetas de fidelización para incentivar las visitas recurrentes.
+            {t('admin.loyalty.subtitle')}
           </p>
         </div>
         <Button variant="glow" onClick={() => openDialog()}>
           <Plus className="w-4 h-4 mr-2" />
-          Nueva tarjeta
+          {t('admin.loyalty.actions.newCard')}
         </Button>
       </div>
 
@@ -225,9 +251,9 @@ const AdminLoyalty: React.FC = () => {
       ) : programs.length === 0 ? (
         <EmptyState
           icon={Award}
-          title="Sin tarjetas de fidelización"
-          description="Crea tu primera tarjeta para premiar a los clientes más fieles."
-          action={{ label: 'Crear tarjeta', onClick: () => openDialog() }}
+          title={t('admin.loyalty.emptyTitle')}
+          description={t('admin.loyalty.emptyDescription')}
+          action={{ label: t('admin.loyalty.actions.createCard'), onClick: () => openDialog() }}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
@@ -246,7 +272,11 @@ const AdminLoyalty: React.FC = () => {
                         await updateLoyaltyProgram(program.id, { isActive: checked });
                         await programsQuery.refetch();
                       } catch (error) {
-                        toast({ title: 'Error', description: 'No se pudo actualizar el estado.', variant: 'destructive' });
+                        toast({
+                          title: t('admin.common.error'),
+                          description: t('admin.loyalty.toast.updateStatusError'),
+                          variant: 'destructive',
+                        });
                       }
                     }}
                   />
@@ -258,40 +288,42 @@ const AdminLoyalty: React.FC = () => {
               <CardContent className="space-y-4">
                 <div className="grid gap-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Cupos necesarios</span>
+                    <span className="text-muted-foreground">{t('admin.loyalty.fields.requiredVisits')}</span>
                     <span className="font-semibold">{program.requiredVisits}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Límite por cliente</span>
+                    <span className="text-muted-foreground">{t('admin.loyalty.fields.maxCycles')}</span>
                     <span className="font-medium">
-                      {program.maxCyclesPerClient ? `x${program.maxCyclesPerClient}` : 'Sin límite'}
+                      {program.maxCyclesPerClient
+                        ? `x${program.maxCyclesPerClient}`
+                        : t('admin.loyalty.noLimit')}
                     </span>
                   </div>
                   {program.scope === 'service' && (
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Servicio</span>
-                      <span className="font-medium">{program.serviceName || 'Sin asignar'}</span>
+                      <span className="text-muted-foreground">{t('admin.common.table.service')}</span>
+                      <span className="font-medium">{program.serviceName || t('admin.loyalty.unassigned')}</span>
                     </div>
                   )}
                   {program.scope === 'category' && (
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Categoría</span>
-                      <span className="font-medium">{program.categoryName || 'Sin asignar'}</span>
+                      <span className="text-muted-foreground">{t('admin.services.fields.category')}</span>
+                      <span className="font-medium">{program.categoryName || t('admin.loyalty.unassigned')}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Prioridad</span>
+                    <span className="text-muted-foreground">{t('admin.loyalty.fields.priority')}</span>
                     <span className="font-medium">{program.priority}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => openDialog(program)}>
                     <Pencil className="w-4 h-4 mr-1" />
-                    Editar
+                    {t('admin.common.edit')}
                   </Button>
                   <Button variant="ghost" size="sm" className="text-destructive" onClick={() => openDeleteDialog(program.id)}>
                     <Trash2 className="w-4 h-4 mr-1" />
-                    Eliminar
+                    {t('admin.roles.actions.delete')}
                   </Button>
                 </div>
               </CardContent>
@@ -303,34 +335,56 @@ const AdminLoyalty: React.FC = () => {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingProgram ? 'Editar tarjeta' : 'Nueva tarjeta'}</DialogTitle>
+            <DialogTitle>
+              {editingProgram ? t('admin.loyalty.dialog.editTitle') : t('admin.loyalty.dialog.newTitle')}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              Configura reglas, alcance y prioridad de la tarjeta de fidelización.
+              {t('admin.loyalty.dialog.description')}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="loyalty-name">Nombre</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="loyalty-name">{t('admin.loyalty.fields.name')}</Label>
+                <InlineTranslationPopover
+                  entityType="loyalty_program"
+                  entityId={editingProgram?.id}
+                  fieldKey="name"
+                  onUpdated={async () => {
+                    await programsQuery.refetch();
+                  }}
+                />
+              </div>
               <Input
                 id="loyalty-name"
                 value={form.name}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                placeholder="Ej. Tarjeta 10 cortes"
+                placeholder={t('admin.loyalty.fields.namePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="loyalty-description">Descripción</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="loyalty-description">{t('admin.services.fields.description')}</Label>
+                <InlineTranslationPopover
+                  entityType="loyalty_program"
+                  entityId={editingProgram?.id}
+                  fieldKey="description"
+                  onUpdated={async () => {
+                    await programsQuery.refetch();
+                  }}
+                />
+              </div>
               <Textarea
                 id="loyalty-description"
                 value={form.description}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                placeholder="Motiva a los clientes con un servicio gratis"
+                placeholder={t('admin.loyalty.fields.descriptionPlaceholder')}
                 className="min-h-[90px]"
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Ámbito</Label>
+                <Label>{t('admin.loyalty.fields.scope')}</Label>
                 <Select
                   value={form.scope}
                   onValueChange={(value) =>
@@ -343,18 +397,18 @@ const AdminLoyalty: React.FC = () => {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona ámbito" />
+                    <SelectValue placeholder={t('admin.loyalty.fields.selectScope')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="global">Global</SelectItem>
-                    <SelectItem value="service">Por servicio</SelectItem>
-                    <SelectItem value="category">Por categoría</SelectItem>
+                    <SelectItem value="global">{t('admin.loyalty.scope.global')}</SelectItem>
+                    <SelectItem value="service">{t('admin.loyalty.scope.service')}</SelectItem>
+                    <SelectItem value="category">{t('admin.loyalty.scope.category')}</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">{scopeHelper}</p>
               </div>
               <div className="space-y-2">
-                <Label>Cupos necesarios</Label>
+                <Label>{t('admin.loyalty.fields.requiredVisits')}</Label>
                 <Input
                   type="number"
                   min="1"
@@ -364,30 +418,30 @@ const AdminLoyalty: React.FC = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Límite por cliente (opcional)</Label>
+              <Label>{t('admin.loyalty.fields.maxCyclesOptional')}</Label>
               <Input
                 type="number"
                 min="1"
-                placeholder="Sin límite"
+                placeholder={t('admin.loyalty.noLimit')}
                 value={form.maxCyclesPerClient}
                 onChange={(event) => setForm((prev) => ({ ...prev, maxCyclesPerClient: event.target.value }))}
               />
               <p className="text-xs text-muted-foreground">
-                Si lo dejas vacío, la tarjeta se puede completar sin límite.
+                {t('admin.loyalty.fields.maxCyclesHint')}
               </p>
             </div>
             {form.scope === 'service' && (
               <div className="space-y-2">
-                <Label>Servicio</Label>
+                <Label>{t('admin.common.table.service')}</Label>
                 <Select
                   value={form.serviceId}
                   onValueChange={(value) => setForm((prev) => ({ ...prev, serviceId: value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona servicio" />
+                    <SelectValue placeholder={t('admin.loyalty.fields.selectService')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Selecciona servicio</SelectItem>
+                    <SelectItem value="none">{t('admin.loyalty.fields.selectService')}</SelectItem>
                     {services.map((service) => (
                       <SelectItem key={service.id} value={service.id}>
                         {service.name}
@@ -399,16 +453,16 @@ const AdminLoyalty: React.FC = () => {
             )}
             {form.scope === 'category' && (
               <div className="space-y-2">
-                <Label>Categoría</Label>
+                <Label>{t('admin.services.fields.category')}</Label>
                 <Select
                   value={form.categoryId}
                   onValueChange={(value) => setForm((prev) => ({ ...prev, categoryId: value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona categoría" />
+                    <SelectValue placeholder={t('admin.loyalty.fields.selectCategory')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Selecciona categoría</SelectItem>
+                    <SelectItem value="none">{t('admin.loyalty.fields.selectCategory')}</SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.name}
@@ -420,30 +474,30 @@ const AdminLoyalty: React.FC = () => {
             )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Prioridad</Label>
+                <Label>{t('admin.loyalty.fields.priority')}</Label>
                 <Input
                   type="number"
                   value={form.priority}
                   onChange={(event) => setForm((prev) => ({ ...prev, priority: event.target.value }))}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Mayor prioridad gana cuando hay varias tarjetas aplicables.
+                  {t('admin.loyalty.fields.priorityHint')}
                 </p>
               </div>
               <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Tarjeta activa</p>
-                  <p className="text-xs text-muted-foreground">Los clientes podrán usarla al reservar.</p>
+                  <p className="text-sm font-medium text-foreground">{t('admin.loyalty.fields.activeCard')}</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.loyalty.fields.activeCardHint')}</p>
                 </div>
                 <Switch checked={form.isActive} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, isActive: checked }))} />
               </div>
             </div>
             <DialogFooter className="gap-2 sm:gap-0">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {editingProgram ? 'Guardar cambios' : 'Crear tarjeta'}
+                {editingProgram ? t('admin.services.actions.saveChanges') : t('admin.loyalty.actions.createCard')}
               </Button>
             </DialogFooter>
           </form>
@@ -453,20 +507,20 @@ const AdminLoyalty: React.FC = () => {
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Eliminar tarjeta</DialogTitle>
+            <DialogTitle>{t('admin.loyalty.deleteDialog.title')}</DialogTitle>
             <DialogDescription className="sr-only">
-              Confirmación para eliminar esta tarjeta de fidelización.
+              {t('admin.loyalty.deleteDialog.srDescription')}
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            ¿Quieres eliminar esta tarjeta? No afectará a las citas ya registradas.
+            {t('admin.loyalty.deleteDialog.description')}
           </p>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-              Cancelar
+              {t('appointmentEditor.cancel')}
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

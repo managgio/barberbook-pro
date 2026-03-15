@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { TenantProvider, useTenant } from "./context/TenantContext";
+import { LanguageProvider } from "./context/LanguageContext";
 import { Loader2 } from "lucide-react";
 import { queryClient } from "./lib/queryClient";
 import NetworkStatusMonitor from "./components/common/NetworkStatusMonitor";
@@ -223,12 +224,14 @@ const App = () => (
       <TenantProvider>
         <TenantGate>
           <AuthProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <NetworkStatusMonitor />
-              <RouterShell />
-            </TooltipProvider>
+            <LanguageProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <NetworkStatusMonitor />
+                <RouterShell />
+              </TooltipProvider>
+            </LanguageProvider>
           </AuthProvider>
         </TenantGate>
       </TenantProvider>

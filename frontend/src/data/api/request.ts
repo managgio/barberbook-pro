@@ -1,4 +1,5 @@
 import { buildAuthHeaders } from '@/lib/authToken';
+import { getRequestLanguage } from '@/lib/language';
 import { ApiRequestError } from '@/lib/networkErrors';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
 
@@ -77,6 +78,7 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
   const url = buildApiUrl(path.startsWith('http') ? path : `${API_BASE}${path}`, query);
   const localId = getStoredLocalId();
   const tenantOverride = getTenantSubdomainOverride();
+  const preferredLanguage = getRequestLanguage();
   const authHeaders = await buildAuthHeaders();
   const isIdempotentGet = method === 'GET' && body === undefined;
   const maxAttempts = isIdempotentGet ? IDEMPOTENT_RETRY_DELAYS_MS.length + 1 : 1;
@@ -106,6 +108,7 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
           ...authHeaders,
           ...(localId ? { 'x-local-id': localId } : {}),
           ...(tenantOverride ? { 'x-tenant-subdomain': tenantOverride } : {}),
+          ...(preferredLanguage ? { 'x-app-language': preferredLanguage } : {}),
           ...(headers || {}),
         },
         body: body ? JSON.stringify(body) : undefined,

@@ -18,6 +18,7 @@ import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useTenant } from '@/context/TenantContext';
 import LegalFooter from '@/components/layout/LegalFooter';
 import { resolveBrandLogo } from '@/lib/branding';
+import { useI18n } from '@/hooks/useI18n';
 
 const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -41,6 +42,7 @@ const AuthPage: React.FC = () => {
   const { toast } = useToast();
   const { settings } = useSiteSettings();
   const { tenant } = useTenant();
+  const { t } = useI18n();
   const isPlatform = Boolean(tenant?.isPlatform);
   const isLocalEnv = typeof window !== 'undefined'
     && (import.meta.env.DEV
@@ -123,20 +125,20 @@ const AuthPage: React.FC = () => {
 
       if (result.success) {
         toast({
-          title: isSignup ? '¡Cuenta creada!' : '¡Bienvenido!',
-          description: isSignup ? 'Tu cuenta ha sido creada.' : 'Has iniciado sesión correctamente.',
+          title: isSignup ? t('auth.toast.accountCreated') : t('auth.toast.welcome'),
+          description: isSignup ? t('auth.toast.accountCreatedDescription') : t('auth.toast.loginSuccess'),
         });
       } else {
         toast({
-          title: 'Error',
+          title: t('auth.toast.errorTitle'),
           description: result.error,
           variant: 'destructive',
         });
       }
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'Ha ocurrido un error. Inténtalo de nuevo.',
+        title: t('auth.toast.errorTitle'),
+        description: t('auth.toast.genericError'),
         variant: 'destructive',
       });
     } finally {
@@ -150,20 +152,20 @@ const AuthPage: React.FC = () => {
       const result = await loginWithGoogle();
       if (result.success) {
         toast({
-          title: '¡Bienvenido!',
-          description: 'Has iniciado sesión con Google.',
+          title: t('auth.toast.welcome'),
+          description: t('auth.toast.loginGoogleSuccess'),
         });
       } else {
         toast({
-          title: 'Error',
+          title: t('auth.toast.errorTitle'),
           description: result.error,
           variant: 'destructive',
         });
       }
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'Error al conectar con Google.',
+        title: t('auth.toast.errorTitle'),
+        description: t('auth.toast.googleError'),
         variant: 'destructive',
       });
     } finally {
@@ -177,20 +179,20 @@ const AuthPage: React.FC = () => {
       const result = await loginWithMicrosoft();
       if (result.success) {
         toast({
-          title: '¡Bienvenido!',
-          description: 'Has iniciado sesión con Microsoft.',
+          title: t('auth.toast.welcome'),
+          description: t('auth.toast.loginMicrosoftSuccess'),
         });
       } else {
         toast({
-          title: 'Error',
+          title: t('auth.toast.errorTitle'),
           description: result.error,
           variant: 'destructive',
         });
       }
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'Error al conectar con Microsoft.',
+        title: t('auth.toast.errorTitle'),
+        description: t('auth.toast.microsoftError'),
         variant: 'destructive',
       });
     } finally {
@@ -276,23 +278,23 @@ const AuthPage: React.FC = () => {
           </Link>
           
           <h1 className="text-4xl font-bold text-foreground mb-4">
-            {isPlatform ? 'Acceso plataforma' : 'Tu estilo,'}
+            {isPlatform ? t('auth.platform.title') : t('auth.brand.titleLine1')}
             <br />
-            <span className="text-gradient">{isPlatform ? 'Managgio' : 'tu momento.'}</span>
+            <span className="text-gradient">{isPlatform ? 'Managgio' : t('auth.brand.titleLine2')}</span>
           </h1>
           
           <p className="text-muted-foreground text-lg max-w-md">
             {isPlatform
-              ? 'Gestiona marcas, locales y configuraciones desde la consola central.'
-              : `Reserva tu cita en segundos y disfruta de la experiencia de ${settings.branding.name}.`}
+              ? t('auth.platform.subtitle')
+              : t('auth.brand.subtitle', { brandName: settings.branding.name })}
           </p>
 
           {isPlatform ? (
             <div className="mt-10 space-y-3 text-sm text-muted-foreground">
               {[
-                'Gestión centralizada de marcas y locales',
-                'Configuraciones multi-tenant en tiempo real',
-                'Control de permisos por local y rol',
+                t('auth.platform.bullet1'),
+                t('auth.platform.bullet2'),
+                t('auth.platform.bullet3'),
               ].map((item) => (
                 <div key={item} className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-primary" />
@@ -303,9 +305,9 @@ const AuthPage: React.FC = () => {
           ) : (
             <div className="mt-12 grid grid-cols-3 gap-6">
               {[
-                { value: `${experienceYears}+`, label: 'Años de experiencia' },
-                { value: `${formatYearlyBookings(settings.stats.yearlyBookings)}+`, label: 'Clientes satisfechos' },
-                { value: settings.stats.averageRating.toFixed(1), label: 'Valoración media' },
+                { value: `${experienceYears}+`, label: t('auth.brand.stat.experienceYears') },
+                { value: `${formatYearlyBookings(settings.stats.yearlyBookings)}+`, label: t('auth.brand.stat.satisfiedClients') },
+                { value: settings.stats.averageRating.toFixed(1), label: t('auth.brand.stat.averageRating') },
               ].map((stat) => (
                 <div key={stat.label}>
                   <p className="text-2xl font-bold text-primary">{stat.value}</p>
@@ -355,7 +357,7 @@ const AuthPage: React.FC = () => {
           {!isPlatform && (
             <div className="flex justify-end mb-3 sm:mb-4">
               <Link to="/" className="text-[10px] sm:text-xs uppercase tracking-wide text-primary hover:underline">
-                ← Volver al inicio
+                ← {t('auth.backToHome')}
               </Link>
             </div>
           )}
@@ -371,7 +373,7 @@ const AuthPage: React.FC = () => {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Iniciar sesión
+                {t('auth.tab.login')}
               </button>
               <button
                 onClick={() => setActiveTab('signup')}
@@ -381,7 +383,7 @@ const AuthPage: React.FC = () => {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Registrarse
+                {t('auth.tab.signup')}
               </button>
             </div>
           )}
@@ -412,7 +414,7 @@ const AuthPage: React.FC = () => {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            Continuar con Google
+            {t('auth.continueGoogle')}
           </Button>
 
           <Button
@@ -428,7 +430,7 @@ const AuthPage: React.FC = () => {
               <path fill="#7fba00" d="M1 12.5h10.5V23H1z" />
               <path fill="#ffb900" d="M12.5 12.5H23V23H12.5z" />
             </svg>
-            Continuar con Microsoft
+            {t('auth.continueMicrosoft')}
           </Button>
 
           <div className="relative mb-5 sm:mb-6">
@@ -437,7 +439,7 @@ const AuthPage: React.FC = () => {
             </div>
             <div className="relative flex justify-center text-[10px] sm:text-xs uppercase">
               <span className="bg-background px-1.5 sm:px-2 text-muted-foreground">
-                O continúa con email
+                {t('auth.orContinueWithEmail')}
               </span>
             </div>
           </div>
@@ -446,13 +448,13 @@ const AuthPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
             {isSignup && (
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-xs sm:text-sm">Nombre completo</Label>
+                <Label htmlFor="name" className="text-xs sm:text-sm">{t('auth.name')}</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                   <Input
                     id="name"
                     type="text"
-                    placeholder="Tu nombre"
+                    placeholder={t('auth.namePlaceholder')}
                     className="pl-10 h-10 sm:h-12 text-sm"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -463,13 +465,13 @@ const AuthPage: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-xs sm:text-sm">Email</Label>
+              <Label htmlFor="email" className="text-xs sm:text-sm">{t('auth.email')}</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="tu@email.com"
+                  placeholder={t('auth.emailPlaceholder')}
                   className="pl-10 h-10 sm:h-12 text-sm"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -479,7 +481,7 @@ const AuthPage: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-xs sm:text-sm">Contraseña</Label>
+              <Label htmlFor="password" className="text-xs sm:text-sm">{t('auth.password')}</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                 <Input
@@ -500,7 +502,7 @@ const AuthPage: React.FC = () => {
               disabled={isSubmittingForm || isGoogleLoading || isMicrosoftLoading}
             >
               {isSubmittingForm && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {isSignup ? 'Crear cuenta' : 'Iniciar sesión'}
+              {isSignup ? t('auth.submit.signup') : t('auth.submit.login')}
             </Button>
           </form>
 
@@ -509,9 +511,9 @@ const AuthPage: React.FC = () => {
             <div className="mt-5 sm:mt-6 space-y-2.5 sm:space-y-3">
               <div className="flex flex-col gap-4 text-center">
                 <div className="space-y-2">
-                  <p className="text-xs sm:text-sm text-muted-foreground">¿Solo quieres una cita rápida?</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">{t('auth.quickBooking')}</p>
                   <Button variant="outline" className="h-9 sm:h-10 text-xs sm:text-sm" asChild>
-                    <Link to="/book">Reserva sin registrarte</Link>
+                    <Link to="/book">{t('auth.bookWithoutRegister')}</Link>
                   </Button>
                 </div>
               </div>
@@ -522,8 +524,7 @@ const AuthPage: React.FC = () => {
             <div className="mt-5 sm:mt-6 space-y-2.5 sm:space-y-3">
               <div className="p-3 sm:p-4 rounded-lg bg-secondary/50 border border-border">
                 <p className="text-[11px] sm:text-xs text-muted-foreground text-center">
-                  Autenticación real con Firebase. Inicia sesión con Google o crea tu cuenta con email y contraseña.
-                  Si usas <code className="text-primary">admin@negocio.com</code> se asignará el rol de administrador automáticamente.
+                  {t('auth.devHint')}
                 </p>
               </div>
             </div>

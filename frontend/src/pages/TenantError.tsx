@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { AlertTriangle, Globe, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { applyTheme, MANAGGIO_PRIMARY } from '@/lib/theme';
+import { translateUi } from '@/lib/i18n';
+import { getRequestLanguage } from '@/lib/language';
 
 type TenantErrorProps = {
   error: {
@@ -20,6 +22,14 @@ const getBaseDomain = (hostname: string) => {
 };
 
 const TenantError = ({ error }: TenantErrorProps) => {
+  const t = (key: string, values?: Record<string, string>) =>
+    translateUi({
+      language: getRequestLanguage(),
+      defaultLanguage: 'es',
+      key,
+      values,
+    });
+
   useEffect(() => {
     applyTheme(MANAGGIO_PRIMARY);
     return () => applyTheme();
@@ -31,17 +41,17 @@ const TenantError = ({ error }: TenantErrorProps) => {
 
   const title =
     error.code === 'missing-subdomain'
-      ? 'Subdominio requerido'
+      ? t('tenantError.title.missingSubdomain')
       : error.code === 'not-found'
-        ? 'Tenant no encontrado'
-        : 'No se pudo cargar el tenant';
+        ? t('tenantError.title.notFound')
+        : t('tenantError.title.generic');
 
   const description =
     error.code === 'missing-subdomain'
-      ? 'Esta app solo funciona en un subdominio válido.'
+      ? t('tenantError.description.missingSubdomain')
       : error.code === 'not-found'
-        ? 'No existe un cliente asociado a este subdominio.'
-        : 'Hubo un problema al resolver el cliente. Inténtalo de nuevo.';
+        ? t('tenantError.description.notFound')
+        : t('tenantError.description.generic');
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -57,11 +67,12 @@ const TenantError = ({ error }: TenantErrorProps) => {
           <div className="mt-6 rounded-xl border border-border/60 bg-muted/40 p-4 space-y-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Globe className="h-4 w-4" />
-              <span>Dominio: {hostname || 'desconocido'}</span>
+              <span>{t('tenantError.domain', { domain: hostname || t('tenantError.unknown') })}</span>
             </div>
             {showExample && (
               <div className="text-sm text-muted-foreground">
-                Usa un subdominio válido, con estructura: <span className="font-medium text-foreground">nombre.{baseDomain}</span>
+                {t('tenantError.examplePrefix')}{' '}
+                <span className="font-medium text-foreground">{t('tenantError.exampleFormat', { baseDomain })}</span>
               </div>
             )}
           </div>
@@ -69,7 +80,7 @@ const TenantError = ({ error }: TenantErrorProps) => {
           <div className="mt-6 flex flex-col sm:flex-row gap-3">
             <Button onClick={() => window.location.reload()} className="gap-2">
               <RefreshCw className="h-4 w-4" />
-              Reintentar
+              {t('tenantError.actions.retry')}
             </Button>
           </div>
         </div>

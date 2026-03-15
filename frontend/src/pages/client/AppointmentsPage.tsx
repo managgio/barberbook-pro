@@ -9,7 +9,6 @@ import { getServices } from '@/data/api/services';
 import { Appointment, Barber, Service } from '@/data/types';
 import { Calendar, Clock, MapPin, User, CalendarPlus, Pencil, Trash2 } from 'lucide-react';
 import { format, isPast, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import EmptyState from '@/components/common/EmptyState';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -18,11 +17,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
-import { getAppointmentStatusBadgeClass, getAppointmentStatusLabel, isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
+import { getAppointmentStatusBadgeClass, getAppointmentStatusMessageKey, isAppointmentUpcomingStatus } from '@/lib/appointmentStatus';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { getStoredLocalId } from '@/lib/tenant';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_BARBERS: Barber[] = [];
@@ -30,10 +31,12 @@ const EMPTY_SERVICES: Service[] = [];
 
 const AppointmentsPage: React.FC = () => {
   const { user } = useAuth();
+  const { t, language } = useI18n();
   const navigate = useNavigate();
   const { settings } = useSiteSettings();
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const dateLocale = resolveDateLocale(language);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
@@ -119,7 +122,7 @@ const AppointmentsPage: React.FC = () => {
   const generateCalendarLink = (appointment: Appointment) => {
     const service = servicesById.get(appointment.serviceId);
     const barber = barbersById.get(appointment.barberId);
-    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio';
+    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? t('appointments.fallback.service');
     const barberName = barber?.name ?? appointment.barberNameSnapshot ?? copy.staff.singular;
     const startDate = parseISO(appointment.startDateTime);
     const durationMinutes = service?.duration ?? 30;
@@ -131,7 +134,7 @@ const AppointmentsPage: React.FC = () => {
       action: 'TEMPLATE',
       text: `${serviceName} - ${settings.branding.name}`,
       dates: `${formatDate(startDate)}/${formatDate(endDate)}`,
-      details: `Cita con ${barberName}`,
+      details: t('appointments.calendar.details', { barberName }),
       location: settings.location.label,
     });
     
@@ -144,8 +147,11 @@ const AppointmentsPage: React.FC = () => {
   }) => {
     const barber = barbersById.get(appointment.barberId);
     const service = servicesById.get(appointment.serviceId);
-    const barberName = barber?.name ?? appointment.barberNameSnapshot ?? `${copy.staff.singular} eliminado`;
-    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? 'Servicio eliminado';
+    const barberName =
+      barber?.name ??
+      appointment.barberNameSnapshot ??
+      t('appointments.fallback.removedStaff', { staffSingular: copy.staff.singular });
+    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? t('appointments.fallback.removedService');
     const date = parseISO(appointment.startDateTime);
     const basePrice = service?.price ?? appointment.price;
     const paidPrice = appointment.price;
@@ -167,11 +173,11 @@ const AppointmentsPage: React.FC = () => {
             />
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-foreground text-sm sm:text-lg truncate">{serviceName}</h3>
-              <p className="text-xs sm:text-base text-muted-foreground truncate">con {barberName}</p>
+              <p className="text-xs sm:text-base text-muted-foreground truncate">{t('appointments.withStaff', { barberName })}</p>
               <div className="flex items-center gap-2 sm:gap-4 mt-1 sm:mt-2 text-[11px] sm:text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  {format(date, "EEEE d 'de' MMMM", { locale: es })}
+                  {format(date, 'PPPP', { locale: dateLocale })}
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -194,7 +200,7 @@ const AppointmentsPage: React.FC = () => {
                   appointment.status,
                 )}`}
               >
-                {getAppointmentStatusLabel(appointment.status)}
+                {t(getAppointmentStatusMessageKey(appointment.status))}
               </span>
               <div className="text-right">
                 {hadOffer && (
@@ -203,7 +209,7 @@ const AppointmentsPage: React.FC = () => {
                   </div>
                 )}
                 <span className="text-lg sm:text-xl font-bold text-primary">{paidPrice.toFixed(2)}€</span>
-                {hadOffer && <div className="hidden sm:block text-[11px] text-green-600">Precio promocional</div>}
+                {hadOffer && <div className="hidden sm:block text-[11px] text-green-600">{t('appointments.promotionalPrice')}</div>}
               </div>
             </div>
           </div>
@@ -217,7 +223,7 @@ const AppointmentsPage: React.FC = () => {
               >
                 <a href={generateCalendarLink(appointment)} target="_blank" rel="noopener noreferrer">
                   <CalendarPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                  Añadir al calendario
+                  {t('appointments.addToCalendar')}
                 </a>
               </Button>
               <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex gap-1.5 sm:gap-2 md:static md:order-2">
@@ -243,7 +249,7 @@ const AppointmentsPage: React.FC = () => {
                   disabled={!canCancel}
                   title={
                     !canCancel
-                      ? `No puedes cancelar con menos de ${cancellationCutoffHours}h de antelación.`
+                      ? t('appointments.cancelCutoffTooltip', { hours: cancellationCutoffHours })
                       : undefined
                   }
                 >
@@ -260,19 +266,19 @@ const AppointmentsPage: React.FC = () => {
   return (
     <div className="space-y-4 sm:space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Mis citas</h1>
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('appointments.title')}</h1>
         <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
-          Consulta y gestiona todas tus reservas.
+          {t('appointments.subtitle')}
         </p>
       </div>
 
       <Tabs defaultValue="upcoming" className="w-full">
         <TabsList className="grid w-full max-w-[290px] sm:max-w-md grid-cols-2 h-7 sm:h-10 p-0.5 sm:p-1">
           <TabsTrigger value="upcoming" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none truncate">
-            Próximas ({upcomingAppointments.length})
+            {t('appointments.tabs.upcoming', { count: upcomingAppointments.length })}
           </TabsTrigger>
           <TabsTrigger value="past" className="h-full px-1 sm:px-3 py-0 text-[10px] sm:text-sm leading-none truncate">
-            Pasadas ({pastAppointments.length})
+            {t('appointments.tabs.past', { count: pastAppointments.length })}
           </TabsTrigger>
         </TabsList>
 
@@ -288,11 +294,11 @@ const AppointmentsPage: React.FC = () => {
           ) : (
             <EmptyState
               icon={Calendar}
-              title="No tienes citas próximas"
-              description="Reserva tu próxima cita y mantén tu estilo impecable."
+              title={t('appointments.empty.upcomingTitle')}
+              description={t('appointments.empty.upcomingDescription')}
               compactMobile
               action={{
-                label: 'Reservar ahora',
+                label: t('appointments.empty.bookNow'),
                 onClick: () => navigate('/app/book'),
               }}
             />
@@ -311,8 +317,8 @@ const AppointmentsPage: React.FC = () => {
           ) : (
             <EmptyState
               icon={Clock}
-              title="Sin historial de citas"
-              description="Aquí aparecerán tus citas completadas."
+              title={t('appointments.empty.pastTitle')}
+              description={t('appointments.empty.pastDescription')}
               compactMobile
             />
           )}
@@ -337,13 +343,13 @@ const AppointmentsPage: React.FC = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar cita?</AlertDialogTitle>
+            <AlertDialogTitle>{t('appointments.cancelDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La cita quedará marcada como cancelada.
+              {t('appointments.cancelDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Volver</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t('appointments.cancelDialog.back')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
@@ -351,18 +357,25 @@ const AppointmentsPage: React.FC = () => {
                 setIsDeleting(true);
                 try {
                   await updateAppointment(deleteTarget.id, { status: 'cancelled' });
-                  toast({ title: 'Cita cancelada', description: 'Tu cita ha sido cancelada correctamente.' });
+                  toast({
+                    title: t('appointments.toast.cancelledTitle'),
+                    description: t('appointments.toast.cancelledDescription'),
+                  });
                   setDeleteTarget(null);
                   await appointmentsQuery.refetch();
                 } catch (error) {
-                  toast({ title: 'Error', description: 'No se pudo cancelar la cita.', variant: 'destructive' });
+                  toast({
+                    title: t('appointments.toast.errorTitle'),
+                    description: t('appointments.toast.cancelErrorDescription'),
+                    variant: 'destructive',
+                  });
                 } finally {
                   setIsDeleting(false);
                 }
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Cancelando...' : 'Cancelar'}
+              {isDeleting ? t('appointments.cancelDialog.cancelling') : t('appointments.cancelDialog.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

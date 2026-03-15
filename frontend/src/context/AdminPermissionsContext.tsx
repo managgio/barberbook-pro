@@ -5,6 +5,7 @@ import { AdminRole, AdminSectionKey } from '@/data/types';
 import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTION_KEYS } from '@/data/adminSections';
 import { getAdminRoles } from '@/data/api/roles';
 import { useToast } from '@/hooks/use-toast';
+import { useI18n } from '@/hooks/useI18n';
 
 interface AdminPermissionsContextValue {
   roles: AdminRole[];
@@ -18,6 +19,7 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
   const { user } = useAuth();
   const { currentLocationId, tenant } = useTenant();
   const { toast } = useToast();
+  const { t } = useI18n();
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const tenantHiddenSections = useMemo(() => {
@@ -54,8 +56,8 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
       } catch (error) {
         if (active) {
           toast({
-            title: 'Error',
-            description: 'No se pudieron cargar los roles.',
+            title: t('admin.common.error'),
+            description: t('admin.roles.toast.loadError'),
             variant: 'destructive',
           });
         }
@@ -71,7 +73,7 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
     return () => {
       active = false;
     };
-  }, [toast, user, currentLocationId]);
+  }, [currentLocationId, t, toast, user]);
 
   const currentRole = useMemo(
     () => roles.find((role) => role.id === user?.adminRoleId) || null,

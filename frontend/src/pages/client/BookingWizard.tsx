@@ -35,7 +35,6 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -57,6 +56,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
 import { isApiRequestError } from '@/lib/networkErrors';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 
 interface BookingWizardProps {
@@ -89,22 +90,28 @@ const EMPTY_COUPONS: Coupon[] = [];
 
 const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const { user } = useAuth();
+  const { t, language } = useI18n();
   const { currentLocationId } = useTenant();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const dateLocale = resolveDateLocale(language);
   const steps = useMemo(
-    () => ['Servicio', `${copy.staff.singular} y horario`, 'Confirmación'],
-    [copy.staff.singular],
+    () => [
+      t('bookingWizard.steps.service'),
+      t('bookingWizard.steps.staffAndSchedule', { staffSingular: copy.staff.singular }),
+      t('bookingWizard.steps.confirmation'),
+    ],
+    [copy.staff.singular, t],
   );
   const staffAvailabilityLabel = copy.staff.isCollective
-    ? `${copy.staff.singularLower} disponible`
-    : `${copy.staff.pluralLower} disponibles`;
+    ? t('bookingWizard.staffAvailability.collective', { staffSingularLower: copy.staff.singularLower })
+    : t('bookingWizard.staffAvailability.plural', { staffPluralLower: copy.staff.pluralLower });
   const staffActiveAvailabilityLabel = copy.staff.isCollective
-    ? `${copy.staff.singularLower} activo disponible`
-    : `${copy.staff.pluralLower} activos disponibles`;
+    ? t('bookingWizard.staffAvailabilityActive.collective', { staffSingularLower: copy.staff.singularLower })
+    : t('bookingWizard.staffAvailabilityActive.plural', { staffPluralLower: copy.staff.pluralLower });
 
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
@@ -277,21 +284,21 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   useEffect(() => {
     if (!catalogQuery.isError) return;
     toast({
-      title: 'No pudimos cargar los servicios',
-      description: 'Intenta de nuevo en unos segundos.',
+      title: t('bookingWizard.toast.loadServicesErrorTitle'),
+      description: t('bookingWizard.toast.genericRetry'),
       variant: 'destructive',
     });
-  }, [catalogQuery.isError, catalogQuery.errorUpdatedAt, toast]);
+  }, [catalogQuery.isError, catalogQuery.errorUpdatedAt, t, toast]);
 
   useEffect(() => {
     if (!barbersQuery.isError) return;
     setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
     toast({
-      title: `No pudimos cargar ${copy.staff.definitePlural}`,
-      description: 'Intenta de nuevo en unos segundos.',
+      title: t('bookingWizard.toast.loadStaffErrorTitle', { staffDefinitePlural: copy.staff.definitePlural }),
+      description: t('bookingWizard.toast.genericRetry'),
       variant: 'destructive',
     });
-  }, [barbersQuery.isError, barbersQuery.errorUpdatedAt, copy.staff.definitePlural, toast]);
+  }, [barbersQuery.isError, barbersQuery.errorUpdatedAt, copy.staff.definitePlural, t, toast]);
 
   useEffect(() => {
     const preselected = searchParams.get('product');
@@ -589,7 +596,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             <div className="text-right space-y-0.5 sm:space-y-1">
               {hasOffer && (
                 <div className="inline-flex items-center gap-1 sm:gap-2 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full bg-primary/10 text-primary text-[10px] sm:text-[11px] border border-primary/30">
-                  {service.appliedOffer?.name ?? 'Oferta'}
+                  {service.appliedOffer?.name ?? t('bookingWizard.offer')}
                 </div>
               )}
               {hasOffer && <div className="text-[11px] sm:text-xs line-through text-muted-foreground">{service.price}€</div>}
@@ -600,21 +607,28 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             <h3 className="text-sm sm:text-base font-semibold text-foreground leading-tight">{service.name}</h3>
             <p className="hidden sm:block text-sm text-muted-foreground line-clamp-2">{service.description}</p>
           </div>
-          <div className="flex items-center justify-between text-xs sm:text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              {service.duration} min
+            <div className="flex items-center justify-between text-xs sm:text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                {t('bookingWizard.durationMinutes', { minutes: service.duration })}
+              </div>
             </div>
-          </div>
           {hasOffer && service.appliedOffer && (
             <div className="text-[11px] sm:text-xs bg-primary/5 border border-primary/20 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 space-y-1">
               <div className="flex items-center gap-2 text-primary">
-                {service.appliedOffer.name} · ahorras {service.appliedOffer.amountOff.toFixed(2)}€
+                {t('bookingWizard.offerSavings', {
+                  offerName: service.appliedOffer.name,
+                  amount: service.appliedOffer.amountOff.toFixed(2),
+                })}
               </div>
               {service.appliedOffer.endDate && (
                 <div className="text-[10px] sm:text-[11px] text-muted-foreground">
-                  Válida hasta {format(offerEnds as Date, "d 'de' MMMM", { locale: es })}
-                  {daysLeft !== null && daysLeft >= 0 ? ` (${daysLeft} día${daysLeft === 1 ? '' : 's'})` : ''}
+                  {t('bookingWizard.offerValidUntil', {
+                    date: format(offerEnds as Date, 'd MMMM', { locale: dateLocale }),
+                  })}
+                  {daysLeft !== null && daysLeft >= 0
+                    ? ` (${t('bookingWizard.daysLeft', { count: daysLeft })})`
+                    : ''}
                 </div>
               )}
             </div>
@@ -836,24 +850,24 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     if (!isGuest && !user) return;
     if (isGuest && guestInfo.name.trim().length === 0) {
       toast({
-        title: 'Falta tu nombre',
-        description: 'Necesitamos un nombre para reservar la cita.',
+        title: t('bookingWizard.toast.missingNameTitle'),
+        description: t('bookingWizard.toast.missingNameDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (isGuest && guestInfo.email.trim().length === 0) {
       toast({
-        title: 'Falta tu correo',
-        description: 'Necesitamos un correo electrónico para reservar la cita.',
+        title: t('bookingWizard.toast.missingEmailTitle'),
+        description: t('bookingWizard.toast.missingEmailDescription'),
         variant: 'destructive',
       });
       return;
     }
     if (privacyConsentRequired && !privacyConsent) {
       toast({
-        title: 'Falta consentimiento',
-        description: 'Debes aceptar la Política de Privacidad para continuar.',
+        title: t('bookingWizard.toast.missingConsentTitle'),
+        description: t('bookingWizard.toast.missingConsentDescription'),
         variant: 'destructive',
       });
       return;
@@ -891,10 +905,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           setShowSuccess(true);
           setTimeout(() => {
             toast({
-              title: '¡Cita reservada!',
+              title: t('bookingWizard.toast.bookingSuccessTitle'),
               description: isGuest
-                ? 'Hemos registrado tu cita. Te contactaremos para confirmar cualquier detalle.'
-                : 'Tu cita ha sido programada correctamente.',
+                ? t('bookingWizard.toast.bookingSuccessGuestDescription')
+                : t('bookingWizard.toast.bookingSuccessDescription'),
             });
             if (isGuest) {
               navigate('/');
@@ -908,7 +922,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           window.location.href = checkout.checkoutUrl;
           return;
         }
-        throw new Error('No se pudo iniciar el pago.');
+        throw new Error(t('bookingWizard.error.paymentInitFailed'));
       }
 
       await createAppointment(payload);
@@ -919,10 +933,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
       setTimeout(() => {
         toast({
-          title: '¡Cita reservada!',
+          title: t('bookingWizard.toast.bookingSuccessTitle'),
           description: isGuest
-            ? 'Hemos registrado tu cita. Te contactaremos para confirmar cualquier detalle.'
-            : 'Tu cita ha sido programada correctamente.',
+            ? t('bookingWizard.toast.bookingSuccessGuestDescription')
+            : t('bookingWizard.toast.bookingSuccessDescription'),
         });
         if (isGuest) {
           navigate('/');
@@ -936,16 +950,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
       if (isSlotConflict) {
         toast({
-          title: 'Horario ocupado',
-          description: 'Ese horario se acaba de reservar. Hemos actualizado la disponibilidad.',
+          title: t('bookingWizard.toast.slotTakenTitle'),
+          description: t('bookingWizard.toast.slotTakenDescription'),
           variant: 'destructive',
         });
         setBooking((prev) => ({ ...prev, dateTime: null }));
         await slotsQuery.refetch();
       } else if (isBarberMismatch) {
         toast({
-          title: `${copy.staff.singular} no disponible`,
-          description: `Elige otro ${copy.staff.singularLower} para este servicio.`,
+          title: t('bookingWizard.toast.staffUnavailableTitle', { staffSingular: copy.staff.singular }),
+          description: t('bookingWizard.toast.staffUnavailableDescription', { staffSingularLower: copy.staff.singularLower }),
           variant: 'destructive',
         });
         if (booking.serviceId) {
@@ -953,22 +967,22 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         }
         setBooking((prev) => ({ ...prev, barberId: null, dateTime: null }));
       } else {
-        let description = 'No se pudo completar la reserva. Inténtalo de nuevo.';
+        let description = t('bookingWizard.toast.bookingErrorDefault');
         if (isApiRequestError(error)) {
           if (error.kind === 'OFFLINE') {
-            description = 'No tienes conexión. Revisa tu red y vuelve a intentarlo.';
+            description = t('bookingWizard.toast.offline');
           } else if (error.kind === 'TIMEOUT') {
-            description = 'La confirmación tardó demasiado. Verifica tu conexión y reintenta.';
+            description = t('bookingWizard.toast.timeout');
           } else if (error.status >= 500) {
-            description = 'Estamos teniendo problemas temporales en el servidor. Inténtalo en unos minutos.';
+            description = t('bookingWizard.toast.serverError');
           } else if (error.status === 429) {
-            description = 'Hiciste demasiados intentos en poco tiempo. Espera unos segundos y vuelve a probar.';
+            description = t('bookingWizard.toast.tooManyRequests');
           } else if (error.kind === 'NETWORK') {
-            description = 'No pudimos conectar con el servidor. Intenta nuevamente en unos segundos.';
+            description = t('bookingWizard.toast.networkError');
           }
         }
         toast({
-          title: 'Error',
+          title: t('bookingWizard.toast.errorTitle'),
           description,
           variant: 'destructive',
         });
@@ -987,8 +1001,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       );
       if (eligibleBarbers.length === 0) {
         toast({
-          title: `No hay ${staffAvailabilityLabel}`,
-          description: `Elige otro horario para asignarte ${copy.staff.indefiniteSingular} disponible.`,
+          title: t('bookingWizard.toast.noStaffAvailableTitle', { staffAvailabilityLabel }),
+          description: t('bookingWizard.toast.noStaffAvailableDescription', { staffIndefiniteSingular: copy.staff.indefiniteSingular }),
           variant: 'destructive',
         });
         return;
@@ -1018,11 +1032,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           <div className="w-24 h-24 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="w-12 h-12 text-green-500" />
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">¡Reserva programada!</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-2">{t('bookingWizard.success.title')}</h2>
           <p className="text-muted-foreground">
             {isGuest
-              ? 'Para cambios o cancelaciones, contáctanos directamente.'
-              : 'Redirigiendo a tus citas...'}
+              ? t('bookingWizard.success.guestDescription')
+              : t('bookingWizard.success.redirecting')}
           </p>
         </div>
       </div>
@@ -1033,9 +1047,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Reservar cita</h1>
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('bookingWizard.title')}</h1>
         <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
-          {isGuest ? 'Reserva como invitado sin necesidad de crear cuenta.' : 'Completa los pasos para reservar tu cita.'}
+          {isGuest ? t('bookingWizard.subtitleGuest') : t('bookingWizard.subtitle')}
         </p>
       </div>
 
@@ -1084,9 +1098,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             <div className="space-y-4 sm:space-y-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg sm:text-xl font-semibold text-foreground">Elige tu servicio</h2>
+                  <h2 className="text-lg sm:text-xl font-semibold text-foreground">{t('bookingWizard.step0.title')}</h2>
                   <p className="hidden sm:block text-xs sm:text-sm text-muted-foreground">
-                    Primero selecciona qué necesitas; después elegiremos profesional y horario.
+                    {t('bookingWizard.step0.description')}
                   </p>
                 </div>
               </div>
@@ -1094,14 +1108,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 <div className="rounded-2xl border border-primary/40 bg-primary/10 p-3 sm:p-4 space-y-2">
                   <p className="text-xs sm:text-sm font-semibold text-primary flex items-center gap-2">
                     <Check className="w-4 h-4" />
-                    Hay ofertas activas ahora mismo
+                    {t('bookingWizard.step0.activeOffers')}
                   </p>
                   <div className="flex flex-wrap gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-primary">
                     {activeOffers.map((offer) => {
                       const hasDates = offer.startDate || offer.endDate;
                       const validity = hasDates
-                        ? `${offer.startDate ? format(new Date(offer.startDate), "d MMM", { locale: es }) : 'Ya'} → ${offer.endDate ? format(new Date(offer.endDate), "d MMM", { locale: es }) : 'Sin límite'}`
-                        : 'Por tiempo limitado';
+                        ? `${offer.startDate ? format(new Date(offer.startDate), 'd MMM', { locale: dateLocale }) : t('bookingWizard.step0.offerValidity.now')} -> ${offer.endDate ? format(new Date(offer.endDate), 'd MMM', { locale: dateLocale }) : t('bookingWizard.step0.offerValidity.noLimit')}`
+                        : t('bookingWizard.step0.offerValidity.limitedTime');
                       return (
                         <span
                           key={offer.id}
@@ -1128,10 +1142,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="text-base sm:text-lg font-semibold text-foreground">{category.name}</h3>
-                          <p className="text-xs sm:text-sm text-muted-foreground">{category.description || 'Servicios de esta familia'}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground">
+                            {category.description || t('bookingWizard.step0.categoryFallbackDescription')}
+                          </p>
                         </div>
                         <span className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-border text-[11px] sm:text-xs text-muted-foreground">
-                          {category.services?.length ?? 0} servicios
+                          {t('bookingWizard.step0.servicesCount', { count: category.services?.length ?? 0 })}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 sm:gap-3">
@@ -1143,12 +1159,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <div className="rounded-3xl border border-border/60 bg-muted/30 p-3 sm:p-5 space-y-2.5 sm:space-y-3">
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Sin categoría</p>
-                          <h3 className="text-base sm:text-lg font-semibold text-foreground">Otros servicios</h3>
-                          <p className="text-xs sm:text-sm text-muted-foreground">Aún no agrupados en una categoría.</p>
+                          <p className="text-[10px] sm:text-[11px] uppercase tracking-wide text-muted-foreground mb-1">{t('bookingWizard.step0.uncategorizedTag')}</p>
+                          <h3 className="text-base sm:text-lg font-semibold text-foreground">{t('bookingWizard.step0.uncategorizedTitle')}</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground">{t('bookingWizard.step0.uncategorizedDescription')}</p>
                         </div>
                         <span className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-border text-[11px] sm:text-xs text-muted-foreground">
-                          {uncategorizedServices.length} servicios
+                          {t('bookingWizard.step0.servicesCount', { count: uncategorizedServices.length })}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 sm:gap-3">
@@ -1172,19 +1188,19 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 <div>
                   <h2 className="text-lg sm:text-xl font-semibold text-foreground mb-0.5 sm:mb-1">
                     {shouldSelectBarberManually
-                      ? `Elige tu ${copy.staff.singularLower} y horario`
-                      : 'Elige tu horario'}
+                      ? t('bookingWizard.step1.titleManual', { staffSingularLower: copy.staff.singularLower })
+                      : t('bookingWizard.step1.titleAuto')}
                   </h2>
                   <p className="hidden sm:block text-sm text-muted-foreground">
                     {shouldSelectBarberManually
-                      ? 'Primero selecciona un estilista y después escoge el día y la hora que mejor te encaje.'
-                      : `Selecciona el día y la hora; asignaremos automáticamente a ${copy.staff.indefiniteSingular} disponible.`}
+                      ? t('bookingWizard.step1.descriptionManual')
+                      : t('bookingWizard.step1.descriptionAuto', { staffIndefiniteSingular: copy.staff.indefiniteSingular })}
                   </p>
                 </div>
                 {hasMultipleBarbers && (
                   <div className="inline-flex w-fit items-center gap-2 sm:gap-3 rounded-full border border-border bg-secondary/40 px-3 sm:px-4 py-1.5 sm:py-2">
                     <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">
-                      Elegir {copy.staff.singularLower}
+                      {t('bookingWizard.step1.selectStaffToggle', { staffSingularLower: copy.staff.singularLower })}
                     </span>
                     <Switch
                       checked={selectBarber}
@@ -1198,7 +1214,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               {!shouldSelectBarberManually && (
                 <div className="rounded-2xl border border-border/60 bg-muted/30 p-3 sm:p-4 text-xs sm:text-sm text-muted-foreground">
                   <p>
-                    {copy.staff.singular} asignado: {selectBarber ? (assignedBarber?.name || 'A determinar') : 'A determinar'}
+                    {t('bookingWizard.step1.assignedStaff', {
+                      staffSingular: copy.staff.singular,
+                      staffName: selectBarber ? assignedBarber?.name || t('bookingWizard.step1.toBeDefined') : t('bookingWizard.step1.toBeDefined'),
+                    })}
                   </p>
                   {selectBarber && assignedBarber && (
                     <div
@@ -1254,7 +1273,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       </div>
                     ) : (
                       <>
-                        <p className="text-xs sm:text-sm font-medium text-muted-foreground">Selecciona a tu estilista preferido</p>
+                        <p className="text-xs sm:text-sm font-medium text-muted-foreground">{t('bookingWizard.step1.selectPreferredStylist')}</p>
                         <div
                           className={cn(
                             'sm:space-y-3 sm:pr-1 sm:max-h-[420px] sm:overflow-y-auto',
@@ -1291,8 +1310,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                               <p className="hidden sm:block text-[11px] sm:text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
                               {new Date(barber.startDate) > new Date() && (
                                 <p className="hidden sm:block text-[11px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">
-                                  Disponible desde {new Date(barber.startDate).toLocaleDateString()}
-                                  {barber.endDate && ` · hasta ${new Date(barber.endDate).toLocaleDateString()}`}
+                                  {t('bookingWizard.step1.availableFrom', {
+                                    date: new Date(barber.startDate).toLocaleDateString(),
+                                  })}
+                                  {barber.endDate
+                                    ? ` · ${t('bookingWizard.step1.availableUntil', {
+                                        date: new Date(barber.endDate).toLocaleDateString(),
+                                      })}`
+                                    : ''}
                                 </p>
                               )}
                             </div>
@@ -1301,8 +1326,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           ) : (
                             <p className="text-xs sm:text-sm text-muted-foreground">
                               {booking.serviceId
-                                ? `No hay ${staffActiveAvailabilityLabel} para este servicio.`
-                                : `No hay ${staffActiveAvailabilityLabel}.`}
+                                ? t('bookingWizard.step1.noActiveStaffForService', { staffActiveAvailabilityLabel })
+                                : t('bookingWizard.step1.noActiveStaff', { staffActiveAvailabilityLabel })}
                             </p>
                           )}
                         </div>
@@ -1316,7 +1341,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <>
                       <div className="space-y-2 sm:space-y-3">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs sm:text-sm font-medium text-muted-foreground">Selecciona el día</p>
+                          <p className="text-xs sm:text-sm font-medium text-muted-foreground">{t('bookingWizard.step1.selectDay')}</p>
                           <div className="flex items-center gap-1 sm:gap-2">
                             <Button
                               type="button"
@@ -1328,7 +1353,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                               <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </Button>
                             <span className="text-xs sm:text-sm font-semibold text-foreground capitalize">
-                              {format(visibleMonth, "MMMM yyyy", { locale: es })}
+                              {format(visibleMonth, 'MMMM yyyy', { locale: dateLocale })}
                             </span>
                             <Button
                               type="button"
@@ -1342,7 +1367,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           </div>
                         </div>
                         <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-[11px] font-medium text-muted-foreground">
-                          {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => (
+                          {[
+                            t('bookingWizard.weekday.mondayShort'),
+                            t('bookingWizard.weekday.tuesdayShort'),
+                            t('bookingWizard.weekday.wednesdayShort'),
+                            t('bookingWizard.weekday.thursdayShort'),
+                            t('bookingWizard.weekday.fridayShort'),
+                            t('bookingWizard.weekday.saturdayShort'),
+                            t('bookingWizard.weekday.sundayShort'),
+                          ].map((day) => (
                             <span key={day}>{day}</span>
                           ))}
                         </div>
@@ -1373,9 +1406,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                   !isCurrentMonth && 'opacity-50'
                                 )}
                               >
-                                <span className="text-[10px] uppercase">{format(date, 'EEE', { locale: es })}</span>
+                                <span className="text-[10px] uppercase">{format(date, 'EEE', { locale: dateLocale })}</span>
                                 <span className="text-sm sm:text-base font-semibold leading-none mt-0.5">{format(date, 'd')}</span>
-                                <span className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">{format(date, 'MMM', { locale: es })}</span>
+                                <span className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">{format(date, 'MMM', { locale: dateLocale })}</span>
                               </button>
                             );
                           })}
@@ -1383,7 +1416,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       </div>
 
                       <div>
-                        <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2 sm:mb-3">Horarios disponibles</p>
+                        <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2 sm:mb-3">{t('bookingWizard.step1.availableTimes')}</p>
                         {isSlotsLoading ? (
                           <div className="flex items-center justify-center py-4 sm:py-6">
                             <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-primary" />
@@ -1392,7 +1425,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           <div className="space-y-3 sm:space-y-4">
                             {slotGroups.morningSlots.length > 0 && (
                               <div>
-                                <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">Mañana</p>
+                                <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">{t('bookingWizard.step1.morning')}</p>
                                 <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-6 gap-1 sm:gap-2">
                                   {slotGroups.morningSlots.map((slot) => {
                                     const [hours, minutes] = slot.split(':');
@@ -1419,7 +1452,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             )}
                             {slotGroups.afternoonSlots.length > 0 && (
                               <div>
-                                <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">Tarde</p>
+                                <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">{t('bookingWizard.step1.afternoon')}</p>
                                 <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-6 gap-1 sm:gap-2">
                                   {slotGroups.afternoonSlots.map((slot) => {
                                     const [hours, minutes] = slot.split(':');
@@ -1447,7 +1480,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           </div>
                         ) : (
                           <div className="rounded-xl sm:rounded-2xl border border-dashed border-border py-4 sm:py-6 text-center text-xs sm:text-sm text-muted-foreground">
-                            No hay horarios disponibles para este día
+                            {t('bookingWizard.step1.noTimes')}
                           </div>
                         )}
                       </div>
@@ -1456,7 +1489,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <div className="flex flex-col items-center justify-center text-center py-10 sm:py-16 gap-2 sm:gap-3 text-muted-foreground">
                       <Calendar className="w-8 h-8 sm:w-10 sm:h-10" />
                       <p className="text-xs sm:text-sm font-medium">
-                        Selecciona primero a {copy.staff.indefiniteSingular} para revisar su agenda.
+                        {t('bookingWizard.step1.selectStaffFirst', { staffIndefiniteSingular: copy.staff.indefiniteSingular })}
                       </p>
                     </div>
                   )}
@@ -1468,7 +1501,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           {/* Step 2: Confirmation */}
           {currentStep === 2 && (
             <div className="space-y-4 sm:space-y-6">
-              <h2 className="text-base sm:text-xl font-semibold text-foreground mb-2 sm:mb-4">Confirma tu reserva</h2>
+              <h2 className="text-base sm:text-xl font-semibold text-foreground mb-2 sm:mb-4">
+                {t('bookingWizard.step2.title')}
+              </h2>
               
               <div className="bg-secondary/50 rounded-xl p-3 sm:p-6 space-y-3 sm:space-y-4">
                 {/* Service */}
@@ -1477,7 +1512,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <Scissors className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-xs sm:text-sm text-muted-foreground">Servicio</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">{t('bookingWizard.step2.serviceLabel')}</p>
                     <p className="text-sm sm:text-base font-semibold text-foreground">{getService()?.name}</p>
                   </div>
                   <div className="text-right">
@@ -1490,7 +1525,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           0.00€
                         </div>
                         <div className="hidden sm:block text-[11px] text-primary">
-                          Cita gratis por fidelización
+                          {t('bookingWizard.step2.freeByLoyalty')}
                         </div>
                       </>
                     ) : selectedPricing?.appliedOffer ? (
@@ -1502,7 +1537,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                           {selectedPricing.finalPrice.toFixed(2)}€
                         </div>
                         <div className="hidden sm:block text-[11px] text-green-600">
-                          Oferta activa ({selectedPricing.appliedOffer.name})
+                          {t('bookingWizard.step2.activeOffer', { offerName: selectedPricing.appliedOffer.name })}
                         </div>
                       </>
                     ) : (
@@ -1512,32 +1547,33 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     )}
                     {selectedProductsTotal > 0 && (
                       <div className="text-xs text-muted-foreground mt-1">
-                        Total con productos: {totalBeforeWallet.toFixed(2)}€
+                        {t('bookingWizard.step2.totalWithProducts', { total: totalBeforeWallet.toFixed(2) })}
                       </div>
                     )}
                     {couponDiscount > 0 && (
                       <div className="text-[11px] text-green-600 mt-1">
-                        Cupón aplicado: -{couponDiscount.toFixed(2)}€
+                        {t('bookingWizard.step2.couponApplied', { amount: couponDiscount.toFixed(2) })}
                       </div>
                     )}
                   </div>
                 </div>
                 {getService()?.appliedOffer && !selectedPricing?.appliedOffer && (
                   <div className="text-sm text-primary bg-primary/10 border border-primary/30 rounded-lg px-3 py-2">
-                    La oferta "{getService()?.appliedOffer?.name}" no aplica para la fecha seleccionada. Se usará el precio estándar.
+                    {t('bookingWizard.step2.offerNotApplicable', { offerName: getService()?.appliedOffer?.name || '' })}
                   </div>
                 )}
                 {selectedPricing?.appliedOffer?.endDate && (
                   <div className="hidden sm:block text-xs text-muted-foreground">
-                    Precio promocional válido para citas hasta{' '}
-                    {format(new Date(selectedPricing.appliedOffer.endDate), "d 'de' MMMM", { locale: es })}.
+                    {t('bookingWizard.step2.promotionalPriceUntil', {
+                      date: format(new Date(selectedPricing.appliedOffer.endDate), 'd MMMM', { locale: dateLocale }),
+                    })}
                   </div>
                 )}
                 {activeSubscriptionForBooking && (
                   <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
                     {subscriptionFree
-                      ? `Tu suscripción (${activeSubscriptionForBooking.plan.name}) aplica en esta cita: el servicio se cobra a 0€.`
-                      : `Tienes una suscripción activa (${activeSubscriptionForBooking.plan.name}), pero aún no está habilitada para aplicar en citas hasta completar el pago.`}
+                      ? t('bookingWizard.step2.subscriptionApplies', { planName: activeSubscriptionForBooking.plan.name })
+                      : t('bookingWizard.step2.subscriptionPending', { planName: activeSubscriptionForBooking.plan.name })}
                   </div>
                 )}
 
@@ -1547,14 +1583,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-xs sm:text-sm font-medium text-foreground">Productos añadidos</p>
+                          <p className="text-xs sm:text-sm font-medium text-foreground">{t('bookingWizard.step2.addedProducts')}</p>
                           <p className="hidden sm:block text-xs text-muted-foreground">
-                            Puedes incluir productos en esta cita.
+                            {t('bookingWizard.step2.addedProductsDescription')}
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-[11px] sm:text-xs text-muted-foreground">
-                            Total productos: {selectedProductsTotal.toFixed(2)}€
+                            {t('bookingWizard.step2.productsTotal', { total: selectedProductsTotal.toFixed(2) })}
                           </span>
                           <Button
                             type="button"
@@ -1562,7 +1598,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             size="sm"
                             onClick={() => setIsProductsDialogOpen(true)}
                           >
-                            {selectedProducts.length > 0 ? 'Editar productos' : 'Añadir productos'}
+                            {selectedProducts.length > 0
+                              ? t('bookingWizard.step2.editProducts')
+                              : t('bookingWizard.step2.addProducts')}
                           </Button>
                         </div>
                       </div>
@@ -1584,7 +1622,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                         className="h-full w-full object-cover"
                                       />
                                     ) : (
-                                      <span className="text-[11px] text-muted-foreground">Sin foto</span>
+                                      <span className="text-[11px] text-muted-foreground">{t('bookingWizard.step2.noPhoto')}</span>
                                     )}
                                   </div>
                                   <div className="min-w-0">
@@ -1599,7 +1637,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">Sin productos añadidos.</p>
+                          <p className="text-sm text-muted-foreground">{t('bookingWizard.step2.noAddedProducts')}</p>
                         )}
                       </div>
                     </div>
@@ -1611,17 +1649,17 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <hr className="border-border" />
                     <div className="space-y-4">
                       <div>
-                        <p className="text-xs sm:text-sm font-medium text-foreground">Recompensas disponibles</p>
+                        <p className="text-xs sm:text-sm font-medium text-foreground">{t('bookingWizard.step2.rewardsAvailable')}</p>
                         <p className="hidden sm:block text-xs text-muted-foreground">
-                          Aplica tu saldo o un cupón para reducir el total.
+                          {t('bookingWizard.step2.rewardsDescription')}
                         </p>
                       </div>
                       {walletAvailable > 0 && (
                         <div className="flex items-center justify-between gap-3 sm:gap-4 rounded-xl border border-border/70 bg-muted/30 px-3 sm:px-4 py-2.5 sm:py-3">
                           <div>
-                            <p className="text-xs sm:text-sm font-medium text-foreground">Usar saldo disponible</p>
+                            <p className="text-xs sm:text-sm font-medium text-foreground">{t('bookingWizard.step2.useWallet')}</p>
                             <p className="hidden sm:block text-xs text-muted-foreground">
-                              Se aplicará automáticamente hasta cubrir el total.
+                              {t('bookingWizard.step2.useWalletDescription')}
                             </p>
                           </div>
                           <div className="flex flex-col items-end gap-1">
@@ -1634,31 +1672,31 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       )}
                       {eligibleCoupons.length > 0 && (
                         <div className="space-y-2">
-                          <Label className="text-sm">Aplicar cupón</Label>
+                          <Label className="text-sm">{t('bookingWizard.step2.applyCoupon')}</Label>
                           <Select
                             value={selectedCouponId ?? 'none'}
                             onValueChange={(value) => setSelectedCouponId(value === 'none' ? null : value)}
                             disabled={loyaltyFree || subscriptionFree}
                           >
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Selecciona un cupón" />
+                              <SelectValue placeholder={t('bookingWizard.step2.selectCoupon')} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="none">No usar cupón</SelectItem>
+                              <SelectItem value="none">{t('bookingWizard.step2.noCoupon')}</SelectItem>
                               {eligibleCoupons.map((coupon) => (
                                 <SelectItem key={coupon.id} value={coupon.id}>
                                   {coupon.discountType === 'FREE_SERVICE'
-                                    ? 'Servicio gratis'
+                                    ? t('bookingWizard.step2.couponFreeService')
                                     : coupon.discountType === 'PERCENT_DISCOUNT'
-                                    ? `${coupon.discountValue ?? 0}% descuento`
-                                    : `${coupon.discountValue ?? 0}€ descuento`}
+                                    ? t('bookingWizard.step2.couponPercent', { value: coupon.discountValue ?? 0 })
+                                    : t('bookingWizard.step2.couponFixed', { value: coupon.discountValue ?? 0 })}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                           {loyaltyFree && (
                             <p className="hidden sm:block text-[11px] text-muted-foreground">
-                              La cita ya es gratuita por fidelización.
+                              {t('bookingWizard.step2.alreadyFreeByLoyalty')}
                             </p>
                           )}
                         </div>
@@ -1673,13 +1711,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-xs sm:text-sm font-medium text-foreground">Tu tarjeta de fidelización</p>
+                          <p className="text-xs sm:text-sm font-medium text-foreground">{t('bookingWizard.step2.loyaltyCard')}</p>
                           <p className="hidden sm:block text-xs text-muted-foreground">
-                            {loyaltyFree ? 'Esta cita cuenta como recompensa.' : 'Sigue acumulando visitas.'}
+                            {loyaltyFree
+                              ? t('bookingWizard.step2.loyaltyRewardVisit')
+                              : t('bookingWizard.step2.loyaltyKeepAccumulating')}
                           </p>
                         </div>
                         {isLoyaltyLoading && (
-                          <span className="text-xs text-muted-foreground">Actualizando…</span>
+                          <span className="text-xs text-muted-foreground">{t('bookingWizard.step2.updating')}</span>
                         )}
                       </div>
                       <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
@@ -1698,9 +1738,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <hr className="border-border" />
                     <div className="space-y-3">
                       <div>
-                        <p className="text-xs sm:text-sm font-medium text-foreground">Forma de pago</p>
+                        <p className="text-xs sm:text-sm font-medium text-foreground">{t('bookingWizard.step2.paymentMethod')}</p>
                         <p className="hidden sm:block text-xs text-muted-foreground">
-                          Elige cómo quieres pagar tu cita.
+                          {t('bookingWizard.step2.paymentMethodDescription')}
                         </p>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -1719,8 +1759,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                               <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                             </div>
                             <div>
-                              <p className="text-xs sm:text-sm font-semibold text-foreground">Pagar ahora con tarjeta</p>
-                              <p className="hidden sm:block text-xs text-muted-foreground">Reserva confirmada al instante.</p>
+                              <p className="text-xs sm:text-sm font-semibold text-foreground">{t('bookingWizard.step2.payNowCard')}</p>
+                              <p className="hidden sm:block text-xs text-muted-foreground">{t('bookingWizard.step2.payNowCardDescription')}</p>
                             </div>
                           </div>
                         </button>
@@ -1740,15 +1780,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             </div>
                             <div>
                               <p className="text-xs sm:text-sm font-semibold text-foreground">
-                                Pagar en {copy.location.definiteSingular}
+                                {t('bookingWizard.step2.payAtLocation', { location: copy.location.definiteSingular })}
                               </p>
-                              <p className="hidden sm:block text-xs text-muted-foreground">Pagarás el día de la cita.</p>
+                              <p className="hidden sm:block text-xs text-muted-foreground">{t('bookingWizard.step2.payAtLocationDescription')}</p>
                             </div>
                           </div>
                         </button>
                       </div>
                       <p className="hidden sm:block text-xs text-muted-foreground">
-                        Si pagas ahora, te enviaremos la confirmación inmediatamente.
+                        {t('bookingWizard.step2.payNowHint')}
                       </p>
                     </div>
                   </>
@@ -1758,38 +1798,38 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   <>
                     <hr className="border-border" />
                     <p className="text-xs text-muted-foreground">
-                      Esta cita es gratuita, no necesitas realizar ningún pago.
+                      {t('bookingWizard.step2.appointmentFree')}
                     </p>
                   </>
                 )}
 
                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4 space-y-1.5 sm:space-y-2">
                   <div className="flex items-center justify-between text-xs sm:text-sm">
-                    <span className="text-muted-foreground">Precio servicio</span>
+                    <span className="text-muted-foreground">{t('bookingWizard.step2.servicePrice')}</span>
                     <span className="font-medium text-foreground">
                       {(subscriptionFree || loyaltyFree ? 0 : selectedPricing?.finalPrice ?? 0).toFixed(2)}€
                     </span>
                   </div>
                   {couponDiscount > 0 && (
                     <div className="flex items-center justify-between text-xs sm:text-sm">
-                      <span className="text-muted-foreground">Cupón aplicado</span>
+                      <span className="text-muted-foreground">{t('bookingWizard.step2.couponAppliedLabel')}</span>
                       <span className="font-medium text-green-600">-{couponDiscount.toFixed(2)}€</span>
                     </div>
                   )}
                   {selectedProductsTotal > 0 && (
                     <div className="flex items-center justify-between text-xs sm:text-sm">
-                      <span className="text-muted-foreground">Productos</span>
+                      <span className="text-muted-foreground">{t('bookingWizard.step2.products')}</span>
                       <span className="font-medium text-foreground">{selectedProductsTotal.toFixed(2)}€</span>
                     </div>
                   )}
                   {walletAppliedAmount > 0 && (
                     <div className="flex items-center justify-between text-xs sm:text-sm">
-                      <span className="text-muted-foreground">Saldo aplicado:</span>
+                      <span className="text-muted-foreground">{t('bookingWizard.step2.walletApplied')}</span>
                       <span className="font-medium text-primary">-{walletAppliedAmount.toFixed(2)}€</span>
                     </div>
                   )}
                   <div className="border-t border-border/60 pt-2 flex items-center justify-between">
-                    <span className="text-xs sm:text-sm font-semibold text-foreground">Total:</span>
+                    <span className="text-xs sm:text-sm font-semibold text-foreground">{t('bookingWizard.step2.total')}</span>
                     <span className="text-base sm:text-lg font-bold text-primary">{totalFinal.toFixed(2)}€</span>
                   </div>
                 </div>
@@ -1821,9 +1861,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
                   </div>
                   <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Fecha y hora</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">{t('bookingWizard.step2.dateTime')}</p>
                     <p className="text-sm sm:text-base font-semibold text-foreground">
-                      {booking.dateTime && format(new Date(booking.dateTime), "EEEE d 'de' MMMM, HH:mm", { locale: es })}
+                      {booking.dateTime && format(new Date(booking.dateTime), 'PPPPp', { locale: dateLocale })}
                     </p>
                   </div>
                 </div>
@@ -1831,21 +1871,21 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="appointment-note">Comentario para la cita</Label>
+                    <Label htmlFor="appointment-note">{t('bookingWizard.step2.appointmentComment')}</Label>
                     <span className="text-xs text-muted-foreground">
                       {appointmentNote.length}/250
                     </span>
                   </div>
                   <Textarea
                     id="appointment-note"
-                    placeholder="¿Algo que debamos tener en cuenta?"
+                    placeholder={t('bookingWizard.step2.appointmentCommentPlaceholder')}
                     maxLength={250}
                     value={appointmentNote}
                     onChange={(e) => setAppointmentNote(e.target.value)}
                     className="min-h-[88px] sm:min-h-[110px] resize-none"
                   />
                   <p className="hidden sm:block text-xs text-muted-foreground">
-                    El comentario lo verá tu {copy.staff.singularLower} para preparar la cita.
+                    {t('bookingWizard.step2.appointmentCommentHint', { staffSingularLower: copy.staff.singularLower })}
                   </p>
                 </div>
 
@@ -1855,21 +1895,21 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   <>
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="guest-name">Tu nombre *</Label>
+                        <Label htmlFor="guest-name">{t('bookingWizard.step2.guestName')}</Label>
                         <Input
                           id="guest-name"
-                          placeholder="Nombre y apellidos"
+                          placeholder={t('bookingWizard.step2.guestNamePlaceholder')}
                           value={guestInfo.name}
                           onChange={(e) => setGuestInfo((prev) => ({ ...prev, name: e.target.value }))}
                           required
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="guest-email">Correo *</Label>
+                        <Label htmlFor="guest-email">{t('bookingWizard.step2.guestEmail')}</Label>
                         <Input
                           id="guest-email"
                           type="email"
-                          placeholder="nombre@email.com"
+                          placeholder={t('bookingWizard.step2.guestEmailPlaceholder')}
                           value={guestInfo.email}
                           onChange={(e) => setGuestInfo((prev) => ({ ...prev, email: e.target.value }))}
                           required
@@ -1877,7 +1917,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="guest-phone">Teléfono (opcional)</Label>
+                      <Label htmlFor="guest-phone">{t('bookingWizard.step2.guestPhone')}</Label>
                       <Input
                         id="guest-phone"
                         type="tel"
@@ -1887,7 +1927,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       />
                     </div>
                     <p className="hidden sm:block text-xs text-muted-foreground">
-                      Para cambios o cancelaciones, contacta directamente con {copy.location.definiteSingular}.
+                      {t('bookingWizard.step2.guestHint', { location: copy.location.definiteSingular })}
                     </p>
                     <hr className="border-border" />
                   </>
@@ -1902,19 +1942,20 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     />
                     <div className="space-y-1">
                       <Label htmlFor="privacy-consent" className="text-sm leading-5 text-foreground">
-                        He leído y acepto la{' '}
+                        {t('bookingWizard.step2.privacyConsentPrefix')}
+                        {' '}
                         <a
                           href="/legal/privacy"
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-primary underline underline-offset-4"
                         >
-                          Política de Privacidad
+                          {t('bookingWizard.step2.privacyPolicy')}
                         </a>
                         .
                       </Label>
                       <p className="hidden sm:block text-xs text-muted-foreground">
-                        Necesitamos tu consentimiento para gestionar la reserva.
+                        {t('bookingWizard.step2.privacyConsentHint')}
                       </p>
                     </div>
                   </div>
@@ -1935,7 +1976,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
           >
             <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-            Atrás
+            {t('bookingWizard.nav.back')}
           </Button>
         )}
 
@@ -1946,7 +1987,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               disabled={!canProceed()}
               className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
             >
-              Siguiente
+              {t('bookingWizard.nav.next')}
               <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-1" />
             </Button>
           ) : (
@@ -1962,8 +2003,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
             >
               {isSubmitting && <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 animate-spin" />}
               {stripeAvailability?.enabled && paymentOption === 'stripe' && totalFinal > 0
-                ? 'Pagar ahora'
-                : 'Confirmar reserva'}
+                ? t('bookingWizard.nav.payNow')
+                : t('bookingWizard.nav.confirmBooking')}
             </Button>
           )}
         </div>
@@ -1971,9 +2012,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Seleccionar productos</DialogTitle>
+            <DialogTitle>{t('bookingWizard.productsDialog.title')}</DialogTitle>
             <DialogDescription>
-              Busca y añade productos a tu cita. Solo se guardarán los seleccionados.
+              {t('bookingWizard.productsDialog.description')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto pr-2">
@@ -1986,7 +2027,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setIsProductsDialogOpen(false)}>
-              Listo
+              {t('bookingWizard.productsDialog.done')}
             </Button>
           </DialogFooter>
         </DialogContent>

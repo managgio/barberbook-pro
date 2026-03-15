@@ -16,12 +16,14 @@ import {
 } from '@/data/api/reviews';
 import { ReviewPendingResponse } from '@/data/types';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/hooks/useI18n';
 
 const allowedPaths = ['/app', '/app/appointments', '/app/profile'];
 
 const ReviewPromptModal: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const location = useLocation();
   const [request, setRequest] = useState<ReviewPendingResponse | null>(null);
   const [open, setOpen] = useState(false);
@@ -103,8 +105,8 @@ const ReviewPromptModal: React.FC = () => {
       }
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
-        description: error instanceof Error ? error.message : 'Inténtalo más tarde.',
+        title: t('reviewPrompt.toast.saveErrorTitle'),
+        description: error instanceof Error ? error.message : t('reviewPrompt.toast.tryLater'),
         variant: 'destructive',
       });
     } finally {
@@ -129,8 +131,8 @@ const ReviewPromptModal: React.FC = () => {
     if (!request || isSubmitting) return;
     if (!feedback.trim()) {
       toast({
-        title: 'Escribe un comentario',
-        description: 'Necesitamos un poco más de detalle para ayudarte.',
+        title: t('reviewPrompt.toast.missingFeedbackTitle'),
+        description: t('reviewPrompt.toast.missingFeedbackDescription'),
       });
       return;
     }
@@ -140,13 +142,13 @@ const ReviewPromptModal: React.FC = () => {
       completedRef.current = true;
       resetState();
       toast({
-        title: 'Gracias por tu feedback',
-        description: 'Tu comentario ya está en manos del equipo.',
+        title: t('reviewPrompt.toast.feedbackSentTitle'),
+        description: t('reviewPrompt.toast.feedbackSentDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo enviar',
-        description: error instanceof Error ? error.message : 'Inténtalo más tarde.',
+        title: t('reviewPrompt.toast.sendErrorTitle'),
+        description: error instanceof Error ? error.message : t('reviewPrompt.toast.tryLater'),
         variant: 'destructive',
       });
     } finally {
@@ -189,7 +191,7 @@ const ReviewPromptModal: React.FC = () => {
                 );
               })}
             </div>
-            <p className="text-center text-xs text-muted-foreground">Toca una estrella para valorar tu visita.</p>
+            <p className="text-center text-xs text-muted-foreground">{t('reviewPrompt.ratingHint')}</p>
           </div>
         )}
 
@@ -208,7 +210,7 @@ const ReviewPromptModal: React.FC = () => {
             <Textarea
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
-              placeholder="Cuéntanos qué pasó"
+              placeholder={t('reviewPrompt.feedbackPlaceholder')}
               className="min-h-[120px]"
             />
             <Button onClick={handleFeedback} className="w-full" disabled={isSubmitting}>

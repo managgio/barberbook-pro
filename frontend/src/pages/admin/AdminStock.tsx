@@ -35,12 +35,15 @@ import { fetchAdminProductsCached, fetchProductCategoriesCached } from '@/lib/ca
 import { dispatchProductsUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { useI18n } from '@/hooks/useI18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
 const EMPTY_PRODUCTS: Product[] = [];
 const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
 
 const AdminStock: React.FC = () => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const { locations, currentLocationId, tenant } = useTenant();
   const copy = useBusinessCopy();
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -112,11 +115,11 @@ const AdminStock: React.FC = () => {
   useEffect(() => {
     if (!settingsQuery.error && !productsQuery.error && !categoriesQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudo cargar el inventario.',
+      title: t('admin.common.error'),
+      description: t('admin.stock.toast.loadInventoryError'),
       variant: 'destructive',
     });
-  }, [categoriesQuery.error, productsQuery.error, settingsQuery.error, toast]);
+  }, [categoriesQuery.error, productsQuery.error, settingsQuery.error, t, toast]);
 
   useEffect(() => {
     if (!productImageFile) {
@@ -160,8 +163,8 @@ const AdminStock: React.FC = () => {
     if (!productsEnabled) return;
     if (enabled && uncategorizedProducts.length > 0) {
       toast({
-        title: 'Asigna categorías',
-        description: 'Todos los productos deben tener categoría antes de activar la vista por familias.',
+        title: t('admin.stock.toast.assignCategoriesTitle'),
+        description: t('admin.stock.toast.assignCategoriesDescription'),
         variant: 'destructive',
       });
       return;
@@ -174,13 +177,15 @@ const AdminStock: React.FC = () => {
       });
       dispatchSiteSettingsUpdated(updated);
       toast({
-        title: 'Preferencias actualizadas',
-        description: enabled ? 'Las categorías están activas.' : 'Las categorías se han desactivado.',
+        title: t('admin.stock.toast.preferencesUpdatedTitle'),
+        description: enabled
+          ? t('admin.stock.toast.categoriesEnabledDescription')
+          : t('admin.stock.toast.categoriesDisabledDescription'),
       });
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'No se pudo actualizar la categorización.',
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.updateCategorizationError'),
         variant: 'destructive',
       });
     } finally {
@@ -225,12 +230,20 @@ const AdminStock: React.FC = () => {
 
   const handleSaveProduct = async () => {
     if (!productForm.name.trim()) {
-      toast({ title: 'Nombre obligatorio', description: 'Indica el nombre del producto.', variant: 'destructive' });
+      toast({
+        title: t('admin.stock.toast.requiredProductNameTitle'),
+        description: t('admin.stock.toast.requiredProductNameDescription'),
+        variant: 'destructive',
+      });
       return;
     }
     const priceValue = Number(productForm.price.replace(',', '.'));
     if (!Number.isFinite(priceValue) || priceValue < 0) {
-      toast({ title: 'Precio inválido', description: 'Introduce un precio válido.', variant: 'destructive' });
+      toast({
+        title: t('admin.stock.toast.invalidPriceTitle'),
+        description: t('admin.stock.toast.invalidPriceDescription'),
+        variant: 'destructive',
+      });
       return;
     }
     const stockValue = Number(productForm.stock || 0);
@@ -270,10 +283,17 @@ const AdminStock: React.FC = () => {
       }
       dispatchProductsUpdated({ source: 'admin-stock' });
       await productsQuery.refetch();
-      toast({ title: 'Producto guardado', description: 'El inventario se actualizó.' });
+      toast({
+        title: t('admin.stock.toast.productSavedTitle'),
+        description: t('admin.stock.toast.productSavedDescription'),
+      });
       setIsProductDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar el producto.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.saveProductError'),
+        variant: 'destructive',
+      });
     } finally {
       setIsProductSaving(false);
     }
@@ -285,9 +305,13 @@ const AdminStock: React.FC = () => {
       await deleteProduct(deleteProductId);
       dispatchProductsUpdated({ source: 'admin-stock' });
       await productsQuery.refetch();
-      toast({ title: 'Producto eliminado' });
+      toast({ title: t('admin.stock.toast.productDeletedTitle') });
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar el producto.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.deleteProductError'),
+        variant: 'destructive',
+      });
     } finally {
       setDeleteProductId(null);
     }
@@ -309,7 +333,11 @@ const AdminStock: React.FC = () => {
 
   const handleSaveCategory = async () => {
     if (!categoryForm.name.trim()) {
-      toast({ title: 'Nombre obligatorio', description: 'Indica el nombre de la categoría.', variant: 'destructive' });
+      toast({
+        title: t('admin.stock.toast.requiredCategoryNameTitle'),
+        description: t('admin.stock.toast.requiredCategoryNameDescription'),
+        variant: 'destructive',
+      });
       return;
     }
     setIsCategorySaving(true);
@@ -329,10 +357,14 @@ const AdminStock: React.FC = () => {
       }
       dispatchProductsUpdated({ source: 'admin-stock' });
       await Promise.all([categoriesQuery.refetch(), productsQuery.refetch()]);
-      toast({ title: 'Categoría guardada' });
+      toast({ title: t('admin.stock.toast.categorySavedTitle') });
       setIsCategoryDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar la categoría.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.saveCategoryError'),
+        variant: 'destructive',
+      });
     } finally {
       setIsCategorySaving(false);
     }
@@ -344,9 +376,13 @@ const AdminStock: React.FC = () => {
       await deleteProductCategory(deleteCategoryId);
       dispatchProductsUpdated({ source: 'admin-stock' });
       await Promise.all([categoriesQuery.refetch(), productsQuery.refetch()]);
-      toast({ title: 'Categoría eliminada' });
+      toast({ title: t('admin.stock.toast.categoryDeletedTitle') });
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar la categoría.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.deleteCategoryError'),
+        variant: 'destructive',
+      });
     } finally {
       setDeleteCategoryId(null);
     }
@@ -358,14 +394,21 @@ const AdminStock: React.FC = () => {
     try {
       const result = await importProducts({ sourceLocalId: importSourceLocalId, targetLocalId: importTargetLocalId });
       toast({
-        title: 'Importación completada',
-        description: `${result.created} creados · ${result.updated} actualizados`,
+        title: t('admin.stock.toast.importCompletedTitle'),
+        description: t('admin.stock.toast.importCompletedDescription', {
+          created: result.created,
+          updated: result.updated,
+        }),
       });
       dispatchProductsUpdated({ source: 'admin-stock' });
       setIsImportDialogOpen(false);
       await Promise.all([productsQuery.refetch(), categoriesQuery.refetch()]);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo importar el catálogo.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.importError'),
+        variant: 'destructive',
+      });
     } finally {
       setIsImporting(false);
     }
@@ -391,19 +434,19 @@ const AdminStock: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-2xl font-bold text-foreground">Control de stock</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t('admin.stock.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Gestiona el inventario y el catálogo de productos por {copy.location.singularLower}.
+            {t('admin.stock.subtitle', { locationSingularLower: copy.location.singularLower })}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={openImportDialog} disabled={locations.length <= 1 || !productsEnabled}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            Importar productos
+            {t('admin.stock.actions.importProducts')}
           </Button>
           <Button onClick={() => openProductDialog()} disabled={!productsEnabled}>
             <PackagePlus className="w-4 h-4 mr-2" />
-            Nuevo producto
+            {t('admin.stock.actions.newProduct')}
           </Button>
         </div>
       </div>
@@ -413,15 +456,15 @@ const AdminStock: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" />
-              Presentación
+              {t('admin.services.presentation.title')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between rounded-xl border border-border p-3">
               <div>
-                <p className="text-sm font-medium text-foreground">Agrupar por categorías</p>
+                <p className="text-sm font-medium text-foreground">{t('admin.stock.presentation.groupByCategories')}</p>
                 <p className="text-xs text-muted-foreground">
-                  Ordena el catálogo para clientes y landing.
+                  {t('admin.stock.presentation.groupByCategoriesDescription')}
                 </p>
               </div>
               <Switch
@@ -434,20 +477,20 @@ const AdminStock: React.FC = () => {
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
                 <div className="flex items-center gap-2 text-primary font-medium">
                   <CheckCircle2 className="w-4 h-4" />
-                  Categorización activa
+                  {t('admin.stock.presentation.categorizationActive')}
                 </div>
                 <p className="mt-2">
-                  Asegúrate de que todos los productos tengan categoría asignada.
+                  {t('admin.stock.presentation.categorizationActiveDescription')}
                 </p>
               </div>
             ) : (
               <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
-                Los productos se muestran en una lista simple.
+                {t('admin.stock.presentation.simpleListDescription')}
               </div>
             )}
             {uncategorizedProducts.length > 0 && (
               <div className="rounded-xl border border-amber-200/60 bg-amber-50 text-amber-700 text-xs p-3">
-                Tienes {uncategorizedProducts.length} producto(s) sin categoría. Asígnalos para activar la vista agrupada.
+                {t('admin.stock.presentation.uncategorizedWarning', { count: uncategorizedProducts.length })}
               </div>
             )}
           </CardContent>
@@ -455,10 +498,10 @@ const AdminStock: React.FC = () => {
 
         <div className="lg:col-span-3 grid grid-cols-2 gap-4">
           {[
-            { label: 'Productos activos', value: inventorySummary.activeCount },
-            { label: 'Unidades en stock', value: inventorySummary.totalStock },
-            { label: 'Bajo stock', value: inventorySummary.lowStock },
-            { label: 'Valor inventario', value: `${inventorySummary.inventoryValue.toFixed(2)}€` },
+            { label: t('admin.stock.summary.activeProducts'), value: inventorySummary.activeCount },
+            { label: t('admin.stock.summary.stockUnits'), value: inventorySummary.totalStock },
+            { label: t('admin.stock.summary.lowStock'), value: inventorySummary.lowStock },
+            { label: t('admin.stock.summary.inventoryValue'), value: `${inventorySummary.inventoryValue.toFixed(2)}€` },
           ].map((item) => (
             <Card key={item.label} variant="elevated" className="h-full">
               <CardContent className="p-4 space-y-2">
@@ -472,8 +515,8 @@ const AdminStock: React.FC = () => {
 
       <Tabs defaultValue="products" className="space-y-4">
         <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="products">Productos</TabsTrigger>
-          <TabsTrigger value="categories">Categorías</TabsTrigger>
+          <TabsTrigger value="products">{t('admin.stock.tabs.products')}</TabsTrigger>
+          <TabsTrigger value="categories">{t('admin.stock.tabs.categories')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products">
@@ -481,12 +524,12 @@ const AdminStock: React.FC = () => {
             <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <CardTitle className="flex items-center gap-2">
                 <Boxes className="w-5 h-5 text-primary" />
-                Inventario
+                {t('admin.stock.inventoryTitle')}
               </CardTitle>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                   <Input
-                    placeholder="Buscar producto"
+                    placeholder={t('admin.stock.searchPlaceholder')}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="w-[220px]"
@@ -494,10 +537,10 @@ const AdminStock: React.FC = () => {
                 </div>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Categoría" />
+                    <SelectValue placeholder={t('admin.services.fields.category')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todas las categorías</SelectItem>
+                    <SelectItem value="all">{t('admin.stock.filters.allCategories')}</SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.name}
@@ -509,13 +552,13 @@ const AdminStock: React.FC = () => {
                   variant={showActiveOnly ? 'secondary' : 'outline'}
                   onClick={() => setShowActiveOnly((prev) => !prev)}
                 >
-                  Activos
+                  {t('admin.stock.filters.active')}
                 </Button>
                 <Button
                   variant={showPublicOnly ? 'secondary' : 'outline'}
                   onClick={() => setShowPublicOnly((prev) => !prev)}
                 >
-                  Visibles
+                  {t('admin.stock.filters.visible')}
                 </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -529,14 +572,14 @@ const AdminStock: React.FC = () => {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[240px] text-xs leading-relaxed">
-                    Activo: se puede usar en citas y en el catálogo interno. Visible: aparece en la landing/app para clientes.
+                    {t('admin.stock.tooltip.activeVsVisible')}
                   </TooltipContent>
                 </Tooltip>
               </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <div className="py-10 text-center text-sm text-muted-foreground">Cargando inventario...</div>
+                <div className="py-10 text-center text-sm text-muted-foreground">{t('admin.stock.loadingInventory')}</div>
               ) : filteredProducts.length > 0 ? (
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {filteredProducts.map((product) => {
@@ -559,13 +602,13 @@ const AdminStock: React.FC = () => {
                                     className="w-full h-full object-cover"
                                   />
                                 ) : (
-                                  <span className="text-xs text-muted-foreground">Sin foto</span>
+                                  <span className="text-xs text-muted-foreground">{t('admin.stock.noPhoto')}</span>
                                 )}
                               </div>
                               <div>
                                 <p className="font-semibold text-foreground">{product.name}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {product.category?.name || 'Sin categoría'}
+                                  {product.category?.name || t('admin.services.uncategorized')}
                                 </p>
                               </div>
                             </div>
@@ -585,7 +628,7 @@ const AdminStock: React.FC = () => {
                                 ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-600'
                                 : 'border-rose-500/30 bg-rose-500/15 text-rose-500'}
                             >
-                              {product.isActive ? 'Activo' : 'Inactivo'}
+                              {product.isActive ? t('admin.stock.status.active') : t('admin.stock.status.inactive')}
                             </Badge>
                             <Badge
                               variant="outline"
@@ -593,13 +636,13 @@ const AdminStock: React.FC = () => {
                                 ? 'border-sky-500/30 bg-sky-500/15 text-sky-600'
                                 : 'border-slate-500/30 bg-slate-500/15 text-slate-500'}
                             >
-                              {product.isPublic ? 'Visible' : 'Privado'}
+                              {product.isPublic ? t('admin.stock.status.visible') : t('admin.stock.status.private')}
                             </Badge>
-                            {isLow && <Badge variant="destructive">Stock bajo</Badge>}
+                            {isLow && <Badge variant="destructive">{t('admin.stock.status.lowStock')}</Badge>}
                           </div>
                           <div className="flex items-end justify-between">
                             <div className="text-sm">
-                              <p className="text-xs text-muted-foreground">Stock</p>
+                              <p className="text-xs text-muted-foreground">{t('admin.stock.fields.stock')}</p>
                               <p className={cn('text-lg font-semibold', isLow ? 'text-destructive' : 'text-foreground')}>
                                 {product.stock}
                               </p>
@@ -623,9 +666,9 @@ const AdminStock: React.FC = () => {
               ) : (
                 <EmptyState
                   icon={Boxes}
-                  title="Sin productos"
-                  description="Crea productos para empezar a controlar el stock."
-                  action={productsEnabled ? { label: 'Nuevo producto', onClick: () => openProductDialog() } : undefined}
+                  title={t('admin.stock.emptyProductsTitle')}
+                  description={t('admin.stock.emptyProductsDescription')}
+                  action={productsEnabled ? { label: t('admin.stock.actions.newProduct'), onClick: () => openProductDialog() } : undefined}
                 />
               )}
             </CardContent>
@@ -635,9 +678,9 @@ const AdminStock: React.FC = () => {
         <TabsContent value="categories">
           <Card variant="elevated">
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Categorías de productos</CardTitle>
+              <CardTitle>{t('admin.stock.categoriesTitle')}</CardTitle>
               <Button variant="outline" onClick={() => openCategoryDialog()} disabled={!productsEnabled}>
-                Nueva categoría
+                {t('admin.services.actions.newCategory')}
               </Button>
             </CardHeader>
             <CardContent>
@@ -650,7 +693,7 @@ const AdminStock: React.FC = () => {
                           <div>
                             <p className="font-semibold text-foreground">{category.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              {category.description || 'Sin descripción'}
+                              {category.description || t('admin.services.categories.noDescription')}
                             </p>
                           </div>
                           <div className="flex gap-1">
@@ -663,9 +706,9 @@ const AdminStock: React.FC = () => {
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{categoryCounts[category.id] ?? 0} producto(s)</span>
+                          <span>{t('admin.stock.categories.productCount', { count: categoryCounts[category.id] ?? 0 })}</span>
                           <span className="px-2 py-1 rounded-full border border-border">
-                            Orden {category.position ?? 0}
+                            {t('admin.services.categories.order', { position: category.position ?? 0 })}
                           </span>
                         </div>
                       </CardContent>
@@ -675,9 +718,9 @@ const AdminStock: React.FC = () => {
               ) : (
                 <EmptyState
                   icon={Boxes}
-                  title="Sin categorías"
-                  description="Crea categorías para organizar el catálogo."
-                  action={productsEnabled ? { label: 'Nueva categoría', onClick: () => openCategoryDialog() } : undefined}
+                  title={t('admin.services.categories.emptyTitle')}
+                  description={t('admin.services.categories.emptyDescription')}
+                  action={productsEnabled ? { label: t('admin.services.actions.newCategory'), onClick: () => openCategoryDialog() } : undefined}
                 />
               )}
             </CardContent>
@@ -689,41 +732,63 @@ const AdminStock: React.FC = () => {
       <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>{editingProduct ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
+            <DialogTitle>
+              {editingProduct ? t('admin.stock.dialog.editProductTitle') : t('admin.stock.dialog.newProductTitle')}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              Completa los datos del producto, stock, categoría y visibilidad.
+              {t('admin.stock.dialog.productDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Nombre</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>{t('admin.services.fields.name')}</Label>
+                  <InlineTranslationPopover
+                    entityType="product"
+                    entityId={editingProduct?.id}
+                    fieldKey="name"
+                    onUpdated={async () => {
+                      await productsQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Input
                   value={productForm.name}
                   onChange={(e) => setProductForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Nombre del producto"
+                  placeholder={t('admin.stock.fields.productNamePlaceholder')}
                 />
               </div>
               <div className="space-y-2">
-                <Label>SKU (opcional)</Label>
+                <Label>{t('admin.stock.fields.skuOptional')}</Label>
                 <Input
                   value={productForm.sku}
                   onChange={(e) => setProductForm((prev) => ({ ...prev, sku: e.target.value }))}
-                  placeholder="SKU interno"
+                  placeholder={t('admin.stock.fields.skuPlaceholder')}
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Descripción</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>{t('admin.services.fields.description')}</Label>
+                <InlineTranslationPopover
+                  entityType="product"
+                  entityId={editingProduct?.id}
+                  fieldKey="description"
+                  onUpdated={async () => {
+                    await productsQuery.refetch();
+                  }}
+                />
+              </div>
               <Input
                 value={productForm.description}
                 onChange={(e) => setProductForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Describe el producto en una línea."
+                placeholder={t('admin.stock.fields.descriptionPlaceholder')}
               />
             </div>
             <div className="grid md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Precio</Label>
+                <Label>{t('admin.services.fields.price')}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -733,7 +798,7 @@ const AdminStock: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Stock</Label>
+                <Label>{t('admin.stock.fields.stock')}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -742,7 +807,7 @@ const AdminStock: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Stock mínimo</Label>
+                <Label>{t('admin.stock.fields.minStock')}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -753,16 +818,16 @@ const AdminStock: React.FC = () => {
             </div>
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Categoría</Label>
+                <Label>{t('admin.services.fields.category')}</Label>
                 <Select
                   value={productForm.categoryId}
                   onValueChange={(value) => setProductForm((prev) => ({ ...prev, categoryId: value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona categoría" />
+                    <SelectValue placeholder={t('admin.services.fields.selectCategory')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Sin categoría</SelectItem>
+                    <SelectItem value="none">{t('admin.services.uncategorized')}</SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.name}
@@ -772,11 +837,11 @@ const AdminStock: React.FC = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Imagen</Label>
+                <Label>{t('admin.stock.fields.image')}</Label>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border cursor-pointer text-sm text-muted-foreground">
                     <ImagePlus className="w-4 h-4" />
-                    Subir imagen
+                    {t('admin.stock.actions.uploadImage')}
                     <input
                       type="file"
                       accept="image/*"
@@ -790,7 +855,7 @@ const AdminStock: React.FC = () => {
                   {(productImagePreview || productForm.imageUrl) && (
                     <img
                       src={productImagePreview || productForm.imageUrl}
-                      alt="Preview"
+                      alt={t('admin.stock.fields.previewAlt')}
                       loading="lazy"
                       decoding="async"
                       width={48}
@@ -803,14 +868,14 @@ const AdminStock: React.FC = () => {
             </div>
             <div className="grid md:grid-cols-2 gap-4">
               <div className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2">
-                <span className="text-sm">Producto activo</span>
+                <span className="text-sm">{t('admin.stock.fields.productActive')}</span>
                 <Switch
                   checked={productForm.isActive}
                   onCheckedChange={(checked) => setProductForm((prev) => ({ ...prev, isActive: checked }))}
                 />
               </div>
               <div className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2">
-                <span className="text-sm">Visible para clientes</span>
+                <span className="text-sm">{t('admin.stock.fields.visibleForClients')}</span>
                 <Switch
                   checked={productForm.isPublic}
                   onCheckedChange={(checked) => setProductForm((prev) => ({ ...prev, isPublic: checked }))}
@@ -820,11 +885,11 @@ const AdminStock: React.FC = () => {
           </div>
           <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setIsProductDialogOpen(false)}>
-              Cancelar
+              {t('appointmentEditor.cancel')}
             </Button>
             <Button onClick={handleSaveProduct} disabled={isProductSaving}>
               {isProductSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {editingProduct ? 'Guardar cambios' : 'Crear producto'}
+              {editingProduct ? t('admin.services.actions.saveChanges') : t('admin.stock.actions.createProduct')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -834,28 +899,50 @@ const AdminStock: React.FC = () => {
       <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingCategory ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle>
+            <DialogTitle>
+              {editingCategory ? t('admin.services.dialog.editCategoryTitle') : t('admin.services.dialog.newCategoryTitle')}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              Crea o edita categorías para organizar los productos.
+              {t('admin.stock.dialog.categoryDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Nombre</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>{t('admin.services.fields.name')}</Label>
+                <InlineTranslationPopover
+                  entityType="product_category"
+                  entityId={editingCategory?.id}
+                  fieldKey="name"
+                  onUpdated={async () => {
+                    await categoriesQuery.refetch();
+                  }}
+                />
+              </div>
               <Input
                 value={categoryForm.name}
                 onChange={(e) => setCategoryForm((prev) => ({ ...prev, name: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
-              <Label>Descripción</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>{t('admin.services.fields.description')}</Label>
+                <InlineTranslationPopover
+                  entityType="product_category"
+                  entityId={editingCategory?.id}
+                  fieldKey="description"
+                  onUpdated={async () => {
+                    await categoriesQuery.refetch();
+                  }}
+                />
+              </div>
               <Input
                 value={categoryForm.description}
                 onChange={(e) => setCategoryForm((prev) => ({ ...prev, description: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
-              <Label>Orden</Label>
+              <Label>{t('admin.services.fields.order')}</Label>
               <Input
                 type="number"
                 min={0}
@@ -866,11 +953,11 @@ const AdminStock: React.FC = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>
-              Cancelar
+              {t('appointmentEditor.cancel')}
             </Button>
             <Button onClick={handleSaveCategory} disabled={isCategorySaving}>
               {isCategorySaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {editingCategory ? 'Guardar cambios' : 'Crear categoría'}
+              {editingCategory ? t('admin.services.actions.saveChanges') : t('admin.services.actions.createCategory')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -879,15 +966,15 @@ const AdminStock: React.FC = () => {
       <AlertDialog open={!!deleteProductId} onOpenChange={(open) => !open && setDeleteProductId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.stock.deleteProductDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer y el producto dejará de estar disponible.
+              {t('admin.stock.deleteProductDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -896,15 +983,15 @@ const AdminStock: React.FC = () => {
       <AlertDialog open={!!deleteCategoryId} onOpenChange={(open) => !open && setDeleteCategoryId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.stock.deleteCategoryDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Los productos quedarán sin categoría si están asignados.
+              {t('admin.stock.deleteCategoryDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteCategory} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -913,17 +1000,17 @@ const AdminStock: React.FC = () => {
       <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Importar productos</DialogTitle>
+            <DialogTitle>{t('admin.stock.importDialog.title')}</DialogTitle>
             <DialogDescription className="sr-only">
-              Selecciona local origen y destino para copiar catálogo y datos de productos.
+              {t('admin.stock.importDialog.description')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Origen {copy.location.fromWithDefinite}</Label>
+              <Label>{t('admin.stock.importDialog.sourceLabel', { locationFromWithDefinite: copy.location.fromWithDefinite })}</Label>
               <Select value={importSourceLocalId} onValueChange={setImportSourceLocalId}>
                 <SelectTrigger>
-                  <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
+                  <SelectValue placeholder={t('admin.stock.importDialog.selectLocation', { locationIndefiniteSingular: copy.location.indefiniteSingular })} />
                 </SelectTrigger>
                 <SelectContent>
                   {locations.filter((loc) => loc.id !== importTargetLocalId).map((loc) => (
@@ -935,10 +1022,10 @@ const AdminStock: React.FC = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Destino {copy.location.fromWithDefinite}</Label>
+              <Label>{t('admin.stock.importDialog.targetLabel', { locationFromWithDefinite: copy.location.fromWithDefinite })}</Label>
               <Select value={importTargetLocalId} onValueChange={setImportTargetLocalId}>
                 <SelectTrigger>
-                  <SelectValue placeholder={`Selecciona ${copy.location.indefiniteSingular}`} />
+                  <SelectValue placeholder={t('admin.stock.importDialog.selectLocation', { locationIndefiniteSingular: copy.location.indefiniteSingular })} />
                 </SelectTrigger>
                 <SelectContent>
                   {locations.map((loc) => (
@@ -950,20 +1037,21 @@ const AdminStock: React.FC = () => {
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              Para completar la importación, {copy.location.definiteSingular} de destino debe tener habilitado el control de productos.
+              {t('admin.stock.importDialog.requirements', { locationDefiniteSingular: copy.location.definiteSingular })}
             </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsImportDialogOpen(false)}>
-              Cancelar
+              {t('appointmentEditor.cancel')}
             </Button>
             <Button onClick={handleImport} disabled={isImporting || !importSourceLocalId || !importTargetLocalId}>
               {isImporting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Importar ahora
+              {t('admin.stock.actions.importNow')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 };

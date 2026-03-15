@@ -5,6 +5,8 @@ import { Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { translateUi } from '@/lib/i18n';
+import { getRequestLanguage } from '@/lib/language';
 
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
@@ -26,13 +28,26 @@ type CommandDialogProps = DialogProps & {
   contentClassName?: string;
 };
 
-const CommandDialog = ({ children, title = "Command Palette", contentClassName, ...props }: CommandDialogProps) => {
+const CommandDialog = ({ children, title, contentClassName, ...props }: CommandDialogProps) => {
+  const resolvedTitle =
+    title ||
+    translateUi({
+      language: getRequestLanguage(),
+      defaultLanguage: 'es',
+      key: 'command.dialog.title',
+    });
+  const resolvedDescription = translateUi({
+    language: getRequestLanguage(),
+    defaultLanguage: 'es',
+    key: 'command.dialog.description',
+  });
+
   return (
     <Dialog {...props}>
       <DialogContent className={cn("overflow-hidden p-0 shadow-lg", contentClassName)}>
-        <DialogTitle className="sr-only">{title}</DialogTitle>
+        <DialogTitle className="sr-only">{resolvedTitle}</DialogTitle>
         <DialogDescription className="sr-only">
-          Buscador rápido para navegar por secciones y ejecutar acciones del panel.
+          {resolvedDescription}
         </DialogDescription>
         <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
           {children}

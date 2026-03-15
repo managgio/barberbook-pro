@@ -20,9 +20,14 @@ import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
 import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
+import { useI18n } from '@/hooks/useI18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
+
+const EMPTY_ALERTS: AlertType[] = [];
 
 const AdminAlerts: React.FC = () => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const { currentLocationId } = useTenant();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -42,17 +47,17 @@ const AdminAlerts: React.FC = () => {
     queryKey: queryKeys.adminAlerts(currentLocationId),
     queryFn: getAlerts,
   });
-  const alerts = alertsQuery.data ?? [];
+  const alerts = React.useMemo(() => alertsQuery.data ?? EMPTY_ALERTS, [alertsQuery.data]);
   const isLoading = alertsQuery.isLoading;
 
   useEffect(() => {
     if (!alertsQuery.error) return;
     toast({
-      title: 'Error',
-      description: 'No se pudieron cargar las alertas.',
+      title: t('admin.common.error'),
+      description: t('admin.alerts.toast.loadError'),
       variant: 'destructive',
     });
-  }, [alertsQuery.error, toast]);
+  }, [alertsQuery.error, t, toast]);
 
   useForegroundRefresh(() => {
     void alertsQuery.refetch();
@@ -89,7 +94,11 @@ const AdminAlerts: React.FC = () => {
 
     try {
       if (formData.hasSchedule && formData.startDate && formData.endDate && formData.startDate > formData.endDate) {
-        toast({ title: 'Rango de fechas inválido', description: 'La fecha de inicio debe ser anterior a la de fin.', variant: 'destructive' });
+        toast({
+          title: t('admin.alerts.toast.invalidDateRangeTitle'),
+          description: t('admin.alerts.toast.invalidDateRangeDescription'),
+          variant: 'destructive',
+        });
         setIsSubmitting(false);
         return;
       }
@@ -103,7 +112,10 @@ const AdminAlerts: React.FC = () => {
           startDate: formData.hasSchedule ? formData.startDate || undefined : null,
           endDate: formData.hasSchedule ? formData.endDate || undefined : null,
         });
-        toast({ title: 'Alerta actualizada', description: 'Los cambios han sido guardados.' });
+        toast({
+          title: t('admin.alerts.toast.updatedTitle'),
+          description: t('admin.services.toast.changesSavedDescription'),
+        });
       } else {
         await createAlert({
           title: formData.title,
@@ -113,13 +125,20 @@ const AdminAlerts: React.FC = () => {
           startDate: formData.hasSchedule ? formData.startDate || undefined : undefined,
           endDate: formData.hasSchedule ? formData.endDate || undefined : undefined,
         });
-        toast({ title: 'Alerta creada', description: 'La nueva alerta ha sido añadida.' });
+        toast({
+          title: t('admin.alerts.toast.createdTitle'),
+          description: t('admin.alerts.toast.createdDescription'),
+        });
       }
       dispatchAlertsUpdated({ source: 'admin-alerts' });
       await alertsQuery.refetch();
       setIsDialogOpen(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar la alerta.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.alerts.toast.saveError'),
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -130,11 +149,18 @@ const AdminAlerts: React.FC = () => {
     
     try {
       await deleteAlert(deletingAlertId);
-      toast({ title: 'Alerta eliminada', description: 'La alerta ha sido eliminada.' });
+      toast({
+        title: t('admin.alerts.toast.deletedTitle'),
+        description: t('admin.alerts.toast.deletedDescription'),
+      });
       dispatchAlertsUpdated({ source: 'admin-alerts' });
       await alertsQuery.refetch();
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar la alerta.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.alerts.toast.deleteError'),
+        variant: 'destructive',
+      });
     } finally {
       setIsDeleteDialogOpen(false);
       setDeletingAlertId(null);
@@ -147,11 +173,19 @@ const AdminAlerts: React.FC = () => {
       dispatchAlertsUpdated({ source: 'admin-alerts' });
       await alertsQuery.refetch();
       toast({ 
-        title: alert.active ? 'Alerta desactivada' : 'Alerta activada',
-        description: alert.active ? 'Los usuarios ya no verán esta alerta.' : 'Los usuarios verán esta alerta.'
+        title: alert.active
+          ? t('admin.alerts.toast.deactivatedTitle')
+          : t('admin.alerts.toast.activatedTitle'),
+        description: alert.active
+          ? t('admin.alerts.toast.deactivatedDescription')
+          : t('admin.alerts.toast.activatedDescription')
       });
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo actualizar la alerta.', variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.alerts.toast.updateError'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -172,14 +206,14 @@ const AdminAlerts: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Alertas</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.alerts.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Crea alertas para mostrar a los usuarios.
+            {t('admin.alerts.subtitle')}
           </p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="w-4 h-4 mr-2" />
-          Nueva alerta
+          {t('admin.alerts.actions.newAlert')}
         </Button>
       </div>
 
@@ -188,7 +222,7 @@ const AdminAlerts: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="w-5 h-5 text-primary" />
-            Alertas configuradas
+            {t('admin.alerts.configuredTitle')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -218,8 +252,13 @@ const AdminAlerts: React.FC = () => {
                       />
                       {(alert.startDate || alert.endDate) && (
                         <div className="text-[11px] text-muted-foreground bg-background/50 border border-border rounded-full px-2 py-1">
-                          {alert.startDate ? `Inicio ${alert.startDate.slice(0, 10)}` : 'Sin inicio'} ·{' '}
-                          {alert.endDate ? `Fin ${alert.endDate.slice(0, 10)}` : 'Sin fin'}
+                          {alert.startDate
+                            ? t('admin.alerts.schedule.start', { date: alert.startDate.slice(0, 10) })
+                            : t('admin.alerts.schedule.noStart')}{' '}
+                          ·{' '}
+                          {alert.endDate
+                            ? t('admin.alerts.schedule.end', { date: alert.endDate.slice(0, 10) })
+                            : t('admin.alerts.schedule.noEnd')}
                         </div>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => openEditDialog(alert)}>
@@ -236,9 +275,9 @@ const AdminAlerts: React.FC = () => {
           ) : (
             <EmptyState
               icon={Bell}
-              title="Sin alertas"
-              description="Crea alertas para informar a tus clientes."
-              action={{ label: 'Crear alerta', onClick: openCreateDialog }}
+              title={t('admin.alerts.emptyTitle')}
+              description={t('admin.alerts.emptyDescription')}
+              action={{ label: t('admin.alerts.actions.createAlert'), onClick: openCreateDialog }}
             />
           )}
         </CardContent>
@@ -249,36 +288,56 @@ const AdminAlerts: React.FC = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingAlert ? 'Editar alerta' : 'Nueva alerta'}
+              {editingAlert ? t('admin.alerts.dialog.editTitle') : t('admin.alerts.dialog.newTitle')}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Define el título, mensaje, tipo y programación de la alerta.
+              {t('admin.alerts.dialog.description')}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="title">Título</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="title">{t('admin.alerts.fields.title')}</Label>
+                  <InlineTranslationPopover
+                    entityType="alert"
+                    entityId={editingAlert?.id}
+                    fieldKey="title"
+                    onUpdated={async () => {
+                      await alertsQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Input
                   id="title"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Título de la alerta"
+                  placeholder={t('admin.alerts.fields.titlePlaceholder')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="message">Mensaje</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="message">{t('admin.alerts.fields.message')}</Label>
+                  <InlineTranslationPopover
+                    entityType="alert"
+                    entityId={editingAlert?.id}
+                    fieldKey="message"
+                    onUpdated={async () => {
+                      await alertsQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Textarea
                   id="message"
                   value={formData.message}
                   onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                  placeholder="Mensaje de la alerta..."
+                  placeholder={t('admin.alerts.fields.messagePlaceholder')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="type">Tipo</Label>
+                <Label htmlFor="type">{t('admin.alerts.fields.type')}</Label>
                 <Select 
                   value={formData.type} 
                   onValueChange={(value: 'info' | 'warning' | 'success') => setFormData({ ...formData, type: value })}
@@ -290,19 +349,19 @@ const AdminAlerts: React.FC = () => {
                     <SelectItem value="info">
                       <div className="flex items-center gap-2">
                         <Info className="w-4 h-4 text-primary" />
-                        Información
+                        {t('admin.alerts.type.info')}
                       </div>
                     </SelectItem>
                     <SelectItem value="warning">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                        Advertencia
+                        {t('admin.alerts.type.warning')}
                       </div>
                     </SelectItem>
                     <SelectItem value="success">
                       <div className="flex items-center gap-2">
                         <CheckCircle className="w-4 h-4 text-green-500" />
-                        Éxito
+                        {t('admin.alerts.type.success')}
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -310,9 +369,9 @@ const AdminAlerts: React.FC = () => {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="active">Activa</Label>
+                  <Label htmlFor="active">{t('admin.alerts.fields.active')}</Label>
                   <p className="text-sm text-muted-foreground">
-                    Los usuarios verán esta alerta cuando esté activa.
+                    {t('admin.alerts.fields.activeHint')}
                   </p>
                 </div>
                 <Switch
@@ -326,10 +385,10 @@ const AdminAlerts: React.FC = () => {
                   <div>
                     <Label className="flex items-center gap-2">
                       <CalendarIcon className="w-4 h-4" />
-                      Programar por fechas
+                      {t('admin.alerts.fields.scheduleByDates')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Define inicio y fin; si lo dejas vacío será indefinida.
+                      {t('admin.alerts.fields.scheduleHint')}
                     </p>
                   </div>
                   <Switch
@@ -347,7 +406,7 @@ const AdminAlerts: React.FC = () => {
                 {formData.hasSchedule && (
                   <div className="grid sm:grid-cols-2 gap-3 pt-2">
                     <div className="space-y-1">
-                      <Label>Inicio</Label>
+                      <Label>{t('admin.alerts.fields.start')}</Label>
                       <Input
                         type="date"
                         value={formData.startDate}
@@ -355,7 +414,7 @@ const AdminAlerts: React.FC = () => {
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label>Fin</Label>
+                      <Label>{t('admin.alerts.fields.end')}</Label>
                       <Input
                         type="date"
                         value={formData.endDate}
@@ -368,11 +427,11 @@ const AdminAlerts: React.FC = () => {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editingAlert ? 'Guardar cambios' : 'Crear alerta'}
+                {editingAlert ? t('admin.services.actions.saveChanges') : t('admin.alerts.actions.createAlert')}
               </Button>
             </DialogFooter>
           </form>
@@ -383,15 +442,15 @@ const AdminAlerts: React.FC = () => {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar alerta?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin.alerts.deleteDialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La alerta será eliminada permanentemente.
+              {t('admin.alerts.deleteDialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Eliminar
+              {t('admin.roles.actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

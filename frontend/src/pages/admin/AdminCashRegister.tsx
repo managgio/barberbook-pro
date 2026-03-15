@@ -29,7 +29,6 @@ import {
   ProductCategory,
 } from '@/data/types';
 import { format, parseISO, subDays } from 'date-fns';
-import { es } from 'date-fns/locale';
 import {
   Banknote,
   CreditCard,
@@ -54,19 +53,15 @@ import {
 import { dispatchProductsUpdated } from '@/lib/adminEvents';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
-const currencyFormatter = new Intl.NumberFormat('es-ES', {
-  style: 'currency',
-  currency: 'EUR',
-  minimumFractionDigits: 2,
-});
-
-const methodLabels: Record<PaymentMethod | 'unknown', string> = {
-  cash: 'Efectivo',
-  card: 'Tarjeta',
-  bizum: 'Bizum',
-  stripe: 'Stripe',
-  unknown: 'Sin método',
+const PAYMENT_METHOD_KEYS: Record<PaymentMethod | 'unknown', string> = {
+  cash: 'admin.common.paymentMethod.cash',
+  card: 'admin.common.paymentMethod.card',
+  bizum: 'admin.cashRegister.paymentMethod.bizum',
+  stripe: 'admin.cashRegister.paymentMethod.stripe',
+  unknown: 'admin.common.paymentMethod.none',
 };
 
 const METHOD_COLORS: Record<PaymentMethod | 'unknown', string> = {
@@ -127,6 +122,8 @@ const calculateNetTotalFromCollections = (
 
 const AdminCashRegister: React.FC = () => {
   const { toast } = useToast();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const { locations, currentLocationId, tenant } = useTenant();
   const copy = useBusinessCopy();
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
@@ -253,6 +250,26 @@ const AdminCashRegister: React.FC = () => {
   const stripeEnabled = Boolean(
     stripeConfig?.brandEnabled && stripeConfig?.platformEnabled && stripeConfig?.localEnabled,
   );
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(language.startsWith('en') ? 'en-US' : 'es-ES', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+      }),
+    [language],
+  );
+  const methodLabels = useMemo(
+    () =>
+      (Object.entries(PAYMENT_METHOD_KEYS) as Array<[PaymentMethod | 'unknown', string]>).reduce(
+        (acc, [key, translationKey]) => {
+          acc[key] = t(translationKey);
+          return acc;
+        },
+        {} as Record<PaymentMethod | 'unknown', string>,
+      ),
+    [t],
+  );
   const visibleMethods = useMemo<Array<PaymentMethod | 'unknown'>>(
     () => (
       stripeEnabled
@@ -270,11 +287,11 @@ const AdminCashRegister: React.FC = () => {
   useEffect(() => {
     if (!cashRegisterQuery.error) return;
     toast({
-      title: 'No se pudo cargar la caja',
-      description: 'Revisa tu conexión e inténtalo de nuevo.',
+      title: t('admin.cashRegister.toast.loadErrorTitle'),
+      description: t('admin.cashRegister.toast.loadErrorDescription'),
       variant: 'destructive',
     });
-  }, [cashRegisterQuery.error, toast]);
+  }, [cashRegisterQuery.error, t, toast]);
 
   useEffect(() => {
     if (!stripeEnabled && barberPaymentMethodFilter === 'stripe') {
@@ -374,7 +391,7 @@ const AdminCashRegister: React.FC = () => {
           key,
         }))
         .filter((item) => item.value > 0),
-    [methodTotals, visibleMethods],
+    [methodLabels, methodTotals, visibleMethods],
   );
 
   const barberTotals = useMemo(() => {
@@ -411,7 +428,7 @@ const AdminCashRegister: React.FC = () => {
       (appointment.products ?? []).forEach((item) => {
         const current = totals.get(item.productId) || {
           id: item.productId,
-          name: item.name || 'Producto',
+          name: item.name || t('admin.cashRegister.productFallbackName'),
           quantity: 0,
           total: 0,
         };
@@ -423,7 +440,7 @@ const AdminCashRegister: React.FC = () => {
       });
     });
     return [...totals.values()].sort((a, b) => b.total - a.total);
-  }, [completedAppointments, productsEnabled]);
+  }, [completedAppointments, productsEnabled, t]);
 
   const productSalesSummary = useMemo(() => {
     if (!productsEnabled) return { units: 0, total: 0 };
@@ -480,8 +497,8 @@ const AdminCashRegister: React.FC = () => {
         const amount = selectedMovementProductsSummary.amount;
         if (selectedMovementProductDetails.length === 0 || amount <= 0) {
           toast({
-            title: 'Selecciona productos',
-            description: 'Añade al menos un producto con cantidad válida.',
+            title: t('admin.cashRegister.toast.selectProductsTitle'),
+            description: t('admin.cashRegister.toast.selectProductsDescription'),
             variant: 'destructive',
           });
           return;
@@ -490,8 +507,8 @@ const AdminCashRegister: React.FC = () => {
           productMovementDraft.operationType === 'sale' ? 'in' : 'out';
         if (movementType === 'in' && !productMovementDraft.method) {
           toast({
-            title: 'Método requerido',
-            description: 'Selecciona un método de pago para la venta.',
+            title: t('admin.cashRegister.toast.methodRequiredTitle'),
+            description: t('admin.cashRegister.toast.methodRequiredSaleDescription'),
             variant: 'destructive',
           });
           return;
@@ -519,16 +536,16 @@ const AdminCashRegister: React.FC = () => {
         const amount = Number(normalizedAmount);
         if (!normalizedAmount || Number.isNaN(amount) || amount <= 0) {
           toast({
-            title: 'Importe inválido',
-            description: 'Introduce un importe válido para la caja.',
+            title: t('admin.cashRegister.toast.invalidAmountTitle'),
+            description: t('admin.cashRegister.toast.invalidAmountDescription'),
             variant: 'destructive',
           });
           return;
         }
         if (movementDraft.type === 'in' && !movementDraft.method) {
           toast({
-            title: 'Método requerido',
-            description: 'Selecciona un método de pago para la entrada.',
+            title: t('admin.cashRegister.toast.methodRequiredTitle'),
+            description: t('admin.cashRegister.toast.methodRequiredInDescription'),
             variant: 'destructive',
           });
           return;
@@ -548,14 +565,14 @@ const AdminCashRegister: React.FC = () => {
       }
 
       await cashRegisterQuery.refetch();
-      toast({ title: 'Movimiento guardado', description: 'La caja se actualizó correctamente.' });
+      toast({ title: t('admin.cashRegister.toast.savedTitle'), description: t('admin.cashRegister.toast.savedDescription') });
       if (created.productOperationType) {
         dispatchProductsUpdated({ source: 'admin-cash-register' });
       }
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.cashRegister.toast.saveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -573,11 +590,11 @@ const AdminCashRegister: React.FC = () => {
       if (deletedMovement?.productOperationType) {
         dispatchProductsUpdated({ source: 'admin-cash-register' });
       }
-      toast({ title: 'Movimiento eliminado', description: 'La caja se actualizó.' });
+      toast({ title: t('admin.cashRegister.toast.deletedTitle'), description: t('admin.cashRegister.toast.deletedDescription') });
     } catch (error) {
       toast({
-        title: 'No se pudo eliminar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.cashRegister.toast.deleteErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -597,7 +614,7 @@ const AdminCashRegister: React.FC = () => {
       .map((item) => `${item.productName} x${item.quantity}`)
       .join(' · ');
     if (items.length <= 2) return preview;
-    return `${preview} · +${items.length - 2} más`;
+    return t('admin.cashRegister.productsSummary.moreItems', { preview, count: items.length - 2 });
   };
 
   const PieTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) => {
@@ -605,7 +622,7 @@ const AdminCashRegister: React.FC = () => {
     const entry = payload[0];
     return (
       <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground shadow-lg">
-        <p className="font-medium">{entry.name || 'Sin etiqueta'}</p>
+        <p className="font-medium">{entry.name || t('admin.cashRegister.noLabel')}</p>
         <p className="text-muted-foreground">{currencyFormatter.format(entry.value ?? 0)}</p>
       </div>
     );
@@ -615,17 +632,17 @@ const AdminCashRegister: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Caja Registradora</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.cashRegister.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Calcula el cierre diario, controla entradas y salidas, y revisa los métodos de pago.
+            {t('admin.cashRegister.subtitle')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => quickSetDate(1)}>
-            Ayer
+            {t('admin.cashRegister.quickDate.yesterday')}
           </Button>
           <Button variant="outline" size="sm" onClick={() => quickSetDate(0)}>
-            Hoy
+            {t('admin.cashRegister.quickDate.today')}
           </Button>
           <Input
             type="date"
@@ -642,7 +659,7 @@ const AdminCashRegister: React.FC = () => {
       >
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Citas del día</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t('admin.cashRegister.cards.dayAppointments')}</CardTitle>
             <TrendingUp className="w-4 h-4 text-emerald-500 md:w-5 md:h-5 lg:w-6 lg:h-6" />
           </CardHeader>
           <CardContent>
@@ -650,27 +667,37 @@ const AdminCashRegister: React.FC = () => {
               {currencyFormatter.format(appointmentsTotalWithProducts)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {completedAppointments.length} citas completadas · {pendingAppointments.length}{' '}
-              {pendingAppointments.length === 1 ? 'cita pendiente' : 'citas pendientes'}
+              {t('admin.cashRegister.cards.dayAppointmentsDetail', {
+                completedCount: completedAppointments.length,
+                pendingCount: pendingAppointments.length,
+                pendingLabel:
+                  pendingAppointments.length === 1
+                    ? t('admin.cashRegister.pending.single')
+                    : t('admin.cashRegister.pending.plural'),
+              })}
             </p>
           </CardContent>
         </Card>
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Salidas registradas</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t('admin.cashRegister.cards.outgoing')}</CardTitle>
             <TrendingDown className="w-4 h-4 text-rose-500 md:w-5 md:h-5 lg:w-6 lg:h-6" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold text-foreground">{currencyFormatter.format(manualOut)}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {movements.filter((movement) => movement.type === 'out').length} movimientos de salida
+              {t('admin.cashRegister.cards.outgoingDetail', {
+                count: movements.filter((movement) => movement.type === 'out').length,
+              })}
             </p>
           </CardContent>
         </Card>
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Neto {copy.location.fromWithDefinite}
+              {t('admin.cashRegister.cards.netCurrentLocation', {
+                locationFromWithDefinite: copy.location.fromWithDefinite,
+              })}
             </CardTitle>
             <BadgeDollarSign className="w-4 h-4 text-indigo-500 md:w-5 md:h-5 lg:w-6 lg:h-6" />
           </CardHeader>
@@ -678,7 +705,9 @@ const AdminCashRegister: React.FC = () => {
             <p className="text-2xl font-semibold text-foreground">{currencyFormatter.format(netTotal)}</p>
             {hasMultipleLocations && (
               <p className="text-xs text-muted-foreground mt-1">
-                Solo incluye {copy.location.definiteSingular} actual.
+                {t('admin.cashRegister.cards.currentLocationOnly', {
+                  locationDefiniteSingular: copy.location.definiteSingular,
+                })}
               </p>
             )}
           </CardContent>
@@ -686,7 +715,7 @@ const AdminCashRegister: React.FC = () => {
         {hasMultipleLocations && (
           <Card variant="elevated">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Neto total</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t('admin.cashRegister.cards.totalNet')}</CardTitle>
               <Building2 className="w-4 h-4 text-primary md:w-5 md:h-5 lg:w-6 lg:h-6" />
             </CardHeader>
             <CardContent>
@@ -694,20 +723,26 @@ const AdminCashRegister: React.FC = () => {
                 {currencyFormatter.format(effectiveNetTotal)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Suma {locationsForTotalsCount} {copy.location.pluralLower}.
+                {t('admin.cashRegister.cards.totalNetDetail', {
+                  count: locationsForTotalsCount,
+                  locationPluralLower: copy.location.pluralLower,
+                })}
               </p>
             </CardContent>
           </Card>
         )}
         <Card variant="elevated">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pendientes hoy</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t('admin.cashRegister.cards.pendingToday')}</CardTitle>
             <Clock className="w-4 h-4 text-amber-500 md:w-5 md:h-5 lg:w-6 lg:h-6" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold text-foreground">{currencyFormatter.format(pendingIncome)}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {pendingAppointments.length} citas programadas · {cancelledAppointments.length} incidencias
+              {t('admin.cashRegister.cards.pendingTodayDetail', {
+                pendingCount: pendingAppointments.length,
+                incidentCount: cancelledAppointments.length,
+              })}
             </p>
           </CardContent>
         </Card>
@@ -717,11 +752,11 @@ const AdminCashRegister: React.FC = () => {
         <Card variant="elevated" className="min-w-0">
           <CardHeader className="space-y-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Fuentes de pago</CardTitle>
+              <CardTitle>{t('admin.cashRegister.paymentSources.title')}</CardTitle>
               {hasMultipleBarbers && (
                 <Select value={paymentBarberFilter} onValueChange={setPaymentBarberFilter}>
                   <SelectTrigger className="w-[210px]">
-                    <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
+                    <SelectValue placeholder={t('admin.cashRegister.filter.staff', { staffSingularLower: copy.staff.singularLower })} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
@@ -735,15 +770,16 @@ const AdminCashRegister: React.FC = () => {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              Distribución de ingresos confirmados por citas completadas
-              {paymentBarberFilter === 'all' ? '.' : ` por ${copy.staff.singularLower}.`}
+              {paymentBarberFilter === 'all'
+                ? t('admin.cashRegister.paymentSources.subtitleAll')
+                : t('admin.cashRegister.paymentSources.subtitleByStaff', { staffSingularLower: copy.staff.singularLower })}
             </p>
           </CardHeader>
           <CardContent className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
             <div className="h-56">
               {methodData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
-                  No hay ingresos para este día.
+                  {t('admin.cashRegister.paymentSources.empty')}
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -785,32 +821,32 @@ const AdminCashRegister: React.FC = () => {
         <Card variant="elevated" className="flex flex-col">
           <CardHeader className="space-y-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Ingresos por {copy.staff.singularLower}</CardTitle>
+              <CardTitle>{t('admin.cashRegister.byStaff.title', { staffSingularLower: copy.staff.singularLower })}</CardTitle>
               <Select
                 value={barberPaymentMethodFilter}
                 onValueChange={(value) => setBarberPaymentMethodFilter(value as 'all' | PaymentMethod | 'unknown')}
               >
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filtrar método" />
+                  <SelectValue placeholder={t('admin.cashRegister.filter.method')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los métodos</SelectItem>
-                  <SelectItem value="cash">Efectivo</SelectItem>
-                  <SelectItem value="card">Tarjeta</SelectItem>
-                  <SelectItem value="bizum">Bizum</SelectItem>
-                  {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
-                  <SelectItem value="unknown">Sin método</SelectItem>
+                  <SelectItem value="all">{t('admin.cashRegister.allMethods')}</SelectItem>
+                  <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
+                  <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
+                  <SelectItem value="bizum">{t('admin.cashRegister.paymentMethod.bizum')}</SelectItem>
+                  {stripeEnabled && <SelectItem value="stripe">{t('admin.cashRegister.paymentMethod.stripe')}</SelectItem>}
+                  <SelectItem value="unknown">{t('admin.common.paymentMethod.none')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <p className="text-sm text-muted-foreground">
-              Totales de citas completadas para el día seleccionado.
+              {t('admin.cashRegister.byStaff.subtitle')}
             </p>
           </CardHeader>
           <CardContent className="flex-1 space-y-4">
             {barberTotals.length === 0 ? (
               <div className="h-full flex items-center justify-center text-muted-foreground">
-                No hay citas completadas en esta fecha.
+                {t('admin.cashRegister.byStaff.empty')}
               </div>
             ) : (
               barberTotals.map((barber) => (
@@ -818,7 +854,7 @@ const AdminCashRegister: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-foreground">{barber.name}</p>
-                      <p className="text-xs text-muted-foreground">{barber.count} servicios</p>
+                      <p className="text-xs text-muted-foreground">{t('admin.cashRegister.byStaff.servicesCount', { count: barber.count })}</p>
                     </div>
                     <p className="text-sm font-semibold text-foreground">
                       {currencyFormatter.format(barber.total)}
@@ -841,19 +877,22 @@ const AdminCashRegister: React.FC = () => {
         <Card variant="elevated" className="flex flex-col">
           <CardHeader className="space-y-1">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Ventas de productos</CardTitle>
+              <CardTitle>{t('admin.cashRegister.productSales.title')}</CardTitle>
               <div className="text-xs text-muted-foreground">
-                {productSalesSummary.units} unidad(es) · {currencyFormatter.format(productSalesSummary.total)}
+                {t('admin.cashRegister.productSales.summary', {
+                  units: productSalesSummary.units,
+                  total: currencyFormatter.format(productSalesSummary.total),
+                })}
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              Productos añadidos en citas completadas para la fecha seleccionada.
+              {t('admin.cashRegister.productSales.subtitle')}
             </p>
           </CardHeader>
           <CardContent>
             {productSales.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
-                No hay ventas de productos en esta fecha.
+                {t('admin.cashRegister.productSales.empty')}
               </div>
             ) : (
               <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
@@ -864,7 +903,9 @@ const AdminCashRegister: React.FC = () => {
                   >
                     <div>
                       <p className="text-sm font-medium text-foreground">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">{item.quantity} unidad(es)</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('admin.cashRegister.productSales.units', { count: item.quantity })}
+                      </p>
                     </div>
                     <span className="text-sm font-semibold text-foreground">
                       {currencyFormatter.format(item.total)}
@@ -880,7 +921,7 @@ const AdminCashRegister: React.FC = () => {
       <Card variant="elevated" className="flex flex-col">
         <CardHeader className="space-y-1">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Movimientos de caja</CardTitle>
+            <CardTitle>{t('admin.cashRegister.movements.title')}</CardTitle>
             {productsEnabled && (
               <div className="inline-flex rounded-lg border border-border/70 bg-muted/20 p-1">
                 <Button
@@ -889,7 +930,7 @@ const AdminCashRegister: React.FC = () => {
                   variant={movementMode === 'manual' ? 'default' : 'ghost'}
                   onClick={() => setMovementMode('manual')}
                 >
-                  Manual
+                  {t('admin.cashRegister.movements.mode.manual')}
                 </Button>
                 <Button
                   type="button"
@@ -897,15 +938,15 @@ const AdminCashRegister: React.FC = () => {
                   variant={movementMode === 'products' ? 'default' : 'ghost'}
                   onClick={() => setMovementMode('products')}
                 >
-                  Productos
+                  {t('admin.cashRegister.movements.mode.products')}
                 </Button>
               </div>
             )}
           </div>
           <p className="text-sm text-muted-foreground">
             {movementMode === 'products' && productsEnabled
-              ? 'Registra compras y ventas sueltas de productos con ajuste automático de stock.'
-              : 'Añade entradas o salidas manuales (compras, ajustes, propinas, etc.).'}
+              ? t('admin.cashRegister.movements.subtitle.products')
+              : t('admin.cashRegister.movements.subtitle.manual')}
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -913,7 +954,7 @@ const AdminCashRegister: React.FC = () => {
             <>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Operación</label>
+                  <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.operation')}</label>
                   <Select
                     value={productMovementDraft.operationType}
                     onValueChange={(value) =>
@@ -924,23 +965,23 @@ const AdminCashRegister: React.FC = () => {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona operación" />
+                      <SelectValue placeholder={t('admin.cashRegister.fields.selectOperation')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="sale">Venta de productos</SelectItem>
-                      <SelectItem value="purchase">Compra de productos</SelectItem>
+                      <SelectItem value="sale">{t('admin.cashRegister.operation.sale')}</SelectItem>
+                      <SelectItem value="purchase">{t('admin.cashRegister.operation.purchase')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Tipo</label>
+                  <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.type')}</label>
                   <Input
-                    value={productMovementDraft.operationType === 'sale' ? 'Entrada' : 'Salida'}
+                    value={productMovementDraft.operationType === 'sale' ? t('admin.cashRegister.type.in') : t('admin.cashRegister.type.out')}
                     readOnly
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Método</label>
+                  <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.method')}</label>
                   <Select
                     value={productMovementDraft.method || 'none'}
                     onValueChange={(value) =>
@@ -951,24 +992,24 @@ const AdminCashRegister: React.FC = () => {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona método" />
+                      <SelectValue placeholder={t('admin.cashRegister.fields.selectMethod')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cash">Efectivo</SelectItem>
-                      <SelectItem value="card">Tarjeta</SelectItem>
-                      <SelectItem value="bizum">Bizum</SelectItem>
-                      {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
-                      <SelectItem value="none">Sin método</SelectItem>
+                      <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
+                      <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
+                      <SelectItem value="bizum">{t('admin.cashRegister.paymentMethod.bizum')}</SelectItem>
+                      {stripeEnabled && <SelectItem value="stripe">{t('admin.cashRegister.paymentMethod.stripe')}</SelectItem>}
+                      <SelectItem value="none">{t('admin.common.paymentMethod.none')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Importe estimado</label>
+                  <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.estimatedAmount')}</label>
                   <Input value={currencyFormatter.format(selectedMovementProductsSummary.amount)} readOnly />
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Nota</label>
+                <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.note')}</label>
                 <Textarea
                   value={productMovementDraft.note}
                   onChange={(e) =>
@@ -979,8 +1020,8 @@ const AdminCashRegister: React.FC = () => {
                   }
                   placeholder={
                     productMovementDraft.operationType === 'sale'
-                      ? 'Ej: Venta suelta de productos'
-                      : 'Ej: Compra de reposición'
+                      ? t('admin.cashRegister.fields.notePlaceholderSale')
+                      : t('admin.cashRegister.fields.notePlaceholderPurchase')
                   }
                   className="min-h-[42px] resize-none"
                 />
@@ -1000,33 +1041,33 @@ const AdminCashRegister: React.FC = () => {
                 disabled={isSavingMovement || isLoading}
               />
               <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                <span>{selectedMovementProductsSummary.units} unidad(es) seleccionadas</span>
+                <span>{t('admin.cashRegister.fields.selectedUnits', { count: selectedMovementProductsSummary.units })}</span>
                 <span>
                   {productMovementDraft.operationType === 'sale'
-                    ? `Reduce stock ${copy.location.fromWithDefinite}`
-                    : `Incrementa stock ${copy.location.fromWithDefinite}`}
+                    ? t('admin.cashRegister.fields.stockDecrease', { locationFromWithDefinite: copy.location.fromWithDefinite })
+                    : t('admin.cashRegister.fields.stockIncrease', { locationFromWithDefinite: copy.location.fromWithDefinite })}
                 </span>
               </div>
             </>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Tipo</label>
+                <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.type')}</label>
                 <Select
                   value={movementDraft.type}
                   onValueChange={(value) => setMovementDraft((prev) => ({ ...prev, type: value as CashMovementType }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona tipo" />
+                    <SelectValue placeholder={t('admin.cashRegister.fields.selectType')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="in">Entrada</SelectItem>
-                    <SelectItem value="out">Salida</SelectItem>
+                    <SelectItem value="in">{t('admin.cashRegister.type.in')}</SelectItem>
+                    <SelectItem value="out">{t('admin.cashRegister.type.out')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Importe</label>
+                <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.amount')}</label>
                 <Input
                   type="number"
                   min="0"
@@ -1037,7 +1078,7 @@ const AdminCashRegister: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Método</label>
+                <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.method')}</label>
                 <Select
                   value={movementDraft.method || 'none'}
                   onValueChange={(value) =>
@@ -1048,23 +1089,23 @@ const AdminCashRegister: React.FC = () => {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona método" />
+                    <SelectValue placeholder={t('admin.cashRegister.fields.selectMethod')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Efectivo</SelectItem>
-                    <SelectItem value="card">Tarjeta</SelectItem>
-                    <SelectItem value="bizum">Bizum</SelectItem>
-                    {stripeEnabled && <SelectItem value="stripe">Stripe</SelectItem>}
-                    <SelectItem value="none">Sin método</SelectItem>
+                    <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
+                    <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
+                    <SelectItem value="bizum">{t('admin.cashRegister.paymentMethod.bizum')}</SelectItem>
+                    {stripeEnabled && <SelectItem value="stripe">{t('admin.cashRegister.paymentMethod.stripe')}</SelectItem>}
+                    <SelectItem value="none">{t('admin.common.paymentMethod.none')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Nota</label>
+                <label className="text-sm font-medium text-foreground">{t('admin.cashRegister.fields.note')}</label>
                 <Textarea
                   value={movementDraft.note}
                   onChange={(e) => setMovementDraft((prev) => ({ ...prev, note: e.target.value }))}
-                  placeholder="Ej: Compra de productos"
+                  placeholder={t('admin.cashRegister.fields.notePlaceholderDefault')}
                   className="min-h-[42px] resize-none"
                 />
               </div>
@@ -1073,22 +1114,22 @@ const AdminCashRegister: React.FC = () => {
           <div className="flex justify-end">
             <Button onClick={handleCreateMovement} disabled={isSavingMovement || isLoading} className="gap-2">
               <Plus className="w-4 h-4" />
-              {isSavingMovement ? 'Guardando...' : 'Añadir movimiento'}
+              {isSavingMovement ? t('admin.common.saving') : t('admin.cashRegister.actions.addMovement')}
             </Button>
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-foreground">Movimientos registrados</p>
+              <p className="text-sm font-medium text-foreground">{t('admin.cashRegister.movements.registeredTitle')}</p>
               <p className="text-xs text-muted-foreground">
-                {movements.length} movimientos
+                {t('admin.cashRegister.movements.count', { count: movements.length })}
               </p>
             </div>
             <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2">
               {isLoading ? (
-                <p className="text-sm text-muted-foreground">Cargando movimientos...</p>
+                <p className="text-sm text-muted-foreground">{t('admin.cashRegister.movements.loading')}</p>
               ) : movements.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay movimientos de caja en esta fecha.</p>
+                <p className="text-sm text-muted-foreground">{t('admin.cashRegister.movements.empty')}</p>
               ) : (
                 movements.map((movement) => {
                   const badgeVariant = movement.type === 'in' ? 'default' : 'destructive';
@@ -1102,16 +1143,16 @@ const AdminCashRegister: React.FC = () => {
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <Badge variant={badgeVariant}>{movement.type === 'in' ? 'Entrada' : 'Salida'}</Badge>
+                          <Badge variant={badgeVariant}>{movement.type === 'in' ? t('admin.cashRegister.type.in') : t('admin.cashRegister.type.out')}</Badge>
                           {movement.productOperationType && (
                             <Badge variant="outline">
-                              {movement.productOperationType === 'sale' ? 'Venta de productos' : 'Compra de productos'}
+                              {movement.productOperationType === 'sale' ? t('admin.cashRegister.operation.sale') : t('admin.cashRegister.operation.purchase')}
                             </Badge>
                           )}
                           <span className="text-xs text-muted-foreground">{methodLabel}</span>
                         </div>
                         <p className="text-sm text-foreground">
-                          {movement.note || 'Movimiento sin nota'}
+                          {movement.note || t('admin.cashRegister.movements.noNote')}
                         </p>
                         {movement.productItems && movement.productItems.length > 0 && (
                           <p className="text-xs text-muted-foreground">
@@ -1119,7 +1160,7 @@ const AdminCashRegister: React.FC = () => {
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {format(parseISO(movement.occurredAt), "d MMM yyyy, HH:mm", { locale: es })}
+                          {format(parseISO(movement.occurredAt), "d MMM yyyy, HH:mm", { locale: dateLocale })}
                         </p>
                       </div>
                       <div className="flex items-center justify-between gap-3">

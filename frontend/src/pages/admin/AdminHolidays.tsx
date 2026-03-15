@@ -12,7 +12,6 @@ import {
 } from '@/data/api/holidays';
 import { Barber, HolidayRange } from '@/data/types';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
 import { dispatchHolidaysUpdated } from '@/lib/adminEvents';
@@ -23,6 +22,8 @@ import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
 import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
 import { useToast } from '@/hooks/use-toast';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const EMPTY_BARBERS: Barber[] = [];
 const EMPTY_HOLIDAYS: HolidayRange[] = [];
@@ -32,6 +33,8 @@ const AdminHolidays: React.FC = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const copy = useBusinessCopy();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const [generalRange, setGeneralRange] = useState<DateRange | undefined>();
   const [barberRange, setBarberRange] = useState<DateRange | undefined>();
   const [monthsToShow, setMonthsToShow] = useState(2);
@@ -71,11 +74,11 @@ const AdminHolidays: React.FC = () => {
   useEffect(() => {
     if (!barbersQuery.error && !generalHolidaysQuery.error && !barberHolidaysQuery.error) return;
     toast({
-      title: 'No se pudieron cargar festivos',
-      description: 'Inténtalo de nuevo en unos segundos.',
+      title: t('admin.holidays.toast.loadErrorTitle'),
+      description: t('admin.common.tryAgainInSeconds'),
       variant: 'destructive',
     });
-  }, [barberHolidaysQuery.error, barbersQuery.error, generalHolidaysQuery.error, toast]);
+  }, [barberHolidaysQuery.error, barbersQuery.error, generalHolidaysQuery.error, t, toast]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -138,8 +141,8 @@ const AdminHolidays: React.FC = () => {
   };
 
   const formatRangeLabel = (range: HolidayRange) => {
-    const start = format(new Date(range.start), "dd MMM yyyy", { locale: es });
-    const end = format(new Date(range.end), "dd MMM yyyy", { locale: es });
+    const start = format(new Date(range.start), "dd MMM yyyy", { locale: dateLocale });
+    const end = format(new Date(range.end), "dd MMM yyyy", { locale: dateLocale });
     return range.start === range.end ? start : `${start} - ${end}`;
   };
 
@@ -148,10 +151,10 @@ const AdminHolidays: React.FC = () => {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Festivos</CardTitle>
+            <CardTitle>{t('admin.holidays.title')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">Cargando...</p>
+            <p className="text-muted-foreground">{t('admin.holidays.loading')}</p>
           </CardContent>
         </Card>
       </div>
@@ -161,16 +164,16 @@ const AdminHolidays: React.FC = () => {
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="pl-12 md:pl-0">
-        <h1 className="text-3xl font-bold text-foreground">Festivos</h1>
+        <h1 className="text-3xl font-bold text-foreground">{t('admin.holidays.title')}</h1>
         <p className="text-muted-foreground mt-1">
-          Administra los días no laborables generales y por {copy.staff.singularLower}.
+          {t('admin.holidays.subtitle', { staffSingularLower: copy.staff.singularLower })}
         </p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Festivos {copy.location.fromWithDefinite}</CardTitle>
+            <CardTitle>{t('admin.holidays.general.title', { locationFromWithDefinite: copy.location.fromWithDefinite })}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="border rounded-2xl p-4 bg-card/60">
@@ -182,20 +185,20 @@ const AdminHolidays: React.FC = () => {
                 className="mx-auto"
               />
               <p className="text-xs text-muted-foreground text-center mt-3">
-                Selecciona un día o un rango completo. Las fechas son inclusivas.
+                {t('admin.holidays.general.calendarHint')}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleAddGeneralHoliday} disabled={!generalRange?.from}>
-                Bloquear fechas
+                {t('admin.holidays.actions.blockDates')}
               </Button>
               <Button variant="outline" onClick={() => setGeneralRange(undefined)}>
-                Limpiar selección
+                {t('admin.holidays.actions.clearSelection')}
               </Button>
             </div>
             <div className="flex flex-wrap gap-2">
               {generalHolidays.length === 0 && (
-                <p className="text-sm text-muted-foreground">No hay festivos configurados.</p>
+                <p className="text-sm text-muted-foreground">{t('admin.holidays.general.empty')}</p>
               )}
               {generalHolidays.map((range, index) => (
                 <div
@@ -219,12 +222,12 @@ const AdminHolidays: React.FC = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Festivos por {copy.staff.singularLower}</CardTitle>
+            <CardTitle>{t('admin.holidays.byStaff.title', { staffSingularLower: copy.staff.singularLower })}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <Select value={selectedBarber} onValueChange={setSelectedBarber}>
               <SelectTrigger>
-                <SelectValue placeholder={`Selecciona ${copy.staff.indefiniteSingular}`} />
+                <SelectValue placeholder={t('common.selectNoun', { noun: copy.staff.indefiniteSingular })} />
               </SelectTrigger>
               <SelectContent>
                 {barbers.map((barber) => (
@@ -244,7 +247,7 @@ const AdminHolidays: React.FC = () => {
                 className="mx-auto"
               />
               <p className="text-xs text-muted-foreground text-center mt-3">
-                Selecciona uno o varios días para bloquear la disponibilidad {copy.staff.fromWithDefinite}.
+                {t('admin.holidays.byStaff.calendarHint', { staffFromWithDefinite: copy.staff.fromWithDefinite })}
               </p>
             </div>
 
@@ -253,10 +256,10 @@ const AdminHolidays: React.FC = () => {
                 onClick={handleAddBarberHoliday}
                 disabled={!barberRange?.from || !selectedBarber}
               >
-                Bloquear fechas
+                {t('admin.holidays.actions.blockDates')}
               </Button>
               <Button variant="outline" onClick={() => setBarberRange(undefined)}>
-                Limpiar selección
+                {t('admin.holidays.actions.clearSelection')}
               </Button>
             </div>
 
@@ -264,8 +267,8 @@ const AdminHolidays: React.FC = () => {
               {barberHolidays.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   {selectedBarber
-                    ? `No hay festivos asignados ${copy.staff.toWithDefinite}.`
-                    : `Selecciona ${copy.staff.indefiniteSingular}.`}
+                    ? t('admin.holidays.byStaff.emptyWithSelection', { staffToWithDefinite: copy.staff.toWithDefinite })
+                    : t('common.selectNoun', { noun: copy.staff.indefiniteSingular })}
                 </p>
               )}
               {barberHolidays.map((range, index) => (

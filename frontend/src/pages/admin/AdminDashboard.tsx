@@ -41,7 +41,6 @@ import {
   endOfWeek,
   eachDayOfInterval,
 } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/common/Skeleton';
 import { useAdminPermissions } from '@/context/AdminPermissionsContext';
 import { useToast } from '@/hooks/use-toast';
@@ -53,6 +52,8 @@ import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
 import { useTenant } from '@/context/TenantContext';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 import {
   ResponsiveContainer,
   LineChart,
@@ -69,18 +70,15 @@ import {
   Legend,
 } from 'recharts';
 
-const rangeOptions = [
-  { label: '7 días', value: 7 },
-  { label: '14 días', value: 14 },
-  { label: '30 días', value: 30 },
-];
 const DASHBOARD_WINDOW_DAYS = 30;
 
 const QR_SIZE = 768;
 const SERVICE_MIX_COLORS = ['#22c55e', '#0ea5e9', '#f97316', '#eab308', '#14b8a6', '#94a3b8'];
 const DEFAULT_OCCUPANCY_HOURS = Array.from({ length: 12 }).map((_, index) => 9 + index);
 
-const InfoDialog: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+const InfoDialog: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+  const { t } = useI18n();
+  return (
   <Dialog>
     <DialogTrigger asChild>
       <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
@@ -90,14 +88,15 @@ const InfoDialog: React.FC<{ title: string; children: React.ReactNode }> = ({ ti
     <DialogContent className="max-w-lg">
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>Guía rápida para aprovechar esta gráfica.</DialogDescription>
+        <DialogDescription>{t('admin.dashboard.infoDialog.description')}</DialogDescription>
       </DialogHeader>
       <div className="space-y-4 text-sm text-muted-foreground">
         {children}
       </div>
     </DialogContent>
   </Dialog>
-);
+  );
+};
 
 const AdminDashboard: React.FC = () => {
   const [revenueRange, setRevenueRange] = useState(7);
@@ -111,6 +110,16 @@ const AdminDashboard: React.FC = () => {
   const { toast } = useToast();
   const { settings, isLoading: isSettingsLoading } = useSiteSettings();
   const copy = useBusinessCopy();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
+  const rangeOptions = useMemo(
+    () => [
+      { label: t('admin.dashboard.range.7d'), value: 7 },
+      { label: t('admin.dashboard.range.14d'), value: 14 },
+      { label: t('admin.dashboard.range.30d'), value: 30 },
+    ],
+    [t],
+  );
   const qrSticker = settings.qrSticker;
   const dashboardQuery = useQuery<AdminDashboardSummary>({
     queryKey: queryKeys.adminDashboard(
@@ -155,26 +164,26 @@ const AdminDashboard: React.FC = () => {
   const weekCancelled = stats?.weekCancelled ?? 0;
   const weekNoShow = stats?.weekNoShow ?? 0;
 
-  const weekStart = startOfWeek(new Date(), { locale: es });
-  const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(weekStart, { locale: es }) });
-  const weekdayLabels = weekDays.map((day) => format(day, 'EEE', { locale: es }));
+  const weekStart = startOfWeek(new Date(), { locale: dateLocale });
+  const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(weekStart, { locale: dateLocale }) });
+  const weekdayLabels = weekDays.map((day) => format(day, 'EEE', { locale: dateLocale }));
 
   const revenueData = useMemo(() => {
     const points = dashboardSummary?.revenueDaily ?? [];
     return points.slice(-revenueRange).map((entry) => ({
-      label: format(parseISO(entry.date), 'dd MMM', { locale: es }),
+      label: format(parseISO(entry.date), 'dd MMM', { locale: dateLocale }),
       value: entry.value,
     }));
-  }, [dashboardSummary?.revenueDaily, revenueRange]);
+  }, [dashboardSummary?.revenueDaily, dateLocale, revenueRange]);
   const serviceMixData = dashboardSummary?.serviceMix ?? [];
   const serviceMixTotal = serviceMixData.reduce((sum, item) => sum + item.value, 0);
   const ticketData = useMemo(
     () =>
       (dashboardSummary?.ticketDaily ?? []).map((entry) => ({
-        label: format(parseISO(entry.date), 'dd MMM', { locale: es }),
+        label: format(parseISO(entry.date), 'dd MMM', { locale: dateLocale }),
         value: entry.value,
       })),
-    [dashboardSummary?.ticketDaily],
+    [dashboardSummary?.ticketDaily, dateLocale],
   );
   const ticketAverage = dashboardSummary?.ticketAverage ?? 0;
   const lossWeekdayData = useMemo(() => {
@@ -197,11 +206,15 @@ const AdminDashboard: React.FC = () => {
       : occupancyHours.map(() => weekDays.map(() => 0));
   const maxOccupancy = dashboardSummary?.occupancy.max ?? 1;
 
-  const currencyFormatter = new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    maximumFractionDigits: 0,
-  });
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(language.startsWith('en') ? 'en-US' : 'es-ES', {
+        style: 'currency',
+        currency: 'EUR',
+        maximumFractionDigits: 0,
+      }),
+    [language],
+  );
 
   useEffect(() => {
     if (hasMultipleBarbers) return;
@@ -222,7 +235,7 @@ const AdminDashboard: React.FC = () => {
   const fetchQrBlob = async (url: string) => {
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
-      throw new Error('No se pudo descargar la imagen del QR.');
+      throw new Error(t('admin.dashboard.qr.downloadImageError'));
     }
     return response.blob();
   };
@@ -245,7 +258,7 @@ const AdminDashboard: React.FC = () => {
         )}`,
       );
       if (!qrResponse.ok) {
-        throw new Error('No se pudo generar el QR. Intenta de nuevo.');
+        throw new Error(t('admin.dashboard.qr.generateError'));
       }
       const qrBlob = await qrResponse.blob();
       const { url, fileId } = await uploadToImageKit(qrBlob, buildQrFileName());
@@ -266,16 +279,16 @@ const AdminDashboard: React.FC = () => {
           await deleteFromImageKit(previousQr.imageFileId);
         } catch (cleanupError) {
           toast({
-            title: 'Aviso',
-            description: 'No se pudo eliminar el QR anterior en ImageKit.',
+            title: t('admin.common.warning'),
+            description: t('admin.dashboard.qr.cleanupError'),
             variant: 'destructive',
           });
         }
       }
 
       toast({
-        title: mode === 'regenerate' ? 'QR regenerado' : 'QR listo',
-        description: 'Ya puedes descargarlo o compartirlo.',
+        title: mode === 'regenerate' ? t('admin.dashboard.qr.regeneratedTitle') : t('admin.dashboard.qr.readyTitle'),
+        description: t('admin.dashboard.qr.readyDescription'),
       });
     } catch (error) {
       if (newFileId) {
@@ -286,8 +299,8 @@ const AdminDashboard: React.FC = () => {
         }
       }
       toast({
-        title: mode === 'regenerate' ? 'No se pudo regenerar el QR' : 'No se pudo crear el QR',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: mode === 'regenerate' ? t('admin.dashboard.qr.regenerateErrorTitle') : t('admin.dashboard.qr.createErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -307,10 +320,10 @@ const AdminDashboard: React.FC = () => {
     if (!qrSticker || qrAction) return;
     setQrAction('share');
     try {
-      const shareTitle = `QR de ${settings.branding.shortName || settings.branding.name}`;
+      const shareTitle = t('admin.dashboard.qr.shareTitle', { brandName: settings.branding.shortName || settings.branding.name });
       const shareData: ShareData = {
         title: shareTitle,
-        text: 'Escanéalo para acceder al negocio.',
+        text: t('admin.dashboard.qr.shareText'),
         url: qrSticker.url,
       };
 
@@ -328,13 +341,13 @@ const AdminDashboard: React.FC = () => {
       } else if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(qrSticker.url);
         toast({
-          title: 'Enlace copiado',
-          description: 'Comparte el link del negocio donde lo necesites.',
+          title: t('admin.common.linkCopied'),
+          description: t('admin.dashboard.qr.shareCopiedDescription'),
         });
       } else {
         toast({
-          title: 'Compartir no disponible',
-          description: 'Descarga el QR y compártelo manualmente.',
+          title: t('admin.dashboard.qr.shareUnavailableTitle'),
+          description: t('admin.dashboard.qr.shareUnavailableDescription'),
         });
       }
     } catch (error) {
@@ -342,8 +355,8 @@ const AdminDashboard: React.FC = () => {
         return;
       }
       toast({
-        title: 'No se pudo compartir',
-        description: 'Prueba con descargar la imagen.',
+        title: t('admin.dashboard.qr.shareErrorTitle'),
+        description: t('admin.dashboard.qr.shareErrorDescription'),
         variant: 'destructive',
       });
     } finally {
@@ -365,13 +378,13 @@ const AdminDashboard: React.FC = () => {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
       toast({
-        title: 'Descarga iniciada',
-        description: 'La pegatina QR se ha guardado como PNG.',
+        title: t('admin.dashboard.qr.downloadStartedTitle'),
+        description: t('admin.dashboard.qr.downloadStartedDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo descargar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.dashboard.qr.downloadErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -383,8 +396,8 @@ const AdminDashboard: React.FC = () => {
     if (!qrSticker || isCopyingQrUrl) return;
     if (!navigator.clipboard?.writeText) {
       toast({
-        title: 'No se pudo copiar',
-        description: 'Tu navegador no permite copiar automáticamente.',
+        title: t('admin.common.copyError'),
+        description: t('admin.dashboard.qr.copyUnsupported'),
         variant: 'destructive',
       });
       return;
@@ -393,13 +406,13 @@ const AdminDashboard: React.FC = () => {
     try {
       await navigator.clipboard.writeText(qrSticker.url);
       toast({
-        title: 'Enlace copiado',
-        description: 'El link del negocio está listo para compartir.',
+        title: t('admin.common.linkCopied'),
+        description: t('admin.dashboard.qr.linkReadyDescription'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo copiar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('admin.common.copyError'),
+        description: error instanceof Error ? error.message : t('admin.common.tryAgainInSeconds'),
         variant: 'destructive',
       });
     } finally {
@@ -412,17 +425,17 @@ const AdminDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.dashboard.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Resumen de la actividad {copy.location.fromWithDefinite}.
+            {t('admin.dashboard.subtitle', { locationFromWithDefinite: copy.location.fromWithDefinite })}
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto sm:flex-row sm:items-center">
           {hasMultipleBarbers && (
             <div className="min-w-0 flex-1 sm:flex-none">
-              <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
+                <Select value={selectedBarberId} onValueChange={setSelectedBarberId} disabled={isLoading || barbers.length === 0}>
                 <SelectTrigger className="h-9 w-full sm:w-[210px]">
-                  <SelectValue placeholder={`Filtrar ${copy.staff.singularLower}`} />
+                  <SelectValue placeholder={t('admin.dashboard.filterStaff', { staffSingularLower: copy.staff.singularLower })} />
                 </SelectTrigger>
                 <SelectContent align="end">
                   <SelectItem value="all">{getAllNounLabel(copy.staff)}</SelectItem>
@@ -445,22 +458,22 @@ const AdminDashboard: React.FC = () => {
                     size="icon"
                     className="h-9 w-9 shrink-0 rounded-full"
                     disabled={isSettingsLoading}
-                    aria-label={qrSticker ? 'QR del negocio' : 'Crear QR'}
+                    aria-label={qrSticker ? t('admin.dashboard.qr.businessQr') : t('admin.dashboard.qr.create')}
                   >
                     <QrCode className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left">
-                  {qrSticker ? 'QR del negocio' : 'Crear QR'}
+                  {qrSticker ? t('admin.dashboard.qr.businessQr') : t('admin.dashboard.qr.create')}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
             <DialogContent className="max-w-xl">
               <DialogHeader>
-                <DialogTitle>Pegatina QR del negocio</DialogTitle>
+                <DialogTitle>{t('admin.dashboard.qr.stickerTitle')}</DialogTitle>
                 {!qrSticker && (
                   <DialogDescription>
-                    Genera una sola vez el QR del sitio para imprimirlo y compartirlo cuando lo necesites.
+                    {t('admin.dashboard.qr.stickerDescription')}
                   </DialogDescription>
                 )}
               </DialogHeader>
@@ -472,7 +485,7 @@ const AdminDashboard: React.FC = () => {
                       <div className="relative mx-auto w-fit rounded-2xl bg-background p-4 shadow-xl">
                         <img
                           src={qrSticker.imageUrl}
-                          alt="QR del negocio"
+                          alt={t('admin.dashboard.qr.businessQr')}
                           loading="lazy"
                           decoding="async"
                           width={224}
@@ -488,7 +501,7 @@ const AdminDashboard: React.FC = () => {
                         disabled={qrAction !== null || isGeneratingQr}
                       >
                         {qrAction === 'share' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                        Compartir
+                        {t('admin.common.share')}
                       </Button>
                       <Button
                         onClick={handleDownloadQr}
@@ -497,7 +510,7 @@ const AdminDashboard: React.FC = () => {
                         disabled={qrAction !== null || isGeneratingQr}
                       >
                         {qrAction === 'download' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                        Descargar PNG
+                        {t('admin.dashboard.qr.downloadPng')}
                       </Button>
                     </div>
                     <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-muted-foreground/20 bg-muted/30 px-3 py-2">
@@ -511,15 +524,15 @@ const AdminDashboard: React.FC = () => {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                disabled={isCopyingQrUrl || isGeneratingQr || isSettingsLoading}
-                                aria-label="Copiar enlace"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              disabled={isCopyingQrUrl || isGeneratingQr || isSettingsLoading}
+                                aria-label={t('admin.common.copyLink')}
                                 onClick={handleCopyQrUrl}
                               >
                                 {isCopyingQrUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent side="left">Copiar enlace</TooltipContent>
+                            <TooltipContent side="left">{t('admin.common.copyLink')}</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                         <AlertDialog>
@@ -532,24 +545,24 @@ const AdminDashboard: React.FC = () => {
                                     size="icon"
                                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                     disabled={isGeneratingQr || isSettingsLoading}
-                                    aria-label="Regenerar QR"
+                                    aria-label={t('admin.dashboard.qr.regenerate')}
                                   >
                                     <RefreshCcw className="h-4 w-4" />
                                   </Button>
                                 </AlertDialogTrigger>
                               </TooltipTrigger>
-                              <TooltipContent side="left">Regenerar QR</TooltipContent>
+                              <TooltipContent side="left">{t('admin.dashboard.qr.regenerate')}</TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>¿Regenerar QR?</AlertDialogTitle>
+                              <AlertDialogTitle>{t('admin.dashboard.qr.regenerateConfirmTitle')}</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Se recomienda regenerar el QR solo si cambia el dominio o la URL pública del negocio. ¿Quieres continuar?
+                                {t('admin.dashboard.qr.regenerateConfirmDescription')}
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogCancel>{t('admin.common.cancelDialog.back')}</AlertDialogCancel>
                               <AlertDialogAction asChild>
                                 <Button
                                   variant="destructive"
@@ -558,7 +571,7 @@ const AdminDashboard: React.FC = () => {
                                   disabled={isGeneratingQr}
                                 >
                                   {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                                  Regenerar
+                                  {t('admin.dashboard.qr.regenerate')}
                                 </Button>
                               </AlertDialogAction>
                             </AlertDialogFooter>
@@ -572,9 +585,9 @@ const AdminDashboard: React.FC = () => {
                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-background shadow">
                       <QrCode className="h-7 w-7 text-primary" />
                     </div>
-                    <h3 className="mt-4 text-lg font-semibold text-foreground">Genera tu pegatina QR</h3>
+                    <h3 className="mt-4 text-lg font-semibold text-foreground">{t('admin.dashboard.qr.generateStickerTitle')}</h3>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      El QR apunta a la web del negocio y se guarda para reutilizarlo siempre.
+                      {t('admin.dashboard.qr.generateStickerDescription')}
                     </p>
                     <Button
                       onClick={handleGenerateQr}
@@ -582,7 +595,7 @@ const AdminDashboard: React.FC = () => {
                       disabled={isGeneratingQr || isSettingsLoading}
                     >
                       {isGeneratingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                      {isGeneratingQr ? 'Generando...' : 'Generar QR'}
+                      {isGeneratingQr ? t('admin.dashboard.qr.generating') : t('admin.dashboard.qr.generate')}
                     </Button>
                   </div>
                 )}
@@ -596,25 +609,25 @@ const AdminDashboard: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { 
-            label: 'Citas hoy', 
+            label: t('admin.dashboard.stats.todayAppointments'),
             value: todayAppointments.length, 
             icon: Calendar,
             color: 'text-primary',
           },
           { 
-            label: 'Ingresos hoy', 
+            label: t('admin.dashboard.stats.revenueToday'),
             value: currencyFormatter.format(revenueToday), 
             icon: DollarSign,
             color: 'text-green-500',
           },
           { 
-            label: 'Cancelaciones semana', 
+            label: t('admin.dashboard.stats.weekCancelled'),
             value: weekCancelled, 
             icon: AlertTriangle,
             color: 'text-rose-500',
           },
           { 
-            label: 'Ausencias semana', 
+            label: t('admin.dashboard.stats.weekNoShow'),
             value: weekNoShow, 
             icon: UserX,
             color: 'text-rose-500',
@@ -640,10 +653,10 @@ const AdminDashboard: React.FC = () => {
         {/* Today's Appointments */}
         <Card variant="elevated" className="h-[420px] flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Citas de hoy</CardTitle>
+            <CardTitle>{t('admin.dashboard.todayAppointments.title')}</CardTitle>
             {canAccessSection('calendar') && (
               <Link to="/admin/calendar" className="text-sm text-primary hover:underline flex items-center">
-                Ver calendario
+                {t('admin.dashboard.todayAppointments.viewCalendar')}
                 <ArrowRight className="w-4 h-4 ml-1" />
               </Link>
             )}
@@ -669,9 +682,9 @@ const AdminDashboard: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-foreground truncate">{appointment.serviceName}</p>
                         <p className="text-sm text-muted-foreground truncate">
-                          Cliente: {appointment.clientName}
+                          {t('admin.common.client')}: {appointment.clientName}
                         </p>
-                        <p className="text-sm text-muted-foreground">con {appointment.barberName}</p>
+                        <p className="text-sm text-muted-foreground">{t('admin.dashboard.withStaff', { barberName: appointment.barberName })}</p>
                       </div>
                       <span className="text-lg font-semibold text-primary">{time}</span>
                     </div>
@@ -680,7 +693,7 @@ const AdminDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
-                No hay citas programadas para hoy
+                {t('admin.dashboard.todayAppointments.empty')}
               </div>
             )}
           </CardContent>
@@ -691,9 +704,9 @@ const AdminDashboard: React.FC = () => {
           <CardHeader className="flex flex-col gap-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle>Ingresos últimos {revenueRange} días</CardTitle>
+                <CardTitle>{t('admin.dashboard.revenue.title', { days: revenueRange })}</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Seguimiento diario de ingresos estimados según citas completadas.
+                  {t('admin.dashboard.revenue.subtitle')}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -735,7 +748,7 @@ const AdminDashboard: React.FC = () => {
                 <RechartsTooltip
                   cursor={{ strokeDasharray: '4 4' }}
                   contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
-                  formatter={(value: number) => [currencyFormatter.format(value), 'Ingresos']}
+                  formatter={(value: number) => [currencyFormatter.format(value), t('admin.dashboard.revenue.tooltip')]}
                 />
                 <Line
                   type="monotone"
@@ -757,32 +770,22 @@ const AdminDashboard: React.FC = () => {
         <Card variant="elevated" className="min-w-0">
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-4">
-              <CardTitle>Mix de servicios</CardTitle>
-              <InfoDialog title="Mix de servicios">
-                <p>
-                  El gráfico de queso muestra qué servicios se han pedido más en los últimos 30 días.
-                  Las porciones grandes son los más elegidos y "Otros" agrupa lo menos frecuente.
-                </p>
-                <p>
-                  El número del centro es el total de citas completadas en ese periodo.
-                </p>
-                <p>
-                  La línea de ticket medio enseña el gasto promedio por cita en los últimos 14 días.
-                  Si sube, cada cliente deja más; si baja, revisa precios, promos o el tipo de servicio.
-                </p>
-                <p>
-                  Úsalo para decidir qué servicios potenciar, ajustar precios o diseñar ofertas.
-                </p>
+              <CardTitle>{t('admin.dashboard.serviceMix.title')}</CardTitle>
+              <InfoDialog title={t('admin.dashboard.serviceMix.title')}>
+                <p>{t('admin.dashboard.serviceMix.info.1')}</p>
+                <p>{t('admin.dashboard.serviceMix.info.2')}</p>
+                <p>{t('admin.dashboard.serviceMix.info.3')}</p>
+                <p>{t('admin.dashboard.serviceMix.info.4')}</p>
               </InfoDialog>
             </div>
             <p className="text-sm text-muted-foreground">
-              Distribución de servicios (30 días) y ticket medio.
+              {t('admin.dashboard.serviceMix.subtitle')}
             </p>
           </CardHeader>
           <CardContent className="h-[620px] md:h-[320px]">
             {serviceMixData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-muted-foreground">
-                No hay datos suficientes para mostrar.
+                {t('admin.dashboard.serviceMix.empty')}
               </div>
             ) : (
               <div className="grid h-full gap-10 md:gap-4 md:grid-cols-[1.1fr_0.9fr]">
@@ -807,12 +810,12 @@ const AdminDashboard: React.FC = () => {
                           itemStyle={{ color: 'hsl(var(--foreground))', fontSize: '12px', lineHeight: '1.4' }}
                           labelStyle={{ color: 'hsl(var(--muted-foreground))', fontSize: '12px', lineHeight: '1.4' }}
                           wrapperStyle={{ zIndex: 20 }}
-                          formatter={(value: number) => `${value} citas`}
+                          formatter={(value: number) => t('admin.dashboard.serviceMix.tooltipAppointments', { count: value })}
                         />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
-                      <span className="text-xs text-muted-foreground">Servicios</span>
+                      <span className="text-xs text-muted-foreground">{t('admin.common.table.servicePlural')}</span>
                       <span className="text-lg font-semibold text-foreground">{serviceMixTotal}</span>
                     </div>
                   </div>
@@ -830,7 +833,7 @@ const AdminDashboard: React.FC = () => {
                 </div>
                 <div className="flex flex-col">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Ticket medio (14 días)</p>
+                    <p className="text-sm text-muted-foreground">{t('admin.dashboard.ticketAverage.title')}</p>
                     <p className="text-sm font-semibold text-foreground">
                       {currencyFormatter.format(ticketAverage || 0)}
                     </p>
@@ -853,7 +856,7 @@ const AdminDashboard: React.FC = () => {
                         />
                         <RechartsTooltip
                           contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
-                          formatter={(value: number) => [currencyFormatter.format(value), 'Ticket medio']}
+                          formatter={(value: number) => [currencyFormatter.format(value), t('admin.dashboard.ticketAverage.tooltip')]}
                         />
                         <Line
                           type="monotone"
@@ -875,22 +878,15 @@ const AdminDashboard: React.FC = () => {
         <Card variant="elevated">
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-4">
-              <CardTitle>Ausencias y cancelaciones</CardTitle>
-              <InfoDialog title="Ausencias y cancelaciones">
-                <p>
-                  Cada barra corresponde a un día de la semana. Cuanto más alta, más incidencias.
-                </p>
-                <p>
-                  "Ausencias" son clientes que no se presentan; "Canceladas" son citas anuladas.
-                </p>
-                <p>
-                  Si un día destaca, puedes reforzar recordatorios, pedir señal o ajustar el
-                  horario de ese día para reducir pérdidas.
-                </p>
+              <CardTitle>{t('admin.dashboard.losses.title')}</CardTitle>
+              <InfoDialog title={t('admin.dashboard.losses.title')}>
+                <p>{t('admin.dashboard.losses.info.1')}</p>
+                <p>{t('admin.dashboard.losses.info.2')}</p>
+                <p>{t('admin.dashboard.losses.info.3')}</p>
               </InfoDialog>
             </div>
             <p className="text-sm text-muted-foreground">
-              Distribución por día de la semana (últimos 30 días).
+              {t('admin.dashboard.losses.subtitle')}
             </p>
           </CardHeader>
           <CardContent className="h-[320px]">
@@ -912,14 +908,14 @@ const AdminDashboard: React.FC = () => {
                 <RechartsTooltip
                   contentStyle={{ background: 'hsl(var(--card))', borderRadius: '12px', border: 'none' }}
                   formatter={(value: number, name: string) => {
-                    if (name === 'no_show' || name === 'Ausencias') return [value, 'Ausencias'];
-                    if (name === 'cancelled' || name === 'Canceladas') return [value, 'Canceladas'];
+                    if (name === 'no_show' || name === t('admin.dashboard.losses.noShow')) return [value, t('admin.dashboard.losses.noShow')];
+                    if (name === 'cancelled' || name === t('admin.dashboard.losses.cancelled')) return [value, t('admin.dashboard.losses.cancelled')];
                     return [value, name];
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px' }} />
-                <Bar dataKey="no_show" name="Ausencias" fill="hsl(var(--destructive))" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="cancelled" name="Canceladas" fill="hsl(var(--muted-foreground) / 0.4)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="no_show" name={t('admin.dashboard.losses.noShow')} fill="hsl(var(--destructive))" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="cancelled" name={t('admin.dashboard.losses.cancelled')} fill="hsl(var(--muted-foreground) / 0.4)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -930,22 +926,15 @@ const AdminDashboard: React.FC = () => {
         <Card variant="elevated">
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-4">
-              <CardTitle>Ocupación por horas (30 días)</CardTitle>
-              <InfoDialog title="Ocupación por horas (30 días)">
-                <p>
-                  Las columnas son los días y las filas son las horas. Cuanto más intenso el color,
-                  más citas hay en esa franja.
-                </p>
-                <p>
-                  Te ayuda a ver de un vistazo las horas punta y los huecos reales.
-                </p>
-                <p>
-                  Los datos se calculan con los últimos 30 días, para tener una visión más real.
-                </p>
+              <CardTitle>{t('admin.dashboard.occupancy.title')}</CardTitle>
+              <InfoDialog title={t('admin.dashboard.occupancy.title')}>
+                <p>{t('admin.dashboard.occupancy.info.1')}</p>
+                <p>{t('admin.dashboard.occupancy.info.2')}</p>
+                <p>{t('admin.dashboard.occupancy.info.3')}</p>
               </InfoDialog>
             </div>
             <p className="text-sm text-muted-foreground">
-              Mapa de intensidad por franja horaria en los últimos 30 días.
+              {t('admin.dashboard.occupancy.subtitle')}
             </p>
           </CardHeader>
           <CardContent className="h-[320px] min-w-0 overflow-hidden">
@@ -975,9 +964,9 @@ const AdminDashboard: React.FC = () => {
                             style={{
                               backgroundColor: `hsl(var(--primary) / ${0.12 + intensity * 0.75})`,
                             }}
-                            title={`${format(day, 'EEEE', { locale: es })} · ${hour
+                            title={`${format(day, 'EEEE', { locale: dateLocale })} · ${hour
                               .toString()
-                              .padStart(2, '0')}:00 · ${value} citas`}
+                              .padStart(2, '0')}:00 · ${t('admin.dashboard.serviceMix.tooltipAppointments', { count: value })}`}
                           />
                         );
                       })}

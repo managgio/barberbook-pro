@@ -29,7 +29,7 @@ const mergeRecords = <T extends Record<string, any>>(base: T, override?: Partial
 const sanitizeThemeConfig = (data: Record<string, unknown>) => {
   if (!data || typeof data !== 'object') return data;
   const theme = data.theme;
-  if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return data;
+  if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return sanitizeI18nConfig(data);
   const rawPrimary = typeof (theme as any).primary === 'string' ? (theme as any).primary.trim() : '';
   const rawMode = typeof (theme as any).mode === 'string' ? (theme as any).mode.trim().toLowerCase() : '';
   const mode = rawMode === 'light' || rawMode === 'dark' ? rawMode : '';
@@ -39,7 +39,7 @@ const sanitizeThemeConfig = (data: Record<string, unknown>) => {
       ...(rawPrimary ? { primary: rawPrimary } : {}),
       ...(mode ? { mode } : {}),
     };
-    return { ...data, theme: normalizedTheme };
+    return sanitizeI18nConfig({ ...data, theme: normalizedTheme });
   }
   const next = { ...data } as Record<string, unknown>;
   const nextTheme = { ...(theme as Record<string, unknown>) };
@@ -50,7 +50,107 @@ const sanitizeThemeConfig = (data: Record<string, unknown>) => {
   } else {
     (next as any).theme = nextTheme;
   }
-  return next;
+  return sanitizeI18nConfig(next);
+};
+
+const toPositiveInt = (value: unknown, min: number, max: number): number | undefined => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  const rounded = Math.round(parsed);
+  if (rounded < min || rounded > max) return undefined;
+  return rounded;
+};
+
+const toRatio = (value: unknown, min: number, max: number): number | undefined => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  if (parsed < min || parsed > max) return undefined;
+  return parsed;
+};
+
+const sanitizeI18nConfig = (data: Record<string, unknown>) => {
+  if (!data || typeof data !== 'object') return data;
+  const i18n = data.i18n;
+  if (!i18n || typeof i18n !== 'object' || Array.isArray(i18n)) return data;
+
+  const defaultLanguageRaw =
+    typeof (i18n as any).defaultLanguage === 'string' ? (i18n as any).defaultLanguage : 'es';
+  const defaultLanguage = defaultLanguageRaw.trim().toLowerCase().slice(0, 10) || 'es';
+
+  const rawSupported = Array.isArray((i18n as any).supportedLanguages)
+    ? (i18n as any).supportedLanguages
+    : [defaultLanguage];
+
+  const supportedLanguages = Array.from(
+    new Set(
+      [defaultLanguage, ...rawSupported]
+        .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase().slice(0, 10) : ''))
+        .filter(Boolean),
+    ),
+  );
+
+  const autoTranslateEnabled =
+    typeof (i18n as any)?.autoTranslate?.enabled === 'boolean'
+      ? Boolean((i18n as any).autoTranslate.enabled)
+      : true;
+
+  const autoTranslateRaw =
+    (i18n as any)?.autoTranslate && typeof (i18n as any).autoTranslate === 'object'
+      ? ((i18n as any).autoTranslate as Record<string, unknown>)
+      : {};
+  const circuitBreakerRaw =
+    autoTranslateRaw.circuitBreaker && typeof autoTranslateRaw.circuitBreaker === 'object'
+      ? (autoTranslateRaw.circuitBreaker as Record<string, unknown>)
+      : {};
+
+  const retryAttempts = toPositiveInt(autoTranslateRaw.retryAttempts, 1, 5) ?? 2;
+  const monthlyRequestLimit = toPositiveInt(autoTranslateRaw.monthlyRequestLimit, 1, 1_000_000);
+  const monthlyCharacterLimit = toPositiveInt(autoTranslateRaw.monthlyCharacterLimit, 1, 500_000_000);
+  const paused = autoTranslateRaw.paused === true;
+  const pauseUntil =
+    typeof autoTranslateRaw.pauseUntil === 'string' && autoTranslateRaw.pauseUntil.trim()
+      ? autoTranslateRaw.pauseUntil.trim()
+      : undefined;
+  const pauseReason =
+    typeof autoTranslateRaw.pauseReason === 'string' && autoTranslateRaw.pauseReason.trim()
+      ? autoTranslateRaw.pauseReason.trim().slice(0, 240)
+      : undefined;
+
+  const circuitBreakerEnabled =
+    typeof circuitBreakerRaw.enabled === 'boolean' ? Boolean(circuitBreakerRaw.enabled) : true;
+  const failureRateThreshold = toRatio(circuitBreakerRaw.failureRateThreshold, 0.05, 1) ?? 0.6;
+  const minSamples = toPositiveInt(circuitBreakerRaw.minSamples, 1, 500) ?? 12;
+  const consecutiveFailures = toPositiveInt(circuitBreakerRaw.consecutiveFailures, 1, 100) ?? 6;
+  const windowMinutes = toPositiveInt(circuitBreakerRaw.windowMinutes, 1, 240) ?? 30;
+  const pauseMinutes = toPositiveInt(circuitBreakerRaw.pauseMinutes, 1, 720) ?? 30;
+
+  return {
+    ...data,
+    i18n: {
+      ...(i18n as Record<string, unknown>),
+      defaultLanguage,
+      supportedLanguages,
+      autoTranslate: {
+        ...autoTranslateRaw,
+        enabled: autoTranslateEnabled,
+        paused,
+        ...(pauseUntil ? { pauseUntil } : {}),
+        ...(pauseReason ? { pauseReason } : {}),
+        retryAttempts,
+        ...(monthlyRequestLimit ? { monthlyRequestLimit } : {}),
+        ...(monthlyCharacterLimit ? { monthlyCharacterLimit } : {}),
+        circuitBreaker: {
+          ...circuitBreakerRaw,
+          enabled: circuitBreakerEnabled,
+          failureRateThreshold,
+          minSamples,
+          consecutiveFailures,
+          windowMinutes,
+          pauseMinutes,
+        },
+      },
+    },
+  };
 };
 
 const BRANDING_FILE_ID_FIELDS = [

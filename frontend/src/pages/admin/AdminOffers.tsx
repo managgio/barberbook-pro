@@ -51,23 +51,23 @@ import { dispatchProductsUpdated, dispatchServicesUpdated } from '@/lib/adminEve
 import { useQuery } from '@tanstack/react-query';
 import { useTenant } from '@/context/TenantContext';
 import { queryKeys } from '@/lib/queryKeys';
+import { useI18n } from '@/hooks/useI18n';
+import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
 const SERVICE_SCOPES: OfferScope[] = ['all', 'categories', 'services'];
 const PRODUCT_SCOPES: OfferScope[] = ['all', 'categories', 'products'];
 
-const scopeLabels: Record<OfferScope, string> = {
-  all: 'Todo el catálogo',
-  categories: 'Categorías',
-  services: 'Servicios',
-  products: 'Productos',
+const scopeLabelKeys: Record<OfferScope, string> = {
+  all: 'admin.offers.scope.all',
+  categories: 'admin.offers.scope.categories',
+  services: 'admin.offers.scope.services',
+  products: 'admin.offers.scope.products',
 };
 
-const targetLabels: Record<OfferTarget, string> = {
-  service: 'Servicios',
-  product: 'Productos',
+const targetLabelKeys: Record<OfferTarget, string> = {
+  service: 'admin.offers.target.service',
+  product: 'admin.offers.target.product',
 };
-
-const formatDate = (value?: string | null) => (value ? format(parseISO(value), 'dd/MM/yyyy') : 'Sin fecha');
 
 const toggleSelection = (id: string, items: string[]) =>
   items.includes(id) ? items.filter((item) => item !== id) : [...items, id];
@@ -79,6 +79,7 @@ const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
 
 const AdminOffers: React.FC = () => {
   const { toast } = useToast();
+  const { t } = useI18n();
   const { currentLocationId } = useTenant();
   const [activeTarget, setActiveTarget] = useState<OfferTarget>('service');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -162,6 +163,7 @@ const AdminOffers: React.FC = () => {
   const showProductTab = productsEnabled;
 
   const scopeOptions = activeTarget === 'service' ? SERVICE_SCOPES : PRODUCT_SCOPES;
+  const formatDate = (value?: string | null) => (value ? format(parseISO(value), 'dd/MM/yyyy') : t('admin.offers.noDate'));
   const dispatchOfferCatalogUpdated = (target: OfferTarget) => {
     if (target === 'service') {
       dispatchServicesUpdated({ source: 'admin-offers' });
@@ -177,8 +179,8 @@ const AdminOffers: React.FC = () => {
         : productsQuery.error || productCategoriesQuery.error);
     if (!hasQueryError) return;
     toast({
-      title: 'Error',
-      description: 'No se pudieron cargar las ofertas.',
+      title: t('admin.common.error'),
+      description: t('admin.offers.toast.loadError'),
       variant: 'destructive',
     });
   }, [
@@ -189,6 +191,7 @@ const AdminOffers: React.FC = () => {
     serviceCategoriesQuery.error,
     servicesQuery.error,
     settingsQuery.error,
+    t,
     toast,
   ]);
 
@@ -228,14 +231,18 @@ const AdminOffers: React.FC = () => {
     try {
       const discountValue = parseFloat(offerForm.discountValue);
       if (!offerForm.name.trim()) {
-        toast({ title: 'Nombre requerido', description: 'Indica el nombre de la oferta.', variant: 'destructive' });
+        toast({
+          title: t('admin.offers.toast.nameRequiredTitle'),
+          description: t('admin.offers.toast.nameRequiredDescription'),
+          variant: 'destructive',
+        });
         setIsSubmitting(false);
         return;
       }
       if (Number.isNaN(discountValue) || discountValue <= 0) {
         toast({
-          title: 'Valor inválido',
-          description: 'Introduce un valor mayor que cero.',
+          title: t('admin.offers.toast.invalidValueTitle'),
+          description: t('admin.offers.toast.invalidValueDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -244,8 +251,8 @@ const AdminOffers: React.FC = () => {
 
       if (offerForm.startDate && offerForm.endDate && offerForm.startDate > offerForm.endDate) {
         toast({
-          title: 'Rango inválido',
-          description: 'La fecha de inicio debe ser anterior a la fecha final.',
+          title: t('admin.offers.toast.invalidRangeTitle'),
+          description: t('admin.offers.toast.invalidRangeDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -258,8 +265,8 @@ const AdminOffers: React.FC = () => {
           : offerForm.productCategoryIds.length > 0;
         if (!hasCategories) {
           toast({
-            title: 'Selecciona categorías',
-            description: 'Elige al menos una categoría para esta oferta.',
+            title: t('admin.offers.toast.selectCategoriesTitle'),
+            description: t('admin.offers.toast.selectCategoriesDescription'),
             variant: 'destructive',
           });
           setIsSubmitting(false);
@@ -269,8 +276,8 @@ const AdminOffers: React.FC = () => {
 
       if (offerForm.scope === 'services' && offerForm.serviceIds.length === 0) {
         toast({
-          title: 'Selecciona servicios',
-          description: 'Elige al menos un servicio para esta oferta.',
+          title: t('admin.offers.toast.selectServicesTitle'),
+          description: t('admin.offers.toast.selectServicesDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -279,8 +286,8 @@ const AdminOffers: React.FC = () => {
 
       if (offerForm.scope === 'products' && offerForm.productIds.length === 0) {
         toast({
-          title: 'Selecciona productos',
-          description: 'Elige al menos un producto para esta oferta.',
+          title: t('admin.offers.toast.selectProductsTitle'),
+          description: t('admin.offers.toast.selectProductsDescription'),
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -307,10 +314,10 @@ const AdminOffers: React.FC = () => {
 
       if (editingOffer) {
         await updateOffer(editingOffer.id, payload);
-        toast({ title: 'Oferta actualizada', description: 'Los cambios se han guardado.' });
+        toast({ title: t('admin.offers.toast.updatedTitle'), description: t('admin.offers.toast.savedDescription') });
       } else {
         await createOffer(payload);
-        toast({ title: 'Oferta creada', description: 'La oferta ya está activa.' });
+        toast({ title: t('admin.offers.toast.createdTitle'), description: t('admin.offers.toast.createdDescription') });
       }
 
       if (activeTarget === 'service') {
@@ -330,8 +337,8 @@ const AdminOffers: React.FC = () => {
       setIsDialogOpen(false);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'No se pudo guardar la oferta.',
+        title: t('admin.common.error'),
+        description: error instanceof Error ? error.message : t('admin.offers.toast.saveError'),
         variant: 'destructive',
       });
     } finally {
@@ -343,7 +350,7 @@ const AdminOffers: React.FC = () => {
     if (!deletingOfferId) return;
     try {
       await deleteOffer(deletingOfferId);
-      toast({ title: 'Oferta eliminada', description: 'Se ha retirado correctamente.' });
+      toast({ title: t('admin.offers.toast.deletedTitle'), description: t('admin.offers.toast.deletedDescription') });
       if (activeTarget === 'service') {
         await Promise.all([
           offersQuery.refetch(),
@@ -360,8 +367,8 @@ const AdminOffers: React.FC = () => {
       dispatchOfferCatalogUpdated(activeTarget);
     } catch (error) {
       toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'No se pudo eliminar la oferta.',
+        title: t('admin.common.error'),
+        description: error instanceof Error ? error.message : t('admin.offers.toast.deleteError'),
         variant: 'destructive',
       });
     } finally {
@@ -391,15 +398,15 @@ const AdminOffers: React.FC = () => {
   );
 
   const offerSummary = (offer: Offer) => {
-    if (offer.scope === 'all') return 'Aplica a todo el catálogo.';
+    if (offer.scope === 'all') return t('admin.offers.summary.allCatalog');
     if (offer.scope === 'categories') {
       const count = offer.target === 'product'
         ? offer.productCategories?.length ?? 0
         : offer.categories?.length ?? 0;
-      return `${count} categoría(s) seleccionadas.`;
+      return t('admin.offers.summary.categoriesSelected', { count });
     }
-    if (offer.scope === 'services') return `${offer.services?.length ?? 0} servicio(s) seleccionados.`;
-    if (offer.scope === 'products') return `${offer.products?.length ?? 0} producto(s) seleccionados.`;
+    if (offer.scope === 'services') return t('admin.offers.summary.servicesSelected', { count: offer.services?.length ?? 0 });
+    if (offer.scope === 'products') return t('admin.offers.summary.productsSelected', { count: offer.products?.length ?? 0 });
     return '';
   };
 
@@ -413,16 +420,16 @@ const AdminOffers: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">Ofertas</h1>
+          <h1 className="text-3xl font-bold text-foreground">{t('admin.offers.title')}</h1>
           <p className="text-muted-foreground mt-1">
             {showProductTab
-              ? 'Promociones programadas para servicios y productos, con reglas claras.'
-              : 'Promociones programadas para servicios, con reglas claras.'}
+              ? t('admin.offers.subtitle.withProducts')
+              : t('admin.offers.subtitle.servicesOnly')}
           </p>
         </div>
         <Button onClick={() => openOfferDialog()} disabled={!canCreateOffers}>
           <Plus className="w-4 h-4 mr-2" />
-          Nueva oferta
+          {t('admin.offers.actions.newOffer')}
         </Button>
       </div>
 
@@ -431,11 +438,11 @@ const AdminOffers: React.FC = () => {
           <TabsList className="grid w-full sm:w-[360px] grid-cols-2">
             <TabsTrigger value="service" className="gap-2">
               <Tag className="w-4 h-4" />
-              Servicios
+              {t('admin.offers.target.service')}
             </TabsTrigger>
             <TabsTrigger value="product" className="gap-2">
               <Boxes className="w-4 h-4" />
-              Productos
+              {t('admin.offers.target.product')}
             </TabsTrigger>
           </TabsList>
         )}
@@ -447,14 +454,14 @@ const AdminOffers: React.FC = () => {
                 <div className="flex items-center gap-3 text-amber-600">
                   <Boxes className="w-5 h-5" />
                   <div>
-                    <p className="font-semibold">Control de productos desactivado</p>
+                    <p className="font-semibold">{t('admin.offers.productsDisabledTitle')}</p>
                     <p className="text-sm text-muted-foreground">
-                      Activa el control de productos para crear ofertas sobre inventario.
+                      {t('admin.offers.productsDisabledDescription')}
                     </p>
                   </div>
                 </div>
                 <Button variant="outline" asChild className="w-fit">
-                  <Link to="/admin/settings">Ir a configuración</Link>
+                  <Link to="/admin/settings">{t('admin.offers.goToSettings')}</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -467,9 +474,9 @@ const AdminOffers: React.FC = () => {
           ) : isEmptyState ? (
             <EmptyState
               icon={BadgePercent}
-              title="Sin ofertas aún"
-              description={`Crea promociones para ${targetLabels[activeTarget].toLowerCase()} y destaca tu catálogo.`}
-              action={canCreateOffers ? { label: 'Crear oferta', onClick: () => openOfferDialog() } : undefined}
+              title={t('admin.offers.empty.title')}
+              description={t('admin.offers.empty.description', { targetLabel: t(targetLabelKeys[activeTarget]).toLowerCase() })}
+              action={canCreateOffers ? { label: t('admin.offers.actions.createOffer'), onClick: () => openOfferDialog() } : undefined}
             />
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -499,9 +506,9 @@ const AdminOffers: React.FC = () => {
                           ? `-${offer.discountValue}%`
                           : `-${Number(offer.discountValue).toFixed(2)}€`}
                       </Badge>
-                      <Badge variant="outline">{scopeLabels[offer.scope]}</Badge>
+                      <Badge variant="outline">{t(scopeLabelKeys[offer.scope])}</Badge>
                       <Badge variant={offer.active ? 'default' : 'outline'}>
-                        {offer.active ? 'Activa' : 'Inactiva'}
+                        {offer.active ? t('admin.offers.status.active') : t('admin.offers.status.inactive')}
                       </Badge>
                     </div>
 
@@ -528,87 +535,111 @@ const AdminOffers: React.FC = () => {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingOffer ? 'Editar oferta' : `Nueva oferta de ${targetLabels[activeTarget].toLowerCase()}`}</DialogTitle>
+            <DialogTitle>
+              {editingOffer
+                ? t('admin.offers.dialog.editTitle')
+                : t('admin.offers.dialog.newTitle', { targetLabel: t(targetLabelKeys[activeTarget]).toLowerCase() })}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              Configura descuento, alcance, vigencia y estado de la oferta.
+              {t('admin.offers.dialog.description')}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="grid md:grid-cols-2 gap-4 py-4">
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="offer-name">Nombre</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="offer-name">{t('admin.offers.fields.name')}</Label>
+                  <InlineTranslationPopover
+                    entityType="offer"
+                    entityId={editingOffer?.id}
+                    fieldKey="name"
+                    onUpdated={async () => {
+                      await offersQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Input
                   id="offer-name"
                   value={offerForm.name}
                   onChange={(event) => setOfferForm((prev) => ({ ...prev, name: event.target.value }))}
-                  placeholder="Ej: Semana premium"
+                  placeholder={t('admin.offers.fields.namePlaceholder')}
                   required
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="offer-description">Descripción</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="offer-description">{t('admin.offers.fields.description')}</Label>
+                  <InlineTranslationPopover
+                    entityType="offer"
+                    entityId={editingOffer?.id}
+                    fieldKey="description"
+                    onUpdated={async () => {
+                      await offersQuery.refetch();
+                    }}
+                  />
+                </div>
                 <Textarea
                   id="offer-description"
                   value={offerForm.description}
                   onChange={(event) => setOfferForm((prev) => ({ ...prev, description: event.target.value }))}
-                  placeholder="Describe cuándo aplica esta oferta."
+                  placeholder={t('admin.offers.fields.descriptionPlaceholder')}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tipo de descuento</Label>
+                <Label>{t('admin.offers.fields.discountType')}</Label>
                 <Select
                   value={offerForm.discountType}
                   onValueChange={(value) => setOfferForm((prev) => ({ ...prev, discountType: value as Offer['discountType'] }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona" />
+                    <SelectValue placeholder={t('admin.offers.fields.selectPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="percentage">Porcentaje</SelectItem>
-                    <SelectItem value="amount">Importe fijo</SelectItem>
+                    <SelectItem value="percentage">{t('admin.offers.fields.discountTypePercentage')}</SelectItem>
+                    <SelectItem value="amount">{t('admin.offers.fields.discountTypeAmount')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Valor</Label>
+                <Label>{t('admin.offers.fields.value')}</Label>
                 <Input
                   type="number"
                   min="0"
                   step="0.01"
                   value={offerForm.discountValue}
                   onChange={(event) => setOfferForm((prev) => ({ ...prev, discountValue: event.target.value }))}
-                  placeholder={offerForm.discountType === 'percentage' ? '10' : '5'}
+                  placeholder={offerForm.discountType === 'percentage' ? t('admin.offers.fields.valuePlaceholderPercent') : t('admin.offers.fields.valuePlaceholderAmount')}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Alcance</Label>
+                <Label>{t('admin.offers.fields.scope')}</Label>
                 <Select
                   value={offerForm.scope}
                   onValueChange={(value) => setOfferForm((prev) => ({ ...prev, scope: value as OfferScope }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona" />
+                    <SelectValue placeholder={t('admin.offers.fields.selectPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {scopeOptions.map((scope) => (
                       <SelectItem key={scope} value={scope} disabled={scope === 'categories' && !categoriesEnabled}>
-                        {scopeLabels[scope]}
+                        {t(scopeLabelKeys[scope])}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {!categoriesEnabled && offerForm.scope === 'categories' && (
                   <p className="text-xs text-muted-foreground">
-                    Activa las categorías en configuración para usar este alcance.
+                    {t('admin.offers.fields.enableCategoriesHint')}
                   </p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label>Estado</Label>
+                <Label>{t('admin.offers.fields.status')}</Label>
                 <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium">Oferta activa</p>
-                    <p className="text-xs text-muted-foreground">Se aplicará dentro del rango indicado.</p>
+                    <p className="text-sm font-medium">{t('admin.offers.fields.activeOffer')}</p>
+                    <p className="text-xs text-muted-foreground">{t('admin.offers.fields.activeOfferHint')}</p>
                   </div>
                   <Switch
                     checked={offerForm.active}
@@ -617,7 +648,7 @@ const AdminOffers: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Inicio</Label>
+                <Label>{t('admin.offers.fields.startDate')}</Label>
                 <Input
                   type="date"
                   value={offerForm.startDate}
@@ -625,7 +656,7 @@ const AdminOffers: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Fin</Label>
+                <Label>{t('admin.offers.fields.endDate')}</Label>
                 <Input
                   type="date"
                   value={offerForm.endDate}
@@ -634,10 +665,10 @@ const AdminOffers: React.FC = () => {
               </div>
               {offerForm.scope === 'categories' && (
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Categorías incluidas</Label>
+                  <Label>{t('admin.offers.fields.includedCategories')}</Label>
                   <div className="grid sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto rounded-xl border border-border p-4">
                     {currentCategories.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No hay categorías disponibles.</p>
+                      <p className="text-sm text-muted-foreground">{t('admin.offers.fields.noCategories')}</p>
                     ) : (
                       currentCategories.map((category) => (
                         <label key={category.id} className="flex items-center gap-3 text-sm">
@@ -666,10 +697,10 @@ const AdminOffers: React.FC = () => {
               )}
               {offerForm.scope === 'services' && (
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Servicios incluidos</Label>
+                  <Label>{t('admin.offers.fields.includedServices')}</Label>
                   <div className="grid sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto rounded-xl border border-border p-4">
                     {orderedServices.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No hay servicios disponibles.</p>
+                      <p className="text-sm text-muted-foreground">{t('admin.offers.fields.noServices')}</p>
                     ) : (
                       orderedServices.map((service) => (
                         <label key={service.id} className="flex items-center gap-3 text-sm">
@@ -691,10 +722,10 @@ const AdminOffers: React.FC = () => {
               )}
               {offerForm.scope === 'products' && (
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Productos incluidos</Label>
+                  <Label>{t('admin.offers.fields.includedProducts')}</Label>
                   <div className="grid sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto rounded-xl border border-border p-4">
                     {orderedProducts.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No hay productos disponibles.</p>
+                      <p className="text-sm text-muted-foreground">{t('admin.offers.fields.noProducts')}</p>
                     ) : (
                       orderedProducts.map((product) => (
                         <label key={product.id} className="flex items-center gap-3 text-sm">
@@ -717,10 +748,10 @@ const AdminOffers: React.FC = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
+                {t('appointmentEditor.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Guardando...' : 'Guardar oferta'}
+                {isSubmitting ? t('admin.common.saving') : t('admin.offers.actions.saveOffer')}
               </Button>
             </DialogFooter>
           </form>
@@ -730,20 +761,20 @@ const AdminOffers: React.FC = () => {
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar oferta</DialogTitle>
+            <DialogTitle>{t('admin.offers.deleteDialog.title')}</DialogTitle>
             <DialogDescription className="sr-only">
-              Confirmación para eliminar la oferta seleccionada.
+              {t('admin.offers.deleteDialog.descriptionSrOnly')}
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Esta acción no se puede deshacer. La oferta dejará de aplicarse inmediatamente.
+            {t('admin.offers.deleteDialog.description')}
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-              Cancelar
+              {t('appointmentEditor.cancel')}
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              Eliminar
+              {t('admin.offers.actions.deleteOffer')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,10 +11,14 @@ import { useSearchParams } from 'react-router-dom';
 import { getActiveSubscriptionPlans, getMyActiveSubscription, getMySubscriptions, subscribeToPlan } from '@/data/api/subscriptions';
 import { getStripeAvailability } from '@/data/api/payments';
 import { SubscriptionCheckoutMode, SubscriptionPlan, UserSubscription } from '@/data/types';
+import { useI18n } from '@/hooks/useI18n';
+import { resolveDateLocale } from '@/lib/i18n';
 
 const SubscriptionsPage: React.FC = () => {
   const { user } = useAuth();
   const { tenant } = useTenant();
+  const { t, language } = useI18n();
+  const dateLocale = resolveDateLocale(language);
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
@@ -56,14 +59,14 @@ const SubscriptionsPage: React.FC = () => {
   const hasActiveSubscription = useMemo(() => Boolean(activeSubscription), [activeSubscription]);
   const paymentStatusLabel = useMemo(() => {
     if (!activeSubscription) return null;
-    if (activeSubscription.paymentStatus === 'paid') return 'Pagada';
-    if (activeSubscription.paymentStatus === 'in_person') return 'Pendiente en próxima cita';
-    if (activeSubscription.paymentStatus === 'pending') return 'Pendiente Stripe';
-    if (activeSubscription.paymentStatus === 'failed') return 'Pago fallido';
-    if (activeSubscription.paymentStatus === 'cancelled') return 'Pago cancelado';
-    if (activeSubscription.paymentStatus === 'exempt') return 'Exenta';
+    if (activeSubscription.paymentStatus === 'paid') return t('subscriptions.paymentStatus.paid');
+    if (activeSubscription.paymentStatus === 'in_person') return t('subscriptions.paymentStatus.inPerson');
+    if (activeSubscription.paymentStatus === 'pending') return t('subscriptions.paymentStatus.pendingStripe');
+    if (activeSubscription.paymentStatus === 'failed') return t('subscriptions.paymentStatus.failed');
+    if (activeSubscription.paymentStatus === 'cancelled') return t('subscriptions.paymentStatus.cancelled');
+    if (activeSubscription.paymentStatus === 'exempt') return t('subscriptions.paymentStatus.exempt');
     return activeSubscription.paymentStatus;
-  }, [activeSubscription]);
+  }, [activeSubscription, t]);
 
   const handleSubscribe = async (planId: string, paymentMode: SubscriptionCheckoutMode) => {
     if (subscribingPlanId || hasActiveSubscription) return;
@@ -78,16 +81,16 @@ const SubscriptionsPage: React.FC = () => {
       setUserSubscriptions(subscriptions);
       setActiveSubscription(active);
       toast({
-        title: 'Suscripción activada',
+        title: t('subscriptions.toast.activatedTitle'),
         description:
           paymentMode === 'stripe'
-            ? 'Te redirigimos a Stripe para completar el pago.'
-            : 'Tu plan ya está activo y pendiente de cobro en la próxima cita.',
+            ? t('subscriptions.toast.activatedStripe')
+            : t('subscriptions.toast.activatedLocal'),
       });
     } catch (error) {
       toast({
-        title: 'No se pudo activar',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo en unos segundos.',
+        title: t('subscriptions.toast.activateErrorTitle'),
+        description: error instanceof Error ? error.message : t('subscriptions.toast.genericError'),
         variant: 'destructive',
       });
     } finally {
@@ -100,13 +103,13 @@ const SubscriptionsPage: React.FC = () => {
     if (!paymentResult) return;
     if (paymentResult === 'success') {
       toast({
-        title: 'Pago confirmado',
-        description: 'Tu suscripción ya está pagada y activa.',
+        title: t('subscriptions.toast.paymentSuccessTitle'),
+        description: t('subscriptions.toast.paymentSuccessDescription'),
       });
     } else if (paymentResult === 'cancel') {
       toast({
-        title: 'Pago no completado',
-        description: 'Tu suscripción quedó activa, pero el cobro de Stripe está pendiente.',
+        title: t('subscriptions.toast.paymentCancelTitle'),
+        description: t('subscriptions.toast.paymentCancelDescription'),
       });
     }
     setSearchParams((prev) => {
@@ -115,23 +118,23 @@ const SubscriptionsPage: React.FC = () => {
       next.delete('session_id');
       return next;
     });
-  }, [searchParams, setSearchParams, toast]);
+  }, [searchParams, setSearchParams, t, toast]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6 animate-fade-in">
       {!subscriptionsEnabled && (
         <Card variant="elevated">
           <CardContent className="py-6 text-sm text-muted-foreground">
-            Las suscripciones no están habilitadas en este local.
+            {t('subscriptions.disabled')}
           </CardContent>
         </Card>
       )}
       {subscriptionsEnabled && (
         <>
       <div>
-        <h1 className="text-xl sm:text-3xl font-bold text-foreground">Suscripciones</h1>
+        <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('subscriptions.title')}</h1>
         <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
-          Gestiona tu suscripción activa y consulta tu historial.
+          {t('subscriptions.subtitle')}
         </p>
       </div>
 
@@ -139,17 +142,17 @@ const SubscriptionsPage: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Repeat className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-            Planes de suscripción
+            {t('subscriptions.plans.title')}
           </CardTitle>
           <CardDescription className="hidden sm:block">
-            Solo puedes tener un plan activo a la vez.
+            {t('subscriptions.plans.description')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 sm:space-y-4">
           {isLoadingSubscriptions ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Cargando suscripciones...
+              {t('subscriptions.loading')}
             </div>
           ) : (
             <>
@@ -158,28 +161,32 @@ const SubscriptionsPage: React.FC = () => {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-foreground">
-                        Plan activo: {activeSubscription.plan.name}
+                        {t('subscriptions.activePlan', { planName: activeSubscription.plan.name })}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Vigente hasta {format(parseISO(activeSubscription.endDate), 'd MMM yyyy', { locale: es })}
+                        {t('subscriptions.validUntil', {
+                          date: format(parseISO(activeSubscription.endDate), 'd MMM yyyy', { locale: dateLocale }),
+                        })}
                       </p>
                       {paymentStatusLabel && (
                         <p className="text-xs text-muted-foreground">
-                          Estado de pago: <span className="font-medium text-foreground">{paymentStatusLabel}</span>
+                          {t('subscriptions.paymentStatusLabel')}
+                          {' '}
+                          <span className="font-medium text-foreground">{paymentStatusLabel}</span>
                         </p>
                       )}
                     </div>
-                    <Badge>Activa</Badge>
+                    <Badge>{t('subscriptions.status.active')}</Badge>
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No tienes una suscripción activa ahora mismo.</p>
+                <p className="text-sm text-muted-foreground">{t('subscriptions.noActive')}</p>
               )}
 
               {subscriptionPlans.length > 0 ? (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Planes disponibles
+                    {t('subscriptions.availablePlans')}
                   </p>
                   <div className="space-y-2">
                     {subscriptionPlans.map((plan) => {
@@ -194,10 +201,10 @@ const SubscriptionsPage: React.FC = () => {
                             <p className="text-xs text-muted-foreground">
                               {plan.price.toFixed(2)}€ · {plan.durationValue}{' '}
                               {plan.durationUnit === 'days'
-                                ? 'día(s)'
+                                ? t('subscriptions.duration.days')
                                 : plan.durationUnit === 'weeks'
-                                  ? 'semana(s)'
-                                  : 'mes(es)'}
+                                  ? t('subscriptions.duration.weeks')
+                                  : t('subscriptions.duration.months')}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
@@ -209,7 +216,11 @@ const SubscriptionsPage: React.FC = () => {
                               onClick={() => void handleSubscribe(plan.id, 'next_appointment')}
                             >
                               {subscribingPlanId === plan.id && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                              {isCurrentPlan ? 'Activo' : hasActiveSubscription ? 'No disponible' : 'Pagar en próxima cita'}
+                              {isCurrentPlan
+                                ? t('subscriptions.status.active')
+                                : hasActiveSubscription
+                                  ? t('subscriptions.unavailable')
+                                  : t('subscriptions.payNextAppointment')}
                             </Button>
                             {stripeEnabled && (
                               <Button
@@ -230,12 +241,12 @@ const SubscriptionsPage: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No hay planes disponibles en este momento.</p>
+                <p className="text-sm text-muted-foreground">{t('subscriptions.noPlans')}</p>
               )}
 
               {userSubscriptions.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historial</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('subscriptions.history')}</p>
                   <div className="space-y-2">
                     {userSubscriptions.slice(0, 6).map((subscription) => (
                       <div
@@ -245,8 +256,8 @@ const SubscriptionsPage: React.FC = () => {
                         <div>
                           <p className="text-sm font-medium text-foreground">{subscription.plan.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {format(parseISO(subscription.startDate), 'd MMM yyyy', { locale: es })} -{' '}
-                            {format(parseISO(subscription.endDate), 'd MMM yyyy', { locale: es })}
+                            {format(parseISO(subscription.startDate), 'd MMM yyyy', { locale: dateLocale })} -{' '}
+                            {format(parseISO(subscription.endDate), 'd MMM yyyy', { locale: dateLocale })}
                           </p>
                         </div>
                         <Badge
@@ -259,10 +270,10 @@ const SubscriptionsPage: React.FC = () => {
                           }
                         >
                           {subscription.status === 'active'
-                            ? 'Activa'
+                            ? t('subscriptions.status.active')
                             : subscription.status === 'expired'
-                              ? 'Expirada'
-                              : 'Cancelada'}
+                              ? t('subscriptions.status.expired')
+                              : t('subscriptions.status.cancelled')}
                         </Badge>
                       </div>
                     ))}

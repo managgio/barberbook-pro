@@ -15,6 +15,7 @@ import {
 } from '../../contexts/commerce/ports/outbound/offer-read.port';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { rethrowDomainErrorAsHttp } from '../../shared/interfaces/http/rethrow-domain-error-as-http';
+import { LocalizationService } from '../localization/localization.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { UpdateOfferDto } from './dto/update-offer.dto';
 import { mapOffer } from './offers.mapper';
@@ -35,6 +36,7 @@ export class OffersService {
     private readonly offerManagementPort: CommerceOfferManagementPort,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
+    private readonly localizationService: LocalizationService,
   ) {
     this.getOffersUseCase = new GetOffersUseCase(this.offerReadPort);
     this.getActiveOffersUseCase = new GetActiveOffersUseCase(this.offerReadPort);
@@ -44,25 +46,72 @@ export class OffersService {
   }
 
   async findAll(target?: OfferTarget) {
+    const context = this.tenantContextPort.getRequestContext();
     const offers = await this.getOffersUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       target: target as CommerceOfferTarget | undefined,
     });
-    return offers.map(mapOffer);
+    const mapped = offers.map(mapOffer);
+    const { items } = await this.localizationService.localizeCollection({
+      context,
+      entityType: 'offer',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'name',
+          getValue: (item) => item.name,
+          setValue: (item, value) => {
+            item.name = value;
+          },
+        },
+        {
+          fieldKey: 'description',
+          getValue: (item) => item.description,
+          setValue: (item, value) => {
+            item.description = value;
+          },
+        },
+      ],
+    });
+    return items;
   }
 
   async findActive(target?: OfferTarget) {
+    const context = this.tenantContextPort.getRequestContext();
     const offers = await this.getActiveOffersUseCase.execute({
-      context: this.tenantContextPort.getRequestContext(),
+      context,
       target: target as CommerceOfferTarget | undefined,
     });
-    return offers.map(mapOffer);
+    const mapped = offers.map(mapOffer);
+    const { items } = await this.localizationService.localizeCollection({
+      context,
+      entityType: 'offer',
+      items: mapped,
+      descriptors: [
+        {
+          fieldKey: 'name',
+          getValue: (item) => item.name,
+          setValue: (item, value) => {
+            item.name = value;
+          },
+        },
+        {
+          fieldKey: 'description',
+          getValue: (item) => item.description,
+          setValue: (item, value) => {
+            item.description = value;
+          },
+        },
+      ],
+    });
+    return items;
   }
 
   async create(data: CreateOfferDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const created = await this.createOfferUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         name: data.name,
         description: data.description,
         discountType: data.discountType,
@@ -76,6 +125,15 @@ export class OffersService {
         startDate: data.startDate,
         endDate: data.endDate,
         active: data.active,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'offer',
+        entityId: created.id,
+        fields: {
+          name: created.name,
+          description: created.description,
+        },
       });
       return mapOffer(created);
     } catch (error) {
@@ -101,9 +159,10 @@ export class OffersService {
   }
 
   async update(id: string, data: UpdateOfferDto) {
+    const context = this.tenantContextPort.getRequestContext();
     try {
       const updated = await this.updateOfferUseCase.execute({
-        context: this.tenantContextPort.getRequestContext(),
+        context,
         offerId: id,
         name: data.name,
         description: data.description,
@@ -118,6 +177,15 @@ export class OffersService {
         startDate: data.startDate,
         endDate: data.endDate,
         active: data.active,
+      });
+      await this.localizationService.syncEntitySourceFields({
+        context,
+        entityType: 'offer',
+        entityId: updated.id,
+        fields: {
+          name: updated.name,
+          description: updated.description,
+        },
       });
       return mapOffer(updated);
     } catch (error) {

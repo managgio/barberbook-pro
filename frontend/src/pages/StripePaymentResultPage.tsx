@@ -5,11 +5,13 @@ import { getStripeSession } from '@/data/api/payments';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useI18n } from '@/hooks/useI18n';
 
 const StripePaymentResultPage: React.FC = () => {
   const { status } = useParams();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { t } = useI18n();
   const sessionId = searchParams.get('session_id');
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(sessionId));
@@ -36,14 +38,14 @@ const StripePaymentResultPage: React.FC = () => {
   }, [sessionId]);
 
   const isSuccess = status === 'success';
-  const title = isSuccess ? 'Pago recibido' : 'Pago cancelado';
+  const title = isSuccess ? t('stripePaymentResult.title.success') : t('stripePaymentResult.title.cancelled');
   const description = isSuccess
     ? sessionStatus === 'complete'
-      ? 'Tu cita quedó confirmada correctamente.'
-      : 'Estamos confirmando tu pago. Si hay algún problema, te avisaremos.'
-    : 'No se realizó el cobro. Puedes intentarlo de nuevo desde la reserva.';
+      ? t('stripePaymentResult.description.successConfirmed')
+      : t('stripePaymentResult.description.successPending')
+    : t('stripePaymentResult.description.cancelled');
 
-  const buttonLabel = user ? 'Ver mis citas' : 'Volver al inicio';
+  const buttonLabel = user ? t('stripePaymentResult.actions.viewAppointments') : t('stripePaymentResult.actions.backHome');
   const buttonHref = user ? '/app/appointments' : '/';
 
   return (
@@ -64,7 +66,7 @@ const StripePaymentResultPage: React.FC = () => {
           {isLoading && (
             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Comprobando el estado del pago...
+              {t('stripePaymentResult.loading')}
             </div>
           )}
           <Button asChild className="w-full" variant={isSuccess ? 'glow' : 'outline'}>
