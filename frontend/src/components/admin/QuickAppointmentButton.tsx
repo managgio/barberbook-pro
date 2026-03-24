@@ -210,6 +210,15 @@ const QuickAppointmentButton: React.FC = () => {
   );
 
   useEffect(() => {
+    if (!isOpen) return;
+    if (eligibleBarbers.length !== 1) return;
+    const onlyBarberId = eligibleBarbers[0].id;
+    if (selectedBarberId === onlyBarberId) return;
+    setSelectedBarberId(onlyBarberId);
+    setSelectedTime('');
+  }, [eligibleBarbers, isOpen, selectedBarberId]);
+
+  useEffect(() => {
     if (!selectedBarberId) return;
     const stillEligible = eligibleBarbers.some((barber) => barber.id === selectedBarberId);
     if (stillEligible) return;
@@ -235,7 +244,7 @@ const QuickAppointmentButton: React.FC = () => {
     const afternoon: string[] = [];
     availableSlots.forEach((slot) => {
       const hour = parseInt(slot.split(':')[0], 10);
-      if (hour < 14) {
+      if (hour < 15) {
         morning.push(slot);
       } else {
         afternoon.push(slot);

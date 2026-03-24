@@ -6,4 +6,5 @@ export type GetAvailabilityQuery = {
   date: string;
   serviceId?: string;
   appointmentIdToIgnore?: string;
+  slotIntervalMinutes?: number;
 };

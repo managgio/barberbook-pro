@@ -243,3 +243,43 @@ test('get availability batch returns slots only for active, eligible and non-hol
   assert.deepEqual(result.b4, []);
   assert.deepEqual(result.b5, []);
 });
+
+test('get availability batch respects custom slot interval from query', async () => {
+  const useCase = new GetAvailabilityBatchUseCase(
+    {
+      listAppointmentsForBarberDay: async () => [],
+      listAppointmentsForBarbersDay: async () => [],
+      countWeeklyLoad: async () => ({}),
+    },
+    {
+      getShopSchedule: async () => schedule,
+      getBarberSchedule: async () => schedule,
+      getBarberSchedules: async () => ({ b1: schedule }),
+    },
+    {
+      getGeneralHolidays: async () => [],
+      getBarberHolidays: async () => [],
+      getBarberHolidaysByBarberIds: async () => ({ b1: [] }),
+    },
+    {
+      getBarber: async () => null,
+      getBarbers: async () => [{ id: 'b1', isActive: true, startDate: null, endDate: null }],
+      isBarberAllowedForService: async () => true,
+      getEligibleBarberIdsForService: async () => ['b1'],
+    },
+    {
+      getServiceDuration: async () => 30,
+    },
+  );
+
+  const result = await useCase.execute({
+    context: requestContext,
+    date: '2026-03-04',
+    barberIds: ['b1'],
+    slotIntervalMinutes: 30,
+  });
+
+  assert.equal(result.b1.includes('09:00'), true);
+  assert.equal(result.b1.includes('09:30'), true);
+  assert.equal(result.b1.includes('09:15'), false);
+});

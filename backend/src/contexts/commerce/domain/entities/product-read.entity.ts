@@ -6,6 +6,7 @@ export type CommerceProductReadModel = {
   description: string;
   sku: string | null;
   price: number;
+  position: number;
   stock: number;
   minStock: number;
   imageUrl: string | null;

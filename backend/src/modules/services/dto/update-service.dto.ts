@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsPositive, IsString, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsPositive, IsString, Min } from 'class-validator';
 
 export class UpdateServiceDto {
   @IsOptional()
@@ -22,4 +22,9 @@ export class UpdateServiceDto {
   @IsOptional()
   @IsString()
   categoryId?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  position?: number;
 }

@@ -455,6 +455,7 @@ model Service {
   description               String
   price                     Decimal                   @db.Decimal(10, 2)
   duration                  Int
+  position                  Int                       @default(0)
   isArchived                Boolean                   @default(false)
   categoryId                String?
   category                  ServiceCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -472,6 +473,7 @@ model Service {
 
   @@index([categoryId])
   @@index([localId])
+  @@index([localId, categoryId, position])
 }
 
 model Product {
@@ -484,6 +486,7 @@ model Product {
   description       String?
   sku               String?
   price             Decimal                   @db.Decimal(10, 2)
+  position          Int                       @default(0)
   stock             Int                       @default(0)
   minStock          Int                       @default(0)
   imageUrl          String?
@@ -499,6 +502,7 @@ model Product {
 
   @@index([categoryId])
   @@index([localId])
+  @@index([localId, categoryId, position])
 }
 
 model Appointment {

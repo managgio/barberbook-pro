@@ -7,4 +7,5 @@ export type CreateServiceCommand = {
   price: number;
   duration: number;
   categoryId?: string | null;
+  position?: number;
 };

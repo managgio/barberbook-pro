@@ -6,6 +6,7 @@ type ProductWithCategory = {
   description: string | null;
   sku: string | null;
   price: number | { toString(): string };
+  position: number;
   stock: number;
   minStock: number | null;
   imageUrl: string | null;
@@ -46,6 +47,7 @@ export const mapProduct = (product: ProductWithCategory, pricing?: ReturnType<ty
     sku: product.sku ?? null,
     price,
     finalPrice,
+    position: product.position,
     stock: product.stock,
     minStock: product.minStock ?? 0,
     imageUrl: product.imageUrl ?? null,

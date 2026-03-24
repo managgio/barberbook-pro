@@ -84,7 +84,7 @@ Modulos principales:
 - **Roles**: roles admin por local (permisos por seccion).
 - **Barbers**: gestion de barberos y calendario.
 - **Barber Service Assignment**: reglas opcionales por local para limitar que servicios/categorias puede atender cada barbero.
-- **Services**: servicios con precio/duracion, categorias opcionales.
+- **Services**: servicios con precio/duracion, categorias opcionales y orden persistente por `position` (reordenable por drag & drop en admin).
 - **Service Categories**: categorias de servicios (configurable).
 - **Offers**: ofertas con descuentos para servicios y productos (por alcance y target).
 - **Products**: catalogo de productos con stock, precio y visibilidad publica.
@@ -117,6 +117,11 @@ Seguridad actual (importante):
   - creación de usuario en autoservicio valida que `firebaseUid/email` coincidan con el token y fuerza rol cliente.
 - Endpoints públicos de referidos con identidad de propietario:
   - `GET /api/referrals/my-code` y `GET /api/referrals/my-summary` exigen usuario autenticado y validan `self-or-admin`.
+- Endpoints de `appointments` endurecidos:
+  - `GET /api/appointments` y `GET /api/appointments/:id` aplican `self-or-admin` (cliente solo ve sus citas).
+  - `POST /api/appointments` permite guest sin `userId`; cliente autenticado solo puede crear para sí mismo.
+  - `PATCH /api/appointments/:id` para cliente autenticado exige propiedad y limita estado a cancelación.
+  - `DELETE /api/appointments/:id` queda restringido a admin (`@AdminEndpoint`).
 
 ## Arquitectura frontend
 Entradas y layouts:
@@ -160,6 +165,7 @@ Caching y sincronizacion frontend:
 - **Landing query-driven**: `LandingPage` consume `useQuery` para `barbers`, `services`, `products(landing)` y `product-categories`, eliminando `loadData` imperativo y compartiendo cache de catalogo por `localId`.
 - **Booking cacheado por dominio**: `BookingWizard` usa `useQuery` para bootstrap de reserva (`booking-bootstrap`), staff por servicio (`barbers(localId, serviceId)`), disponibilidad por fecha (`booking-slots`, single/batch), carga semanal (`booking-weekly-load`), preview de fidelizacion (`booking-loyalty-preview`), wallet (`rewards-wallet`) y estado de consentimiento (`privacy-consent-status`), reduciendo `useEffect + fetch` repetitivos.
 - **Admin catalogos con React Query real**: `AdminServices`, `AdminOffers`, `AdminLoyalty` y `AdminStock` eliminan `loadData` manual y cargan con `useQuery` por `localId`/`target` (`services`, `service-categories`, `offers`, `loyalty-programs`, `products-admin`, `product-categories`, `site-settings`); tras mutaciones refrescan via `refetch` selectivo e invalidacion por dominio (`dispatchServicesUpdated` / `dispatchProductsUpdated`) para mantener coherencia de precios y catalogos.
+- **Orden operativo en Servicios (admin)**: `AdminServices` incorpora tablero drag & drop para reordenar categorias, reordenar servicios dentro de cada categoria y mover servicios entre categorias; cada drop persiste en backend (`ServiceCategory.position` y `Service.position`) y se refleja en el catálogo público/cliente.
 - **Suscripciones admin query-driven**: `AdminSubscriptions` consume `useQuery` para planes (`subscription-plans`) y estado de cliente (`user-subscriptions`, `user-active-subscription`), y refresca de forma selectiva tras CRUD/asignaciones sin recarga completa.
 - **Equipo admin query-driven**: `AdminBarbers` carga equipo y metadatos (`barbers`, `services`, `service-categories`, `site-settings`) con `useQuery`; tras CRUD/asignaciones refuerza consistencia con `refetch` del catálogo de barberos + eventos de dominio. La edición de horarios individuales mantiene carga on-demand por `barberId`.
 - **Catálogo de barberos con scope operativo**: `GET /api/barbers` expone solo barberos activos (y nunca archivados) para flujos públicos/cliente; las vistas admin con selectores de staff (`Dashboard`, `Calendar`, `Search`, `Clients`, `Cash Register`, `Holidays`, `AdminBarbers`) consumen `GET /api/barbers/admin` (protegido con `@AdminEndpoint`) para incluir activos + inactivos sin mostrar archivados/eliminados.
@@ -229,7 +235,7 @@ LocationConfig | Configuracion por local | JSON (branding overrides, theme, land
 LocalizedContent | Fuente traducible versionada | Texto base por entidad/campo (`entityType`, `entityId`, `fieldKey`, `sourceLanguage`, `sourceVersion`, `sourceHash`)
 LocalizedContentTranslation | Traducción persistida | Traducciones por idioma con estado (`pending/ready/failed/stale`), origen (`ai/manual`), `manualLocked`, trazabilidad de proveedor/modelo
 Barber | Profesional | Datos, rol, disponibilidad, foto, userId asociado
-Service | Servicio | Precio, duracion, categoria
+Service | Servicio | Precio, duracion, categoria y orden persistente (`position`) por local/categoria
 ServiceCategory | Categoria | Orden y descripcion de servicios
 BarberServiceAssignment | Asignacion directa barbero-servicio | Servicios concretos permitidos por barbero
 BarberServiceCategoryAssignment | Asignacion por categoria | Categorias de servicios permitidas por barbero
@@ -260,7 +266,7 @@ GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
 ShopSchedule | Horario local | JSON con turnos diarios, descansos por dia (`breaks`) y por fecha (`breaksByDate`), `bufferMinutes`, y overflow de cierre (`endOverflowMinutes`, `endOverflowByDay`, `endOverflowByDate`)
 BarberSchedule | Horario barbero | JSON con turnos diarios y overflow opcional por barbero (global, por dia de semana y por fecha fija)
-SiteSettings | Configuracion sitio | JSON con branding, contacto, horarios y stats visibles (toggle por admin)
+SiteSettings | Configuracion sitio | JSON con branding, contacto, horarios y stats visibles (toggle por admin), además de reglas operativas de cita (`cancellationCutoffHours`, `slotIntervalMinutes`)
 AiChatSession | Sesiones IA | Conversaciones por admin/local
 AiChatMessage | Mensajes IA | Historial y tool payload
 AiBusinessFact | Hechos IA | Datos fijos para contexto del asistente
@@ -320,9 +326,9 @@ Documentos de referencia creados durante la migracion (detalle operativo y evide
    - Se calcula por horario del barbero (por dia/turno) + horario del local.
    - Se excluyen festivos (local y por barbero) y descansos del local por dia (`breaks`) y por fecha concreta (`breaksByDate`).
    - Se aplica `bufferMinutes` del local a duraciones y solapes.
-   - Slots base en intervalos de 15 min (`SLOT_INTERVAL_MINUTES`).
+   - Slots base configurables por local (`SiteSettings.appointments.slotIntervalMinutes`), con valores soportados `15` o `30` minutos (default `15`).
    - **Overflow de fin de jornada**: se calcula en cascada por prioridad `por fecha` -> `por dia` -> `global` (barbero primero y, si no hay override, local). Solo aplica al ultimo turno activo del dia.
-   - **Relleno de huecos no alineados**: si hay un intervalo libre cuyo inicio no cae en un multiplo de 15, se agrega un unico slot extra en el minuto exacto del inicio del hueco para evitar huecos grandes sin saturar la UI.
+   - **Relleno de huecos no alineados**: si hay un intervalo libre cuyo inicio no cae en un multiplo del intervalo configurado (15/30), se agrega un unico slot extra en el minuto exacto del inicio del hueco para evitar huecos grandes sin saturar la UI.
    - Se computan rangos ocupados con duracion real del servicio + buffer, y se filtran slots que solapen.
    - Todas las comparaciones de dia/hora usan `APP_TIMEZONE` y helpers `startOfDayInTimeZone/endOfDayInTimeZone` para evitar errores de zona horaria.
    - En creacion/edicion de cita se valida disponibilidad dos veces: pre-check y verificacion final dentro de una transaccion serializable (si hay conflicto: “Horario no disponible”).

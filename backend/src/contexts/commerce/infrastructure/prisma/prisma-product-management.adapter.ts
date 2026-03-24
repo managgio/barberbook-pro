@@ -45,6 +45,7 @@ export class PrismaProductManagementAdapter implements CommerceProductManagement
       select: {
         id: true,
         categoryId: true,
+        position: true,
         imageFileId: true,
       },
     });
@@ -55,6 +56,7 @@ export class PrismaProductManagementAdapter implements CommerceProductManagement
     return {
       id: product.id,
       categoryId: product.categoryId,
+      position: product.position,
       imageFileId: product.imageFileId,
     };
   }
@@ -72,6 +74,20 @@ export class PrismaProductManagementAdapter implements CommerceProductManagement
     return matched ? { id: matched.id } : null;
   }
 
+  async getNextProductPosition(params: { localId: string; categoryId: string | null }): Promise<number> {
+    const aggregate = await this.prisma.product.aggregate({
+      where: {
+        localId: params.localId,
+        categoryId: params.categoryId,
+      },
+      _max: {
+        position: true,
+      },
+    });
+
+    return (aggregate._max.position ?? -1) + 1;
+  }
+
   async createProduct(params: {
     localId: string;
     input: CreateCommerceProductInput;
@@ -83,6 +99,7 @@ export class PrismaProductManagementAdapter implements CommerceProductManagement
         description: params.input.description,
         sku: params.input.sku,
         price: params.input.price,
+        position: params.input.position,
         stock: params.input.stock,
         minStock: params.input.minStock,
         categoryId: params.input.categoryId,
@@ -120,6 +137,7 @@ export class PrismaProductManagementAdapter implements CommerceProductManagement
         description: params.input.description,
         sku: params.input.sku,
         price: params.input.price,
+        position: params.input.position,
         stock: params.input.stock,
         minStock: params.input.minStock,
         categoryId: params.input.categoryId,
@@ -234,6 +252,7 @@ export class PrismaProductManagementAdapter implements CommerceProductManagement
           description: sourceProduct.description ?? '',
           sku: sourceProduct.sku ?? null,
           price: sourceProduct.price,
+          position: sourceProduct.position ?? 0,
           stock: sourceProduct.stock,
           minStock: sourceProduct.minStock ?? 0,
           categoryId: destinationCategoryId,

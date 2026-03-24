@@ -16,6 +16,7 @@ export type CommerceServiceReadModel = {
   description: string;
   price: number;
   duration: number;
+  position: number;
   isArchived: boolean;
   categoryId: string | null;
   category: {

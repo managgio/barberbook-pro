@@ -123,6 +123,7 @@ export class ServicesService {
         price: data.price,
         duration: data.duration,
         categoryId: data.categoryId,
+        position: data.position,
       });
       await this.localizationService.syncEntitySourceFields({
         context,
@@ -156,6 +157,7 @@ export class ServicesService {
         price: data.price,
         duration: data.duration,
         categoryId: data.categoryId,
+        position: data.position,
       });
       await this.localizationService.syncEntitySourceFields({
         context,

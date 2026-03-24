@@ -1,9 +1,31 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AppointmentsFacade } from './appointments.facade';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { AdminEndpoint } from '../../auth/admin.decorator';
 import { AuthService } from '../../auth/auth.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
+
+type RequestActor = {
+  userId: string | null;
+  adminUserId: string | null;
+  isAdmin: boolean;
+};
 
 @Controller('appointments')
 export class AppointmentsController {
@@ -14,6 +36,9 @@ export class AppointmentsController {
   constructor(
     private readonly appointmentsFacade: AppointmentsFacade,
     private readonly authService: AuthService,
+    private readonly prisma: PrismaService,
+    @Inject(TENANT_CONTEXT_PORT)
+    private readonly tenantContextPort: TenantContextPort,
   ) {}
 
   private parseBoundedIds(raw?: string, paramName = 'ids') {
@@ -157,7 +182,7 @@ export class AppointmentsController {
   }
 
   @Get()
-  findAll(
+  async findAll(
     @Query('userId') userId?: string,
     @Query('barberId') barberId?: string,
     @Query('date') date?: string,
@@ -166,10 +191,29 @@ export class AppointmentsController {
     @Query('sort') sort?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Req() req?: any,
   ) {
+    const actor = await this.resolveRequestActor(req);
     const normalizedSort: 'asc' | 'desc' = sort === 'desc' ? 'desc' : 'asc';
     this.assertRangeSize(dateFrom, dateTo, 'appointments');
-    const filters = { userId, barberId, date, dateFrom, dateTo, sort: normalizedSort };
+    let effectiveUserId = userId;
+    if (!actor.isAdmin) {
+      if (!actor.userId) {
+        throw new UnauthorizedException('Se requiere autenticación.');
+      }
+      if (userId && userId !== actor.userId) {
+        throw new ForbiddenException('Solo puedes consultar tus propias citas.');
+      }
+      effectiveUserId = actor.userId;
+    }
+    const filters = {
+      userId: effectiveUserId,
+      barberId,
+      date,
+      dateFrom,
+      dateTo,
+      sort: normalizedSort,
+    };
 
     const pageNumber = Math.min(
       AppointmentsController.MAX_PAGE,
@@ -180,20 +224,45 @@ export class AppointmentsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.appointmentsFacade.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: any) {
+    const actor = await this.resolveRequestActor(req);
+    if (!actor.isAdmin && !actor.userId) {
+      throw new UnauthorizedException('Se requiere autenticación.');
+    }
+    const appointment = await this.appointmentsFacade.findOne(id) as { userId: string | null };
+    if (!actor.isAdmin) {
+      if (appointment.userId !== actor.userId) {
+        throw new ForbiddenException('No puedes consultar esta cita.');
+      }
+    }
+    return appointment;
   }
 
   @Post()
   async create(@Body() data: CreateAppointmentDto, @Req() req: any) {
-    const adminUserId = await this.resolveAdminUserId(req);
+    const actor = await this.resolveRequestActor(req);
+    const payload: CreateAppointmentDto = { ...data };
+    if (!actor.isAdmin) {
+      if (payload.status && payload.status !== 'scheduled') {
+        throw new ForbiddenException('Solo administradores pueden crear citas con estado personalizado.');
+      }
+      if (actor.userId) {
+        if (payload.userId && payload.userId !== actor.userId) {
+          throw new ForbiddenException('No puedes crear citas para otro cliente.');
+        }
+        payload.userId = actor.userId;
+      } else if (payload.userId) {
+        throw new BadRequestException('No puedes asignar userId en una reserva como invitado.');
+      }
+    }
+
     const ip = this.resolveRequestIp(req);
     const userAgent = typeof req.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : null;
-    return this.appointmentsFacade.create(data, {
-      requireConsent: !adminUserId,
+    return this.appointmentsFacade.create(payload, {
+      requireConsent: !actor.isAdmin,
       ip,
       userAgent,
-      actorUserId: adminUserId,
+      actorUserId: actor.adminUserId,
     });
   }
 
@@ -205,22 +274,66 @@ export class AppointmentsController {
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() data: UpdateAppointmentDto, @Req() req: any) {
-    const adminUserId = await this.resolveAdminUserId(req);
-    return this.appointmentsFacade.update(id, data, { actorUserId: adminUserId });
+    const actor = await this.resolveRequestActor(req);
+    if (!actor.isAdmin) {
+      if (!actor.userId) {
+        throw new UnauthorizedException('Se requiere autenticación.');
+      }
+      await this.ensureAppointmentOwnership(id, actor.userId);
+      this.assertClientUpdateAllowed(data);
+    }
+    return this.appointmentsFacade.update(id, { ...data, userId: undefined }, { actorUserId: actor.adminUserId });
   }
 
+  @AdminEndpoint()
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.appointmentsFacade.remove(id);
   }
 
-  private async resolveAdminUserId(req: any): Promise<string | null> {
+  private async resolveRequestActor(req: any): Promise<RequestActor> {
     const user = await this.authService.resolveUserFromRequest(req);
-    if (!user) return null;
-    if (user.isSuperAdmin || user.isPlatformAdmin || user.role === 'admin') {
-      return user.id;
+    if (!user) {
+      return { userId: null, adminUserId: null, isAdmin: false };
     }
-    return null;
+
+    if (user.isSuperAdmin || user.isPlatformAdmin) {
+      return { userId: user.id, adminUserId: user.id, isAdmin: true };
+    }
+
+    if (user.role === 'admin') {
+      const localId = this.tenantContextPort.getRequestContext().localId;
+      const membership = await this.prisma.locationStaff.findUnique({
+        where: {
+          localId_userId: {
+            localId,
+            userId: user.id,
+          },
+        },
+        select: { userId: true },
+      });
+      if (membership) {
+        return { userId: user.id, adminUserId: user.id, isAdmin: true };
+      }
+    }
+
+    return { userId: user.id, adminUserId: null, isAdmin: false };
+  }
+
+  private async ensureAppointmentOwnership(appointmentId: string, userId: string) {
+    const appointment = await this.appointmentsFacade.findOne(appointmentId) as { userId: string | null };
+    if (appointment.userId !== userId) {
+      throw new ForbiddenException('No puedes modificar una cita de otro cliente.');
+    }
+  }
+
+  private assertClientUpdateAllowed(data: UpdateAppointmentDto) {
+    if (data.status && data.status !== 'cancelled') {
+      throw new ForbiddenException('Solo puedes cancelar tus citas.');
+    }
+    if (data.userId !== undefined && data.userId !== null) {
+      throw new ForbiddenException('No puedes reasignar el cliente de una cita.');
+    }
   }
 
   private resolveRequestIp(req: any): string | null {

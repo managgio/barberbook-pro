@@ -72,6 +72,9 @@ export class AiAssistantService {
         localId,
       });
     } catch (error) {
+      if (error instanceof AiAssistantNotFoundError) {
+        return null;
+      }
       this.rethrowAsHttp(error);
     }
   }
@@ -84,6 +87,9 @@ export class AiAssistantService {
         localId,
       });
     } catch (error) {
+      if (error instanceof AiAssistantNotFoundError) {
+        return null;
+      }
       this.rethrowAsHttp(error);
     }
   }

@@ -13,6 +13,7 @@ import { FindAppointmentsRangeWithClientsUseCase } from '../../contexts/booking/
 import { FindAppointmentByIdUseCase } from '../../contexts/booking/application/use-cases/find-appointment-by-id.use-case';
 import { AnonymizeAppointmentUseCase } from '../../contexts/booking/application/use-cases/anonymize-appointment.use-case';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
+import { SettingsService } from '../settings/settings.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
@@ -34,6 +35,7 @@ export class AppointmentsFacade {
     private readonly findAppointmentsRangeWithClientsUseCase: FindAppointmentsRangeWithClientsUseCase,
     private readonly findAppointmentByIdUseCase: FindAppointmentByIdUseCase,
     private readonly anonymizeAppointmentUseCase: AnonymizeAppointmentUseCase,
+    private readonly settingsService: SettingsService,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
   ) {}
@@ -44,6 +46,10 @@ export class AppointmentsFacade {
     );
   }
 
+  private resolveSlotIntervalMinutes(value: number | null | undefined) {
+    return value === 30 ? 30 : 15;
+  }
+
   async getAvailability(
     barberId: string,
     date: string,
@@ -52,12 +58,17 @@ export class AppointmentsFacade {
   ) {
     const startedAt = Date.now();
     try {
+      const settings = await this.settingsService.getSettings();
+      const slotIntervalMinutes = this.resolveSlotIntervalMinutes(
+        settings.appointments?.slotIntervalMinutes,
+      );
       const response = await this.getAvailabilityUseCase.execute({
         context: this.tenantContextPort.getRequestContext(),
         barberId,
         date,
         serviceId,
         appointmentIdToIgnore,
+        slotIntervalMinutes,
       });
       this.logUseCaseTiming('booking.availability.read', Date.now() - startedAt, 'ok');
       return response;
@@ -79,12 +90,17 @@ export class AppointmentsFacade {
     const startedAt = Date.now();
     try {
       const normalizedBarberIds = Array.from(new Set((barberIds || []).filter(Boolean)));
+      const settings = await this.settingsService.getSettings();
+      const slotIntervalMinutes = this.resolveSlotIntervalMinutes(
+        settings.appointments?.slotIntervalMinutes,
+      );
       const response = await this.getAvailabilityBatchUseCase.execute({
         context: this.tenantContextPort.getRequestContext(),
         date,
         barberIds: normalizedBarberIds,
         serviceId: options?.serviceId,
         appointmentIdToIgnore: options?.appointmentIdToIgnore,
+        slotIntervalMinutes,
       });
       this.logUseCaseTiming('booking.availability.batch.read', Date.now() - startedAt, 'ok');
       return response;

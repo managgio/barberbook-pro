@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   getHolidaysGeneral,
   addGeneralHolidayRange,
@@ -84,7 +85,23 @@ const AdminHolidays: React.FC = () => {
     if (typeof window === 'undefined') return;
     const handleChange = () => {
       const width = window.innerWidth;
-      setMonthsToShow(width >= 1024 && width < 1280 ? 1 : 2);
+      if (width >= 2100) {
+        setMonthsToShow(5);
+        return;
+      }
+      if (width >= 1500) {
+        setMonthsToShow(4);
+        return;
+      }
+      if (width >= 1024) {
+        setMonthsToShow(3);
+        return;
+      }
+      if (width >= 768) {
+        setMonthsToShow(2);
+        return;
+      }
+      setMonthsToShow(1);
     };
     handleChange();
     window.addEventListener('resize', handleChange);
@@ -170,127 +187,146 @@ const AdminHolidays: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('admin.holidays.general.title', { locationFromWithDefinite: copy.location.fromWithDefinite })}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="border rounded-2xl p-4 bg-card/60">
-              <Calendar
-                mode="range"
-                numberOfMonths={monthsToShow}
-                selected={generalRange}
-                onSelect={setGeneralRange}
-                className="mx-auto"
-              />
-              <p className="text-xs text-muted-foreground text-center mt-3">
-                {t('admin.holidays.general.calendarHint')}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={handleAddGeneralHoliday} disabled={!generalRange?.from}>
-                {t('admin.holidays.actions.blockDates')}
-              </Button>
-              <Button variant="outline" onClick={() => setGeneralRange(undefined)}>
-                {t('admin.holidays.actions.clearSelection')}
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {generalHolidays.length === 0 && (
-                <p className="text-sm text-muted-foreground">{t('admin.holidays.general.empty')}</p>
-              )}
-              {generalHolidays.map((range, index) => (
-                <div
-                  key={`${range.start}-${range.end}-${index}`}
-                  className="flex items-center gap-2 rounded-full bg-secondary px-4 py-1 text-sm"
-                >
-                  <span>{formatRangeLabel(range)}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={() => handleRemoveGeneralHoliday(range)}
-                  >
-                    ×
-                  </Button>
+      <Tabs defaultValue="general" className="space-y-6">
+        <TabsList className="grid w-full sm:w-[360px] grid-cols-2">
+          <TabsTrigger value="general">{t('admin.holidays.tabs.general')}</TabsTrigger>
+          <TabsTrigger value="byStaff">{t('admin.holidays.tabs.byStaff')}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="general" className="mt-0">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('admin.holidays.general.title', { locationFromWithDefinite: copy.location.fromWithDefinite })}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="border rounded-2xl p-4 bg-card/60">
+                <div className="flex justify-center">
+                  <Calendar
+                    mode="range"
+                    numberOfMonths={monthsToShow}
+                    selected={generalRange}
+                    onSelect={setGeneralRange}
+                    locale={dateLocale}
+                    weekStartsOn={1}
+                    className="mx-auto w-fit"
+                  />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('admin.holidays.byStaff.title', { staffSingularLower: copy.staff.singularLower })}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Select value={selectedBarber} onValueChange={setSelectedBarber}>
-              <SelectTrigger>
-                <SelectValue placeholder={t('common.selectNoun', { noun: copy.staff.indefiniteSingular })} />
-              </SelectTrigger>
-              <SelectContent>
-                {barbers.map((barber) => (
-                  <SelectItem key={barber.id} value={barber.id}>
-                    {barber.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="border rounded-2xl p-4 bg-card/60">
-              <Calendar
-                mode="range"
-                numberOfMonths={monthsToShow}
-                selected={barberRange}
-                onSelect={setBarberRange}
-                className="mx-auto"
-              />
-              <p className="text-xs text-muted-foreground text-center mt-3">
-                {t('admin.holidays.byStaff.calendarHint', { staffFromWithDefinite: copy.staff.fromWithDefinite })}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={handleAddBarberHoliday}
-                disabled={!barberRange?.from || !selectedBarber}
-              >
-                {t('admin.holidays.actions.blockDates')}
-              </Button>
-              <Button variant="outline" onClick={() => setBarberRange(undefined)}>
-                {t('admin.holidays.actions.clearSelection')}
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {barberHolidays.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {selectedBarber
-                    ? t('admin.holidays.byStaff.emptyWithSelection', { staffToWithDefinite: copy.staff.toWithDefinite })
-                    : t('common.selectNoun', { noun: copy.staff.indefiniteSingular })}
+                <p className="text-xs text-muted-foreground text-center mt-3">
+                  {t('admin.holidays.general.calendarHint')}
                 </p>
-              )}
-              {barberHolidays.map((range, index) => (
-                <div
-                  key={`${range.start}-${range.end}-${index}`}
-                  className="flex items-center gap-2 rounded-full bg-secondary px-4 py-1 text-sm"
-                >
-                  <span>{formatRangeLabel(range)}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={() => handleRemoveBarberHoliday(range)}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleAddGeneralHoliday} disabled={!generalRange?.from}>
+                  {t('admin.holidays.actions.blockDates')}
+                </Button>
+                <Button variant="outline" onClick={() => setGeneralRange(undefined)}>
+                  {t('admin.holidays.actions.clearSelection')}
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {generalHolidays.length === 0 && (
+                  <p className="text-sm text-muted-foreground">{t('admin.holidays.general.empty')}</p>
+                )}
+                {generalHolidays.map((range, index) => (
+                  <div
+                    key={`${range.start}-${range.end}-${index}`}
+                    className="flex items-center gap-2 rounded-full bg-secondary px-4 py-1 text-sm"
                   >
-                    ×
-                  </Button>
+                    <span>{formatRangeLabel(range)}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => handleRemoveGeneralHoliday(range)}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="byStaff" className="mt-0">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('admin.holidays.byStaff.title', { staffSingularLower: copy.staff.singularLower })}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="w-full max-w-[360px]">
+                <Select value={selectedBarber} onValueChange={setSelectedBarber}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('common.selectNoun', { noun: copy.staff.indefiniteSingular })} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {barbers.map((barber) => (
+                      <SelectItem key={barber.id} value={barber.id}>
+                        {barber.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="border rounded-2xl p-4 bg-card/60">
+                <div className="flex justify-center">
+                  <Calendar
+                    mode="range"
+                    numberOfMonths={monthsToShow}
+                    selected={barberRange}
+                    onSelect={setBarberRange}
+                    locale={dateLocale}
+                    weekStartsOn={1}
+                    className="mx-auto w-fit"
+                  />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                <p className="text-xs text-muted-foreground text-center mt-3">
+                  {t('admin.holidays.byStaff.calendarHint', { staffFromWithDefinite: copy.staff.fromWithDefinite })}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={handleAddBarberHoliday}
+                  disabled={!barberRange?.from || !selectedBarber}
+                >
+                  {t('admin.holidays.actions.blockDates')}
+                </Button>
+                <Button variant="outline" onClick={() => setBarberRange(undefined)}>
+                  {t('admin.holidays.actions.clearSelection')}
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {barberHolidays.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {selectedBarber
+                      ? t('admin.holidays.byStaff.emptyWithSelection', { staffToWithDefinite: copy.staff.toWithDefinite })
+                      : t('common.selectNoun', { noun: copy.staff.indefiniteSingular })}
+                  </p>
+                )}
+                {barberHolidays.map((range, index) => (
+                  <div
+                    key={`${range.start}-${range.end}-${index}`}
+                    className="flex items-center gap-2 rounded-full bg-secondary px-4 py-1 text-sm"
+                  >
+                    <span>{formatRangeLabel(range)}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => handleRemoveBarberHoliday(range)}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

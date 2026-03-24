@@ -37,6 +37,10 @@ const baseService = (overrides?: {
     {
       getRequestContext: () => ({ localId: 'loc-1', brandId: 'brand-1' }),
     } as any,
+    {
+      localizeCollection: async ({ items }: { items: any[] }) => ({ items }),
+      syncEntitySourceFields: async () => {},
+    } as any,
   );
 
   return { service, eligibilityCalls };

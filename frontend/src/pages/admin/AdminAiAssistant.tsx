@@ -293,6 +293,10 @@ const AdminAiAssistant: React.FC = () => {
       setIsLoadingHistory(true);
       try {
         const session = await getAiAssistantSession({ sessionId });
+        if (!session) {
+          clearPersistedSession();
+          return;
+        }
         setMessages(session.messages.map((message) => ({
           id: message.id,
           role: message.role,

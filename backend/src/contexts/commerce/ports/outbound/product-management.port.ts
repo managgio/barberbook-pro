@@ -8,6 +8,7 @@ export type ProductSettingsScope = {
 export type CommerceProductForManagement = {
   id: string;
   categoryId: string | null;
+  position: number;
   imageFileId: string | null;
 };
 
@@ -16,6 +17,7 @@ export type CreateCommerceProductInput = {
   description: string;
   sku: string | null;
   price: number;
+  position: number;
   stock: number;
   minStock: number;
   categoryId: string | null;
@@ -30,6 +32,7 @@ export type UpdateCommerceProductInput = {
   description?: string;
   sku?: string | null;
   price?: number;
+  position?: number;
   stock?: number;
   minStock?: number;
   categoryId: string | null;
@@ -51,6 +54,10 @@ export interface CommerceProductManagementPort {
     localId: string;
     normalizedName: string;
   }): Promise<{ id: string } | null>;
+  getNextProductPosition(params: {
+    localId: string;
+    categoryId: string | null;
+  }): Promise<number>;
   createProduct(params: {
     localId: string;
     input: CreateCommerceProductInput;

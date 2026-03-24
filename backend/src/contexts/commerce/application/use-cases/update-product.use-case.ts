@@ -28,6 +28,7 @@ export class UpdateProductUseCase {
     }
 
     const categoryId = command.categoryId === undefined ? existing.categoryId : command.categoryId;
+    const position = command.position === undefined ? existing.position : command.position;
     const categoriesEnabled = await this.productManagementPort.areCategoriesEnabled(scope);
     if (categoriesEnabled && !categoryId) {
       throw new DomainError(
@@ -54,6 +55,7 @@ export class UpdateProductUseCase {
         description: command.description,
         sku: command.sku,
         price: command.price,
+        position,
         stock: command.stock,
         minStock: command.minStock,
         categoryId,

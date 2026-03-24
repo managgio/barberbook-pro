@@ -71,6 +71,7 @@ export class GetAvailabilityUseCase {
         durationMinutes: appointment.serviceDurationMinutes,
       })),
       targetDurationMinutes: targetDuration,
+      slotIntervalMinutes: query.slotIntervalMinutes,
     });
   }
 }

@@ -7,7 +7,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import {
   createServiceCategory,
   deleteServiceCategory,
@@ -16,7 +15,7 @@ import {
 import { createService, deleteService, updateService } from '@/data/api/services';
 import { updateSiteSettings } from '@/data/api/settings';
 import { Service, ServiceCategory } from '@/data/types';
-import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, CheckCircle2, Sparkles, Percent } from 'lucide-react';
+import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, CheckCircle2, Sparkles, Percent, GripVertical } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
@@ -29,10 +28,30 @@ import { queryKeys } from '@/lib/queryKeys';
 import { useTenant } from '@/context/TenantContext';
 import { useI18n } from '@/hooks/useI18n';
 import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
+import { cn } from '@/lib/utils';
 
 const UNCATEGORIZED_VALUE = 'none';
 const EMPTY_SERVICES: Service[] = [];
 const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
+const SERVICE_DRAG_MIME = 'application/x-service-id';
+const CATEGORY_DRAG_MIME = 'application/x-service-category-id';
+
+const reorderByInsertIndex = <T,>(items: T[], fromIndex: number, insertIndex: number): T[] => {
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  if (!moved) return items;
+  let targetIndex = insertIndex;
+  if (fromIndex < insertIndex) {
+    targetIndex -= 1;
+  }
+  if (targetIndex < 0) targetIndex = 0;
+  if (targetIndex > next.length) targetIndex = next.length;
+  next.splice(targetIndex, 0, moved);
+  return next;
+};
+
+const sortServices = (a: Service, b: Service) =>
+  (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name);
 
 const AdminServices: React.FC = () => {
   const { toast } = useToast();
@@ -49,7 +68,15 @@ const AdminServices: React.FC = () => {
   const [editingCategory, setEditingCategory] = useState<ServiceCategory | null>(null);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
-  const [updatingServiceCategoryId, setUpdatingServiceCategoryId] = useState<string | null>(null);
+  const [isPersistingCategoryOrder, setIsPersistingCategoryOrder] = useState(false);
+  const [isPersistingServiceOrder, setIsPersistingServiceOrder] = useState(false);
+  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
+  const [dragOverCategoryPosition, setDragOverCategoryPosition] = useState<'before' | 'after'>('before');
+  const [draggingServiceId, setDraggingServiceId] = useState<string | null>(null);
+  const [dragOverServiceId, setDragOverServiceId] = useState<string | null>(null);
+  const [dragOverServiceColumnId, setDragOverServiceColumnId] = useState<string | null>(null);
+  const [dragOverServicePosition, setDragOverServicePosition] = useState<'before' | 'after'>('before');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -102,10 +129,47 @@ const AdminServices: React.FC = () => {
       ),
     [categories],
   );
-  const uncategorizedServices = useMemo(
-    () => services.filter((service) => !service.categoryId),
+  const orderedServices = useMemo(
+    () => [...services].sort(sortServices),
     [services],
   );
+  const uncategorizedServices = useMemo(
+    () => orderedServices.filter((service) => !service.categoryId),
+    [orderedServices],
+  );
+  const serviceColumns = useMemo(() => {
+    if (!categoriesEnabled) {
+      return [
+        {
+          id: UNCATEGORIZED_VALUE,
+          name: t('admin.services.title'),
+          description: t('admin.services.subtitle'),
+          services: orderedServices,
+          isUncategorized: true,
+        },
+      ];
+    }
+
+    const baseColumns = orderedCategories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      description: category.description || t('admin.services.categories.noDescription'),
+      services: orderedServices.filter((service) => service.categoryId === category.id),
+      isUncategorized: false,
+    }));
+
+    if (uncategorizedServices.length > 0) {
+      baseColumns.push({
+        id: UNCATEGORIZED_VALUE,
+        name: t('admin.services.uncategorized'),
+        description: t('admin.services.presentation.uncategorizedWarning', { count: uncategorizedServices.length }),
+        services: uncategorizedServices,
+        isUncategorized: true,
+      });
+    }
+
+    return baseColumns;
+  }, [categoriesEnabled, orderedCategories, orderedServices, t, uncategorizedServices]);
 
   const getPriceDisplay = (service: Service) => {
     const finalPrice = service.finalPrice ?? service.price;
@@ -165,6 +229,7 @@ const AdminServices: React.FC = () => {
       const parsedDuration = parseInt(formData.duration, 10);
       const parsedPrice = parseFloat(formData.price);
       const categoryId = formData.categoryId === UNCATEGORIZED_VALUE ? null : formData.categoryId;
+      const description = formData.description.trim();
 
       if (Number.isNaN(parsedDuration) || parsedDuration <= 0) {
         toast({
@@ -199,7 +264,7 @@ const AdminServices: React.FC = () => {
       if (editingService) {
         await updateService(editingService.id, {
           name: formData.name,
-          description: formData.description,
+          description,
           price: parsedPrice,
           duration: parsedDuration,
           categoryId,
@@ -208,7 +273,7 @@ const AdminServices: React.FC = () => {
       } else {
         await createService({
           name: formData.name,
-          description: formData.description,
+          description,
           price: parsedPrice,
           duration: parsedDuration,
           categoryId,
@@ -302,10 +367,65 @@ const AdminServices: React.FC = () => {
     }
   };
 
-  const handleAssignCategory = async (service: Service, categoryId: string) => {
-    const normalizedCategoryId = categoryId === UNCATEGORIZED_VALUE ? null : categoryId;
+  const buildServiceBuckets = (currentServices: Service[]) => {
+    const sorted = [...currentServices].sort(sortServices);
+    const buckets = new Map<string, Service[]>();
 
-    if (categoriesEnabled && !normalizedCategoryId) {
+    if (!categoriesEnabled) {
+      buckets.set(UNCATEGORIZED_VALUE, sorted);
+      return buckets;
+    }
+
+    orderedCategories.forEach((category) => buckets.set(category.id, []));
+    sorted.forEach((service) => {
+      const key = service.categoryId ?? UNCATEGORIZED_VALUE;
+      if (!buckets.has(key)) {
+        buckets.set(key, []);
+      }
+      buckets.get(key)?.push(service);
+    });
+    return buckets;
+  };
+
+  const resetDragState = () => {
+    setDraggingCategoryId(null);
+    setDragOverCategoryId(null);
+    setDragOverCategoryPosition('before');
+    setDraggingServiceId(null);
+    setDragOverServiceId(null);
+    setDragOverServiceColumnId(null);
+    setDragOverServicePosition('before');
+  };
+
+  const persistCategoryOrder = async (nextCategories: ServiceCategory[]) => {
+    const updates = nextCategories
+      .map((category, index) => ({ id: category.id, nextPosition: index, currentPosition: category.position ?? 0 }))
+      .filter((entry) => entry.currentPosition !== entry.nextPosition)
+      .map((entry) => updateServiceCategory(entry.id, { position: entry.nextPosition }));
+
+    if (updates.length === 0) return;
+
+    setIsPersistingCategoryOrder(true);
+    try {
+      await Promise.all(updates);
+      await Promise.all([categoriesQuery.refetch(), servicesQuery.refetch()]);
+      dispatchServicesUpdated({ source: 'admin-services' });
+    } catch (error) {
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.services.toast.saveCategoryError'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsPersistingCategoryOrder(false);
+    }
+  };
+
+  const persistServiceDrop = async (serviceId: string, targetColumnId: string, targetIndex: number) => {
+    const sourceService = services.find((service) => service.id === serviceId);
+    if (!sourceService) return;
+
+    if (categoriesEnabled && targetColumnId === UNCATEGORIZED_VALUE) {
       toast({
         title: t('admin.services.toast.missingCategoryTitle'),
         description: t('admin.services.toast.assignCategoryDescription'),
@@ -314,20 +434,175 @@ const AdminServices: React.FC = () => {
       return;
     }
 
-    setUpdatingServiceCategoryId(service.id);
+    const sourceColumnId = categoriesEnabled ? (sourceService.categoryId ?? UNCATEGORIZED_VALUE) : UNCATEGORIZED_VALUE;
+    const buckets = buildServiceBuckets(services);
+    const sourceBucket = buckets.get(sourceColumnId) ?? [];
+    const sourceIndex = sourceBucket.findIndex((service) => service.id === serviceId);
+    if (sourceIndex < 0) return;
+
+    const [movingService] = sourceBucket.splice(sourceIndex, 1);
+    const targetBucket = buckets.get(targetColumnId) ?? [];
+    const boundedTargetIndex = Math.max(0, Math.min(targetIndex, targetBucket.length));
+    const normalizedTargetIndex =
+      sourceColumnId === targetColumnId && sourceIndex < boundedTargetIndex
+        ? boundedTargetIndex - 1
+        : boundedTargetIndex;
+    targetBucket.splice(normalizedTargetIndex, 0, movingService);
+
+    if (!buckets.has(targetColumnId)) {
+      buckets.set(targetColumnId, targetBucket);
+    }
+
+    const touchedColumns = new Set([sourceColumnId, targetColumnId]);
+    const updates: Array<Promise<unknown>> = [];
+    touchedColumns.forEach((columnId) => {
+      const columnServices = buckets.get(columnId) ?? [];
+      columnServices.forEach((service, index) => {
+        const nextCategoryId = categoriesEnabled
+          ? (columnId === UNCATEGORIZED_VALUE ? null : columnId)
+          : service.categoryId ?? null;
+        if (categoriesEnabled && nextCategoryId === null) {
+          return;
+        }
+        const currentCategoryId = service.categoryId ?? null;
+        const currentPosition = service.position ?? 0;
+        const categoryChanged = nextCategoryId !== currentCategoryId;
+        const positionChanged = index !== currentPosition;
+
+        if (categoryChanged || positionChanged) {
+          const payload: Partial<Service> = { position: index };
+          if (categoryChanged) {
+            payload.categoryId = nextCategoryId;
+          }
+          updates.push(updateService(service.id, payload));
+        }
+      });
+    });
+
+    if (updates.length === 0) return;
+
+    setIsPersistingServiceOrder(true);
     try {
-      await updateService(service.id, { categoryId: normalizedCategoryId });
-      await Promise.all([
-        servicesQuery.refetch(),
-        categoriesQuery.refetch(),
-      ]);
-      toast({ title: t('admin.services.toast.serviceUpdatedTitle'), description: t('admin.services.toast.categoryAssignedDescription') });
+      await Promise.all(updates);
+      await Promise.all([servicesQuery.refetch(), categoriesQuery.refetch()]);
       dispatchServicesUpdated({ source: 'admin-services' });
     } catch (error) {
-      toast({ title: t('admin.common.error'), description: t('admin.services.toast.updateCategoryError'), variant: 'destructive' });
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.services.toast.saveServiceError'),
+        variant: 'destructive',
+      });
     } finally {
-      setUpdatingServiceCategoryId(null);
+      setIsPersistingServiceOrder(false);
     }
+  };
+
+  const handleCategoryDragStart = (event: React.DragEvent<HTMLDivElement>, categoryId: string) => {
+    if (isPersistingCategoryOrder || isPersistingServiceOrder) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(CATEGORY_DRAG_MIME, categoryId);
+    event.dataTransfer.setData('text/plain', categoryId);
+    setDraggingCategoryId(categoryId);
+    setDragOverCategoryId(categoryId);
+  };
+
+  const handleCategoryDragOver = (event: React.DragEvent<HTMLDivElement>, categoryId: string) => {
+    event.preventDefault();
+    if (!draggingCategoryId) return;
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const middleY = bounds.top + bounds.height / 2;
+    setDragOverCategoryPosition(event.clientY <= middleY ? 'before' : 'after');
+    setDragOverCategoryId(categoryId);
+  };
+
+  const handleCategoryDrop = async (event: React.DragEvent<HTMLDivElement>, targetCategoryId: string) => {
+    event.preventDefault();
+    const sourceCategoryId = event.dataTransfer.getData(CATEGORY_DRAG_MIME) || event.dataTransfer.getData('text/plain');
+    if (!sourceCategoryId || sourceCategoryId === targetCategoryId) {
+      resetDragState();
+      return;
+    }
+
+    const fromIndex = orderedCategories.findIndex((category) => category.id === sourceCategoryId);
+    const toIndex = orderedCategories.findIndex((category) => category.id === targetCategoryId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+      resetDragState();
+      return;
+    }
+
+    const insertIndex = toIndex + (dragOverCategoryPosition === 'after' ? 1 : 0);
+    await persistCategoryOrder(reorderByInsertIndex(orderedCategories, fromIndex, insertIndex));
+    resetDragState();
+  };
+
+  const handleServiceDragStart = (event: React.DragEvent<HTMLDivElement>, serviceId: string) => {
+    if (isPersistingCategoryOrder || isPersistingServiceOrder) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(SERVICE_DRAG_MIME, serviceId);
+    event.dataTransfer.setData('text/plain', serviceId);
+    setDraggingServiceId(serviceId);
+    setDragOverServiceId(serviceId);
+  };
+
+  const handleServiceDragOverColumn = (event: React.DragEvent<HTMLDivElement>, columnId: string) => {
+    event.preventDefault();
+    if (!draggingServiceId) return;
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverServiceColumnId(columnId);
+    setDragOverServiceId(null);
+    setDragOverServicePosition('after');
+  };
+
+  const handleServiceDragOverCard = (
+    event: React.DragEvent<HTMLDivElement>,
+    columnId: string,
+    serviceId: string,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!draggingServiceId) return;
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const middleY = bounds.top + bounds.height / 2;
+    setDragOverServicePosition(event.clientY <= middleY ? 'before' : 'after');
+    setDragOverServiceColumnId(columnId);
+    setDragOverServiceId(serviceId);
+  };
+
+  const handleServiceDropAtColumnEnd = async (
+    event: React.DragEvent<HTMLDivElement>,
+    columnId: string,
+  ) => {
+    event.preventDefault();
+    const serviceId = event.dataTransfer.getData(SERVICE_DRAG_MIME) || event.dataTransfer.getData('text/plain');
+    if (!serviceId) {
+      resetDragState();
+      return;
+    }
+    const targetColumn = serviceColumns.find((column) => column.id === columnId);
+    await persistServiceDrop(serviceId, columnId, targetColumn?.services.length ?? 0);
+    resetDragState();
+  };
+
+  const handleServiceDropBeforeCard = async (
+    event: React.DragEvent<HTMLDivElement>,
+    columnId: string,
+    targetServiceId: string,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const serviceId = event.dataTransfer.getData(SERVICE_DRAG_MIME) || event.dataTransfer.getData('text/plain');
+    if (!serviceId) {
+      resetDragState();
+      return;
+    }
+
+    const targetColumn = serviceColumns.find((column) => column.id === columnId);
+    const targetIndex = targetColumn?.services.findIndex((service) => service.id === targetServiceId) ?? -1;
+    const insertIndex = targetIndex + (dragOverServicePosition === 'after' ? 1 : 0);
+    await persistServiceDrop(serviceId, columnId, insertIndex >= 0 ? insertIndex : 0);
+    resetDragState();
   };
 
   const handleToggleCategories = async (enabled: boolean) => {
@@ -396,8 +671,8 @@ const AdminServices: React.FC = () => {
       </div>
 
       {/* Preferences */}
-      <div className="grid lg:grid-cols-4 gap-6">
-        <Card variant="elevated" className="lg:col-span-1">
+      <div className={cn('grid gap-6', categoriesEnabled ? 'lg:grid-cols-4' : 'grid-cols-1')}>
+        <Card variant="elevated" className={cn(categoriesEnabled ? 'lg:col-span-1' : 'w-full')}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" />
@@ -459,22 +734,44 @@ const AdminServices: React.FC = () => {
                   {[1, 2, 3].map((i) => <CardSkeleton key={i} />)}
                 </div>
               ) : orderedCategories.length > 0 ? (
-                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {orderedCategories.map((category) => {
-                    const count =
-                      category.services?.length ??
-                      services.filter((service) => service.categoryId === category.id).length;
-                    return (
-                      <div
-                        key={category.id}
-                        className="rounded-xl border border-border p-4 bg-background/60 flex flex-col gap-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-1">
-                            <p className="font-semibold text-foreground">{category.name}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {category.description || t('admin.services.categories.noDescription')}
-                            </p>
+                <div className="space-y-2.5">
+                  <p className="text-xs text-muted-foreground">{t('admin.spotlight.dragToReorder')}</p>
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+                    {orderedCategories.map((category) => {
+                      const count = orderedServices.filter((service) => service.categoryId === category.id).length;
+                      const isDragging = draggingCategoryId === category.id;
+                      const isDragOver = dragOverCategoryId === category.id && draggingCategoryId !== category.id;
+                      return (
+                        <div
+                          key={category.id}
+                          draggable={!isPersistingCategoryOrder && !isPersistingServiceOrder}
+                          onDragStart={(event) => handleCategoryDragStart(event, category.id)}
+                          onDragOver={(event) => handleCategoryDragOver(event, category.id)}
+                          onDrop={(event) => void handleCategoryDrop(event, category.id)}
+                          onDragEnd={resetDragState}
+                          className={cn(
+                            'relative rounded-xl border border-border p-4 bg-background/60 flex items-start justify-between gap-3 transition-all duration-200 cursor-grab active:cursor-grabbing select-none',
+                            isDragging && 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]',
+                            isDragOver && 'ring-2 ring-primary/30 bg-primary/5',
+                          )}
+                        >
+                          {isDragOver && dragOverCategoryPosition === 'before' && (
+                            <span className="pointer-events-none absolute -top-[1px] left-3 right-3 h-[2px] rounded-full bg-primary" />
+                          )}
+                          {isDragOver && dragOverCategoryPosition === 'after' && (
+                            <span className="pointer-events-none absolute -bottom-[1px] left-3 right-3 h-[2px] rounded-full bg-primary" />
+                          )}
+                          <div className="flex items-start gap-3">
+                            <GripVertical className={cn('w-4 h-4 mt-0.5', isDragging ? 'text-primary' : 'text-muted-foreground')} />
+                            <div className="space-y-1">
+                              <p className="font-semibold text-foreground">{category.name}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {category.description || t('admin.services.categories.noDescription')}
+                              </p>
+                              <span className="text-[11px] text-muted-foreground">
+                                {t('admin.services.categories.serviceCount', { count })}
+                              </span>
+                            </div>
                           </div>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openCategoryDialog(category)}>
@@ -489,15 +786,9 @@ const AdminServices: React.FC = () => {
                             </Button>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{t('admin.services.categories.serviceCount', { count })}</span>
-                          <span className="px-2 py-1 rounded-full border border-border">
-                            {t('admin.services.categories.order', { position: category.position ?? 0 })}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (
                 <EmptyState
@@ -518,83 +809,133 @@ const AdminServices: React.FC = () => {
           {[1, 2, 3].map((i) => <CardSkeleton key={i} />)}
         </div>
       ) : services.length > 0 ? (
-        <div className="mt-2 grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {services.map((service) => (
-            <Card key={service.id} variant="elevated" className="h-full mt-2 sm:mt-0">
-              <CardContent className="admin-service-card-content p-6 flex flex-col gap-3">
-                <div className="flex justify-between items-start">
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Scissors className="w-6 h-6 text-primary" />
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(service)}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(service.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-semibold text-foreground text-lg">{service.name}</h3>
-                  <p className="text-sm text-muted-foreground line-clamp-2">{service.description}</p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center text-sm text-muted-foreground">
-                    <Clock className="w-4 h-4 mr-1" />
-                    {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
-                  </div>
-                  <div className="text-right">
-                    {getPriceDisplay(service).hasOffer && (
-                      <div className="text-xs line-through text-muted-foreground">{service.price}€</div>
+        <div className="mt-2 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">{t('admin.spotlight.dragToReorder')}</p>
+            {(isPersistingCategoryOrder || isPersistingServiceOrder) && (
+              <div className="inline-flex items-center gap-2 text-xs text-primary">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('admin.common.saving')}
+              </div>
+            )}
+          </div>
+          <div className={cn('pb-2', categoriesEnabled ? 'flex gap-4 overflow-x-auto' : 'block')}>
+            {serviceColumns.map((column) => {
+              const isColumnDragOver = dragOverServiceColumnId === column.id && !dragOverServiceId;
+              return (
+                <Card
+                  key={column.id}
+                  variant="elevated"
+                  className={cn(
+                    categoriesEnabled
+                      ? 'w-[320px] min-w-[320px] max-w-[320px] shrink-0'
+                      : 'w-full min-w-0 max-w-none',
+                    'border border-border/70 bg-background/70',
+                    isColumnDragOver && 'ring-2 ring-primary/30 border-primary/40',
+                  )}
+                >
+                  <CardHeader className="space-y-1">
+                    <CardTitle className="text-base flex items-center justify-between gap-2">
+                      <span className="truncate">{column.name}</span>
+                      <span className="text-xs text-muted-foreground font-normal">
+                        {t('admin.services.categories.serviceCount', { count: column.services.length })}
+                      </span>
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{column.description}</p>
+                  </CardHeader>
+                  <CardContent
+                    className={cn(
+                      'relative min-h-[220px]',
+                      categoriesEnabled
+                        ? 'space-y-2'
+                        : 'grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 content-start',
                     )}
-                    <span className="text-2xl font-bold text-primary">
-                      {getPriceDisplay(service).finalPrice}€
-                    </span>
-                  </div>
-                </div>
-                {getPriceDisplay(service).hasOffer && service.appliedOffer && (
-                  <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
-                    <Percent className="w-3 h-3" />
-                    {t('admin.services.offerSavings', {
-                      offerName: service.appliedOffer.name,
-                      amount: service.appliedOffer.amountOff.toFixed(2),
+                    onDragOver={(event) => handleServiceDragOverColumn(event, column.id)}
+                    onDrop={(event) => void handleServiceDropAtColumnEnd(event, column.id)}
+                  >
+                    {isColumnDragOver && (
+                      <span className="pointer-events-none absolute bottom-1 left-3 right-3 h-[2px] rounded-full bg-primary" />
+                    )}
+                    {column.services.map((service) => {
+                      const priceDisplay = getPriceDisplay(service);
+                      const isServiceDragging = draggingServiceId === service.id;
+                      const isServiceDropTarget = dragOverServiceId === service.id && draggingServiceId !== service.id;
+                      return (
+                        <div
+                          key={service.id}
+                          draggable={!isPersistingCategoryOrder && !isPersistingServiceOrder}
+                          onDragStart={(event) => handleServiceDragStart(event, service.id)}
+                          onDragOver={(event) => handleServiceDragOverCard(event, column.id, service.id)}
+                          onDrop={(event) => void handleServiceDropBeforeCard(event, column.id, service.id)}
+                          onDragEnd={resetDragState}
+                          className={cn(
+                            'relative rounded-xl border border-border bg-card/70 p-3 space-y-2 transition-all duration-150 cursor-grab active:cursor-grabbing select-none',
+                            isServiceDragging && 'bg-primary/10 border-primary/40 shadow-md scale-[0.99] opacity-80',
+                            isServiceDropTarget && 'ring-2 ring-primary/30 border-primary/40',
+                          )}
+                        >
+                          {isServiceDropTarget && dragOverServicePosition === 'before' && (
+                            <span className="pointer-events-none absolute -top-[1px] left-2 right-2 h-[2px] rounded-full bg-primary" />
+                          )}
+                          {isServiceDropTarget && dragOverServicePosition === 'after' && (
+                            <span className="pointer-events-none absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-primary" />
+                          )}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <GripVertical className={cn('w-4 h-4 mt-0.5 shrink-0', isServiceDragging ? 'text-primary' : 'text-muted-foreground')} />
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-foreground truncate">{service.name}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-2">{service.description}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <Button variant="ghost" size="icon" onClick={() => openEditDialog(service)}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(service.id)}>
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="ml-6 flex items-center text-xs text-muted-foreground">
+                              <Clock className="w-3 h-3 mr-1" />
+                              {t('appointmentEditor.durationMinutes', { minutes: service.duration })}
+                            </div>
+                            <div className="text-right">
+                              {priceDisplay.hasOffer && (
+                                <div className="text-[11px] line-through text-muted-foreground">{service.price}€</div>
+                              )}
+                              <span className="text-lg font-bold text-primary">{priceDisplay.finalPrice}€</span>
+                            </div>
+                          </div>
+                          {priceDisplay.hasOffer && service.appliedOffer && (
+                            <div className="flex items-center gap-2 text-[11px] text-primary bg-primary/5 border border-primary/20 rounded-lg px-2.5 py-1.5">
+                              <Percent className="w-3 h-3" />
+                              {t('admin.services.offerSavings', {
+                                offerName: service.appliedOffer.name,
+                                amount: service.appliedOffer.amountOff.toFixed(2),
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
                     })}
-                  </div>
-                )}
-                {categoriesEnabled && (
-                  <div className="flex items-center justify-between rounded-xl border border-dashed border-border px-3 py-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs text-muted-foreground">{t('admin.services.fields.category')}</span>
-                      {service.category ? (
-                        <Badge variant="secondary" className="w-fit">{service.category.name}</Badge>
-                      ) : (
-                        <Badge variant="outline" className="w-fit">{t('admin.services.uncategorized')}</Badge>
-                      )}
-                    </div>
-                    <Select
-                      value={service.categoryId || UNCATEGORIZED_VALUE}
-                      onValueChange={(value) => handleAssignCategory(service, value)}
-                    >
-                      <SelectTrigger className="w-[160px]">
-                        <SelectValue placeholder={t('admin.services.assignCategory')} />
-                      </SelectTrigger>
-                      <SelectContent align="end">
-                        {orderedCategories.map((category) => (
-                          <SelectItem key={category.id} value={category.id}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {updatingServiceCategoryId === service.id && (
-                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    {column.services.length === 0 && (
+                      <div
+                        className={cn(
+                          'rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground',
+                          !categoriesEnabled && 'col-span-full',
+                        )}
+                      >
+                        {t('admin.services.emptyTitle')}
+                      </div>
                     )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <EmptyState
@@ -655,7 +996,6 @@ const AdminServices: React.FC = () => {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder={t('admin.services.fields.descriptionPlaceholder')}
-                  required
                 />
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
@@ -776,17 +1116,6 @@ const AdminServices: React.FC = () => {
                   onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
                   placeholder={t('admin.services.dialog.categoryDescriptionPlaceholder')}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="category-position">{t('admin.services.fields.order')}</Label>
-                <Input
-                  id="category-position"
-                  type="number"
-                  min="0"
-                  value={categoryForm.position}
-                  onChange={(e) => setCategoryForm({ ...categoryForm, position: Number(e.target.value) })}
-                />
-                <p className="text-xs text-muted-foreground">{t('admin.services.fields.orderHint')}</p>
               </div>
             </div>
             <DialogFooter>

@@ -49,6 +49,12 @@ export class CreateProductUseCase {
       description: command.description ?? '',
       sku: command.sku ?? null,
       price: command.price,
+      position:
+        command.position ??
+        (await this.productManagementPort.getNextProductPosition({
+          localId: scope.localId,
+          categoryId,
+        })),
       stock: command.stock ?? 0,
       minStock: command.minStock ?? 0,
       categoryId,

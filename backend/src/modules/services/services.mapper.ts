@@ -6,6 +6,7 @@ type ServiceWithCategory = {
   description: string;
   price: number | { toString(): string };
   duration: number;
+  position: number;
   isArchived: boolean;
   categoryId: string | null;
   category?:
@@ -41,6 +42,7 @@ export const mapService = (service: ServiceWithCategory, pricing?: ReturnType<ty
     price,
     finalPrice,
     duration: service.duration,
+    position: service.position,
     isArchived: service.isArchived,
     categoryId: service.categoryId,
     category: service.category

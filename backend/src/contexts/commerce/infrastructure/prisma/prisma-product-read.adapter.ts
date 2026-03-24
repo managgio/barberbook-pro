@@ -13,6 +13,7 @@ type ProductRow = {
   description: string | null;
   sku: string | null;
   price: number;
+  position: number;
   stock: number;
   minStock: number | null;
   imageUrl: string | null;
@@ -42,6 +43,7 @@ export class PrismaProductReadAdapter implements CommerceProductReadPort {
       description: product.description ?? '',
       sku: product.sku ?? null,
       price: Number(product.price),
+      position: product.position,
       stock: product.stock,
       minStock: product.minStock ?? 0,
       imageUrl: product.imageUrl ?? null,
@@ -80,7 +82,7 @@ export class PrismaProductReadAdapter implements CommerceProductReadPort {
     const [products, offers] = await Promise.all([
       this.prisma.product.findMany({
         where: { localId: params.localId, isArchived: false },
-        orderBy: { name: 'asc' },
+        orderBy: [{ category: { position: 'asc' } }, { position: 'asc' }, { name: 'asc' }],
         include: { category: true },
       }),
       this.getActiveProductOffers(params.localId, now),
@@ -117,7 +119,7 @@ export class PrismaProductReadAdapter implements CommerceProductReadPort {
           isPublic: true,
           isArchived: false,
         },
-        orderBy: { name: 'asc' },
+        orderBy: [{ category: { position: 'asc' } }, { position: 'asc' }, { name: 'asc' }],
         include: { category: true },
       }),
       this.getActiveProductOffers(params.localId, now),

@@ -22,10 +22,10 @@ export const postAiAssistantChat = async (payload: {
 
 export const getAiAssistantSession = async (payload: {
   sessionId: string;
-}): Promise<AiChatSessionResponse> =>
-  apiRequest(`/admin/ai-assistant/session/${payload.sessionId}`);
+}): Promise<AiChatSessionResponse | null> =>
+  apiRequest(`/admin/ai-assistant/session/${payload.sessionId}`, { skip404: true });
 
-export const getAiAssistantLatestSession = async (): Promise<AiChatSessionResponse | undefined> =>
+export const getAiAssistantLatestSession = async (): Promise<AiChatSessionResponse | null> =>
   apiRequest('/admin/ai-assistant/session', { skip404: true });
 
 export const postAiAssistantTranscribe = async (payload: {

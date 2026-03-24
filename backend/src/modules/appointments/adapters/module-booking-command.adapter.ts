@@ -55,6 +55,7 @@ type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
 const DEFAULT_SERVICE_DURATION = 30;
 const CONFIRMATION_GRACE_MS = 60 * 1000;
 const DEFAULT_CURRENCY = (process.env.STRIPE_CURRENCY || 'eur').toLowerCase();
+const DEFAULT_SLOT_INTERVAL_MINUTES = 15;
 
 @Injectable()
 export class ModuleBookingCommandAdapter implements BookingCommandPort {
@@ -144,6 +145,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     serviceId?: string;
     startDateTime: string;
     appointmentIdToIgnore?: string;
+    slotIntervalMinutes?: number;
   }) {
     const startDate = new Date(params.startDateTime);
     if (Number.isNaN(startDate.getTime())) {
@@ -158,6 +160,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       date: dateOnly,
       serviceId: params.serviceId,
       appointmentIdToIgnore: params.appointmentIdToIgnore,
+      slotIntervalMinutes: params.slotIntervalMinutes,
     });
 
     if (!availableSlots.includes(slotTime)) {
@@ -167,6 +170,10 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
 
   private shouldHoldStock(status: AppointmentStatus | string) {
     return status !== 'cancelled' && status !== 'no_show';
+  }
+
+  private resolveSlotIntervalMinutes(value: number | null | undefined) {
+    return value === 30 ? 30 : DEFAULT_SLOT_INTERVAL_MINUTES;
   }
 
   private async getProductOffers(localId: string, referenceDate: Date) {
@@ -327,6 +334,9 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const startDateTime = new Date(data.startDateTime);
     const isAdminActor = Boolean(command.execution?.actorUserId);
     const settings = await this.settingsService.getSettings();
+    const slotIntervalMinutes = this.resolveSlotIntervalMinutes(
+      settings.appointments?.slotIntervalMinutes,
+    );
     const productsConfig = settings.products;
     const requestedProducts = data.products ?? [];
     if (requestedProducts.length > 0) {
@@ -344,6 +354,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       barberId: data.barberId,
       serviceId: data.serviceId,
       startDateTime: data.startDateTime,
+      slotIntervalMinutes,
     });
 
     const shopSchedule = await this.schedulesService.getShopSchedule();
@@ -604,6 +615,10 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const serviceChanged = data.serviceId !== undefined && data.serviceId !== current.serviceId;
     const barberChanged = data.barberId !== undefined && data.barberId !== current.barberId;
     const userChanged = data.userId !== undefined && data.userId !== current.userId;
+    const settings = await this.settingsService.getSettings();
+    const slotIntervalMinutes = this.resolveSlotIntervalMinutes(
+      settings.appointments?.slotIntervalMinutes,
+    );
 
     if (startChanged || serviceChanged || barberChanged) {
       await this.assertBarberServiceCompatibility(localId, nextBarberId, nextServiceId);
@@ -613,6 +628,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
         serviceId: data.serviceId || current.serviceId,
         startDateTime: data.startDateTime || current.startDateTime.toISOString(),
         appointmentIdToIgnore: current.id,
+        slotIntervalMinutes,
       });
     }
 
@@ -621,7 +637,6 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const productsInputProvided = Array.isArray(data.products);
 
     const isAdminActor = Boolean(command.execution?.actorUserId);
-    const settings = await this.settingsService.getSettings();
 
     const cutoffHours = settings.appointments?.cancellationCutoffHours ?? 0;
     const cancellationCutoffError = getCancellationCutoffViolationMessage({

@@ -23,6 +23,7 @@ const readModel: CommerceServiceReadModel = {
   description: '',
   price: 20,
   duration: 30,
+  position: 0,
   isArchived: false,
   categoryId: 'category-1',
   category: {
@@ -41,8 +42,10 @@ const baseManagementPort = (): CommerceServiceManagementPort => ({
   findServiceForManagement: async () => ({
     id: 'service-1',
     categoryId: 'category-1',
+    position: 0,
     isArchived: false,
   }),
+  getNextServicePosition: async () => 0,
   createService: async () => ({ id: 'service-1' }),
   updateService: async () => ({ id: 'service-1' }),
   archiveService: async () => 'archived',
@@ -84,6 +87,7 @@ test('update service keeps existing category when categoryId is undefined', asyn
       findServiceForManagement: async () => ({
         id: 'service-1',
         categoryId: 'category-1',
+        position: 0,
         isArchived: false,
       }),
       updateService: async (params) => {

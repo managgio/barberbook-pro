@@ -6,6 +6,7 @@ export type CreateCommerceServiceInput = {
   price: number;
   duration: number;
   categoryId: string | null;
+  position: number;
 };
 
 export type UpdateCommerceServiceInput = {
@@ -13,12 +14,14 @@ export type UpdateCommerceServiceInput = {
   description?: string;
   price?: number;
   duration?: number;
-  categoryId: string | null;
+  categoryId?: string | null;
+  position?: number;
 };
 
 export type CommerceServiceForManagement = {
   id: string;
   categoryId: string | null;
+  position: number;
   isArchived: boolean;
 };
 
@@ -32,6 +35,10 @@ export interface CommerceServiceManagementPort {
     serviceId: string;
     includeArchived?: boolean;
   }): Promise<CommerceServiceForManagement | null>;
+  getNextServicePosition(params: {
+    localId: string;
+    categoryId: string | null;
+  }): Promise<number>;
   createService(params: {
     localId: string;
     input: CreateCommerceServiceInput;

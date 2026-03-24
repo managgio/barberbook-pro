@@ -532,7 +532,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     const afternoon: string[] = [];
     availableSlots.forEach((slot) => {
       const hour = parseInt(slot.split(':')[0], 10);
-      if (hour < 14) {
+      if (hour < 15) {
         morning.push(slot);
       } else {
         afternoon.push(slot);

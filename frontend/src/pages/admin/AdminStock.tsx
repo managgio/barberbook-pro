@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/context/TenantContext';
@@ -27,7 +26,7 @@ import {
 import { updateSiteSettings } from '@/data/api/settings';
 import { Product, ProductCategory } from '@/data/types';
 import { uploadToImageKit, deleteFromImageKit } from '@/lib/imagekit';
-import { Boxes, ImagePlus, Info, Loader2, PackagePlus, Pencil, RefreshCw, Trash2, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Boxes, ImagePlus, Loader2, PackagePlus, Pencil, RefreshCw, Trash2, Sparkles, CheckCircle2, GripVertical } from 'lucide-react';
 import EmptyState from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
 import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
@@ -40,6 +39,26 @@ import InlineTranslationPopover from '@/components/admin/InlineTranslationPopove
 
 const EMPTY_PRODUCTS: Product[] = [];
 const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
+const UNCATEGORIZED_VALUE = 'none';
+const PRODUCT_DRAG_MIME = 'application/x-product-id';
+const CATEGORY_DRAG_MIME = 'application/x-product-category-id';
+
+const reorderByInsertIndex = <T,>(items: T[], fromIndex: number, insertIndex: number): T[] => {
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  if (!moved) return items;
+  let targetIndex = insertIndex;
+  if (fromIndex < insertIndex) {
+    targetIndex -= 1;
+  }
+  if (targetIndex < 0) targetIndex = 0;
+  if (targetIndex > next.length) targetIndex = next.length;
+  next.splice(targetIndex, 0, moved);
+  return next;
+};
+
+const sortProducts = (a: Product, b: Product) =>
+  (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name);
 
 const AdminStock: React.FC = () => {
   const { toast } = useToast();
@@ -47,10 +66,6 @@ const AdminStock: React.FC = () => {
   const { locations, currentLocationId, tenant } = useTenant();
   const copy = useBusinessCopy();
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [showActiveOnly, setShowActiveOnly] = useState(false);
-  const [showPublicOnly, setShowPublicOnly] = useState(false);
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [isProductSaving, setIsProductSaving] = useState(false);
@@ -62,7 +77,7 @@ const AdminStock: React.FC = () => {
     price: '',
     stock: '',
     minStock: '',
-    categoryId: 'none',
+    categoryId: UNCATEGORIZED_VALUE,
     imageUrl: '',
     imageFileId: '',
     isActive: true,
@@ -82,6 +97,15 @@ const AdminStock: React.FC = () => {
 
   const [deleteProductId, setDeleteProductId] = useState<string | null>(null);
   const [deleteCategoryId, setDeleteCategoryId] = useState<string | null>(null);
+  const [isPersistingCategoryOrder, setIsPersistingCategoryOrder] = useState(false);
+  const [isPersistingProductOrder, setIsPersistingProductOrder] = useState(false);
+  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
+  const [dragOverCategoryPosition, setDragOverCategoryPosition] = useState<'before' | 'after'>('before');
+  const [draggingProductId, setDraggingProductId] = useState<string | null>(null);
+  const [dragOverProductId, setDragOverProductId] = useState<string | null>(null);
+  const [dragOverProductColumnId, setDragOverProductColumnId] = useState<string | null>(null);
+  const [dragOverProductPosition, setDragOverProductPosition] = useState<'before' | 'after'>('before');
 
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [importSourceLocalId, setImportSourceLocalId] = useState<string>('');
@@ -133,18 +157,6 @@ const AdminStock: React.FC = () => {
     };
   }, [productImageFile]);
 
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return products.filter((product) => {
-      if (categoryFilter !== 'all' && product.categoryId !== categoryFilter) return false;
-      if (showActiveOnly && !product.isActive) return false;
-      if (showPublicOnly && !product.isPublic) return false;
-      if (!query) return true;
-      const haystack = `${product.name} ${product.description ?? ''} ${product.sku ?? ''}`.toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [products, search, categoryFilter, showActiveOnly, showPublicOnly]);
-
   const inventorySummary = useMemo(() => {
     const activeCount = products.filter((product) => product.isActive).length;
     const totalStock = products.reduce((acc, product) => acc + product.stock, 0);
@@ -157,6 +169,57 @@ const AdminStock: React.FC = () => {
     () => products.filter((product) => !product.categoryId),
     [products],
   );
+  const orderedCategories = useMemo(
+    () =>
+      [...categories].sort(
+        (a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name),
+      ),
+    [categories],
+  );
+  const orderedProducts = useMemo(
+    () => [...products].sort(sortProducts),
+    [products],
+  );
+  const productColumns = useMemo(() => {
+    if (!categoriesEnabled) {
+      return [
+        {
+          id: UNCATEGORIZED_VALUE,
+          name: t('admin.stock.tabs.products'),
+          description: t('admin.stock.subtitle', { locationSingularLower: copy.location.singularLower }),
+          products: orderedProducts,
+          isUncategorized: true,
+        },
+      ];
+    }
+
+    const baseColumns = orderedCategories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      description: category.description || t('admin.services.categories.noDescription'),
+      products: orderedProducts.filter((product) => product.categoryId === category.id),
+      isUncategorized: false,
+    }));
+
+    if (uncategorizedProducts.length > 0) {
+      baseColumns.push({
+        id: UNCATEGORIZED_VALUE,
+        name: t('admin.services.uncategorized'),
+        description: t('admin.stock.presentation.uncategorizedWarning', { count: uncategorizedProducts.length }),
+        products: uncategorizedProducts,
+        isUncategorized: true,
+      });
+    }
+
+    return baseColumns;
+  }, [
+    categoriesEnabled,
+    copy.location.singularLower,
+    orderedCategories,
+    orderedProducts,
+    t,
+    uncategorizedProducts,
+  ]);
 
   const handleToggleCategories = async (enabled: boolean) => {
     if (!settings) return;
@@ -204,7 +267,7 @@ const AdminStock: React.FC = () => {
         price: product.price.toFixed(2),
         stock: String(product.stock),
         minStock: String(product.minStock ?? 0),
-        categoryId: product.categoryId ?? 'none',
+        categoryId: product.categoryId ?? UNCATEGORIZED_VALUE,
         imageUrl: product.imageUrl ?? '',
         imageFileId: product.imageFileId ?? '',
         isActive: product.isActive,
@@ -218,7 +281,7 @@ const AdminStock: React.FC = () => {
         price: '',
         stock: '',
         minStock: '',
-        categoryId: categoriesEnabled ? 'none' : 'none',
+        categoryId: categoriesEnabled ? orderedCategories[0]?.id ?? UNCATEGORIZED_VALUE : UNCATEGORIZED_VALUE,
         imageUrl: '',
         imageFileId: '',
         isActive: true,
@@ -265,7 +328,7 @@ const AdminStock: React.FC = () => {
         price: priceValue,
         stock: Math.max(0, Math.floor(stockValue)),
         minStock: Math.max(0, Math.floor(minStockValue)),
-        categoryId: productForm.categoryId === 'none' ? null : productForm.categoryId,
+        categoryId: productForm.categoryId === UNCATEGORIZED_VALUE ? null : productForm.categoryId,
         imageUrl,
         imageFileId,
         isActive: productForm.isActive,
@@ -326,7 +389,7 @@ const AdminStock: React.FC = () => {
         position: category.position ?? 0,
       });
     } else {
-      setCategoryForm({ name: '', description: '', position: 0 });
+      setCategoryForm({ name: '', description: '', position: categories.length });
     }
     setIsCategoryDialogOpen(true);
   };
@@ -424,11 +487,255 @@ const AdminStock: React.FC = () => {
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     products.forEach((product) => {
-      const id = product.categoryId ?? 'none';
+      const id = product.categoryId ?? UNCATEGORIZED_VALUE;
       counts[id] = (counts[id] ?? 0) + 1;
     });
     return counts;
   }, [products]);
+
+  const buildProductBuckets = (currentProducts: Product[]) => {
+    const sorted = [...currentProducts].sort(sortProducts);
+    const buckets = new Map<string, Product[]>();
+
+    if (!categoriesEnabled) {
+      buckets.set(UNCATEGORIZED_VALUE, sorted);
+      return buckets;
+    }
+
+    orderedCategories.forEach((category) => buckets.set(category.id, []));
+    sorted.forEach((product) => {
+      const key = product.categoryId ?? UNCATEGORIZED_VALUE;
+      if (!buckets.has(key)) {
+        buckets.set(key, []);
+      }
+      buckets.get(key)?.push(product);
+    });
+    return buckets;
+  };
+
+  const resetDragState = () => {
+    setDraggingCategoryId(null);
+    setDragOverCategoryId(null);
+    setDragOverCategoryPosition('before');
+    setDraggingProductId(null);
+    setDragOverProductId(null);
+    setDragOverProductColumnId(null);
+    setDragOverProductPosition('before');
+  };
+
+  const persistCategoryOrder = async (nextCategories: ProductCategory[]) => {
+    const updates = nextCategories
+      .map((category, index) => ({
+        id: category.id,
+        nextPosition: index,
+        currentPosition: category.position ?? 0,
+      }))
+      .filter((entry) => entry.currentPosition !== entry.nextPosition)
+      .map((entry) => updateProductCategory(entry.id, { position: entry.nextPosition }));
+
+    if (updates.length === 0) return;
+
+    setIsPersistingCategoryOrder(true);
+    try {
+      await Promise.all(updates);
+      await Promise.all([categoriesQuery.refetch(), productsQuery.refetch()]);
+      dispatchProductsUpdated({ source: 'admin-stock' });
+    } catch (error) {
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.saveCategoryError'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsPersistingCategoryOrder(false);
+    }
+  };
+
+  const persistProductDrop = async (productId: string, targetColumnId: string, targetIndex: number) => {
+    const sourceProduct = products.find((product) => product.id === productId);
+    if (!sourceProduct) return;
+
+    if (categoriesEnabled && targetColumnId === UNCATEGORIZED_VALUE) {
+      toast({
+        title: t('admin.services.toast.missingCategoryTitle'),
+        description: t('admin.services.toast.assignCategoryDescription'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const sourceColumnId = categoriesEnabled
+      ? (sourceProduct.categoryId ?? UNCATEGORIZED_VALUE)
+      : UNCATEGORIZED_VALUE;
+    const buckets = buildProductBuckets(products);
+    const sourceBucket = buckets.get(sourceColumnId) ?? [];
+    const sourceIndex = sourceBucket.findIndex((product) => product.id === productId);
+    if (sourceIndex < 0) return;
+
+    const [movingProduct] = sourceBucket.splice(sourceIndex, 1);
+    const targetBucket = buckets.get(targetColumnId) ?? [];
+    const boundedTargetIndex = Math.max(0, Math.min(targetIndex, targetBucket.length));
+    const normalizedTargetIndex =
+      sourceColumnId === targetColumnId && sourceIndex < boundedTargetIndex
+        ? boundedTargetIndex - 1
+        : boundedTargetIndex;
+    targetBucket.splice(normalizedTargetIndex, 0, movingProduct);
+
+    if (!buckets.has(targetColumnId)) {
+      buckets.set(targetColumnId, targetBucket);
+    }
+
+    const touchedColumns = new Set([sourceColumnId, targetColumnId]);
+    const updates: Array<Promise<unknown>> = [];
+    touchedColumns.forEach((columnId) => {
+      const columnProducts = buckets.get(columnId) ?? [];
+      columnProducts.forEach((product, index) => {
+        const nextCategoryId = categoriesEnabled
+          ? (columnId === UNCATEGORIZED_VALUE ? null : columnId)
+          : product.categoryId ?? null;
+        if (categoriesEnabled && nextCategoryId === null) {
+          return;
+        }
+        const currentCategoryId = product.categoryId ?? null;
+        const currentPosition = product.position ?? 0;
+        const categoryChanged = nextCategoryId !== currentCategoryId;
+        const positionChanged = index !== currentPosition;
+        if (categoryChanged || positionChanged) {
+          const payload: Partial<Product> = { position: index };
+          if (categoryChanged) {
+            payload.categoryId = nextCategoryId;
+          }
+          updates.push(updateProduct(product.id, payload));
+        }
+      });
+    });
+
+    if (updates.length === 0) return;
+
+    setIsPersistingProductOrder(true);
+    try {
+      await Promise.all(updates);
+      await Promise.all([productsQuery.refetch(), categoriesQuery.refetch()]);
+      dispatchProductsUpdated({ source: 'admin-stock' });
+    } catch (error) {
+      toast({
+        title: t('admin.common.error'),
+        description: t('admin.stock.toast.saveProductError'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsPersistingProductOrder(false);
+    }
+  };
+
+  const handleCategoryDragStart = (event: React.DragEvent<HTMLDivElement>, categoryId: string) => {
+    if (isPersistingCategoryOrder || isPersistingProductOrder) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(CATEGORY_DRAG_MIME, categoryId);
+    event.dataTransfer.setData('text/plain', categoryId);
+    setDraggingCategoryId(categoryId);
+    setDragOverCategoryId(categoryId);
+  };
+
+  const handleCategoryDragOver = (event: React.DragEvent<HTMLDivElement>, categoryId: string) => {
+    event.preventDefault();
+    if (!draggingCategoryId) return;
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const middleY = bounds.top + bounds.height / 2;
+    setDragOverCategoryPosition(event.clientY <= middleY ? 'before' : 'after');
+    setDragOverCategoryId(categoryId);
+  };
+
+  const handleCategoryDrop = async (event: React.DragEvent<HTMLDivElement>, targetCategoryId: string) => {
+    event.preventDefault();
+    const sourceCategoryId =
+      event.dataTransfer.getData(CATEGORY_DRAG_MIME) || event.dataTransfer.getData('text/plain');
+    if (!sourceCategoryId || sourceCategoryId === targetCategoryId) {
+      resetDragState();
+      return;
+    }
+
+    const fromIndex = orderedCategories.findIndex((category) => category.id === sourceCategoryId);
+    const toIndex = orderedCategories.findIndex((category) => category.id === targetCategoryId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+      resetDragState();
+      return;
+    }
+
+    const insertIndex = toIndex + (dragOverCategoryPosition === 'after' ? 1 : 0);
+    await persistCategoryOrder(reorderByInsertIndex(orderedCategories, fromIndex, insertIndex));
+    resetDragState();
+  };
+
+  const handleProductDragStart = (event: React.DragEvent<HTMLDivElement>, productId: string) => {
+    if (isPersistingCategoryOrder || isPersistingProductOrder) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(PRODUCT_DRAG_MIME, productId);
+    event.dataTransfer.setData('text/plain', productId);
+    setDraggingProductId(productId);
+    setDragOverProductId(productId);
+  };
+
+  const handleProductDragOverColumn = (event: React.DragEvent<HTMLDivElement>, columnId: string) => {
+    event.preventDefault();
+    if (!draggingProductId) return;
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverProductColumnId(columnId);
+    setDragOverProductId(null);
+    setDragOverProductPosition('after');
+  };
+
+  const handleProductDragOverCard = (
+    event: React.DragEvent<HTMLDivElement>,
+    columnId: string,
+    productId: string,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!draggingProductId) return;
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const middleY = bounds.top + bounds.height / 2;
+    setDragOverProductPosition(event.clientY <= middleY ? 'before' : 'after');
+    setDragOverProductColumnId(columnId);
+    setDragOverProductId(productId);
+  };
+
+  const handleProductDropAtColumnEnd = async (
+    event: React.DragEvent<HTMLDivElement>,
+    columnId: string,
+  ) => {
+    event.preventDefault();
+    const productId = event.dataTransfer.getData(PRODUCT_DRAG_MIME) || event.dataTransfer.getData('text/plain');
+    if (!productId) {
+      resetDragState();
+      return;
+    }
+    const targetColumn = productColumns.find((column) => column.id === columnId);
+    await persistProductDrop(productId, columnId, targetColumn?.products.length ?? 0);
+    resetDragState();
+  };
+
+  const handleProductDropBeforeCard = async (
+    event: React.DragEvent<HTMLDivElement>,
+    columnId: string,
+    targetProductId: string,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const productId = event.dataTransfer.getData(PRODUCT_DRAG_MIME) || event.dataTransfer.getData('text/plain');
+    if (!productId) {
+      resetDragState();
+      return;
+    }
+
+    const targetColumn = productColumns.find((column) => column.id === columnId);
+    const targetIndex = targetColumn?.products.findIndex((product) => product.id === targetProductId) ?? -1;
+    const insertIndex = targetIndex + (dragOverProductPosition === 'after' ? 1 : 0);
+    await persistProductDrop(productId, columnId, insertIndex >= 0 ? insertIndex : 0);
+    resetDragState();
+  };
 
   return (
     <div className="space-y-6">
@@ -521,147 +828,182 @@ const AdminStock: React.FC = () => {
 
         <TabsContent value="products">
           <Card variant="elevated">
-            <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Boxes className="w-5 h-5 text-primary" />
                 {t('admin.stock.inventoryTitle')}
               </CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
-                  <Input
-                    placeholder={t('admin.stock.searchPlaceholder')}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-[220px]"
-                  />
-                </div>
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder={t('admin.services.fields.category')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('admin.stock.filters.allCategories')}</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant={showActiveOnly ? 'secondary' : 'outline'}
-                  onClick={() => setShowActiveOnly((prev) => !prev)}
-                >
-                  {t('admin.stock.filters.active')}
-                </Button>
-                <Button
-                  variant={showPublicOnly ? 'secondary' : 'outline'}
-                  onClick={() => setShowPublicOnly((prev) => !prev)}
-                >
-                  {t('admin.stock.filters.visible')}
-                </Button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      type="button"
-                      className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[240px] text-xs leading-relaxed">
-                    {t('admin.stock.tooltip.activeVsVisible')}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
                 <div className="py-10 text-center text-sm text-muted-foreground">{t('admin.stock.loadingInventory')}</div>
-              ) : filteredProducts.length > 0 ? (
-                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredProducts.map((product) => {
-                    const hasOffer = product.finalPrice !== undefined && Math.abs(product.finalPrice - product.price) > 0.001;
-                    const isLow = product.stock <= (product.minStock ?? 0);
-                    return (
-                      <Card key={product.id} className="border border-border/70 bg-background/70">
-                        <CardContent className="p-4 space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 rounded-xl bg-muted/50 overflow-hidden flex items-center justify-center">
-                                {product.imageUrl ? (
-                                  <img
-                                    src={product.imageUrl}
-                                    alt={product.name}
-                                    loading="lazy"
-                                    decoding="async"
-                                    width={48}
-                                    height={48}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">{t('admin.stock.noPhoto')}</span>
+              ) : products.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">{t('admin.spotlight.dragToReorder')}</p>
+                    {(isPersistingCategoryOrder || isPersistingProductOrder) && (
+                      <div className="inline-flex items-center gap-2 text-xs text-primary">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {t('admin.common.saving')}
+                      </div>
+                    )}
+                  </div>
+                  <div className={cn('pb-2', categoriesEnabled ? 'flex gap-4 overflow-x-auto' : 'block')}>
+                    {productColumns.map((column) => {
+                      const isColumnDragOver =
+                        dragOverProductColumnId === column.id && !dragOverProductId;
+                      return (
+                        <Card
+                          key={column.id}
+                          variant="elevated"
+                          className={cn(
+                            categoriesEnabled
+                              ? 'w-[320px] min-w-[320px] max-w-[320px] shrink-0'
+                              : 'w-full min-w-0 max-w-none',
+                            'border border-border/70 bg-background/70',
+                            isColumnDragOver && 'ring-2 ring-primary/30 border-primary/40',
+                          )}
+                        >
+                          <CardHeader className="space-y-1">
+                            <CardTitle className="text-base flex items-center justify-between gap-2">
+                              <span className="truncate">{column.name}</span>
+                              <span className="text-xs text-muted-foreground font-normal">
+                                {t('admin.stock.categories.productCount', { count: column.products.length })}
+                              </span>
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground line-clamp-2">{column.description}</p>
+                          </CardHeader>
+                          <CardContent
+                            className={cn(
+                              'relative min-h-[220px]',
+                              categoriesEnabled
+                                ? 'space-y-2'
+                                : 'grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 content-start',
+                            )}
+                            onDragOver={(event) => handleProductDragOverColumn(event, column.id)}
+                            onDrop={(event) => void handleProductDropAtColumnEnd(event, column.id)}
+                          >
+                            {isColumnDragOver && (
+                              <span className="pointer-events-none absolute bottom-1 left-3 right-3 h-[2px] rounded-full bg-primary" />
+                            )}
+                            {column.products.map((product) => {
+                              const hasOffer =
+                                product.finalPrice !== undefined &&
+                                Math.abs(product.finalPrice - product.price) > 0.001;
+                              const isLow = product.stock <= (product.minStock ?? 0);
+                              const isProductDragging = draggingProductId === product.id;
+                              const isProductDropTarget =
+                                dragOverProductId === product.id && draggingProductId !== product.id;
+                              return (
+                                <div
+                                  key={product.id}
+                                  draggable={!isPersistingCategoryOrder && !isPersistingProductOrder}
+                                  onDragStart={(event) => handleProductDragStart(event, product.id)}
+                                  onDragOver={(event) => handleProductDragOverCard(event, column.id, product.id)}
+                                  onDrop={(event) => void handleProductDropBeforeCard(event, column.id, product.id)}
+                                  onDragEnd={resetDragState}
+                                  className={cn(
+                                    'relative rounded-xl border border-border bg-card/70 p-3 space-y-2 transition-all duration-150 cursor-grab active:cursor-grabbing select-none',
+                                    isProductDragging &&
+                                      'bg-primary/10 border-primary/40 shadow-md scale-[0.99] opacity-80',
+                                    isProductDropTarget && 'ring-2 ring-primary/30 border-primary/40',
+                                  )}
+                                >
+                                  {isProductDropTarget && dragOverProductPosition === 'before' && (
+                                    <span className="pointer-events-none absolute -top-[1px] left-2 right-2 h-[2px] rounded-full bg-primary" />
+                                  )}
+                                  {isProductDropTarget && dragOverProductPosition === 'after' && (
+                                    <span className="pointer-events-none absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-primary" />
+                                  )}
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-start gap-2 min-w-0">
+                                      <GripVertical
+                                        className={cn(
+                                          'w-4 h-4 mt-0.5 shrink-0',
+                                          isProductDragging ? 'text-primary' : 'text-muted-foreground',
+                                        )}
+                                      />
+                                      <div className="w-10 h-10 rounded-lg bg-muted/50 overflow-hidden flex items-center justify-center shrink-0">
+                                        {product.imageUrl ? (
+                                          <img
+                                            src={product.imageUrl}
+                                            alt={product.name}
+                                            loading="lazy"
+                                            decoding="async"
+                                            width={40}
+                                            height={40}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <span className="text-[10px] text-muted-foreground">{t('admin.stock.noPhoto')}</span>
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="font-semibold text-sm text-foreground truncate">{product.name}</p>
+                                        <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-1 shrink-0">
+                                      <Button variant="ghost" size="icon" onClick={() => openProductDialog(product)}>
+                                        <Pencil className="w-4 h-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="icon" onClick={() => setDeleteProductId(product.id)}>
+                                        <Trash2 className="w-4 h-4 text-destructive" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <div className="ml-6 flex items-center gap-2 text-[11px]">
+                                    <Badge
+                                      variant="outline"
+                                      className={product.isActive
+                                        ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-600'
+                                        : 'border-rose-500/30 bg-rose-500/15 text-rose-500'}
+                                    >
+                                      {product.isActive ? t('admin.stock.status.active') : t('admin.stock.status.inactive')}
+                                    </Badge>
+                                    <Badge
+                                      variant="outline"
+                                      className={product.isPublic
+                                        ? 'border-sky-500/30 bg-sky-500/15 text-sky-600'
+                                        : 'border-slate-500/30 bg-slate-500/15 text-slate-500'}
+                                    >
+                                      {product.isPublic ? t('admin.stock.status.visible') : t('admin.stock.status.private')}
+                                    </Badge>
+                                    {isLow && <Badge variant="destructive">{t('admin.stock.status.lowStock')}</Badge>}
+                                  </div>
+                                  <div className="ml-6 flex items-center justify-between">
+                                    <div className="text-xs text-muted-foreground">
+                                      {t('admin.stock.fields.stock')}: {product.stock}
+                                    </div>
+                                    <div className="text-right">
+                                      {hasOffer && (
+                                        <div className="text-[11px] line-through text-muted-foreground">
+                                          {product.price.toFixed(2)}€
+                                        </div>
+                                      )}
+                                      <span className="text-lg font-bold text-primary">
+                                        {(product.finalPrice ?? product.price).toFixed(2)}€
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {column.products.length === 0 && (
+                              <div
+                                className={cn(
+                                  'rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground',
+                                  !categoriesEnabled && 'col-span-full',
                                 )}
+                              >
+                                {t('admin.stock.emptyProductsTitle')}
                               </div>
-                              <div>
-                                <p className="font-semibold text-foreground">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {product.category?.name || t('admin.services.uncategorized')}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => openProductDialog(product)}>
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={() => setDeleteProductId(product.id)}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <Badge
-                              variant="outline"
-                              className={product.isActive
-                                ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-600'
-                                : 'border-rose-500/30 bg-rose-500/15 text-rose-500'}
-                            >
-                              {product.isActive ? t('admin.stock.status.active') : t('admin.stock.status.inactive')}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className={product.isPublic
-                                ? 'border-sky-500/30 bg-sky-500/15 text-sky-600'
-                                : 'border-slate-500/30 bg-slate-500/15 text-slate-500'}
-                            >
-                              {product.isPublic ? t('admin.stock.status.visible') : t('admin.stock.status.private')}
-                            </Badge>
-                            {isLow && <Badge variant="destructive">{t('admin.stock.status.lowStock')}</Badge>}
-                          </div>
-                          <div className="flex items-end justify-between">
-                            <div className="text-sm">
-                              <p className="text-xs text-muted-foreground">{t('admin.stock.fields.stock')}</p>
-                              <p className={cn('text-lg font-semibold', isLow ? 'text-destructive' : 'text-foreground')}>
-                                {product.stock}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              {hasOffer && (
-                                <p className="text-xs line-through text-muted-foreground">
-                                  {product.price.toFixed(2)}€
-                                </p>
-                              )}
-                              <p className="text-lg font-semibold text-primary">
-                                {(product.finalPrice ?? product.price).toFixed(2)}€
-                              </p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (
                 <EmptyState
@@ -684,17 +1026,53 @@ const AdminStock: React.FC = () => {
               </Button>
             </CardHeader>
             <CardContent>
-              {categories.length > 0 ? (
-                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {categories.map((category) => (
-                    <Card key={category.id} className="border border-border/70 bg-background/70">
-                      <CardContent className="p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-foreground">{category.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {category.description || t('admin.services.categories.noDescription')}
-                            </p>
+              {orderedCategories.length > 0 ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">{t('admin.spotlight.dragToReorder')}</p>
+                    {(isPersistingCategoryOrder || isPersistingProductOrder) && (
+                      <div className="inline-flex items-center gap-2 text-xs text-primary">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {t('admin.common.saving')}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,360px))] gap-3">
+                    {orderedCategories.map((category) => {
+                      const count = categoryCounts[category.id] ?? 0;
+                      const isDragging = draggingCategoryId === category.id;
+                      const isDragOver = dragOverCategoryId === category.id && draggingCategoryId !== category.id;
+                      return (
+                        <div
+                          key={category.id}
+                          draggable={!isPersistingCategoryOrder && !isPersistingProductOrder}
+                          onDragStart={(event) => handleCategoryDragStart(event, category.id)}
+                          onDragOver={(event) => handleCategoryDragOver(event, category.id)}
+                          onDrop={(event) => void handleCategoryDrop(event, category.id)}
+                          onDragEnd={resetDragState}
+                          className={cn(
+                            'relative rounded-xl border border-border p-4 bg-background/60 flex items-start justify-between gap-3 transition-all duration-200 cursor-grab active:cursor-grabbing select-none',
+                            isDragging && 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]',
+                            isDragOver && 'ring-2 ring-primary/30 bg-primary/5',
+                          )}
+                        >
+                          {isDragOver && dragOverCategoryPosition === 'before' && (
+                            <span className="pointer-events-none absolute -top-[1px] left-3 right-3 h-[2px] rounded-full bg-primary" />
+                          )}
+                          {isDragOver && dragOverCategoryPosition === 'after' && (
+                            <span className="pointer-events-none absolute -bottom-[1px] left-3 right-3 h-[2px] rounded-full bg-primary" />
+                          )}
+                          <div className="flex items-start gap-3">
+                            <GripVertical className={cn('w-4 h-4 mt-0.5', isDragging ? 'text-primary' : 'text-muted-foreground')} />
+                            <div className="space-y-1">
+                              <p className="font-semibold text-foreground">{category.name}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {category.description || t('admin.services.categories.noDescription')}
+                              </p>
+                              <span className="text-[11px] text-muted-foreground">
+                                {t('admin.stock.categories.productCount', { count })}
+                              </span>
+                            </div>
                           </div>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openCategoryDialog(category)}>
@@ -705,15 +1083,9 @@ const AdminStock: React.FC = () => {
                             </Button>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{t('admin.stock.categories.productCount', { count: categoryCounts[category.id] ?? 0 })}</span>
-                          <span className="px-2 py-1 rounded-full border border-border">
-                            {t('admin.services.categories.order', { position: category.position ?? 0 })}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (
                 <EmptyState
@@ -784,6 +1156,7 @@ const AdminStock: React.FC = () => {
                 value={productForm.description}
                 onChange={(e) => setProductForm((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder={t('admin.stock.fields.descriptionPlaceholder')}
+                required={false}
               />
             </div>
             <div className="grid md:grid-cols-3 gap-4">
@@ -827,14 +1200,19 @@ const AdminStock: React.FC = () => {
                     <SelectValue placeholder={t('admin.services.fields.selectCategory')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">{t('admin.services.uncategorized')}</SelectItem>
-                    {categories.map((category) => (
+                    {!categoriesEnabled && (
+                      <SelectItem value={UNCATEGORIZED_VALUE}>{t('admin.services.uncategorized')}</SelectItem>
+                    )}
+                    {orderedCategories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {categoriesEnabled && orderedCategories.length === 0 && (
+                  <p className="text-xs text-destructive">{t('admin.services.fields.createCategoryFirst')}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>{t('admin.stock.fields.image')}</Label>
@@ -939,15 +1317,6 @@ const AdminStock: React.FC = () => {
               <Input
                 value={categoryForm.description}
                 onChange={(e) => setCategoryForm((prev) => ({ ...prev, description: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t('admin.services.fields.order')}</Label>
-              <Input
-                type="number"
-                min={0}
-                value={categoryForm.position}
-                onChange={(e) => setCategoryForm((prev) => ({ ...prev, position: Number(e.target.value) }))}
               />
             </div>
           </div>

@@ -174,3 +174,24 @@ test('forwards appointmentIdToIgnore to availability read port', async () => {
 
   assert.deepEqual(calls, [{ appointmentIdToIgnore: 'appt-123' }]);
 });
+
+test('respects custom slot interval from query', async () => {
+  const useCase = buildUseCase();
+  const result = await useCase.execute({
+    context: {
+      tenantId: 'b1',
+      brandId: 'b1',
+      localId: 'l1',
+      actorUserId: null,
+      timezone: 'Europe/Madrid',
+      correlationId: 'corr-5',
+    },
+    barberId: 'barber1',
+    date: '2026-03-04',
+    slotIntervalMinutes: 30,
+  });
+
+  assert.equal(result.includes('09:00'), true);
+  assert.equal(result.includes('09:30'), true);
+  assert.equal(result.includes('09:15'), false);
+});

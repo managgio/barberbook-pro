@@ -21,6 +21,7 @@ export class UpdateServiceUseCase {
     }
 
     const categoryId = command.categoryId === undefined ? existing.categoryId : command.categoryId;
+    const position = command.position === undefined ? existing.position : command.position;
     const categoriesEnabled = await this.serviceManagementPort.areCategoriesEnabled(localId);
     if (categoriesEnabled && !categoryId) {
       throw new DomainError(
@@ -48,6 +49,7 @@ export class UpdateServiceUseCase {
         price: command.price,
         duration: command.duration,
         categoryId,
+        position,
       },
     });
     if (!updated) {

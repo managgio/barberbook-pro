@@ -205,8 +205,11 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     const afternoon: string[] = [];
     availableSlots.forEach((slot) => {
       const hour = parseInt(slot.split(':')[0], 10);
-      if (hour < 14) morning.push(slot);
-      else afternoon.push(slot);
+      if (hour < 15) {
+        morning.push(slot);
+      } else {
+        afternoon.push(slot);
+      }
     });
     return { morning, afternoon };
   }, [availableSlots]);
@@ -259,6 +262,14 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     barberServiceAssignmentEnabled,
     form.barberId,
   ]);
+
+  useEffect(() => {
+    if (context !== 'admin') return;
+    if (filteredBarbers.length !== 1) return;
+    const onlyBarberId = filteredBarbers[0].id;
+    if (form.barberId === onlyBarberId) return;
+    setForm((prev) => ({ ...prev, barberId: onlyBarberId, time: '' }));
+  }, [context, filteredBarbers, form.barberId]);
 
   const canShowProducts = productsEnabled && (isAdminContext || clientPurchaseEnabled);
 

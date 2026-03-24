@@ -50,6 +50,7 @@ export type SiteSettings = {
   openingHours: ShopSchedule;
   appointments: {
     cancellationCutoffHours: number;
+    slotIntervalMinutes?: number;
   };
   services: {
     categoriesEnabled: boolean;
@@ -107,6 +108,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   openingHours: cloneSchedule(DEFAULT_SHOP_SCHEDULE),
   appointments: {
     cancellationCutoffHours: 0,
+    slotIntervalMinutes: 15,
   },
   services: {
     categoriesEnabled: false,
@@ -125,6 +127,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
 };
 
 export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings => {
+  const normalizeSlotIntervalMinutes = (value: number | null | undefined) =>
+    value === 30 ? 30 : 15;
   const stats = { ...DEFAULT_SITE_SETTINGS.stats, ...(data?.stats ?? {}) };
   const visibility = {
     ...DEFAULT_SITE_SETTINGS.stats.visibility,
@@ -134,31 +138,32 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
     ? data.adminSidebar.order.filter((section): section is string => typeof section === 'string')
     : DEFAULT_SITE_SETTINGS.adminSidebar.order;
   return {
-  branding: { ...DEFAULT_SITE_SETTINGS.branding, ...(data?.branding ?? {}) },
-  location: { ...DEFAULT_SITE_SETTINGS.location, ...(data?.location ?? {}) },
-  contact: { ...DEFAULT_SITE_SETTINGS.contact, ...(data?.contact ?? {}) },
-  socials: { ...DEFAULT_SITE_SETTINGS.socials, ...(data?.socials ?? {}) },
-  stats: { ...stats, visibility },
-  openingHours: data?.openingHours
-    ? normalizeSchedule(data.openingHours)
-    : cloneSchedule(DEFAULT_SITE_SETTINGS.openingHours),
-  appointments: {
-    ...DEFAULT_SITE_SETTINGS.appointments,
-    ...(data?.appointments ?? {}),
-  },
-  services: {
-    ...DEFAULT_SITE_SETTINGS.services,
-    ...(data?.services ?? {}),
-  },
-  products: {
-    ...DEFAULT_SITE_SETTINGS.products,
-    ...(data?.products ?? {}),
-  },
-  adminSidebar: {
-    ...DEFAULT_SITE_SETTINGS.adminSidebar,
-    order: sidebarOrder,
-  },
-  qrSticker: data?.qrSticker ?? null,
+    branding: { ...DEFAULT_SITE_SETTINGS.branding, ...(data?.branding ?? {}) },
+    location: { ...DEFAULT_SITE_SETTINGS.location, ...(data?.location ?? {}) },
+    contact: { ...DEFAULT_SITE_SETTINGS.contact, ...(data?.contact ?? {}) },
+    socials: { ...DEFAULT_SITE_SETTINGS.socials, ...(data?.socials ?? {}) },
+    stats: { ...stats, visibility },
+    openingHours: data?.openingHours
+      ? normalizeSchedule(data.openingHours)
+      : cloneSchedule(DEFAULT_SITE_SETTINGS.openingHours),
+    appointments: {
+      ...DEFAULT_SITE_SETTINGS.appointments,
+      ...(data?.appointments ?? {}),
+      slotIntervalMinutes: normalizeSlotIntervalMinutes(data?.appointments?.slotIntervalMinutes),
+    },
+    services: {
+      ...DEFAULT_SITE_SETTINGS.services,
+      ...(data?.services ?? {}),
+    },
+    products: {
+      ...DEFAULT_SITE_SETTINGS.products,
+      ...(data?.products ?? {}),
+    },
+    adminSidebar: {
+      ...DEFAULT_SITE_SETTINGS.adminSidebar,
+      order: sidebarOrder,
+    },
+    qrSticker: data?.qrSticker ?? null,
   };
 };
 

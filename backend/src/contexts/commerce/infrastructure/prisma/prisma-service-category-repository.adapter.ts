@@ -14,6 +14,7 @@ const mapServiceItem = (service: {
   description: string;
   price: unknown;
   duration: number;
+  position: number;
   isArchived: boolean;
   categoryId: string | null;
   category?: {
@@ -28,6 +29,7 @@ const mapServiceItem = (service: {
   description: service.description,
   price: Number(service.price),
   duration: service.duration,
+  position: service.position,
   isArchived: service.isArchived,
   categoryId: service.categoryId,
   category: service.category
@@ -52,6 +54,7 @@ const mapCategoryEntity = (category: {
     description: string;
     price: unknown;
     duration: number;
+    position: number;
     isArchived: boolean;
     categoryId: string | null;
     category?: {
@@ -79,7 +82,7 @@ export class PrismaServiceCategoryRepositoryAdapter implements ServiceCategoryRe
       where: { localId: params.localId },
       orderBy: [{ position: 'asc' }, { name: 'asc' }],
       include: params.withServices
-        ? { services: { orderBy: { name: 'asc' }, include: { category: true } } }
+        ? { services: { orderBy: [{ position: 'asc' }, { name: 'asc' }], include: { category: true } } }
         : undefined,
     });
     return categories.map(mapCategoryEntity);
@@ -93,7 +96,7 @@ export class PrismaServiceCategoryRepositoryAdapter implements ServiceCategoryRe
     const category = await this.prisma.serviceCategory.findFirst({
       where: { id: params.id, localId: params.localId },
       include: params.withServices
-        ? { services: { orderBy: { name: 'asc' }, include: { category: true } } }
+        ? { services: { orderBy: [{ position: 'asc' }, { name: 'asc' }], include: { category: true } } }
         : undefined,
     });
     return category ? mapCategoryEntity(category) : null;

@@ -12,6 +12,7 @@ type ServiceRow = {
   description: string;
   price: number;
   duration: number;
+  position: number;
   isArchived: boolean;
   categoryId: string | null;
   category: {
@@ -36,6 +37,7 @@ export class PrismaServiceReadAdapter implements CommerceServiceReadPort {
       description: service.description,
       price: Number(service.price),
       duration: service.duration,
+      position: service.position,
       isArchived: service.isArchived,
       categoryId: service.categoryId,
       category: service.category
@@ -64,7 +66,7 @@ export class PrismaServiceReadAdapter implements CommerceServiceReadPort {
     const [services, offers] = await Promise.all([
       this.prisma.service.findMany({
         where,
-        orderBy: { name: 'asc' },
+        orderBy: [{ category: { position: 'asc' } }, { position: 'asc' }, { name: 'asc' }],
         include: { category: true },
       }),
       this.prisma.offer.findMany({

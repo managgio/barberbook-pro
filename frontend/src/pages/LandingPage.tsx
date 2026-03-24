@@ -5,7 +5,7 @@ import Navbar from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
-import { 
+import {
   Scissors, 
   Calendar, 
   Star, 
@@ -22,7 +22,7 @@ import {
   Music2,
 } from 'lucide-react';
 import defaultAvatar from '@/assets/img/default-image.webp';
-import { Barber, Product, ProductCategory, Service } from '@/data/types';
+import { Barber, Product, ProductCategory, Service, ServiceCategory } from '@/data/types';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { buildSocialUrl, buildWhatsappLink, formatPhoneDisplay, normalizePhoneParts } from '@/lib/siteSettings';
 import { useTenant } from '@/context/TenantContext';
@@ -32,6 +32,7 @@ import { CATALOG_STALE_TIME } from '@/lib/catalogQuery';
 import { getBarbers } from '@/data/api/barbers';
 import { getProductCategories } from '@/data/api/product-categories';
 import { getProducts } from '@/data/api/products';
+import { getServiceCategories } from '@/data/api/service-categories';
 import { getServices } from '@/data/api/services';
 import { queryKeys } from '@/lib/queryKeys';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,7 @@ const signImageFallback = '/placeholder.svg';
 const productImageFallback = '/placeholder.svg';
 const EMPTY_PRODUCTS: Product[] = [];
 const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
+const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
 const LANDING_SECTION_ORDER = ['presentation', 'services', 'products', 'barbers', 'cta'] as const;
 type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
 const isLandingSectionKey = (value: string): value is LandingSectionKey =>
@@ -176,7 +178,8 @@ const LandingPage: React.FC = () => {
     'grid sm:grid-cols-2 gap-5 sm:gap-8',
     hasSocials ? 'md:grid-cols-4' : 'md:grid-cols-3',
   );
-  const categoriesEnabled = settings.products.categoriesEnabled;
+  const productCategoriesEnabled = settings.products.categoriesEnabled;
+  const serviceCategoriesEnabled = settings.services.categoriesEnabled;
   const landingConfig = tenant?.config?.landing || null;
   const productsModuleEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
   const localId = tenant?.currentLocalId ?? null;
@@ -191,6 +194,12 @@ const LandingPage: React.FC = () => {
     queryFn: () => getServices(),
     staleTime: CATALOG_STALE_TIME,
   });
+  const serviceCategoriesQuery = useQuery<ServiceCategory[]>({
+    queryKey: queryKeys.serviceCategories(localId, false),
+    queryFn: () => getServiceCategories(false),
+    staleTime: CATALOG_STALE_TIME,
+    enabled: serviceCategoriesEnabled,
+  });
   const productsQuery = useQuery<Product[]>({
     queryKey: queryKeys.products(localId, 'landing'),
     queryFn: () => getProducts('landing'),
@@ -201,11 +210,12 @@ const LandingPage: React.FC = () => {
     queryKey: queryKeys.productCategories(localId, true),
     queryFn: () => getProductCategories(true),
     staleTime: CATALOG_STALE_TIME,
-    enabled: settings.products.showOnLanding && categoriesEnabled && productsModuleEnabled,
+    enabled: settings.products.showOnLanding && productCategoriesEnabled && productsModuleEnabled,
   });
 
   const barbers = barbersQuery.data ?? [];
   const services = servicesQuery.data ?? [];
+  const serviceCategories = serviceCategoriesQuery.data ?? EMPTY_SERVICE_CATEGORIES;
   const products = productsQuery.data ?? EMPTY_PRODUCTS;
   const productCategories = productCategoriesQuery.data ?? EMPTY_PRODUCT_CATEGORIES;
   const showProducts = productsModuleEnabled && settings.products.showOnLanding && products.length > 0;
@@ -420,8 +430,33 @@ const LandingPage: React.FC = () => {
     );
   };
 
+  const serviceGroups = useMemo(() => {
+    if (!serviceCategoriesEnabled) return [];
+    const byId = new Map(serviceCategories.map((category) => [category.id, category]));
+    const grouped = new Map<string, { category: ServiceCategory | null; items: Service[] }>();
+    const uncategorizedKey = 'uncategorized';
+    services.forEach((service) => {
+      const categoryId = service.categoryId ?? service.category?.id ?? uncategorizedKey;
+      const category = categoryId === uncategorizedKey ? null : byId.get(categoryId) ?? service.category ?? null;
+      if (!grouped.has(categoryId)) {
+        grouped.set(categoryId, { category, items: [] });
+      }
+      grouped.get(categoryId)?.items.push(service);
+    });
+    const ordered: Array<{ key: string; category: ServiceCategory | null; items: Service[] }> = [];
+    serviceCategories.forEach((category) => {
+      const entry = grouped.get(category.id);
+      if (entry) ordered.push({ key: category.id, category, items: entry.items });
+    });
+    const uncategorized = grouped.get(uncategorizedKey);
+    if (uncategorized) {
+      ordered.push({ key: uncategorizedKey, category: null, items: uncategorized.items });
+    }
+    return ordered;
+  }, [serviceCategoriesEnabled, serviceCategories, services]);
+
   const productGroups = useMemo(() => {
-    if (!categoriesEnabled) return [];
+    if (!productCategoriesEnabled) return [];
     const byId = new Map(productCategories.map((category) => [category.id, category]));
     const grouped = new Map<string, { category: ProductCategory | null; items: Product[] }>();
     const uncategorizedKey = 'uncategorized';
@@ -443,7 +478,7 @@ const LandingPage: React.FC = () => {
       ordered.push({ key: uncategorizedKey, category: null, items: uncategorized.items });
     }
     return ordered;
-  }, [categoriesEnabled, productCategories, products]);
+  }, [productCategoriesEnabled, productCategories, products]);
 
   const servicesSection = (
     <section className="py-10 sm:py-24 bg-card/50">
@@ -457,39 +492,94 @@ const LandingPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-6 max-w-5xl mx-auto">
-          {services.slice(0, 6).map((service, index) => (
-            <Card
-              key={service.id}
-              variant="interactive"
-              className="animate-slide-up"
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              <CardContent className="p-2.5 sm:p-6">
-                <div className="flex justify-between items-start mb-2 sm:mb-4">
-                  <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Scissors className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-primary" />
-                  </div>
-                  <div className="text-right">
-                    {service.appliedOffer && service.finalPrice !== undefined && Math.abs(service.price - service.finalPrice) > 0.001 && (
-                      <div className="text-[10px] sm:text-xs line-through text-muted-foreground">{service.price}€</div>
+        {serviceCategoriesEnabled ? (
+          <div className="space-y-5 sm:space-y-10 max-w-5xl mx-auto">
+            {serviceGroups.map((group) => (
+              <div key={group.key} className="space-y-2.5 sm:space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm sm:text-xl font-semibold text-foreground">
+                      {group.category?.name ?? t('landing.services.otherServices')}
+                    </h3>
+                    {group.category?.description && (
+                      <p className="hidden sm:block text-sm text-muted-foreground">{group.category.description}</p>
                     )}
-                    <span className="text-base sm:text-2xl font-bold text-primary">
-                      {(service.finalPrice ?? service.price).toFixed(2)}€
-                    </span>
                   </div>
+                  <span className="text-[11px] sm:text-xs text-muted-foreground">
+                    {t('landing.services.itemsCount', { count: group.items.length })}
+                  </span>
                 </div>
-                <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
-                <p className="text-[11px] sm:text-sm text-muted-foreground line-clamp-2">{service.description}</p>
-              </CardContent>
-            </Card>
-          ))}
-          {services.length === 0 && (
-            <div className="md:col-span-2 lg:col-span-3 text-center text-muted-foreground">
-              {t('landing.services.loading')}
-            </div>
-          )}
-        </div>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-6">
+                  {group.items.map((service, index) => (
+                    <Card
+                      key={service.id}
+                      variant="interactive"
+                      className="animate-slide-up"
+                      style={{ animationDelay: `${index * 0.1}s` }}
+                    >
+                      <CardContent className="p-2.5 sm:p-6">
+                        <div className="flex justify-between items-start mb-2 sm:mb-4">
+                          <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Scissors className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-primary" />
+                          </div>
+                          <div className="text-right">
+                            {service.appliedOffer && service.finalPrice !== undefined && Math.abs(service.price - service.finalPrice) > 0.001 && (
+                              <div className="text-[10px] sm:text-xs line-through text-muted-foreground">{service.price}€</div>
+                            )}
+                            <span className="text-base sm:text-2xl font-bold text-primary">
+                              {(service.finalPrice ?? service.price).toFixed(2)}€
+                            </span>
+                          </div>
+                        </div>
+                        <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
+                        <p className="text-[11px] sm:text-sm text-muted-foreground line-clamp-2">{service.description}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {services.length === 0 && (
+              <div className="text-center text-muted-foreground">
+                {t('landing.services.loading')}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-6 max-w-5xl mx-auto">
+            {services.slice(0, 6).map((service, index) => (
+              <Card
+                key={service.id}
+                variant="interactive"
+                className="animate-slide-up"
+                style={{ animationDelay: `${index * 0.1}s` }}
+              >
+                <CardContent className="p-2.5 sm:p-6">
+                  <div className="flex justify-between items-start mb-2 sm:mb-4">
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Scissors className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-primary" />
+                    </div>
+                    <div className="text-right">
+                      {service.appliedOffer && service.finalPrice !== undefined && Math.abs(service.price - service.finalPrice) > 0.001 && (
+                        <div className="text-[10px] sm:text-xs line-through text-muted-foreground">{service.price}€</div>
+                      )}
+                      <span className="text-base sm:text-2xl font-bold text-primary">
+                        {(service.finalPrice ?? service.price).toFixed(2)}€
+                      </span>
+                    </div>
+                  </div>
+                  <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
+                  <p className="text-[11px] sm:text-sm text-muted-foreground line-clamp-2">{service.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+            {services.length === 0 && (
+              <div className="md:col-span-2 lg:col-span-3 text-center text-muted-foreground">
+                {t('landing.services.loading')}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="text-center mt-5 sm:mt-12">
           <Button variant="outline" size="lg" className="h-8 sm:h-11 text-[11px] sm:text-base" asChild>
@@ -515,7 +605,7 @@ const LandingPage: React.FC = () => {
           </p>
         </div>
 
-        {categoriesEnabled ? (
+        {productCategoriesEnabled ? (
           <div className="space-y-5 sm:space-y-10 max-w-5xl mx-auto">
             {productGroups.map((group) => (
               <div key={group.key} className="space-y-2.5 sm:space-y-4">

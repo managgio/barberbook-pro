@@ -39,6 +39,12 @@ export class CreateServiceUseCase {
         price: command.price,
         duration: command.duration,
         categoryId,
+        position:
+          command.position ??
+          (await this.serviceManagementPort.getNextServicePosition({
+            localId,
+            categoryId,
+          })),
       },
     });
 

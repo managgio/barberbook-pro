@@ -184,6 +184,7 @@ export interface Service {
   price: number;
   finalPrice?: number;
   duration: number; // Minutes
+  position?: number;
   isArchived?: boolean;
   categoryId?: string | null;
   category?: ServiceCategory | null;
@@ -197,6 +198,7 @@ export interface Product {
   sku?: string | null;
   price: number;
   finalPrice?: number;
+  position?: number;
   stock: number;
   minStock?: number;
   imageUrl?: string | null;
@@ -513,6 +515,7 @@ export interface SiteSettings {
   openingHours: ShopSchedule;
   appointments: {
     cancellationCutoffHours: number;
+    slotIntervalMinutes?: number;
   };
   services: {
     categoriesEnabled: boolean;

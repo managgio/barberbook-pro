@@ -6,6 +6,7 @@ export type CreateProductCommand = {
   description?: string;
   sku?: string;
   price: number;
+  position?: number;
   stock?: number;
   minStock?: number;
   categoryId?: string | null;

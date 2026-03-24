@@ -114,6 +114,7 @@ export class GetAvailabilityBatchUseCase {
         shopSchedule,
         appointments: barberAppointments,
         targetDurationMinutes: targetDuration,
+        slotIntervalMinutes: query.slotIntervalMinutes,
       });
     });
 

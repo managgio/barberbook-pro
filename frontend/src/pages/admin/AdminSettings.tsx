@@ -19,6 +19,7 @@ import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useI18n } from '@/hooks/useI18n';
 import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 import {
@@ -174,6 +175,7 @@ const AdminSettings: React.FC = () => {
     setIsSaving(true);
     try {
       const payload = buildSettingsPayload(settings);
+      const previousSlotInterval = settingsQuery.data?.appointments?.slotIntervalMinutes ?? 15;
       const updated = await updateSiteSettings(payload);
       setSettings(updated);
       setPhoneParts({
@@ -181,6 +183,10 @@ const AdminSettings: React.FC = () => {
         number: normalizePhoneParts(updated.contact.phone).number,
       });
       dispatchSiteSettingsUpdated(updated);
+      const nextSlotInterval = updated.appointments?.slotIntervalMinutes ?? 15;
+      if (previousSlotInterval !== nextSlotInterval) {
+        dispatchSchedulesUpdated({ source: 'admin-settings' });
+      }
       toast({
         title: t('admin.settings.toast.updatedTitle'),
         description: t('admin.settings.toast.updatedDescription'),
@@ -1190,27 +1196,56 @@ const AdminSettings: React.FC = () => {
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="space-y-2 max-w-xs">
-            <Label>{t('admin.settings.cancellation.cutoffHours')}</Label>
-            <Input
-              type="number"
-              min={0}
-              step={1}
-              value={settings.appointments.cancellationCutoffHours}
-              onChange={(e) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  appointments: {
-                    ...prev.appointments,
-                    cancellationCutoffHours: Math.max(0, parseInt(e.target.value, 10) || 0),
-                  },
-                }))
-              }
-              disabled={isLoading}
-            />
-            <p className="text-xs text-muted-foreground">
-              {t('admin.settings.cancellation.cutoffHint')}
-            </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 max-w-xs">
+              <Label>{t('admin.settings.cancellation.cutoffHours')}</Label>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={settings.appointments.cancellationCutoffHours}
+                onChange={(e) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    appointments: {
+                      ...prev.appointments,
+                      cancellationCutoffHours: Math.max(0, parseInt(e.target.value, 10) || 0),
+                    },
+                  }))
+                }
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('admin.settings.cancellation.cutoffHint')}
+              </p>
+            </div>
+            <div className="space-y-2 max-w-xs">
+              <Label>{t('admin.settings.cancellation.slotInterval')}</Label>
+              <Select
+                value={String(settings.appointments.slotIntervalMinutes ?? 15)}
+                onValueChange={(value) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    appointments: {
+                      ...prev.appointments,
+                      slotIntervalMinutes: value === '30' ? 30 : 15,
+                    },
+                  }))
+                }
+                disabled={isLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">{t('admin.settings.cancellation.slotInterval.15')}</SelectItem>
+                  <SelectItem value="30">{t('admin.settings.cancellation.slotInterval.30')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t('admin.settings.cancellation.slotIntervalHint')}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

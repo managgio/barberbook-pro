@@ -8,4 +8,5 @@ export type UpdateServiceCommand = {
   price?: number;
   duration?: number;
   categoryId?: string | null;
+  position?: number;
 };
