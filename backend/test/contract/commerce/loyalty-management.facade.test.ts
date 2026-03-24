@@ -4,6 +4,27 @@ import { LoyaltyScope } from '@prisma/client';
 import { LoyaltyService } from '@/modules/loyalty/loyalty.service';
 import { CommerceLoyaltyManagementPort } from '@/contexts/commerce/ports/outbound/loyalty-management.port';
 
+const requestContext = {
+  tenantId: 'tenant-1',
+  brandId: 'brand-1',
+  localId: 'local-1',
+  actorUserId: 'user-1',
+  timezone: 'Europe/Madrid',
+  correlationId: 'corr-loyalty-test',
+};
+
+const tenantContextPort = {
+  getRequestContext: () => requestContext,
+};
+
+const localizationService = {
+  localizeCollection: async <T extends { id: string }>(params: { items: T[] }) => ({
+    items: params.items,
+    language: 'es',
+  }),
+  syncEntitySourceFields: async () => undefined,
+};
+
 const basePort = (): CommerceLoyaltyManagementPort => ({
   findAllAdmin: async () => [],
   findActive: async () => [],
@@ -68,7 +89,7 @@ test('loyalty facade delegates program creation', async () => {
         updatedAt: new Date().toISOString(),
       };
     },
-  });
+  }, tenantContextPort as any, localizationService as any);
 
   const result = await service.create({
     name: 'VIP',
@@ -89,7 +110,7 @@ test('loyalty facade delegates summary lookup', async () => {
       calls.push(userId);
       return { enabled: true, programs: [] };
     },
-  });
+  }, tenantContextPort as any, localizationService as any);
 
   const summary = await service.getSummary('user-1');
 

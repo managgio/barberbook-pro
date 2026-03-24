@@ -4,6 +4,27 @@ import { SubscriptionDurationUnit } from '@prisma/client';
 import { SubscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import { CommerceSubscriptionManagementPort } from '@/contexts/commerce/ports/outbound/subscription-management.port';
 
+const requestContext = {
+  tenantId: 'tenant-1',
+  brandId: 'brand-1',
+  localId: 'local-1',
+  actorUserId: 'user-1',
+  timezone: 'Europe/Madrid',
+  correlationId: 'corr-subscriptions-test',
+};
+
+const tenantContextPort = {
+  getRequestContext: () => requestContext,
+};
+
+const localizationService = {
+  localizeCollection: async <T extends { id: string }>(params: { items: T[] }) => ({
+    items: params.items,
+    language: 'es',
+  }),
+  syncEntitySourceFields: async () => undefined,
+};
+
 const basePort = (): CommerceSubscriptionManagementPort => ({
   listPlansAdmin: async () => [],
   listActivePlans: async () => [],
@@ -127,7 +148,7 @@ test('subscriptions facade delegates create plan to management port', async () =
         updatedAt: new Date().toISOString(),
       };
     },
-  });
+  }, tenantContextPort as any, localizationService as any);
 
   const result = await service.createPlan({
     name: 'Premium',
@@ -156,7 +177,7 @@ test('subscriptions facade delegates resolve active subscription lookup', async 
         endDate: new Date('2026-12-31T23:59:59.999Z'),
       };
     },
-  });
+  }, tenantContextPort as any, localizationService as any);
 
   const result = await service.resolveActiveSubscriptionForAppointment(
     'user-123',

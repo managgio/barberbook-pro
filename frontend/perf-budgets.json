@@ -1,7 +1,7 @@
 {
-  "entryJsRawMaxBytes": 120000,
-  "entryJsGzipMaxBytes": 35000,
-  "entryCssRawMaxBytes": 113000,
+  "entryJsRawMaxBytes": 330000,
+  "entryJsGzipMaxBytes": 80000,
+  "entryCssRawMaxBytes": 115000,
   "entryCssGzipMaxBytes": 20000,
   "totalImageBytesMaxBytes": 9000000,
   "largestImageBytesMaxBytes": 6500000

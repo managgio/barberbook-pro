@@ -5,6 +5,27 @@ import { ReviewConfigService } from '@/modules/reviews/review-config.service';
 import { ReviewRequestService } from '@/modules/reviews/review-request.service';
 import { EngagementReviewManagementPort } from '@/contexts/engagement/ports/outbound/review-management.port';
 
+const requestContext = {
+  tenantId: 'tenant-1',
+  brandId: 'brand-1',
+  localId: 'local-1',
+  actorUserId: 'user-1',
+  timezone: 'Europe/Madrid',
+  correlationId: 'corr-reviews-test',
+};
+
+const tenantContextPort = {
+  getRequestContext: () => requestContext,
+};
+
+const localizationService = {
+  localizeCollection: async <T extends { id: string }>(params: { items: T[] }) => ({
+    items: params.items,
+    language: 'es',
+  }),
+  syncEntitySourceFields: async () => undefined,
+};
+
 const basePort = (): EngagementReviewManagementPort => ({
   isModuleEnabled: async () => true,
   getConfig: async () => ({
@@ -68,7 +89,7 @@ test('review config facade delegates update config', async () => {
       calls.push(input as Record<string, unknown>);
       return basePort().updateConfig(input);
     },
-  });
+  }, tenantContextPort as any, localizationService as any);
 
   await service.updateConfig({
     enabled: true,

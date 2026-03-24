@@ -25,6 +25,7 @@ const readModel: CommerceProductReadModel = {
   description: '',
   sku: 'SKU-1',
   price: 10,
+  position: 0,
   stock: 4,
   minStock: 1,
   imageUrl: null,
@@ -55,8 +56,10 @@ const baseManagementPort = (): CommerceProductManagementPort => ({
   findActiveProductById: async () => ({
     id: 'product-1',
     categoryId: 'category-1',
+    position: 0,
     imageFileId: null,
   }),
+  getNextProductPosition: async () => 0,
   findActiveProductByNormalizedName: async () => null,
   createProduct: async () => ({ id: 'product-1' }),
   updateProduct: async () => ({ id: 'product-1' }),
@@ -120,6 +123,7 @@ test('update product keeps existing category when categoryId is undefined', asyn
       findActiveProductById: async () => ({
         id: 'product-1',
         categoryId: 'category-1',
+        position: 3,
         imageFileId: null,
       }),
       updateProduct: async (params) => {
@@ -147,6 +151,7 @@ test('remove product archives when product is linked to appointments', async () 
       findActiveProductById: async () => ({
         id: 'product-1',
         categoryId: 'category-1',
+        position: 0,
         imageFileId: 'file-1',
       }),
       countAppointmentUsages: async () => 3,
