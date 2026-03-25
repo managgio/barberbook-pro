@@ -91,7 +91,7 @@ const EMPTY_COUPONS: Coupon[] = [];
 const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const { user } = useAuth();
   const { t, language } = useI18n();
-  const { currentLocationId } = useTenant();
+  const { tenant, currentLocationId } = useTenant();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -136,6 +136,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(new Date()));
   const today = startOfDay(new Date());
+  const subscriptionsEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('subscriptions');
   const catalogQuery = useQuery<BookingCatalogData>({
     queryKey: queryKeys.bookingBootstrap(currentLocationId),
     enabled: Boolean(currentLocationId),
@@ -180,7 +181,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       user?.id || 'anonymous',
       subscriptionReferenceDate,
     ],
-    enabled: !isGuest && Boolean(user?.id),
+    enabled: subscriptionsEnabled && !isGuest && Boolean(user?.id),
     staleTime: 30_000,
     queryFn: async () => {
       try {
@@ -190,7 +191,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       }
     },
   });
-  const activeSubscriptionForBooking = activeSubscriptionQuery.data ?? null;
+  const activeSubscriptionForBooking = subscriptionsEnabled ? activeSubscriptionQuery.data ?? null : null;
   const subscriptionFree = Boolean(activeSubscriptionForBooking?.isUsableNow);
   const loyaltyPreviewQuery = useQuery<LoyaltyPreview | null>({
     queryKey: queryKeys.bookingLoyaltyPreview(currentLocationId, user?.id, booking.serviceId),

@@ -23,6 +23,7 @@ import { TenantConfigService } from '../../../tenancy/tenant-config.service';
 import { SettingsService } from '../../settings/settings.service';
 import { SiteSettings } from '../../settings/settings.types';
 import { UsageMetricsService } from '../../usage-metrics/usage-metrics.service';
+import { APP_TIMEZONE } from '../../../utils/timezone';
 
 const resolveDefaultSmtpHost = (email?: string) => {
   const normalized = (email || '').trim().toLowerCase();
@@ -125,14 +126,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const transporter = await this.getTransporter();
     if (!transporter || !contact.email) return;
     const settings = await this.getSettings();
-    const formattedDate = appointment.date.toLocaleString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const formattedDate = this.formatAppointmentEmailDate(appointment.date);
 
     const subject = action === 'cancelada' ? 'Tu cita ha sido cancelada' : `Tu cita ha sido ${action}`;
     const textLines = [
@@ -357,13 +351,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       return;
     }
     const senderId = await this.resolveSmsSenderId(twilioConfig.smsSenderId || null);
-    const formattedDate = appointment.date.toLocaleString('es-ES', {
-      weekday: 'short',
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const formattedDate = this.formatReminderSmsDate(appointment.date);
     const message = `Recordatorio: cita ${formattedDate}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
 
     try {
@@ -594,11 +582,13 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
 
   private formatDateTime(value: Date) {
     const dateValue = value.toLocaleDateString('es-ES', {
+      timeZone: APP_TIMEZONE,
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     });
     const timeValue = value.toLocaleTimeString('es-ES', {
+      timeZone: APP_TIMEZONE,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -641,5 +631,30 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       return `+34${digits}`;
     }
     return null;
+  }
+
+  private formatAppointmentEmailDate(value: Date) {
+    return value.toLocaleString('es-ES', {
+      timeZone: APP_TIMEZONE,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  private formatReminderSmsDate(value: Date) {
+    return value.toLocaleString('es-ES', {
+      timeZone: APP_TIMEZONE,
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
   }
 }

@@ -14,6 +14,9 @@ const nodeBin = process.execPath;
 const STARTUP_TIMEOUT_MS = 45_000;
 const REQUEST_TIMEOUT_MS = 12_000;
 const DEV_BYPASS_PREFIX = process.env.AUTH_DEV_BYPASS_PREFIX || 'dev:';
+const MAX_BOOKING_CANDIDATES = 20;
+const MAX_CREATE_ATTEMPTS = 8;
+const MAX_SLOTS_PER_BARBER_PER_QUERY = 3;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1790,8 +1793,10 @@ const runCrudCapabilityChecks = async ({
   return results;
 };
 
-const resolveValidBookingPayload = async ({ baseUrl, hostHeader, tenantFixture, bookingCandidates }) => {
+const resolveValidBookingPayloads = async ({ baseUrl, hostHeader, tenantFixture, bookingCandidates }) => {
   const today = formatDateOnly(new Date());
+  const payloads = [];
+  const seen = new Set();
 
   for (let dayOffset = 0; dayOffset <= 21; dayOffset += 1) {
     const date = addDays(today, dayOffset);
@@ -1820,21 +1825,27 @@ const resolveValidBookingPayload = async ({ baseUrl, hostHeader, tenantFixture, 
         const slots = response.body[barberId];
         if (!Array.isArray(slots) || slots.length === 0) continue;
 
-        const slot = slots[0];
-        const startDateTime = new Date(`${date}T${slot}:00`).toISOString();
-
-        return {
-          barberId,
-          serviceId,
-          date,
-          slot,
-          startDateTime,
-        };
+        for (const slot of slots.slice(0, MAX_SLOTS_PER_BARBER_PER_QUERY)) {
+          const startDateTime = new Date(`${date}T${slot}:00`).toISOString();
+          const key = `${barberId}|${serviceId}|${startDateTime}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          payloads.push({
+            barberId,
+            serviceId,
+            date,
+            slot,
+            startDateTime,
+          });
+          if (payloads.length >= MAX_BOOKING_CANDIDATES) {
+            return payloads;
+          }
+        }
       }
     }
   }
 
-  return null;
+  return payloads;
 };
 
 const cleanupAppointment = async ({ baseUrl, hostHeader, tenantFixture, token, appointmentId }) => {
@@ -1864,14 +1875,14 @@ const runWriteChecks = async ({
   bookingCandidates,
 }) => {
   const userToken = `${DEV_BYPASS_PREFIX}${userActor.firebaseUid}`;
-  const bookingPayload = await resolveValidBookingPayload({
+  const bookingPayloads = await resolveValidBookingPayloads({
     baseUrl,
     hostHeader,
     tenantFixture,
     bookingCandidates,
   });
 
-  if (!bookingPayload) {
+  if (bookingPayloads.length === 0) {
     const baseResults = [
       {
         name: 'auth.appointments.create.valid',
@@ -1901,33 +1912,53 @@ const runWriteChecks = async ({
   }
 
   const results = [];
+  let bookingPayload = bookingPayloads[0];
+  let createResponse = null;
 
-  const createResponse = await requestJson({
-    baseUrl,
-    hostHeader,
-    tenantFixture,
-    method: 'POST',
-    path: '/api/appointments',
-    token: userToken,
-    body: {
-      barberId: bookingPayload.barberId,
-      serviceId: bookingPayload.serviceId,
-      startDateTime: bookingPayload.startDateTime,
-      guestName: 'Smoke Test Create',
-      guestContact: 'smoke-create@example.com',
-      privacyConsentGiven: true,
-    },
-  });
+  for (const candidate of bookingPayloads.slice(0, MAX_CREATE_ATTEMPTS)) {
+    bookingPayload = candidate;
+    // eslint-disable-next-line no-await-in-loop
+    const response = await requestJson({
+      baseUrl,
+      hostHeader,
+      tenantFixture,
+      method: 'POST',
+      path: '/api/appointments',
+      token: userToken,
+      body: {
+        barberId: candidate.barberId,
+        serviceId: candidate.serviceId,
+        startDateTime: candidate.startDateTime,
+        guestName: 'Smoke Test Create',
+        guestContact: 'smoke-create@example.com',
+        privacyConsentGiven: true,
+      },
+    });
+    createResponse = response;
+    if (response.status >= 200 && response.status < 300) {
+      break;
+    }
 
-  const createOk = createResponse.status >= 200 && createResponse.status < 300;
+    const errorMessage = typeof response.body === 'object' && response.body
+      ? String(response.body.message || '')
+      : '';
+    const retryable = response.status === 400
+      || response.status === 409
+      || errorMessage.includes('Horario no disponible');
+    if (!retryable) {
+      break;
+    }
+  }
+
+  const createOk = Boolean(createResponse && createResponse.status >= 200 && createResponse.status < 300);
   const createdAppointmentId =
-    createResponse.body && typeof createResponse.body === 'object' ? createResponse.body.id : null;
+    createResponse && createResponse.body && typeof createResponse.body === 'object' ? createResponse.body.id : null;
 
   results.push({
     name: 'auth.appointments.create.valid',
-    status: createResponse.status,
+    status: createResponse ? createResponse.status : null,
     ok: createOk,
-    responseBody: createResponse.body,
+    responseBody: createResponse ? createResponse.body : null,
   });
 
   const webhookInvalidBodyResponse = await requestJson({

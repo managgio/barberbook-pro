@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { User, Mail, Phone, Bell, Loader2, Award, Languages } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { getBarbers } from '@/data/api/barbers';
 import { getLoyaltySummary } from '@/data/api/loyalty';
 import { deleteUser } from '@/data/api/users';
 import { LoyaltySummary } from '@/data/types';
@@ -44,6 +45,7 @@ const ProfilePage: React.FC = () => {
   const [prefersBarberSelection, setPrefersBarberSelection] = useState(
     user?.prefersBarberSelection ?? true,
   );
+  const [activeBarberCount, setActiveBarberCount] = useState<number | null>(null);
 
   const notificationConfig = tenant?.config?.notificationPrefs;
   const allowEmail = notificationConfig?.email !== false;
@@ -70,6 +72,31 @@ const ProfilePage: React.FC = () => {
       isMounted = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !currentLocationId) return;
+    let isMounted = true;
+
+    const loadActiveBarbers = async () => {
+      try {
+        const barbers = await getBarbers();
+        if (!isMounted) return;
+        const count = barbers.filter((barber) => barber.isActive !== false).length;
+        setActiveBarberCount(count);
+      } catch {
+        if (!isMounted) return;
+        setActiveBarberCount(null);
+      }
+    };
+
+    void loadActiveBarbers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, currentLocationId]);
+
+  const showBarberSelectionPreference = activeBarberCount === null || activeBarberCount > 1;
 
   useEffect(() => {
     if (!user) return;
@@ -379,37 +406,39 @@ const ProfilePage: React.FC = () => {
           </Card>
         )}
 
-        <Card variant="elevated">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-              {t('profile.bookingPreferences.title')}
-            </CardTitle>
-            <CardDescription className="hidden sm:block">
-              {t('profile.bookingPreferences.description', { staffSingularLower: copy.staff.singularLower })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
-            <div className="flex items-center justify-between py-2">
-              <div className="space-y-0.5">
-                <Label htmlFor="barber-select-pref">
-                  {t('profile.bookingPreferences.selectStaffLabel', { staffSingularLower: copy.staff.singularLower })}
-                </Label>
-                <p className="hidden sm:block text-sm text-muted-foreground">
-                  {t('profile.bookingPreferences.selectStaffHelp', { staffIndefiniteSingular: copy.staff.indefiniteSingular })}
-                </p>
+        {showBarberSelectionPreference && (
+          <Card variant="elevated">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                {t('profile.bookingPreferences.title')}
+              </CardTitle>
+              <CardDescription className="hidden sm:block">
+                {t('profile.bookingPreferences.description', { staffSingularLower: copy.staff.singularLower })}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between py-2">
+                <div className="space-y-0.5">
+                  <Label htmlFor="barber-select-pref">
+                    {t('profile.bookingPreferences.selectStaffLabel', { staffSingularLower: copy.staff.singularLower })}
+                  </Label>
+                  <p className="hidden sm:block text-sm text-muted-foreground">
+                    {t('profile.bookingPreferences.selectStaffHelp', { staffIndefiniteSingular: copy.staff.indefiniteSingular })}
+                  </p>
+                </div>
+                <Switch
+                  id="barber-select-pref"
+                  checked={prefersBarberSelection}
+                  onCheckedChange={setPrefersBarberSelection}
+                />
               </div>
-              <Switch
-                id="barber-select-pref"
-                checked={prefersBarberSelection}
-                onCheckedChange={setPrefersBarberSelection}
-              />
-            </div>
-            <p className="hidden sm:block text-xs text-muted-foreground">
-              {t('profile.bookingPreferences.changeEachBooking')}
-            </p>
-          </CardContent>
-        </Card>
+              <p className="hidden sm:block text-xs text-muted-foreground">
+                {t('profile.bookingPreferences.changeEachBooking')}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Button type="submit" className="w-full h-9 sm:h-11 text-xs sm:text-base" size="lg" disabled={isLoading}>
           {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

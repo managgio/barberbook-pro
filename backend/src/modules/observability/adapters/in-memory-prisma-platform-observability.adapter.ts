@@ -49,6 +49,17 @@ const WEB_VITAL_THRESHOLDS: Record<PlatformWebVitalName, { good: number; poor: n
   [PlatformWebVitalName.TTFB]: { good: 800, poor: 1800, unit: 'ms' },
 };
 
+const WEB_VITAL_MAX_REASONABLE_VALUE: Record<PlatformWebVitalName, number> = {
+  [PlatformWebVitalName.LCP]: 30_000,
+  [PlatformWebVitalName.CLS]: 5,
+  [PlatformWebVitalName.INP]: 20_000,
+  [PlatformWebVitalName.FCP]: 30_000,
+  [PlatformWebVitalName.TTFB]: 15_000,
+};
+
+const WEB_VITAL_ALERT_BLOCKED_PATH_PREFIXES = ['/platform'];
+const IN_APP_BROWSER_UA_MARKERS = ['instagram', 'fban', 'fbav', 'tiktok', 'line/'];
+
 const clampWindowMinutes = (value?: number) => {
   if (!value || Number.isNaN(value)) return 60;
   return Math.min(7 * 24 * 60, Math.max(5, Math.floor(value)));
@@ -280,6 +291,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     context: { localId: string; brandId: string; userAgent?: string },
   ) {
     if (payload.rating !== PlatformWebVitalRating.POOR) return;
+    if (!this.shouldAlertPoorWebVital(payload, context.userAgent)) return;
     const now = Date.now();
     const key = `web-vital:${context.brandId}:${context.localId}:${payload.name}:${payload.path}`;
     if (!this.shouldTriggerAlert(key, now)) return;
@@ -304,6 +316,20 @@ export class InMemoryPrismaPlatformObservabilityAdapter
       subject: `[ALERTA][${this.runtimeEnvironment.toUpperCase()}][Web Vitals] ${payload.name} poor en ${payload.path}`,
       lines,
     });
+  }
+
+  private shouldAlertPoorWebVital(payload: PlatformWebVitalReport, userAgent?: string) {
+    const path = payload.path || '';
+    if (WEB_VITAL_ALERT_BLOCKED_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+      return false;
+    }
+
+    const normalizedUa = String(userAgent || '').toLowerCase();
+    if (IN_APP_BROWSER_UA_MARKERS.some((marker) => normalizedUa.includes(marker))) {
+      return false;
+    }
+
+    return true;
   }
 
   private async maybeAlertApiDegradation(record: ApiMetricRecord) {
@@ -561,6 +587,17 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     context: { localId: string; brandId: string; userAgent?: string },
   ) {
     const now = Date.now();
+    const numericValue = Number(payload.value);
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+      return;
+    }
+    const maxReasonable = WEB_VITAL_MAX_REASONABLE_VALUE[payload.name];
+    if (numericValue > maxReasonable) {
+      this.logger.warn(
+        `WebVital dropped as outlier: ${payload.name}=${numericValue.toFixed(2)} path=${payload.path} local=${context.localId}`,
+      );
+      return;
+    }
     const safeTimestamp =
       typeof payload.timestamp === 'number' && Number.isFinite(payload.timestamp) && payload.timestamp > 0
         ? payload.timestamp
@@ -568,7 +605,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
 
     const record: WebVitalRecord = {
       name: payload.name,
-      value: Number(payload.value),
+      value: numericValue,
       rating: payload.rating,
       path: payload.path.slice(0, 300),
       timestamp: safeTimestamp,
@@ -777,7 +814,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
         statusBuckets: new Map<number, number>(),
       };
       bucket.count += 1;
-      if (entry.statusCode >= 400) {
+      if (entry.statusCode >= 500) {
         bucket.errorCount += 1;
       }
       bucket.totalDurationMs += entry.durationMs;
