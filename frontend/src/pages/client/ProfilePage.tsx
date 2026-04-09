@@ -20,10 +20,12 @@ import LanguageSelector from '@/components/common/LanguageSelector';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
   const { tenant, currentLocationId } = useTenant();
+  const { settings } = useSiteSettings();
   const { toast } = useToast();
   const copy = useBusinessCopy();
   const { language, supportedLanguages } = useLanguage();
@@ -46,6 +48,7 @@ const ProfilePage: React.FC = () => {
     user?.prefersBarberSelection ?? true,
   );
   const [activeBarberCount, setActiveBarberCount] = useState<number | null>(null);
+  const [isSavingRequiredPhone, setIsSavingRequiredPhone] = useState(false);
 
   const notificationConfig = tenant?.config?.notificationPrefs;
   const allowEmail = notificationConfig?.email !== false;
@@ -97,6 +100,8 @@ const ProfilePage: React.FC = () => {
   }, [user, currentLocationId]);
 
   const showBarberSelectionPreference = activeBarberCount === null || activeBarberCount > 1;
+  const isPhoneRequired = settings.profile?.phoneRequired === true;
+  const requiresPhoneCompletion = Boolean(user && isPhoneRequired && !(user.phone || '').trim());
 
   useEffect(() => {
     if (!user) return;
@@ -114,6 +119,15 @@ const ProfilePage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const phone = formData.phone.trim();
+    if (isPhoneRequired && !phone) {
+      toast({
+        title: t('profile.phoneRequired.missingTitle'),
+        description: t('profile.phoneRequired.missingDescription'),
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -128,7 +142,7 @@ const ProfilePage: React.FC = () => {
 
       await updateProfile({
         name: formData.name,
-        phone: formData.phone,
+        phone,
         notificationPrefs: normalizedPrefs,
         prefersBarberSelection,
       });
@@ -145,6 +159,37 @@ const ProfilePage: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRequiredPhoneSave = async () => {
+    const phone = formData.phone.trim();
+    if (!phone) {
+      toast({
+        title: t('profile.phoneRequired.missingTitle'),
+        description: t('profile.phoneRequired.missingDescription'),
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsSavingRequiredPhone(true);
+    try {
+      await updateProfile({
+        name: formData.name,
+        phone,
+      });
+      toast({
+        title: t('profile.phoneRequired.savedTitle'),
+        description: t('profile.phoneRequired.savedDescription'),
+      });
+    } catch {
+      toast({
+        title: t('profile.phoneRequired.saveErrorTitle'),
+        description: t('profile.phoneRequired.saveErrorDescription'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingRequiredPhone(false);
     }
   };
 
@@ -484,6 +529,42 @@ const ProfilePage: React.FC = () => {
               disabled={isDeleting}
             >
               {isDeleting ? t('profile.danger.dialogDeleting') : t('profile.danger.dialogConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={requiresPhoneCompletion}>
+        <AlertDialogContent
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('profile.phoneRequired.modalTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('profile.phoneRequired.modalDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="required-phone-input">{t('profile.field.phone')}</Label>
+            <Input
+              id="required-phone-input"
+              type="tel"
+              placeholder={t('profile.field.phonePlaceholder')}
+              value={formData.phone}
+              onChange={(event) =>
+                setFormData((prev) => ({ ...prev, phone: event.target.value }))
+              }
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              type="button"
+              onClick={handleRequiredPhoneSave}
+              disabled={isSavingRequiredPhone}
+            >
+              {isSavingRequiredPhone && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {t('profile.phoneRequired.saveAction')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

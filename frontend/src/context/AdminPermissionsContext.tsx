@@ -1,8 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
-import { AdminRole, AdminSectionKey } from '@/data/types';
-import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTION_KEYS } from '@/data/adminSections';
+import { AdminRole, AdminSectionKey, AdminPermissionKey } from '@/data/types';
+import {
+  ADMIN_REQUIRED_SECTIONS,
+  ADMIN_SECTION_KEYS,
+  isAdminSectionDefaultVisible,
+} from '@/data/adminSections';
 import { getAdminRoles } from '@/data/api/roles';
 import { useToast } from '@/hooks/use-toast';
 import { useI18n } from '@/hooks/useI18n';
@@ -11,6 +15,7 @@ interface AdminPermissionsContextValue {
   roles: AdminRole[];
   isLoading: boolean;
   canAccessSection: (section: AdminSectionKey) => boolean;
+  hasPermission: (permission: AdminPermissionKey) => boolean;
 }
 
 const AdminPermissionsContext = createContext<AdminPermissionsContextValue | undefined>(undefined);
@@ -22,18 +27,36 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
   const { t } = useI18n();
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const tenantHiddenSections = useMemo(() => {
+  const tenantSidebarVisibility = useMemo(() => {
     const hidden = tenant?.config?.adminSidebar?.hiddenSections;
-    if (!Array.isArray(hidden)) return [];
-    return hidden.filter((section): section is AdminSectionKey => ADMIN_SECTION_KEYS.includes(section as AdminSectionKey));
-  }, [tenant?.config?.adminSidebar?.hiddenSections]);
+    const visible = tenant?.config?.adminSidebar?.visibleSections;
+    const hiddenSections = Array.isArray(hidden)
+      ? hidden.filter((section): section is AdminSectionKey =>
+          ADMIN_SECTION_KEYS.includes(section as AdminSectionKey),
+        )
+      : [];
+    const visibleSections = Array.isArray(visible)
+      ? visible.filter((section): section is AdminSectionKey =>
+          ADMIN_SECTION_KEYS.includes(section as AdminSectionKey),
+        )
+      : [];
+    return { hiddenSections, visibleSections };
+  }, [tenant?.config?.adminSidebar?.hiddenSections, tenant?.config?.adminSidebar?.visibleSections]);
 
   const isSectionEnabledForTenant = useCallback(
     (section: AdminSectionKey) => {
+      if (section === 'communications' && tenant?.config?.features?.communicationsEnabled !== true) {
+        return false;
+      }
       if (ADMIN_REQUIRED_SECTIONS.includes(section)) return true;
-      return !tenantHiddenSections.includes(section);
+      const isHidden = tenantSidebarVisibility.hiddenSections.includes(section);
+      if (isHidden) return false;
+      if (!isAdminSectionDefaultVisible(section)) {
+        return tenantSidebarVisibility.visibleSections.includes(section);
+      }
+      return true;
     },
-    [tenantHiddenSections],
+    [tenant?.config?.features?.communicationsEnabled, tenantSidebarVisibility.hiddenSections, tenantSidebarVisibility.visibleSections],
   );
 
   useEffect(() => {
@@ -80,16 +103,35 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
     [roles, user?.adminRoleId],
   );
 
+  const hasPermission = useCallback(
+    (permission: AdminPermissionKey) => {
+      if (!user) return false;
+      if (user.isSuperAdmin || user.isPlatformAdmin) return true;
+      if (user.role !== 'admin' || !user.isLocalAdmin) return false;
+      if (!user.adminRoleId) return true;
+      const permissions = (currentRole?.permissions || []) as AdminPermissionKey[];
+      if (permissions.includes(permission)) return true;
+      if (
+        permission === 'communications:view' ||
+        permission === 'communications:view_history'
+      ) {
+        return permissions.includes('communications');
+      }
+      return false;
+    },
+    [currentRole, user],
+  );
+
   const canAccessSection = useCallback(
     (section: AdminSectionKey) => {
       if (!user) return false;
       if (!isSectionEnabledForTenant(section)) return false;
-      if (user.isSuperAdmin || user.isPlatformAdmin) return true;
-      if (user.role !== 'admin' || !user.isLocalAdmin) return false;
-      if (!user.adminRoleId) return true;
-      return currentRole?.permissions.includes(section) ?? false;
+      if (section === 'communications') {
+        return hasPermission('communications:view');
+      }
+      return hasPermission(section);
     },
-    [currentRole, isSectionEnabledForTenant, user],
+    [hasPermission, isSectionEnabledForTenant, user],
   );
 
   const value = useMemo(
@@ -97,8 +139,9 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
       roles,
       isLoading,
       canAccessSection,
+      hasPermission,
     }),
-    [roles, isLoading, canAccessSection],
+    [roles, isLoading, canAccessSection, hasPermission],
   );
 
   return (

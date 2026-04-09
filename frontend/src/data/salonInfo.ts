@@ -88,6 +88,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     clientPurchaseEnabled: false,
     showOnLanding: false,
   },
+  profile: {
+    phoneRequired: false,
+  },
   adminSidebar: {
     order: [],
   },

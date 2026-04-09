@@ -62,6 +62,9 @@ export type SiteSettings = {
     clientPurchaseEnabled: boolean;
     showOnLanding: boolean;
   };
+  profile: {
+    phoneRequired: boolean;
+  };
   adminSidebar: {
     order: string[];
   };
@@ -120,6 +123,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     clientPurchaseEnabled: false,
     showOnLanding: false,
   },
+  profile: {
+    phoneRequired: false,
+  },
   adminSidebar: {
     order: [],
   },
@@ -158,6 +164,10 @@ export const normalizeSettings = (data?: Partial<SiteSettings>): SiteSettings =>
     products: {
       ...DEFAULT_SITE_SETTINGS.products,
       ...(data?.products ?? {}),
+    },
+    profile: {
+      ...DEFAULT_SITE_SETTINGS.profile,
+      ...(data?.profile ?? {}),
     },
     adminSidebar: {
       ...DEFAULT_SITE_SETTINGS.adminSidebar,

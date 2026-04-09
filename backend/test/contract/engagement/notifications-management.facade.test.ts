@@ -6,6 +6,7 @@ import { EngagementNotificationManagementPort } from '@/contexts/engagement/port
 const basePort = (): EngagementNotificationManagementPort => ({
   sendAppointmentEmail: async () => undefined,
   sendReferralRewardEmail: async () => undefined,
+  sendBroadcastEmail: async () => undefined,
   sendReminderSms: async () => undefined,
   sendTestSms: async () => ({ success: true, sid: 'SM_BASE' }),
   sendReminderWhatsapp: async () => undefined,

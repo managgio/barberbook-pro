@@ -106,6 +106,7 @@ export interface TenantBootstrap {
     } | null;
     adminSidebar?: {
       hiddenSections?: string[];
+      visibleSections?: string[];
     } | null;
     theme?: {
       primary?: string;
@@ -118,6 +119,7 @@ export interface TenantBootstrap {
     } | null;
     features?: {
       barberServiceAssignmentEnabled?: boolean;
+      communicationsEnabled?: boolean;
     } | null;
     i18n?: {
       defaultLanguage?: string;
@@ -526,6 +528,9 @@ export interface SiteSettings {
     categoriesEnabled: boolean;
     clientPurchaseEnabled: boolean;
     showOnLanding: boolean;
+  };
+  profile: {
+    phoneRequired: boolean;
   };
   adminSidebar?: {
     order?: AdminSectionKey[];
@@ -997,17 +1002,182 @@ export type AdminSectionKey =
   | 'referrals'
   | 'reviews'
   | 'alerts'
+  | 'communications'
   | 'holidays'
   | 'roles'
   | 'settings'
   | 'legal'
   | 'audit';
 
+export type CommunicationPermissionKey =
+  | 'communications:view'
+  | 'communications:create_draft'
+  | 'communications:preview'
+  | 'communications:execute'
+  | 'communications:schedule'
+  | 'communications:cancel_scheduled'
+  | 'communications:duplicate'
+  | 'communications:view_history';
+
+export type AdminPermissionKey = AdminSectionKey | CommunicationPermissionKey;
+
 export interface AdminRole {
   id: string;
   name: string;
   description?: string;
-  permissions: AdminSectionKey[];
+  permissions: AdminPermissionKey[];
+}
+
+export type CommunicationActionType = 'solo_comunicar' | 'comunicar_y_cancelar';
+export type CommunicationScopeType =
+  | 'all_day'
+  | 'appointments_morning'
+  | 'appointments_afternoon'
+  | 'day_time_range'
+  | 'professional_single'
+  | 'professional_multi'
+  | 'appointment_selection'
+  | 'all_clients';
+export type CommunicationChannel = 'email' | 'sms' | 'whatsapp';
+export type CommunicationTemplateKey =
+  | 'medical_leave'
+  | 'local_closure'
+  | 'delay_incident'
+  | 'organizational_change'
+  | 'general_announcement';
+export type CommunicationStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'running'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'cancelled';
+
+export interface CommunicationScopeCriteria {
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  barberId?: string;
+  barberIds?: string[];
+  appointmentIds?: string[];
+}
+
+export interface CommunicationHolidayOption {
+  enabled: boolean;
+  type?: 'general' | 'barber';
+  start?: string;
+  end?: string;
+  barberId?: string;
+}
+
+export interface CommunicationExtraOptions {
+  excludeAlreadyNotified?: boolean;
+  createHoliday?: CommunicationHolidayOption;
+}
+
+export interface CommunicationPayload {
+  actionType: CommunicationActionType;
+  scopeType: CommunicationScopeType;
+  scopeCriteria: CommunicationScopeCriteria;
+  templateKey: CommunicationTemplateKey;
+  channel: CommunicationChannel;
+  title: string;
+  subject?: string;
+  message: string;
+  internalNote?: string;
+  scheduleAt?: string;
+  extraOptions?: CommunicationExtraOptions;
+}
+
+export interface CommunicationPreviewResult {
+  actionType: CommunicationActionType;
+  scopeType: CommunicationScopeType;
+  channel: CommunicationChannel;
+  scheduledFor: string | null;
+  appointmentsAffected: number;
+  clientsAffected: number;
+  cancellations: number;
+  withoutValidContact: number;
+  excludedAlreadyNotified: number;
+  invalidRecipients: Array<{ recipientKey: string; recipientName: string; reason: string }>;
+  excludedRecipients: Array<{ recipientKey: string; recipientName: string }>;
+  messagePreview: {
+    title: string;
+    subject: string;
+    body: string;
+  };
+  createHoliday?: CommunicationHolidayOption | null;
+}
+
+export interface CommunicationTemplate {
+  key: CommunicationTemplateKey;
+  title: string;
+  subject: string;
+  message: string;
+}
+
+export interface CommunicationCampaignSummary {
+  id: string;
+  actionType: CommunicationActionType;
+  scopeType: CommunicationScopeType;
+  scopeCriteria: CommunicationScopeCriteria;
+  templateKey: CommunicationTemplateKey;
+  channel: CommunicationChannel;
+  status: CommunicationStatus;
+  title: string;
+  subject?: string | null;
+  message: string;
+  internalNote?: string | null;
+  scheduledFor?: string | null;
+  executedAt?: string | null;
+  cancelledAt?: string | null;
+  impactSummary?: CommunicationPreviewResult | null;
+  resultSummary?: Record<string, unknown> | null;
+  options?: CommunicationExtraOptions;
+  createdAt: string;
+  updatedAt: string;
+  createdByUser?: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+  } | null;
+  latestExecution?: {
+    id: string;
+    status: string;
+    startedAt: string;
+    finishedAt?: string | null;
+    summary?: Record<string, unknown> | null;
+  } | null;
+}
+
+export interface CommunicationCampaignDetail extends CommunicationCampaignSummary {
+  executions: Array<{
+    id: string;
+    status: string;
+    mode: string;
+    startedAt: string;
+    finishedAt?: string | null;
+    summary?: Record<string, unknown> | null;
+    initiatedByUser?: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+    } | null;
+  }>;
+  recipientResults: Array<{
+    id: string;
+    status: string;
+    channel: CommunicationChannel;
+    recipientName?: string | null;
+    recipientEmail?: string | null;
+    recipientPhone?: string | null;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    cancelledAppointment: boolean;
+    excludedAlreadyNotified: boolean;
+    createdAt: string;
+  }>;
 }
 
 export interface BookingState {

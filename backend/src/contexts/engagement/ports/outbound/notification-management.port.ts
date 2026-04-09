@@ -36,6 +36,11 @@ export interface EngagementNotificationManagementPort {
     ctaLabel?: string;
     ctaUrl?: string;
   }): Promise<void>;
+  sendBroadcastEmail(params: {
+    contact: EngagementNotificationContactInfo;
+    subject: string;
+    message: string;
+  }): Promise<void>;
   sendReminderSms(
     contact: EngagementNotificationContactInfo,
     appointment: EngagementNotificationAppointmentInfo,

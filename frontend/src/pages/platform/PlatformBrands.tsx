@@ -46,7 +46,12 @@ import { queryClient } from '@/lib/queryClient';
 import { queryKeys } from '@/lib/queryKeys';
 import { BUSINESS_TYPE_OPTIONS, getBusinessCopy } from '@/lib/businessCopy';
 import { LANGUAGE_OPTIONS } from '@/lib/language';
-import { ADMIN_REQUIRED_SECTIONS, ADMIN_SECTIONS, getAdminSections } from '@/data/adminSections';
+import {
+  ADMIN_REQUIRED_SECTIONS,
+  ADMIN_SECTIONS,
+  getAdminSections,
+  isAdminSectionDefaultVisible,
+} from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
 import MarkdownContent from '@/components/common/MarkdownContent';
 
@@ -139,6 +144,7 @@ interface PlatformConfig {
   branding?: PlatformBranding;
   adminSidebar?: {
     hiddenSections?: AdminSectionKey[] | string[];
+    visibleSections?: AdminSectionKey[] | string[];
   };
   landing?: {
     order?: string[];
@@ -154,6 +160,7 @@ interface PlatformConfig {
   };
   features?: {
     barberServiceAssignmentEnabled?: boolean;
+    communicationsEnabled?: boolean;
   };
   i18n?: {
     defaultLanguage?: string;
@@ -722,11 +729,26 @@ const getAdminSidebarHiddenSections = (config: PlatformConfig): AdminSectionKey[
   });
 };
 
+const getAdminSidebarVisibleSections = (config: PlatformConfig): AdminSectionKey[] => {
+  const visible = config?.adminSidebar?.visibleSections;
+  if (!Array.isArray(visible)) return [];
+  return visible.filter((section): section is AdminSectionKey => {
+    const key = section as AdminSectionKey;
+    return ADMIN_SECTION_SET.has(key) && !ADMIN_REQUIRED_SECTIONS.includes(key);
+  });
+};
+
 const isAdminSectionRequired = (section: AdminSectionKey) => ADMIN_REQUIRED_SECTIONS.includes(section);
 
 const isAdminSectionVisible = (config: PlatformConfig, section: AdminSectionKey) => {
   if (isAdminSectionRequired(section)) return true;
-  return !getAdminSidebarHiddenSections(config).includes(section);
+  if (section === 'communications' && config?.features?.communicationsEnabled !== true) return false;
+  const hidden = getAdminSidebarHiddenSections(config);
+  if (hidden.includes(section)) return false;
+  if (!isAdminSectionDefaultVisible(section)) {
+    return getAdminSidebarVisibleSections(config).includes(section);
+  }
+  return true;
 };
 
 const normalizeHostInput = (value?: string | null) => {
@@ -1484,7 +1506,9 @@ const PlatformBrands: React.FC = () => {
     updateLocationMutation.isPending ||
     deleteLocationMutation.isPending;
 
-  const isLocationSidebarOverride = Array.isArray(locationConfig?.adminSidebar?.hiddenSections);
+  const isLocationSidebarOverride =
+    Array.isArray(locationConfig?.adminSidebar?.hiddenSections) ||
+    Array.isArray(locationConfig?.adminSidebar?.visibleSections);
   const locationSidebarConfig = isLocationSidebarOverride ? locationConfig : brandConfig;
   const brandStockVisible = isAdminSectionVisible(brandConfig, 'stock');
   const locationStockVisible = isAdminSectionVisible(locationSidebarConfig, 'stock');
@@ -1718,13 +1742,27 @@ const PlatformBrands: React.FC = () => {
   ) => {
     setConfig((prev) => {
       const hidden = new Set(getAdminSidebarHiddenSections(prev));
+      const explicitVisible = new Set(getAdminSidebarVisibleSections(prev));
+      const defaultVisible = isAdminSectionDefaultVisible(section);
       if (visible) {
         hidden.delete(section);
+        if (!defaultVisible) {
+          explicitVisible.add(section);
+        }
       } else {
         hidden.add(section);
+        explicitVisible.delete(section);
       }
-      ADMIN_REQUIRED_SECTIONS.forEach((required) => hidden.delete(required));
-      return updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], Array.from(hidden));
+      ADMIN_REQUIRED_SECTIONS.forEach((required) => {
+        hidden.delete(required);
+        explicitVisible.delete(required);
+      });
+      let next = updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], Array.from(hidden));
+      next = updateNestedValue(next, ['adminSidebar', 'visibleSections'], Array.from(explicitVisible));
+      if (section === 'communications') {
+        next = updateNestedValue(next, ['features', 'communicationsEnabled'], visible);
+      }
+      return next;
     });
   };
 
@@ -1732,14 +1770,27 @@ const PlatformBrands: React.FC = () => {
     if (checked) {
       setLocationConfig((prev) => {
         const draft = readLocalOverrideDraft(prev, 'adminSidebar');
-        const draftHidden =
+        const draftHiddenSections =
           draft && typeof draft === 'object' && !Array.isArray(draft)
             ? (draft as Record<string, unknown>).hiddenSections
             : undefined;
-        const baseHidden = Array.isArray(draftHidden)
-          ? draftHidden
+        const draftVisibleSections =
+          draft && typeof draft === 'object' && !Array.isArray(draft)
+            ? (draft as Record<string, unknown>).visibleSections
+            : undefined;
+        const baseHiddenSections = Array.isArray(draftHiddenSections)
+          ? draftHiddenSections
           : getAdminSidebarHiddenSections(brandConfig);
-        let next = updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], baseHidden);
+        const baseVisibleSections = Array.isArray(draftVisibleSections)
+          ? draftVisibleSections
+          : getAdminSidebarVisibleSections(brandConfig);
+        let next = updateNestedValue(prev, ['adminSidebar', 'hiddenSections'], baseHiddenSections);
+        next = updateNestedValue(next, ['adminSidebar', 'visibleSections'], baseVisibleSections);
+        next = updateNestedValue(
+          next,
+          ['features', 'communicationsEnabled'],
+          brandConfig?.features?.communicationsEnabled === true,
+        );
         next = withLocalOverrideDraft(next, 'adminSidebar', undefined);
         return next;
       });
@@ -1751,9 +1802,22 @@ const PlatformBrands: React.FC = () => {
           ? prev.adminSidebar
           : undefined;
       const next = withLocalOverrideDraft(prev, 'adminSidebar', adminSidebarValue);
-      if (!next.adminSidebar) return next;
-      const { adminSidebar, ...rest } = next;
-      return rest;
+      const withoutSidebar = next.adminSidebar
+        ? (() => {
+            const { adminSidebar, ...rest } = next;
+            return rest as PlatformConfig;
+          })()
+        : next;
+      if (!withoutSidebar.features || typeof withoutSidebar.features !== 'object' || Array.isArray(withoutSidebar.features)) {
+        return withoutSidebar;
+      }
+      const features = { ...(withoutSidebar.features as JsonRecord) };
+      delete features.communicationsEnabled;
+      if (Object.keys(features).length === 0) {
+        const { features: _features, ...rest } = withoutSidebar;
+        return rest;
+      }
+      return { ...withoutSidebar, features };
     });
   };
 
@@ -4003,21 +4067,23 @@ const PlatformBrands: React.FC = () => {
 
                       <div className="space-y-3">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Citas</p>
-                        <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                          <div>
-                            <div className="text-sm font-semibold text-foreground">{staffAssignmentLabel}</div>
-                            <p className="text-xs text-muted-foreground">
-                              {staffAvailabilityDescription}
-                            </p>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">{staffAssignmentLabel}</div>
+                              <p className="text-xs text-muted-foreground">
+                                {staffAvailabilityDescription}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={brandBarberAssignmentEnabled}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) =>
+                                  updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], checked),
+                                )
+                              }
+                            />
                           </div>
-                          <Switch
-                            checked={brandBarberAssignmentEnabled}
-                            onCheckedChange={(checked) =>
-                              setBrandConfig((prev) =>
-                                updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], checked),
-                              )
-                            }
-                          />
                         </div>
                       </div>
 

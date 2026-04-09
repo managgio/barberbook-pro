@@ -7,6 +7,7 @@ type AdminSectionDefinition = {
   labelKey: string;
   description: string;
   descriptionKey: string;
+  defaultVisible?: boolean;
 };
 
 type AdminSectionTranslator = (key: string, values?: Record<string, string | number>) => string;
@@ -18,6 +19,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.dashboard.label',
     description: 'Resumen general de actividad y métricas.',
     descriptionKey: 'admin.section.dashboard.description',
+    defaultVisible: true,
   },
   {
     key: 'calendar',
@@ -25,6 +27,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.calendar.label',
     description: 'Planificación semanal y control de citas.',
     descriptionKey: 'admin.section.calendar.description',
+    defaultVisible: true,
   },
   {
     key: 'search',
@@ -32,6 +35,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.search.label',
     description: 'Historial completo de citas filtrado por profesional o fecha.',
     descriptionKey: 'admin.section.search.description',
+    defaultVisible: true,
   },
   {
     key: 'offers',
@@ -39,6 +43,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.offers.label',
     description: 'Promociones programables para servicios y productos.',
     descriptionKey: 'admin.section.offers.description',
+    defaultVisible: true,
   },
   {
     key: 'cash-register',
@@ -46,6 +51,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.cashRegister.label',
     description: 'Control diario de ingresos, salidas y medios de pago.',
     descriptionKey: 'admin.section.cashRegister.description',
+    defaultVisible: true,
   },
   {
     key: 'stock',
@@ -53,6 +59,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.stock.label',
     description: 'Inventario de productos, precios y alertas de stock.',
     descriptionKey: 'admin.section.stock.description',
+    defaultVisible: true,
   },
   {
     key: 'clients',
@@ -60,6 +67,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.clients.label',
     description: 'Gestión de clientes y su historial de visitas.',
     descriptionKey: 'admin.section.clients.description',
+    defaultVisible: true,
   },
   {
     key: 'services',
@@ -67,6 +75,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.services.label',
     description: 'Catálogo de servicios disponibles en el negocio.',
     descriptionKey: 'admin.section.services.description',
+    defaultVisible: true,
   },
   {
     key: 'barbers',
@@ -74,6 +83,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.barbers.label',
     description: 'Administración del equipo de estilistas.',
     descriptionKey: 'admin.section.barbers.description',
+    defaultVisible: true,
   },
   {
     key: 'subscriptions',
@@ -81,6 +91,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.subscriptions.label',
     description: 'Planes de suscripción para clientes y asignación por local.',
     descriptionKey: 'admin.section.subscriptions.description',
+    defaultVisible: true,
   },
   {
     key: 'loyalty',
@@ -88,6 +99,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.loyalty.label',
     description: 'Tarjetas de fidelización y recompensas para clientes.',
     descriptionKey: 'admin.section.loyalty.description',
+    defaultVisible: true,
   },
   {
     key: 'referrals',
@@ -95,6 +107,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.referrals.label',
     description: 'Programa de referidos, recompensas y atribuciones.',
     descriptionKey: 'admin.section.referrals.description',
+    defaultVisible: true,
   },
   {
     key: 'reviews',
@@ -102,6 +115,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.reviews.label',
     description: 'Solicitudes in-app para reseñas y feedback privado.',
     descriptionKey: 'admin.section.reviews.description',
+    defaultVisible: true,
   },
   {
     key: 'alerts',
@@ -109,6 +123,15 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.alerts.label',
     description: 'Mensajes destacados o avisos para clientes.',
     descriptionKey: 'admin.section.alerts.description',
+    defaultVisible: true,
+  },
+  {
+    key: 'communications',
+    label: 'Comunicados',
+    labelKey: 'admin.section.communications.label',
+    description: 'Comunicaciones masivas con previsualización, programación y trazabilidad.',
+    descriptionKey: 'admin.section.communications.description',
+    defaultVisible: false,
   },
   {
     key: 'holidays',
@@ -116,6 +139,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.holidays.label',
     description: 'Bloqueo de días no laborables generales o por profesional.',
     descriptionKey: 'admin.section.holidays.description',
+    defaultVisible: true,
   },
   {
     key: 'roles',
@@ -123,6 +147,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.roles.label',
     description: 'Configuración de roles administrativos y accesos.',
     descriptionKey: 'admin.section.roles.description',
+    defaultVisible: true,
   },
   {
     key: 'settings',
@@ -130,6 +155,7 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     labelKey: 'admin.section.settings.label',
     description: 'Datos generales, redes y horario de apertura.',
     descriptionKey: 'admin.section.settings.description',
+    defaultVisible: true,
   },
 ];
 
@@ -145,6 +171,13 @@ export const ADMIN_REQUIRED_SECTIONS: AdminSectionKey[] = [
   'holidays',
   'settings',
 ];
+
+const ADMIN_SECTION_DEFAULT_VISIBILITY = new Map<AdminSectionKey, boolean>(
+  ADMIN_SECTIONS.map((section) => [section.key, section.defaultVisible]),
+);
+
+export const isAdminSectionDefaultVisible = (section: AdminSectionKey) =>
+  ADMIN_SECTION_DEFAULT_VISIBILITY.get(section) === true;
 
 export const resolveAdminSectionLabel = (
   section: AdminSectionDefinition,

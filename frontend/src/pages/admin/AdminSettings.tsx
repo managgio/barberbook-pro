@@ -41,6 +41,7 @@ import {
   Linkedin,
   Boxes,
   CreditCard,
+  UserCircle,
 } from 'lucide-react';
 
 const DAY_KEYS: DayKey[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -1183,6 +1184,39 @@ const AdminSettings: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      <Card variant="elevated">
+        <CardHeader className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <UserCircle className="w-5 h-5 text-primary" />
+            <CardTitle>{t('admin.settings.profile.title')}</CardTitle>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {t('admin.settings.profile.description')}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">{t('admin.settings.profile.phoneRequired.title')}</p>
+              <p className="text-xs text-muted-foreground">{t('admin.settings.profile.phoneRequired.description')}</p>
+            </div>
+            <Switch
+              checked={settings.profile?.phoneRequired === true}
+              onCheckedChange={(checked) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  profile: {
+                    ...(prev.profile ?? DEFAULT_SITE_SETTINGS.profile),
+                    phoneRequired: checked,
+                  },
+                }))
+              }
+              disabled={isLoading}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Cancellation policy */}
       <Card variant="elevated">

@@ -342,6 +342,57 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     }
   }
 
+  async sendBroadcastEmail(params: {
+    contact: EngagementNotificationContactInfo;
+    subject: string;
+    message: string;
+  }) {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    if (config.notificationPrefs?.email === false) return;
+    const transporter = await this.getTransporter();
+    const to = params.contact.email?.trim();
+    if (!transporter || !to) return;
+    const settings = await this.getSettings();
+    const brandName =
+      settings.branding.shortName ||
+      settings.branding.name ||
+      config.branding?.shortName ||
+      config.branding?.name ||
+      'Managgio';
+    const fromEmail = settings.contact.email || config.email?.user || 'info@managgio.com';
+    const safeMessage = params.message.replace(/\n/g, '<br/>');
+    const html = `
+      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:#0f0f12; padding:24px; color:#f8fafc;">
+        <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
+          <tr>
+            <td style="padding:22px 24px; border-bottom:1px solid rgba(255,255,255,0.08);">
+              <div style="font-weight:700; font-size:18px; color:#fff;">${brandName}</div>
+              <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">Comunicado</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px; color:rgba(248,250,252,0.88); line-height:1.6;">
+              ${safeMessage}
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: `"${config.email?.fromName || brandName}" <${fromEmail}>`,
+        to,
+        subject: params.subject,
+        text: params.message,
+        html,
+      });
+    } catch (error) {
+      this.logger.error(`Error sending broadcast email to ${to}: ${error}`);
+      throw error;
+    }
+  }
+
   async sendReminderSms(contact: EngagementNotificationContactInfo, appointment: EngagementNotificationAppointmentInfo) {
     const twilioConfig = await this.getTwilio();
     if (!twilioConfig || !contact.phone) return;

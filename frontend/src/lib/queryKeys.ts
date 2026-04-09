@@ -190,6 +190,18 @@ export const queryKeys = {
     ["reviews", localId || "default", "feedback", status, page, pageSize] as const,
   adminAlerts: (localId: string | null | undefined) =>
     ["alerts", localId || "default"] as const,
+  adminCommunications: (
+    localId: string | null | undefined,
+    page: number,
+    pageSize: number,
+    status: string,
+  ) => ["communications", localId || "default", "history", page, pageSize, status || "all"] as const,
+  adminCommunicationDetail: (localId: string | null | undefined, campaignId: string | null | undefined) =>
+    ["communications", localId || "default", "detail", campaignId || "none"] as const,
+  adminCommunicationTemplates: (localId: string | null | undefined) =>
+    ["communications", localId || "default", "templates"] as const,
+  adminCommunicationChannelPreference: (localId: string | null | undefined) =>
+    ["communications", localId || "default", "channel-preference"] as const,
   adminGeneralHolidays: (localId: string | null | undefined) =>
     ["holidays", localId || "default", "general"] as const,
   adminBarberHolidays: (localId: string | null | undefined, barberId: string | null | undefined) =>

@@ -179,6 +179,66 @@ enum LocalizedTranslationStatus {
   stale
 }
 
+enum CommunicationActionType {
+  solo_comunicar
+  comunicar_y_cancelar
+}
+
+enum CommunicationScopeType {
+  all_day
+  appointments_morning
+  appointments_afternoon
+  day_time_range
+  professional_single
+  professional_multi
+  appointment_selection
+  all_clients
+}
+
+enum CommunicationChannel {
+  email
+  sms
+  whatsapp
+}
+
+enum CommunicationTemplateKey {
+  medical_leave
+  local_closure
+  delay_incident
+  organizational_change
+  general_announcement
+}
+
+enum CommunicationStatus {
+  draft
+  scheduled
+  running
+  completed
+  partial
+  failed
+  cancelled
+}
+
+enum CommunicationExecutionMode {
+  immediate
+  scheduled
+}
+
+enum CommunicationExecutionStatus {
+  running
+  completed
+  partial
+  failed
+  cancelled
+}
+
+enum CommunicationRecipientStatus {
+  sent
+  failed
+  skipped
+  excluded
+}
+
 model User {
   id                     String                @id @default(cuid())
   firebaseUid            String?               @unique
@@ -208,6 +268,10 @@ model User {
   localStaffRoles        LocationStaff[]
   clientNotes            ClientNote[]          @relation("ClientNoteUser")
   authoredClientNotes    ClientNote[]          @relation("ClientNoteAuthor")
+  createdCommunicationCampaigns CommunicationCampaign[] @relation("CommunicationCampaignCreatedBy")
+  initiatedCommunicationExecutions CommunicationExecution[] @relation("CommunicationExecutionInitiatedBy")
+  updatedCommunicationChannelPreferences CommunicationChannelPreference[] @relation("CommunicationChannelPreferenceUpdatedBy")
+  communicationRecipientResults CommunicationRecipientResult[]
   auditLogs              AuditLog[]
   subscriptions          UserSubscription[]
   createdAt              DateTime              @default(now())
@@ -232,6 +296,7 @@ model Brand {
   providerUsageDaily ProviderUsageDaily[]
   localizedContents  LocalizedContent[]
   localizedTranslations LocalizedContentTranslation[]
+  communicationCampaigns CommunicationCampaign[]
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 }
@@ -280,6 +345,10 @@ model Location {
   auditLogs             AuditLog[]
   localizedContents     LocalizedContent[]
   localizedTranslations LocalizedContentTranslation[]
+  communicationCampaigns CommunicationCampaign[]
+  communicationExecutions CommunicationExecution[]
+  communicationRecipientResults CommunicationRecipientResult[]
+  communicationChannelPreference CommunicationChannelPreference?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
@@ -551,6 +620,7 @@ model Appointment {
   rewardTransactions        RewardTransaction[]
   referralFirstAppointments ReferralAttribution[] @relation("ReferralFirstAppointment")
   reviewRequest             ReviewRequest?        @relation("AppointmentReviewRequest")
+  communicationRecipientResults CommunicationRecipientResult[]
   createdAt                 DateTime              @default(now())
   updatedAt                 DateTime              @updatedAt
 
@@ -971,6 +1041,7 @@ model GeneralHoliday {
   local     Location @relation(fields: [localId], references: [id])
   start     DateTime
   end       DateTime
+  communicationCampaigns CommunicationCampaign[]
   createdAt DateTime @default(now())
 
   @@index([localId])
@@ -984,6 +1055,7 @@ model BarberHoliday {
   barber    Barber   @relation(fields: [barberId], references: [id])
   start     DateTime
   end       DateTime
+  communicationCampaigns CommunicationCampaign[]
   createdAt DateTime @default(now())
 
   @@index([localId])
@@ -1003,6 +1075,114 @@ model SiteSettings {
   local     Location @relation(fields: [localId], references: [id])
   data      Json
   updatedAt DateTime @updatedAt
+}
+
+model CommunicationCampaign {
+  id              String                  @id @default(cuid())
+  brandId         String
+  brand           Brand                   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  localId         String
+  local           Location                @relation(fields: [localId], references: [id], onDelete: Cascade)
+  createdByUserId String?
+  createdByUser   User?                   @relation("CommunicationCampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  originCampaignId String?
+  originCampaign  CommunicationCampaign?  @relation("CommunicationCampaignOrigin", fields: [originCampaignId], references: [id], onDelete: SetNull)
+  derivedCampaigns CommunicationCampaign[] @relation("CommunicationCampaignOrigin")
+  actionType      CommunicationActionType
+  scopeType       CommunicationScopeType
+  channel         CommunicationChannel
+  templateKey     CommunicationTemplateKey
+  status          CommunicationStatus     @default(draft)
+  title           String
+  subject         String?
+  message         String                  @db.Text
+  internalNote    String?                 @db.Text
+  scopeConfig     Json?
+  options         Json?
+  impactSummary   Json?
+  resultSummary   Json?
+  scheduledFor    DateTime?
+  executedAt      DateTime?
+  cancelledAt     DateTime?
+  holidayGeneralId Int?
+  holidayGeneral  GeneralHoliday?         @relation(fields: [holidayGeneralId], references: [id], onDelete: SetNull)
+  holidayBarberId Int?
+  holidayBarber   BarberHoliday?          @relation(fields: [holidayBarberId], references: [id], onDelete: SetNull)
+  executions      CommunicationExecution[]
+  recipientResults CommunicationRecipientResult[]
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([brandId, localId, status, createdAt])
+  @@index([localId, scheduledFor, status])
+  @@index([originCampaignId])
+}
+
+model CommunicationExecution {
+  id               String                      @id @default(cuid())
+  campaignId       String
+  campaign         CommunicationCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  localId          String
+  local            Location                    @relation(fields: [localId], references: [id], onDelete: Cascade)
+  initiatedByUserId String?
+  initiatedByUser  User?                       @relation("CommunicationExecutionInitiatedBy", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+  mode             CommunicationExecutionMode
+  idempotencyKey   String                      @db.VarChar(100)
+  status           CommunicationExecutionStatus @default(running)
+  startedAt        DateTime                    @default(now())
+  finishedAt       DateTime?
+  summary          Json?
+  errorMessage     String?                     @db.Text
+  recipientResults CommunicationRecipientResult[]
+
+  @@unique([campaignId, idempotencyKey])
+  @@index([localId, status, startedAt])
+}
+
+model CommunicationRecipientResult {
+  id                      String                     @id @default(cuid())
+  campaignId              String
+  campaign                CommunicationCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  executionId             String
+  execution               CommunicationExecution     @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  localId                 String
+  local                   Location                   @relation(fields: [localId], references: [id], onDelete: Cascade)
+  userId                  String?
+  user                    User?                      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointmentId           String?
+  appointment             Appointment?               @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  recipientKey            String                     @db.VarChar(191)
+  recipientName           String?
+  recipientEmail          String?
+  recipientPhone          String?
+  channel                 CommunicationChannel
+  status                  CommunicationRecipientStatus
+  errorCode               String?                    @db.VarChar(100)
+  errorMessage            String?                    @db.Text
+  excludedAlreadyNotified Boolean                    @default(false)
+  cancelledAppointment    Boolean                    @default(false)
+  notifiedAt              DateTime?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+
+  @@index([localId, campaignId])
+  @@index([executionId])
+  @@index([localId, recipientKey, status])
+  @@index([appointmentId])
+  @@index([userId])
+}
+
+model CommunicationChannelPreference {
+  id               String               @id @default(cuid())
+  localId          String               @unique
+  local            Location             @relation(fields: [localId], references: [id], onDelete: Cascade)
+  preferredChannel CommunicationChannel @default(email)
+  updatedByUserId  String?
+  updatedByUser    User?                @relation("CommunicationChannelPreferenceUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([localId, preferredChannel])
 }
 
 model BarberSchedule {

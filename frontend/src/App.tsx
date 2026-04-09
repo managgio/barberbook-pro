@@ -43,6 +43,7 @@ const AdminStock = lazy(() => import("./pages/admin/AdminStock"));
 const AdminBarbers = lazy(() => import("./pages/admin/AdminBarbers"));
 const AdminSubscriptions = lazy(() => import("./pages/admin/AdminSubscriptions"));
 const AdminAlerts = lazy(() => import("./pages/admin/AdminAlerts"));
+const AdminCommunications = lazy(() => import("./pages/admin/AdminCommunications"));
 const AdminHolidays = lazy(() => import("./pages/admin/AdminHolidays"));
 const AdminRoles = lazy(() => import("./pages/admin/AdminRoles"));
 const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
@@ -184,6 +185,7 @@ const AppRoutes: React.FC = () => {
         <Route path="referrals" element={withSuspense(<AdminReferrals />)} />
         <Route path="reviews" element={withSuspense(<AdminReviews />)} />
         <Route path="alerts" element={withSuspense(<AdminAlerts />)} />
+        <Route path="communications" element={withSuspense(<AdminCommunications />)} />
         <Route path="holidays" element={withSuspense(<AdminHolidays />)} />
         <Route path="settings" element={withSuspense(<AdminSettings />)} />
         <Route path="roles" element={withSuspense(<AdminRoles />)} />

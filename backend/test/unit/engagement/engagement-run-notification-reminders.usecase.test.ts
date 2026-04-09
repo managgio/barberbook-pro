@@ -15,6 +15,7 @@ const baseReminderPort = (reminders: EngagementPendingReminder[]): EngagementNot
 const baseNotificationPort = (): EngagementNotificationManagementPort => ({
   sendAppointmentEmail: async () => undefined,
   sendReferralRewardEmail: async () => undefined,
+  sendBroadcastEmail: async () => undefined,
   sendReminderSms: async () => undefined,
   sendTestSms: async () => ({ success: true, sid: 'sms' }),
   sendReminderWhatsapp: async () => undefined,

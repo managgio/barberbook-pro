@@ -44,6 +44,7 @@ export type TenantThemeConfig = {
 
 export type TenantAdminSidebarConfig = {
   hiddenSections?: string[];
+  visibleSections?: string[];
 };
 
 export type TenantLandingSectionKey = 'presentation' | 'services' | 'products' | 'barbers' | 'cta';
@@ -75,6 +76,7 @@ export type TenantNotificationPrefs = {
 
 export type TenantFeaturesConfig = {
   barberServiceAssignmentEnabled?: boolean;
+  communicationsEnabled?: boolean;
 };
 
 export type TenantLanguageCode = string;

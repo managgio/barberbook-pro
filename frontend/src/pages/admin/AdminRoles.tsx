@@ -10,8 +10,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { getAdminSections } from '@/data/adminSections';
-import { AdminRole, AdminSectionKey, User } from '@/data/types';
+import { ADMIN_SECTION_KEYS, getAdminSections } from '@/data/adminSections';
+import {
+  AdminPermissionKey,
+  AdminRole,
+  AdminSectionKey,
+  CommunicationPermissionKey,
+  User,
+} from '@/data/types';
 import { 
   getUsersPage,
   updateUser,
@@ -39,6 +45,55 @@ const isSuperAdminUser = (candidate: User) => Boolean(candidate.isSuperAdmin || 
 const USER_SEARCH_DEBOUNCE_MS = 250;
 const EMPTY_ROLES: AdminRole[] = [];
 const EMPTY_USERS: User[] = [];
+const COMMUNICATION_PERMISSION_MATRIX: Array<{
+  key: CommunicationPermissionKey;
+  labelKey: string;
+  descriptionKey: string;
+}> = [
+  {
+    key: 'communications:view',
+    labelKey: 'admin.roles.communications.permissions.view.label',
+    descriptionKey: 'admin.roles.communications.permissions.view.description',
+  },
+  {
+    key: 'communications:create_draft',
+    labelKey: 'admin.roles.communications.permissions.createDraft.label',
+    descriptionKey: 'admin.roles.communications.permissions.createDraft.description',
+  },
+  {
+    key: 'communications:preview',
+    labelKey: 'admin.roles.communications.permissions.preview.label',
+    descriptionKey: 'admin.roles.communications.permissions.preview.description',
+  },
+  {
+    key: 'communications:execute',
+    labelKey: 'admin.roles.communications.permissions.execute.label',
+    descriptionKey: 'admin.roles.communications.permissions.execute.description',
+  },
+  {
+    key: 'communications:schedule',
+    labelKey: 'admin.roles.communications.permissions.schedule.label',
+    descriptionKey: 'admin.roles.communications.permissions.schedule.description',
+  },
+  {
+    key: 'communications:cancel_scheduled',
+    labelKey: 'admin.roles.communications.permissions.cancelScheduled.label',
+    descriptionKey: 'admin.roles.communications.permissions.cancelScheduled.description',
+  },
+  {
+    key: 'communications:duplicate',
+    labelKey: 'admin.roles.communications.permissions.duplicate.label',
+    descriptionKey: 'admin.roles.communications.permissions.duplicate.description',
+  },
+  {
+    key: 'communications:view_history',
+    labelKey: 'admin.roles.communications.permissions.viewHistory.label',
+    descriptionKey: 'admin.roles.communications.permissions.viewHistory.description',
+  },
+];
+const COMMUNICATION_PERMISSION_KEYS = new Set(COMMUNICATION_PERMISSION_MATRIX.map((entry) => entry.key));
+const isAdminSectionKey = (permission: AdminPermissionKey): permission is AdminSectionKey =>
+  ADMIN_SECTION_KEYS.includes(permission as AdminSectionKey);
 
 const AdminRoles: React.FC = () => {
   const { user } = useAuth();
@@ -60,13 +115,39 @@ const AdminRoles: React.FC = () => {
     () => new Set(rolePermissionSections.map((section) => section.key)),
     [rolePermissionSections],
   );
+  const availablePermissionKeys = useMemo(
+    () =>
+      new Set<AdminPermissionKey>([
+        ...(Array.from(rolePermissionSectionKeys) as AdminPermissionKey[]),
+        ...(COMMUNICATION_PERMISSION_MATRIX.map((entry) => entry.key) as AdminPermissionKey[]),
+      ]),
+    [rolePermissionSectionKeys],
+  );
   const sanitizePermissions = useCallback(
-    (permissions: AdminSectionKey[]) => {
-      const filtered = permissions.filter((permission) => rolePermissionSectionKeys.has(permission));
-      if (filtered.length > 0) return filtered;
-      return rolePermissionSectionKeys.has('dashboard') ? ['dashboard'] : rolePermissionSections.slice(0, 1).map((section) => section.key);
+    (permissions: AdminPermissionKey[]) => {
+      const unique = Array.from(new Set(permissions));
+      const filtered = unique.filter((permission) => availablePermissionKeys.has(permission));
+      const sectionPermissions = filtered.filter((permission): permission is AdminSectionKey =>
+        isAdminSectionKey(permission),
+      );
+      const fallbackSection: AdminSectionKey[] = rolePermissionSectionKeys.has('dashboard')
+        ? ['dashboard']
+        : rolePermissionSections.slice(0, 1).map((section) => section.key);
+      const ensuredSections = sectionPermissions.length > 0 ? sectionPermissions : fallbackSection;
+      const hasCommunicationsSection = ensuredSections.includes('communications');
+      const scopedExtraPermissions = filtered.filter((permission) =>
+        COMMUNICATION_PERMISSION_KEYS.has(permission as CommunicationPermissionKey),
+      );
+      const communicationPermissions = hasCommunicationsSection
+        ? ([
+            'communications:view',
+            'communications:view_history',
+            ...scopedExtraPermissions,
+          ] as AdminPermissionKey[])
+        : [];
+      return Array.from(new Set([...ensuredSections, ...communicationPermissions])) as AdminPermissionKey[];
     },
-    [rolePermissionSectionKeys, rolePermissionSections],
+    [availablePermissionKeys, rolePermissionSectionKeys, rolePermissionSections],
   );
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -80,7 +161,7 @@ const AdminRoles: React.FC = () => {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
-    permissions: AdminSectionKey[];
+    permissions: AdminPermissionKey[];
   }>({
     name: '',
     description: '',
@@ -179,8 +260,8 @@ const AdminRoles: React.FC = () => {
     setIsDialogOpen(true);
   };
 
-  const handleTogglePermission = (permission: AdminSectionKey) => {
-    if (!rolePermissionSectionKeys.has(permission)) return;
+  const handleTogglePermission = (permission: AdminPermissionKey) => {
+    if (!availablePermissionKeys.has(permission)) return;
     setFormData((prev) => {
       const exists = prev.permissions.includes(permission);
       const nextPermissions = exists
@@ -192,6 +273,7 @@ const AdminRoles: React.FC = () => {
       };
     });
   };
+  const hasCommunicationsSection = formData.permissions.includes('communications');
 
   const handleSaveRole = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -451,12 +533,15 @@ const AdminRoles: React.FC = () => {
                   <div className="flex flex-wrap gap-2">
                     {role.permissions.map((permission) => {
                       const section = adminSections.find((sec) => sec.key === permission);
+                      const communicationPermission = COMMUNICATION_PERMISSION_MATRIX.find(
+                        (entry) => entry.key === permission,
+                      );
                       return (
                         <span
                           key={`${role.id}-${permission}`}
                           className="px-3 py-1 rounded-full text-xs bg-primary/10 text-primary"
                         >
-                          {section?.label || permission}
+                          {section?.label || (communicationPermission ? t(communicationPermission.labelKey) : permission)}
                         </span>
                       );
                     })}
@@ -591,6 +676,33 @@ const AdminRoles: React.FC = () => {
                   </label>
                 ))}
               </div>
+              {hasCommunicationsSection && (
+                <div className="space-y-2 pt-2">
+                  <Label>{t('admin.roles.communications.permissions.title')}</Label>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {COMMUNICATION_PERMISSION_MATRIX.map((permission) => (
+                      <label
+                        key={permission.key}
+                        className={cn(
+                          'flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors',
+                          formData.permissions.includes(permission.key)
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary/40',
+                        )}
+                      >
+                        <Checkbox
+                          checked={formData.permissions.includes(permission.key)}
+                          onCheckedChange={() => handleTogglePermission(permission.key)}
+                        />
+                        <div>
+                          <p className="font-medium text-sm text-foreground">{t(permission.labelKey)}</p>
+                          <p className="text-xs text-muted-foreground">{t(permission.descriptionKey)}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <DialogFooter>

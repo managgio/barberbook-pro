@@ -33,6 +33,14 @@ export class NotificationsService {
     return this.notificationManagementPort.sendReferralRewardEmail(params);
   }
 
+  sendBroadcastEmail(params: {
+    contact: EngagementNotificationContactInfo;
+    subject: string;
+    message: string;
+  }) {
+    return this.notificationManagementPort.sendBroadcastEmail(params);
+  }
+
   sendReminderSms(contact: EngagementNotificationContactInfo, appointment: EngagementNotificationAppointmentInfo) {
     return this.notificationManagementPort.sendReminderSms(contact, appointment);
   }

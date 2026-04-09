@@ -97,6 +97,7 @@ Modulos principales:
 - **Schedules**: horario del local y horarios por barbero (JSON), con descansos/buffer entre citas y tolerancia de cierre con overrides por dia/fecha.
 - **Holidays**: festivos del local y por barbero.
 - **Alerts**: banners/avisos con rango de fechas.
+- **Communications**: comunicados masivos admin (borrador/programado/inmediato), previsualización de impacto y trazabilidad por ejecución/destinatario.
 - **Settings**: configuracion del sitio (branding/contacto/horarios/sociales/stats visibles).
 - **ImageKit**: firma y borrado de archivos.
 - **Notifications**: emails + SMS + WhatsApp de recordatorio.
@@ -180,6 +181,7 @@ Caching y sincronizacion frontend:
 - **Referidos admin query-driven**: `AdminReferrals` consume `useQuery` para configuración (`adminReferralConfig`), analítica (`adminReferralOverview`), listado filtrable (`adminReferralList`) y catálogo de servicios (`services`), eliminando cargas manuales en `useEffect` y manteniendo sincronía por cache tras guardar/copiar.
 - **Reseñas admin query-driven**: `AdminReviews` consume `useQuery` para configuración (`adminReviewConfig`), métricas por rango (`adminReviewMetrics`) y feedback paginado por estado (`adminReviewFeedback`), eliminando cargas manuales por efecto y actualizando cache al resolver feedback.
 - **Alertas admin query-driven**: `AdminAlerts` consume `useQuery` (`adminAlerts`) para listado de avisos y elimina listeners manuales de `window`; las mutaciones (crear/editar/borrar/activar) refrescan por invalidación de dominio.
+- **Comunicados admin query-driven**: `AdminCommunications` consume `useQuery` para plantillas, preferencia de canal por local, historial paginado y detalle (`communications`), con mutaciones separadas (`preview/create/execute/duplicate/cancel`) e invalidación por dominio.
 - **Festivos admin query-driven**: `AdminHolidays` consume `useQuery` para festivos generales (`adminGeneralHolidays`), festivos por staff (`adminBarberHolidays`) y catálogo de barberos (`barbers`), eliminando carga manual inicial y refrescando por `focus/visibility`.
 - **PlatformBrands query-driven**: `PlatformBrands` consume `useQuery` con claves dedicadas (`platform-brands`, `platform-brand*`, `platform-location-config`) y `useMutation` para escrituras críticas (guardar marca/legal, CRUD de marca/local, asignación de admins), eliminando `load*` imperativos y centralizando refresco con `refetch` + `setQueryData`.
 - **PlatformBrands (pestaña Idiomas dedicada)**: el gobierno i18n por tenant se gestiona en la pestaña `Idiomas` (idioma principal, idiomas habilitados, auto-traducción y controles operativos); la pestaña `Config` queda sin controles i18n para evitar duplicidad y estado transitorio.
@@ -222,7 +224,7 @@ Observabilidad UX:
 Paginas clave:
 - Publicas: Landing, Auth, Guest Booking, Hours/Location.
 - Cliente: Dashboard, Booking Wizard, Appointments, Subscriptions, Profile, Referrals.
-- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Holidays, Roles, Settings, Cash Register, Subscriptions, Loyalty, Referrals.
+- Admin: Dashboard, Calendar, Search, Clients, Services, Offers, Stock, Barbers, Alerts, Communications, Holidays, Roles, Settings, Cash Register, Subscriptions, Loyalty, Referrals.
 - Plataforma: Dashboard, Brands (gestion multi-tenant, landing reordenable por drag & drop y overrides por local), Observability (salud UX/API en tiempo casi real).
 
 ## Modelo de datos (Prisma / MySQL)
@@ -266,6 +268,10 @@ CashMovementProductItem | Linea de movimiento de caja | Productos y cantidades a
 PaymentMethod | Enum | Tarjeta, efectivo, bizum u otros metodos
 PaymentStatus | Enum | pending/paid/failed/cancelled/exempt/in_person
 Alert | Avisos | Mensajes con tipo y rango de fechas
+CommunicationCampaign | Campaña de comunicado | Alcance, canal, mensaje y estado (`draft/scheduled/running/completed/partial/failed/cancelled`) con resumen de impacto/resultado
+CommunicationExecution | Ejecución de comunicado | Corrida inmediata/programada con idempotencia, estado y resumen agregado
+CommunicationRecipientResult | Resultado por destinatario | Trazabilidad por cliente/cita/canal (`sent/failed/skipped/excluded`) con errores y cancelación aplicada
+CommunicationChannelPreference | Preferencia de canal local | Canal por defecto de comunicados por local (`email`, `sms`, `whatsapp`)
 GeneralHoliday | Festivo general | Rangos de cierre del local
 BarberHoliday | Festivo de barbero | Rangos por barbero
 ShopSchedule | Horario local | JSON con turnos diarios, descansos por dia (`breaks`) y por fecha (`breaksByDate`), `bufferMinutes`, y overflow de cierre (`endOverflowMinutes`, `endOverflowByDay`, `endOverflowByDate`)
@@ -504,6 +510,14 @@ Documentos de referencia creados durante la migracion (detalle operativo y evide
    - `PlatformObservability` consume `useQuery` para resumen de experiencia/API (`platform-observability-webvitals`, `platform-observability-api`) sobre ventana seleccionable (`minutes`) y permite refresh manual sin polling continuo.
    - `PlatformBrands` centraliza lecturas de plataforma en `useQuery` y escrituras en `useMutation` (sin `loadBrands/loadBrandDetails/loadLegalInfo`); la sincronización post-mutación se resuelve por `refetch` de dominio + `setQueryData` en legal, y evita doble carga de config de local al cambiar de marca.
    - Al confirmar una reserva en cliente, `BookingWizard` invalida caches relacionadas (`client-appointments`, `client-loyalty-summary`, `client-referral-summary`, `rewards-wallet`, `booking-loyalty-preview`) y emite `dispatchAppointmentsUpdated` para coherencia inmediata entre vistas cliente/admin.
+
+17) **Comunicados (admin)**
+   - Feature flag tenant-aware: `features.communicationsEnabled` (marca + override por local), con default `false`.
+   - Seguridad en backend: endpoints `admin/communications` bloqueados cuando el feature está desactivado y protegidos por permisos granulares (`view`, `create_draft`, `preview`, `execute`, `schedule`, `cancel_scheduled`, `duplicate`, `view_history`).
+   - Flujo operativo: plantilla editable + alcance + canal + opciones extra -> previsualización backend de impacto -> ejecución inmediata o programada.
+   - Reglas de dominio: solo `solo_comunicar` y `comunicar_y_cancelar`; no existe cancelación sin comunicado, y la cancelación masiva no es programable.
+   - Trazabilidad: historial de campañas con estados (`draft/scheduled/running/completed/partial/failed/cancelled`), ejecuciones con idempotencia y resultados por destinatario.
+   - Integración opcional de cierre: una ejecución puede crear festivo general o por profesional reutilizando el módulo de holidays.
 
 ## Integraciones externas
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local; al reemplazar activos se elimina el archivo anterior.
