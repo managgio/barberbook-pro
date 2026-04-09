@@ -503,6 +503,9 @@ const AdminClients: React.FC = () => {
   const appointmentsTotalPages = Math.max(1, Math.ceil(appointmentsTotal / APPOINTMENTS_PAGE_SIZE));
   const appointmentsFirstIndex = appointmentsTotal === 0 ? 0 : (appointmentsPage - 1) * APPOINTMENTS_PAGE_SIZE + 1;
   const appointmentsLastIndex = Math.min(appointmentsTotal, appointmentsPage * APPOINTMENTS_PAGE_SIZE);
+  const clientsTotalLabel = new Intl.NumberFormat(
+    language.toLowerCase().startsWith('en') ? 'en-US' : 'es-ES',
+  ).format(clientsTotal);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -523,7 +526,7 @@ const AdminClients: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserIcon className="w-5 h-5 text-primary" />
-              {t('admin.clients.list.title')}
+              {`${t('admin.clients.list.title')} (${clientsTotalLabel})`}
             </CardTitle>
           </CardHeader>
           <CardContent className="flex-1 min-h-0 overflow-hidden pt-2">
