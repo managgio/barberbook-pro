@@ -2047,6 +2047,7 @@ const PlatformBrands: React.FC = () => {
       const folder = scope === 'location' ? (locationConfig?.imagekit?.folder || 'landing') : 'landing';
       const { url, fileId } = await uploadToImageKit(file, fileName, folder, {
         subdomainOverride: selectedBrand.subdomain,
+        ...(scope === 'location' ? { localIdOverride: selectedLocationId } : {}),
       });
       const config = scope === 'location' ? locationConfig : brandConfig;
       const sections = getPresentationSections(config);
@@ -2063,7 +2064,10 @@ const PlatformBrands: React.FC = () => {
       }
       if (previousFileId && previousFileId !== fileId) {
         try {
-          await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
+          await deleteFromImageKit(previousFileId, {
+            subdomainOverride: selectedBrand.subdomain,
+            ...(scope === 'location' ? { localIdOverride: selectedLocationId } : {}),
+          });
         } catch (cleanupError) {
           console.error(cleanupError);
           toast({
@@ -2563,6 +2567,7 @@ const PlatformBrands: React.FC = () => {
       const folder = locationConfig?.imagekit?.folder || asset.folder;
       const { url, fileId } = await uploadToImageKit(file, fileName, folder, {
         subdomainOverride: selectedBrand.subdomain,
+        localIdOverride: selectedLocationId,
       });
       updateLocationBrandingFields({
         [asset.urlField]: url,
@@ -2570,7 +2575,10 @@ const PlatformBrands: React.FC = () => {
       });
       if (previousFileId && previousFileId !== fileId && previousFileId !== persistedFileId) {
         try {
-          await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
+          await deleteFromImageKit(previousFileId, {
+            subdomainOverride: selectedBrand.subdomain,
+            localIdOverride: selectedLocationId,
+          });
         } catch (cleanupError) {
           console.error(cleanupError);
           toast({

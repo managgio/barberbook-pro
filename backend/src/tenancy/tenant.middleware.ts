@@ -5,6 +5,7 @@ import { TenantResolutionError, TenantService } from './tenant.service';
 import {
   DEFAULT_BRAND_ID,
   DEFAULT_LOCAL_ID,
+  PLATFORM_SUBDOMAIN,
   TENANT_ALLOW_HEADER_OVERRIDES,
   TENANT_BASE_DOMAIN,
   TENANT_TRUST_X_FORWARDED_HOST,
@@ -142,14 +143,21 @@ export class TenantMiddleware implements NestMiddleware {
     const originSubdomain = getSubdomainFromHostname(originHostname);
     const refererSubdomain = getSubdomainFromHostname(refererHostname);
     const publicRequestSubdomain = originSubdomain || refererSubdomain;
+    const requestHostSubdomain = getSubdomainFromHostname(normalizeHost(host));
+    const isPlatformImageKitRequest =
+      req.originalUrl?.startsWith('/api/imagekit/') &&
+      Boolean(headerSubdomain) &&
+      (publicRequestSubdomain === PLATFORM_SUBDOMAIN || requestHostSubdomain === PLATFORM_SUBDOMAIN);
 
     // Safe fallback:
     // when overrides are disabled, trust x-tenant-subdomain only if it matches browser Origin/Referer hostname.
+    // Platform admins also need to sign/delete ImageKit assets for the tenant currently selected in Platform.
+    // Keep that exception route-scoped; controller auth still requires an admin token.
     const subdomainOverride = previewSubdomainOverride
       ? previewSubdomainOverride
       : TENANT_ALLOW_HEADER_OVERRIDES
         ? headerSubdomain
-        : headerSubdomain && publicRequestSubdomain === headerSubdomain
+        : isPlatformImageKitRequest || (headerSubdomain && publicRequestSubdomain === headerSubdomain)
           ? headerSubdomain
           : null;
     const requestedLanguage =
@@ -157,7 +165,7 @@ export class TenantMiddleware implements NestMiddleware {
       normalizeLanguageCode(firstHeaderValue(req.headers['x-app-language'])) ||
       normalizeLanguageCode(firstHeaderValue(req.headers['accept-language'])?.split(',')[0]?.split(';')[0]);
     const localIdOverride =
-      TENANT_ALLOW_HEADER_OVERRIDES &&
+      (TENANT_ALLOW_HEADER_OVERRIDES || isPlatformImageKitRequest) &&
       typeof req.headers['x-local-id'] === 'string'
         ? req.headers['x-local-id']
         : null;
