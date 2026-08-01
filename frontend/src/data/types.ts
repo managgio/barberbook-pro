@@ -1358,12 +1358,29 @@ export interface PlatformObservabilityWebVitalMetricSummary {
 
 export interface PlatformObservabilityWebVitalsSummary {
   windowMinutes: number;
+  generatedAt: string;
+  range: { start: string; end: string };
+  environment: string;
   totalEvents: number;
   byMetric: PlatformObservabilityWebVitalMetricSummary[];
   topPoorPaths: Array<{ path: string; poorCount: number }>;
+  tenantBreakdown: Array<{
+    brandId: string;
+    localId: string;
+    name: WebVitalMetricName;
+    path: string;
+    count: number;
+    avg: number;
+    p95: number;
+    ratings: { good: number; needsImprovement: number; poor: number };
+    firstSeenAt: string;
+    lastSeenAt: string;
+  }>;
 }
 
 export interface PlatformObservabilityApiRouteSummary {
+  brandId: string;
+  localId: string;
   method: string;
   route: string;
   subdomain: string | null;
@@ -1376,9 +1393,15 @@ export interface PlatformObservabilityApiRouteSummary {
 
 export interface PlatformObservabilityApiSummary {
   windowMinutes: number;
+  generatedAt: string;
+  range: { start: string; end: string };
+  environment: string;
   totalEvents: number;
   topRoutes: PlatformObservabilityApiRouteSummary[];
   slowestSamples: Array<{
+    brandId: string;
+    localId: string;
+    subdomain: string | null;
     method: string;
     route: string;
     statusCode: number;

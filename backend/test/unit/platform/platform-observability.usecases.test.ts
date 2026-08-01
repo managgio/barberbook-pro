@@ -16,12 +16,25 @@ const basePort = (): PlatformObservabilityPort => ({
   recordApiMetric: async () => undefined,
   getWebVitalsSummary: async () => ({
     windowMinutes: 60,
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    range: {
+      start: '2025-12-31T23:00:00.000Z',
+      end: '2026-01-01T00:00:00.000Z',
+    },
+    environment: 'test',
     totalEvents: 0,
     byMetric: [],
     topPoorPaths: [],
+    tenantBreakdown: [],
   }),
   getApiMetricsSummary: async () => ({
     windowMinutes: 60,
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    range: {
+      start: '2025-12-31T23:00:00.000Z',
+      end: '2026-01-01T00:00:00.000Z',
+    },
+    environment: 'test',
     totalEvents: 0,
     topRoutes: [],
     slowestSamples: [],
@@ -117,4 +130,3 @@ test('get api metrics summary forwards optional window', async () => {
   assert.equal(calls[0], 120);
   assert.equal(result.windowMinutes, 60);
 });
-

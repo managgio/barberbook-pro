@@ -48,7 +48,6 @@ const ProfilePage: React.FC = () => {
     user?.prefersBarberSelection ?? true,
   );
   const [activeBarberCount, setActiveBarberCount] = useState<number | null>(null);
-  const [isSavingRequiredPhone, setIsSavingRequiredPhone] = useState(false);
 
   const notificationConfig = tenant?.config?.notificationPrefs;
   const allowEmail = notificationConfig?.email !== false;
@@ -101,7 +100,6 @@ const ProfilePage: React.FC = () => {
 
   const showBarberSelectionPreference = activeBarberCount === null || activeBarberCount > 1;
   const isPhoneRequired = settings.profile?.phoneRequired === true;
-  const requiresPhoneCompletion = Boolean(user && isPhoneRequired && !(user.phone || '').trim());
 
   useEffect(() => {
     if (!user) return;
@@ -159,37 +157,6 @@ const ProfilePage: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleRequiredPhoneSave = async () => {
-    const phone = formData.phone.trim();
-    if (!phone) {
-      toast({
-        title: t('profile.phoneRequired.missingTitle'),
-        description: t('profile.phoneRequired.missingDescription'),
-        variant: 'destructive',
-      });
-      return;
-    }
-    setIsSavingRequiredPhone(true);
-    try {
-      await updateProfile({
-        name: formData.name,
-        phone,
-      });
-      toast({
-        title: t('profile.phoneRequired.savedTitle'),
-        description: t('profile.phoneRequired.savedDescription'),
-      });
-    } catch {
-      toast({
-        title: t('profile.phoneRequired.saveErrorTitle'),
-        description: t('profile.phoneRequired.saveErrorDescription'),
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingRequiredPhone(false);
     }
   };
 
@@ -534,41 +501,6 @@ const ProfilePage: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={requiresPhoneCompletion}>
-        <AlertDialogContent
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          onPointerDownOutside={(event) => event.preventDefault()}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('profile.phoneRequired.modalTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('profile.phoneRequired.modalDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="required-phone-input">{t('profile.field.phone')}</Label>
-            <Input
-              id="required-phone-input"
-              type="tel"
-              placeholder={t('profile.field.phonePlaceholder')}
-              value={formData.phone}
-              onChange={(event) =>
-                setFormData((prev) => ({ ...prev, phone: event.target.value }))
-              }
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogAction
-              type="button"
-              onClick={handleRequiredPhoneSave}
-              disabled={isSavingRequiredPhone}
-            >
-              {isSavingRequiredPhone && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t('profile.phoneRequired.saveAction')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

@@ -142,10 +142,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
   private readonly pendingWebVitals: WebVitalRecord[] = [];
   private readonly pendingApiMetrics: ApiMetricRecord[] = [];
   private readonly alertRecipients = parseRecipients(process.env.OBSERVABILITY_ALERT_EMAILS);
-  private readonly alertCooldownMs = parseNumber(
-    process.env.OBSERVABILITY_ALERT_COOLDOWN_MINUTES,
-    DEFAULT_ALERT_COOLDOWN_MS / 60_000,
-  ) * 60_000;
+  private readonly alertCooldownMs =
+    parseNumber(process.env.OBSERVABILITY_ALERT_COOLDOWN_MINUTES, DEFAULT_ALERT_COOLDOWN_MS / 60_000) * 60_000;
   private readonly apiAlertWindowMinutes = parseNumber(
     process.env.OBSERVABILITY_ALERT_API_WINDOW_MINUTES,
     DEFAULT_API_ALERT_WINDOW_MINUTES,
@@ -162,10 +160,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     process.env.OBSERVABILITY_ALERT_API_ERROR_MIN_COUNT,
     DEFAULT_API_ALERT_ERROR_MIN_COUNT,
   );
-  private readonly apiAlertP95Ms = parseNumber(
-    process.env.OBSERVABILITY_ALERT_API_P95_MS,
-    DEFAULT_API_ALERT_P95_MS,
-  );
+  private readonly apiAlertP95Ms = parseNumber(process.env.OBSERVABILITY_ALERT_API_P95_MS, DEFAULT_API_ALERT_P95_MS);
   private readonly persistFlushIntervalMs = parseNumber(
     process.env.OBSERVABILITY_PERSIST_FLUSH_MS,
     DEFAULT_PERSIST_FLUSH_INTERVAL_MS,
@@ -179,11 +174,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     parseNumber(process.env.OBSERVABILITY_PERSIST_BUFFER_LIMIT, DEFAULT_PERSIST_BUFFER_LIMIT),
   );
   private readonly persistedRetentionMs =
-    parseNumber(process.env.OBSERVABILITY_PERSIST_RETENTION_DAYS, DEFAULT_PERSIST_RETENTION_DAYS) *
-    24 *
-    60 *
-    60 *
-    1000;
+    parseNumber(process.env.OBSERVABILITY_PERSIST_RETENTION_DAYS, DEFAULT_PERSIST_RETENTION_DAYS) * 24 * 60 * 60 * 1000;
   private readonly summaryQueryCap = Math.max(
     5_000,
     parseNumber(process.env.OBSERVABILITY_SUMMARY_QUERY_CAP, DEFAULT_SUMMARY_QUERY_CAP),
@@ -364,9 +355,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
         durationMs: Number(entry.durationMs),
       }));
     } catch (error) {
-      this.logger.warn(
-        `Observability API alert fallback to memory: ${error instanceof Error ? error.message : error}`,
-      );
+      this.logger.warn(`Observability API alert fallback to memory: ${error instanceof Error ? error.message : error}`);
     }
 
     if (routeSamples.length === 0) {
@@ -379,7 +368,10 @@ export class InMemoryPrismaPlatformObservabilityAdapter
             item.method === record.method &&
             item.route === record.route,
         )
-        .map((item) => ({ statusCode: item.statusCode, durationMs: item.durationMs }));
+        .map((item) => ({
+          statusCode: item.statusCode,
+          durationMs: item.durationMs,
+        }));
     }
 
     if (routeSamples.length < this.apiAlertMinSamples) {
@@ -396,9 +388,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
 
     const reasons: string[] = [];
     if (serverErrors >= this.apiAlertErrorMinCount && errorRate >= this.apiAlertErrorRatePercent) {
-      reasons.push(
-        `error rate 5xx ${errorRate.toFixed(2)}% (count ${serverErrors}/${routeSamples.length})`,
-      );
+      reasons.push(`error rate 5xx ${errorRate.toFixed(2)}% (count ${serverErrors}/${routeSamples.length})`);
     }
     if (p95DurationMs >= this.apiAlertP95Ms) {
       reasons.push(`p95 latency ${p95DurationMs}ms (threshold ${this.apiAlertP95Ms}ms)`);
@@ -444,7 +434,12 @@ export class InMemoryPrismaPlatformObservabilityAdapter
 
   private pruneByRetention<T>(
     bucket: T[],
-    params: { now: number; retentionMs: number; maxItems: number; resolveTimestamp: (item: T) => number },
+    params: {
+      now: number;
+      retentionMs: number;
+      maxItems: number;
+      resolveTimestamp: (item: T) => number;
+    },
   ) {
     const minTimestamp = params.now - params.retentionMs;
     while (bucket.length > 0 && params.resolveTimestamp(bucket[0]) < minTimestamp) {
@@ -476,10 +471,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
   }
 
   private async flushBuffers(force = false) {
-    await Promise.all([
-      this.flushWebVitals(force),
-      this.flushApiMetrics(force),
-    ]);
+    await Promise.all([this.flushWebVitals(force), this.flushApiMetrics(force)]);
     await this.maybeCleanupPersistedMetrics();
   }
 
@@ -509,9 +501,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
         });
       }
     } catch (error) {
-      this.logger.error(
-        `Failed to flush web vitals to DB: ${error instanceof Error ? error.message : error}`,
-      );
+      this.logger.error(`Failed to flush web vitals to DB: ${error instanceof Error ? error.message : error}`);
     } finally {
       this.isFlushingWebVitals = false;
       if (!force && this.pendingWebVitals.length > 0) {
@@ -546,9 +536,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
         });
       }
     } catch (error) {
-      this.logger.error(
-        `Failed to flush API metrics to DB: ${error instanceof Error ? error.message : error}`,
-      );
+      this.logger.error(`Failed to flush API metrics to DB: ${error instanceof Error ? error.message : error}`);
     } finally {
       this.isFlushingApiMetrics = false;
       if (!force && this.pendingApiMetrics.length > 0) {
@@ -582,10 +570,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     );
   }
 
-  recordWebVital(
-    payload: PlatformWebVitalReport,
-    context: { localId: string; brandId: string; userAgent?: string },
-  ) {
+  recordWebVital(payload: PlatformWebVitalReport, context: { localId: string; brandId: string; userAgent?: string }) {
     const now = Date.now();
     const numericValue = Number(payload.value);
     if (!Number.isFinite(numericValue) || numericValue < 0) {
@@ -662,6 +647,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
           timestamp: { gte: new Date(sinceMs) },
         },
         select: {
+          brandId: true,
+          localId: true,
           name: true,
           value: true,
           rating: true,
@@ -672,6 +659,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
         take: this.summaryQueryCap,
       });
       return records.map((record) => ({
+        brandId: record.brandId,
+        localId: record.localId,
         name: record.name as PlatformWebVitalName,
         value: Number(record.value),
         rating: record.rating as PlatformWebVitalRating,
@@ -685,6 +674,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
       return this.webVitals
         .filter((item) => item.timestamp >= sinceMs)
         .map((item) => ({
+          brandId: item.brandId,
+          localId: item.localId,
           name: item.name,
           value: item.value,
           rating: item.rating,
@@ -702,6 +693,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
           timestamp: { gte: new Date(sinceMs) },
         },
         select: {
+          brandId: true,
+          localId: true,
           method: true,
           route: true,
           subdomain: true,
@@ -713,6 +706,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
         take: this.summaryQueryCap,
       });
       return records.map((record) => ({
+        brandId: record.brandId,
+        localId: record.localId,
         method: record.method,
         route: record.route,
         subdomain: record.subdomain,
@@ -727,6 +722,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
       return this.apiMetrics
         .filter((item) => item.timestamp >= sinceMs)
         .map((item) => ({
+          brandId: item.brandId,
+          localId: item.localId,
           method: item.method,
           route: item.route,
           subdomain: item.subdomain,
@@ -739,7 +736,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
 
   async getWebVitalsSummary(windowMinutes?: number) {
     const safeWindowMinutes = clampWindowMinutes(windowMinutes);
-    const since = Date.now() - safeWindowMinutes * 60_000;
+    const now = Date.now();
+    const since = now - safeWindowMinutes * 60_000;
     const recent = await this.loadWebVitalsSince(since);
 
     const byMetric = WEB_VITAL_NAMES.map((name) => {
@@ -747,18 +745,15 @@ export class InMemoryPrismaPlatformObservabilityAdapter
       const values = metricRecords.map((item) => item.value);
       const ratings = {
         good: metricRecords.filter((item) => item.rating === PlatformWebVitalRating.GOOD).length,
-        needsImprovement: metricRecords.filter(
-          (item) => item.rating === PlatformWebVitalRating.NEEDS_IMPROVEMENT,
-        ).length,
+        needsImprovement: metricRecords.filter((item) => item.rating === PlatformWebVitalRating.NEEDS_IMPROVEMENT)
+          .length,
         poor: metricRecords.filter((item) => item.rating === PlatformWebVitalRating.POOR).length,
       };
       return {
         name,
         count: metricRecords.length,
         avg:
-          values.length === 0
-            ? 0
-            : Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)),
+          values.length === 0 ? 0 : Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)),
         p75: percentile(values, 0.75),
         p95: percentile(values, 0.95),
         ratings,
@@ -771,25 +766,69 @@ export class InMemoryPrismaPlatformObservabilityAdapter
       poorByPath.set(entry.path, (poorByPath.get(entry.path) || 0) + 1);
     });
 
+    const tenantGroups = new Map<string, typeof recent>();
+    recent.forEach((entry) => {
+      const key = `${entry.brandId}::${entry.localId}::${entry.name}::${entry.path}`;
+      const group = tenantGroups.get(key) || [];
+      group.push(entry);
+      tenantGroups.set(key, group);
+    });
+
+    const tenantBreakdown = [...tenantGroups.values()]
+      .map((records) => {
+        const first = records[0];
+        const values = records.map((record) => record.value);
+        const timestamps = records.map((record) => record.timestamp);
+        return {
+          brandId: first.brandId,
+          localId: first.localId,
+          name: first.name,
+          path: first.path,
+          count: records.length,
+          avg: Number((values.reduce((sum, value) => sum + value, 0) / records.length).toFixed(2)),
+          p95: percentile(values, 0.95),
+          ratings: {
+            good: records.filter((record) => record.rating === PlatformWebVitalRating.GOOD).length,
+            needsImprovement: records.filter((record) => record.rating === PlatformWebVitalRating.NEEDS_IMPROVEMENT)
+              .length,
+            poor: records.filter((record) => record.rating === PlatformWebVitalRating.POOR).length,
+          },
+          firstSeenAt: new Date(Math.min(...timestamps)).toISOString(),
+          lastSeenAt: new Date(Math.max(...timestamps)).toISOString(),
+        };
+      })
+      .sort((a, b) => b.ratings.poor - a.ratings.poor || b.p95 - a.p95)
+      .slice(0, 1_000);
+
     return {
       windowMinutes: safeWindowMinutes,
+      generatedAt: new Date(now).toISOString(),
+      range: {
+        start: new Date(since).toISOString(),
+        end: new Date(now).toISOString(),
+      },
+      environment: this.runtimeEnvironment,
       totalEvents: recent.length,
       byMetric,
       topPoorPaths: [...poorByPath.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 20)
         .map(([path, poorCount]) => ({ path, poorCount })),
+      tenantBreakdown,
     };
   }
 
   async getApiMetricsSummary(windowMinutes?: number) {
     const safeWindowMinutes = clampWindowMinutes(windowMinutes);
-    const since = Date.now() - safeWindowMinutes * 60_000;
+    const now = Date.now();
+    const since = now - safeWindowMinutes * 60_000;
     const recent = await this.loadApiMetricsSince(since);
 
     const grouped = new Map<
       string,
       {
+        brandId: string;
+        localId: string;
         method: string;
         route: string;
         subdomain: string | null;
@@ -802,8 +841,10 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     >();
 
     recent.forEach((entry) => {
-      const key = `${entry.method} ${entry.route}::${entry.subdomain || 'unknown'}`;
+      const key = `${entry.brandId}::${entry.localId}::${entry.method} ${entry.route}::${entry.subdomain || 'unknown'}`;
       const bucket = grouped.get(key) || {
+        brandId: entry.brandId,
+        localId: entry.localId,
         method: entry.method,
         route: entry.route,
         subdomain: entry.subdomain,
@@ -825,6 +866,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
 
     const topRoutes = [...grouped.values()]
       .map((bucket) => ({
+        brandId: bucket.brandId,
+        localId: bucket.localId,
         method: bucket.method,
         route: bucket.route,
         subdomain: bucket.subdomain,
@@ -843,6 +886,9 @@ export class InMemoryPrismaPlatformObservabilityAdapter
       .sort((a, b) => b.durationMs - a.durationMs)
       .slice(0, 20)
       .map((entry) => ({
+        brandId: entry.brandId,
+        localId: entry.localId,
+        subdomain: entry.subdomain,
         method: entry.method,
         route: entry.route,
         statusCode: entry.statusCode,
@@ -852,6 +898,12 @@ export class InMemoryPrismaPlatformObservabilityAdapter
 
     return {
       windowMinutes: safeWindowMinutes,
+      generatedAt: new Date(now).toISOString(),
+      range: {
+        start: new Date(since).toISOString(),
+        end: new Date(now).toISOString(),
+      },
+      environment: this.runtimeEnvironment,
       totalEvents: recent.length,
       topRoutes,
       slowestSamples,

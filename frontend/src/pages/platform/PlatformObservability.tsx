@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CircleHelp, PauseCircle, PlayCircle, RefreshCcw } from 'lucide-react';
+import { AlertTriangle, CircleHelp, FileDown, Loader2, PauseCircle, PlayCircle, RefreshCcw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
 import {
   getPlatformApiMetricsSummary,
   getPlatformI18nObservabilitySummary,
@@ -442,6 +443,8 @@ const I18nTenantsTable: React.FC<{
 const PlatformObservability: React.FC = () => {
   const [windowMinutes, setWindowMinutes] = useState<number>(60);
   const [showIssuesOnly, setShowIssuesOnly] = useState<boolean>(true);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const { toast } = useToast();
 
   const webVitalsQuery = useQuery<PlatformObservabilityWebVitalsSummary>({
     queryKey: queryKeys.platformObservabilityWebVitals(windowMinutes),
@@ -504,6 +507,38 @@ const PlatformObservability: React.FC = () => {
   const webVitalsHealth = useMemo(() => buildHealthSummary(webVitalRows, getWebVitalHealth), [webVitalRows]);
   const apiHealth = useMemo(() => buildHealthSummary(apiRows, getApiHealth), [apiRows]);
   const i18nSummary = i18nQuery.data?.summary;
+  const handleGenerateReport = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const [webVitalsResult, apiResult] = await Promise.all([
+        webVitalsQuery.refetch(),
+        apiQuery.refetch(),
+      ]);
+      if (!webVitalsResult.data || !apiResult.data) {
+        throw new Error('No hay datos disponibles para el informe');
+      }
+      const reportModule = await import('@/lib/platformObservabilityPdf');
+      const windowLabel = WINDOWS.find((option) => option.value === windowMinutes)?.label || `${windowMinutes} min`;
+      await reportModule.generatePlatformObservabilityPdf({
+        windowLabel,
+        webVitals: webVitalsResult.data,
+        api: apiResult.data,
+        tenants: i18nQuery.data?.tenants,
+      });
+      toast({
+        title: 'Informe generado',
+        description: `El PDF de observabilidad para ${windowLabel} se ha descargado correctamente.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo generar el informe',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
 
   return (
     <section className="space-y-6">
@@ -515,6 +550,14 @@ const PlatformObservability: React.FC = () => {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="default"
+            onClick={() => void handleGenerateReport()}
+            disabled={isGeneratingReport || webVitalsQuery.isLoading || apiQuery.isLoading}
+          >
+            {isGeneratingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+            {isGeneratingReport ? 'Generando…' : 'Generar informe'}
+          </Button>
           <Select value={String(windowMinutes)} onValueChange={(value) => setWindowMinutes(Number(value))}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Ventana" />

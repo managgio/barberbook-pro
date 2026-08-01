@@ -47,6 +47,7 @@ export default defineConfig(({ mode }) => ({
           const normalizedId = id.replace(/\\/g, "/");
           if (!normalizedId.includes("/node_modules/")) return;
           if (normalizedId.includes("/firebase/")) return "vendor-firebase";
+          if (normalizedId.includes("/jspdf/") || normalizedId.includes("/jspdf-autotable/")) return "vendor-pdf";
           if (normalizedId.includes("/recharts/") || normalizedId.includes("/d3-")) return "vendor-charts";
           if (normalizedId.includes("/date-fns/")) return "vendor-date";
           if (normalizedId.includes("/@tanstack/")) return "vendor-query";

@@ -39,6 +39,9 @@ export type PlatformApiMetricRecord = {
 
 export type PlatformWebVitalSummary = {
   windowMinutes: number;
+  generatedAt: string;
+  range: { start: string; end: string };
+  environment: string;
   totalEvents: number;
   byMetric: Array<{
     name: PlatformWebVitalName;
@@ -53,12 +56,29 @@ export type PlatformWebVitalSummary = {
     };
   }>;
   topPoorPaths: Array<{ path: string; poorCount: number }>;
+  tenantBreakdown: Array<{
+    brandId: string;
+    localId: string;
+    name: PlatformWebVitalName;
+    path: string;
+    count: number;
+    avg: number;
+    p95: number;
+    ratings: { good: number; needsImprovement: number; poor: number };
+    firstSeenAt: string;
+    lastSeenAt: string;
+  }>;
 };
 
 export type PlatformApiMetricSummary = {
   windowMinutes: number;
+  generatedAt: string;
+  range: { start: string; end: string };
+  environment: string;
   totalEvents: number;
   topRoutes: Array<{
+    brandId: string;
+    localId: string;
     method: string;
     route: string;
     subdomain: string | null;
@@ -69,6 +89,9 @@ export type PlatformApiMetricSummary = {
     statuses: Array<{ status: number; count: number }>;
   }>;
   slowestSamples: Array<{
+    brandId: string;
+    localId: string;
+    subdomain: string | null;
     method: string;
     route: string;
     statusCode: number;
@@ -76,4 +99,3 @@ export type PlatformApiMetricSummary = {
     timestamp: number;
   }>;
 };
-

@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { getReferralSummary } from '@/data/api/referrals';
 import ReviewPromptModal from '@/components/reviews/ReviewPromptModal';
 import { useI18n } from '@/hooks/useI18n';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 const clientNavItems = [
   { href: '/app', labelKey: 'clientNav.dashboard', icon: LayoutDashboard, exact: true },
@@ -23,8 +24,15 @@ const ClientLayout: React.FC = () => {
   const { user } = useAuth();
   const { tenant } = useTenant();
   const { t } = useI18n();
+  const { settings, isLoading: isLoadingSettings } = useSiteSettings();
   const [referralsEnabled, setReferralsEnabled] = useState<boolean | null>(null);
   const subscriptionsEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('subscriptions');
+  const requiresPhoneCompletion = Boolean(
+    !isLoadingSettings &&
+      user &&
+      settings.profile?.phoneRequired === true &&
+      !(user.phone || '').trim(),
+  );
 
   useEffect(() => {
     if (!user?.id) return;
@@ -95,7 +103,7 @@ const ClientLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
-      <ReviewPromptModal />
+      {!requiresPhoneCompletion && <ReviewPromptModal />}
       <LegalFooter />
     </div>
   );

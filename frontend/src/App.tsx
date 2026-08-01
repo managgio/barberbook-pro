@@ -55,6 +55,7 @@ const PlatformDashboard = lazy(() => import("./pages/platform/PlatformDashboard"
 const PlatformBrands = lazy(() => import("./pages/platform/PlatformBrands"));
 const PlatformObservability = lazy(() => import("./pages/platform/PlatformObservability"));
 const ProtectedRoute = lazy(() => import("./components/auth/ProtectedRoute"));
+const RequiredPhoneModal = lazy(() => import("./components/client/RequiredPhoneModal"));
 
 const RouteLoader = () => (
   <div className="min-h-[40vh] flex items-center justify-center bg-background">
@@ -212,9 +213,15 @@ const AppRoutes: React.FC = () => {
 };
 
 const RouterShell: React.FC = () => {
+  const { tenant } = useTenant();
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthSessionMonitor />
+      {!tenant?.isPlatform && (
+        <Suspense fallback={null}>
+          <RequiredPhoneModal />
+        </Suspense>
+      )}
       <AppRoutes />
     </BrowserRouter>
   );
