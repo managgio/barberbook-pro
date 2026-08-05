@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id) {
           const normalizedId = id.replace(/\\/g, "/");
+          if (normalizedId.includes("/src/i18n/locales/")) return "app-i18n";
           if (!normalizedId.includes("/node_modules/")) return;
           if (normalizedId.includes("/firebase/")) return "vendor-firebase";
           if (normalizedId.includes("/jspdf/") || normalizedId.includes("/jspdf-autotable/")) return "vendor-pdf";
