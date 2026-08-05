@@ -3,6 +3,7 @@ import type {
   PlatformObservabilityWebVitalsSummary,
   PlatformCriticalTraceSummary,
 } from '@/data/types';
+import { formatCriticalTraceBreadcrumbs } from '@/lib/criticalTracePresentation';
 
 type ReportInput = {
   windowLabel: string;
@@ -191,7 +192,14 @@ export const generatePlatformObservabilityPdf = async ({ windowLabel, webVitals,
         trace.stage,
         `${trace.serviceName || trace.serviceId || '-'}\n${trace.barberName || trace.barberId || '-'}`,
         trace.selectedDateTime ? formatDate(trace.selectedDateTime) : '-',
-        [trace.message, trace.errorName, trace.errorCode].filter(Boolean).join(' · ') || 'Sin error',
+        [
+          trace.message,
+          trace.errorName,
+          trace.errorCode,
+          formatCriticalTraceBreadcrumbs(trace.metadata)
+            ? `Recorrido: ${formatCriticalTraceBreadcrumbs(trace.metadata)}`
+            : null,
+        ].filter(Boolean).join(' · ') || 'Sin error',
         trace.traceId,
       ]),
       styles: { fontSize: 5.7, cellPadding: 1.2, overflow: 'linebreak' },

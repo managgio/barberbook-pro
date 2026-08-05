@@ -38,6 +38,7 @@ import {
 } from '@/data/types';
 import { isApiRequestError } from '@/lib/networkErrors';
 import { queryKeys } from '@/lib/queryKeys';
+import { formatCriticalTraceBreadcrumbs } from '@/lib/criticalTracePresentation';
 
 const WINDOWS = [
   { label: '60 min', value: 60 },
@@ -302,6 +303,7 @@ const CriticalTraceTable: React.FC<{ data: PlatformCriticalTraceSummary }> = ({ 
       <TableBody>
         {data.traces.map((trace) => {
           const failed = trace.outcome === 'failed';
+          const breadcrumbTrail = formatCriticalTraceBreadcrumbs(trace.metadata);
           return (
             <TableRow key={trace.id} className={failed ? 'bg-destructive/5' : ''}>
               <TableCell className="whitespace-nowrap">{formatDateTime(trace.occurredAt)}</TableCell>
@@ -330,6 +332,11 @@ const CriticalTraceTable: React.FC<{ data: PlatformCriticalTraceSummary }> = ({ 
                 {(trace.errorName || trace.errorCode) && (
                   <p className="mt-1 font-mono text-xs text-muted-foreground">{[trace.errorName, trace.errorCode].filter(Boolean).join(' · ')}</p>
                 )}
+                {breadcrumbTrail && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Recorrido:</span> {breadcrumbTrail}
+                  </p>
+                )}
                 {trace.errorStack && (
                   <details className="mt-2">
                     <summary className="cursor-pointer text-xs font-medium text-foreground">Ver stack técnico</summary>
@@ -338,7 +345,7 @@ const CriticalTraceTable: React.FC<{ data: PlatformCriticalTraceSummary }> = ({ 
                 )}
                 {trace.metadata && Object.keys(trace.metadata).length > 0 && (
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-xs font-medium text-foreground">Ver contexto del navegador</summary>
+                    <summary className="cursor-pointer text-xs font-medium text-foreground">Ver contexto completo</summary>
                     <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-[10px] text-muted-foreground">
                       {JSON.stringify(trace.metadata, null, 2)}
                     </pre>

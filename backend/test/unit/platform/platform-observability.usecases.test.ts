@@ -152,7 +152,7 @@ test('get api metrics summary forwards optional window', async () => {
   assert.equal(result.windowMinutes, 60);
 });
 
-test('critical trace forwards server-owned context to port', async () => {
+test('failed critical trace forwards server-owned context to port', async () => {
   const calls: Array<{ traceId: string; userId: string | null }> = [];
   const useCase = new RecordCriticalTraceUseCase({
     ...basePort(),
@@ -165,9 +165,9 @@ test('critical trace forwards server-owned context to port', async () => {
     payload: {
       traceId: 'booking-trace-1',
       category: 'booking',
-      stage: 'time_slot_selected',
-      level: CriticalTraceLevel.INFO,
-      outcome: CriticalTraceOutcome.SUCCEEDED,
+      stage: 'appointment_submit',
+      level: CriticalTraceLevel.ERROR,
+      outcome: CriticalTraceOutcome.FAILED,
       path: '/app/book',
     },
     context: {
@@ -178,6 +178,30 @@ test('critical trace forwards server-owned context to port', async () => {
   });
 
   assert.deepEqual(calls, [{ traceId: 'booking-trace-1', userId: 'user-1' }]);
+});
+
+test('successful critical trace is discarded before persistence', async () => {
+  let persistenceCalls = 0;
+  const useCase = new RecordCriticalTraceUseCase({
+    ...basePort(),
+    recordCriticalTrace: async () => {
+      persistenceCalls += 1;
+    },
+  });
+
+  await useCase.execute({
+    payload: {
+      traceId: 'booking-trace-ok',
+      category: 'booking',
+      stage: 'time_slot_selected',
+      level: CriticalTraceLevel.INFO,
+      outcome: CriticalTraceOutcome.SUCCEEDED,
+      path: '/app/book',
+    },
+    context: { brandId: 'brand-1', localId: 'local-1' },
+  });
+
+  assert.equal(persistenceCalls, 0);
 });
 
 test('critical trace summary preserves requested pagination and time window', async () => {
