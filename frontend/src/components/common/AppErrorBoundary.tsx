@@ -1,6 +1,7 @@
 import React from 'react';
 import { translateUi } from '@/lib/i18n';
 import { getRequestLanguage } from '@/lib/language';
+import { reportActiveCriticalBookingRenderError } from '@/lib/criticalTrace';
 
 type AppErrorBoundaryState = {
   hasError: boolean;
@@ -21,6 +22,7 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('AppErrorBoundary captured an error', error, info);
+    reportActiveCriticalBookingRenderError(error, info.componentStack);
   }
 
   private handleReload = () => {

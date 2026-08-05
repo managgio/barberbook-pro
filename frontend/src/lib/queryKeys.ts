@@ -1,4 +1,6 @@
 export const queryKeys = {
+  platformCriticalTraces: (minutes: number, page: number, pageSize: number) =>
+    ['platform-observability-critical-traces', minutes, page, pageSize] as const,
   siteSettings: (localId: string | null | undefined) => ["site-settings", localId || "default"] as const,
   adminDashboard: (
     localId: string | null | undefined,

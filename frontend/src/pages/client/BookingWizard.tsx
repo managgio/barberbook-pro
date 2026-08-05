@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -58,6 +58,12 @@ import { useTenant } from '@/context/TenantContext';
 import { isApiRequestError } from '@/lib/networkErrors';
 import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
+import {
+  createCriticalTraceId,
+  reportCriticalTrace,
+  setActiveCriticalTrace,
+  updateActiveCriticalTrace,
+} from '@/lib/criticalTrace';
 
 
 interface BookingWizardProps {
@@ -136,7 +142,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [visibleMonth, setVisibleMonth] = useState<Date>(startOfMonth(new Date()));
   const today = startOfDay(new Date());
-  const subscriptionsEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('subscriptions');
+  const hiddenModules = tenant?.config?.adminSidebar?.hiddenSections ?? [];
+  const subscriptionsEnabled = !hiddenModules.includes('subscriptions');
+  const loyaltyEnabled = !hiddenModules.includes('loyalty');
+  const rewardsEnabled = !hiddenModules.includes('referrals');
+  const bookingTraceId = useRef(createCriticalTraceId()).current;
   const catalogQuery = useQuery<BookingCatalogData>({
     queryKey: queryKeys.bookingBootstrap(currentLocationId),
     enabled: Boolean(currentLocationId),
@@ -195,7 +205,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const subscriptionFree = Boolean(activeSubscriptionForBooking?.isUsableNow);
   const loyaltyPreviewQuery = useQuery<LoyaltyPreview | null>({
     queryKey: queryKeys.bookingLoyaltyPreview(currentLocationId, user?.id, booking.serviceId),
-    enabled: !isGuest && Boolean(user?.id && booking.serviceId) && !subscriptionFree,
+    enabled: loyaltyEnabled && !isGuest && Boolean(user?.id && booking.serviceId) && !subscriptionFree,
     staleTime: 30_000,
     queryFn: async () => {
       try {
@@ -207,7 +217,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   });
   const rewardsWalletQuery = useQuery<RewardWalletSummary | null>({
     queryKey: queryKeys.rewardsWallet(currentLocationId, user?.id),
-    enabled: !isGuest && Boolean(user?.id) && !subscriptionFree,
+    enabled: rewardsEnabled && !isGuest && Boolean(user?.id) && !subscriptionFree,
     staleTime: 30_000,
     queryFn: async () => {
       try {
@@ -247,9 +257,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () => barbersQuery.data ?? EMPTY_BARBERS,
     [barbersQuery.data],
   );
-  const loyaltyPreview = subscriptionFree ? null : loyaltyPreviewQuery.data ?? null;
+  const loyaltyPreview = subscriptionFree || !loyaltyEnabled ? null : loyaltyPreviewQuery.data ?? null;
   const isLoyaltyLoading = loyaltyPreviewQuery.isFetching;
-  const walletSummary = subscriptionFree ? null : rewardsWalletQuery.data ?? null;
+  const walletSummary = subscriptionFree || !rewardsEnabled ? null : rewardsWalletQuery.data ?? null;
   const privacyConsentRequired = isGuest ? true : (privacyConsentStatusQuery.data?.required ?? true);
   const isLoading = catalogQuery.isLoading;
   const allowProductSelection = !isGuest && Boolean(user?.id) && productsEnabled && clientPurchaseEnabled;
@@ -473,8 +483,20 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         });
         const merged = Array.from(new Set(Object.values(nextMap).flat())).sort();
         return { availableSlots: merged, slotsByBarber: nextMap };
-      } catch {
-        return { availableSlots: [], slotsByBarber: {} };
+      } catch (error) {
+        void reportCriticalTrace({
+          traceId: bookingTraceId,
+          path: window.location.pathname,
+          serviceId: booking.serviceId,
+          barberId: booking.barberId || undefined,
+          stage: 'availability_load',
+          level: 'error',
+          outcome: 'failed',
+          message: error instanceof Error ? error.message : 'No se pudo consultar la disponibilidad',
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+          errorCode: isApiRequestError(error) ? `${error.kind}:${error.status}` : undefined,
+        });
+        throw error;
       }
     },
   });
@@ -558,6 +580,15 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }, [booking.barberId, selectBarber, singleAvailableBarber]);
 
   const handleSelectService = (serviceId: string) => {
+    updateActiveCriticalTrace({ serviceId });
+    void reportCriticalTrace({
+      traceId: bookingTraceId,
+      path: window.location.pathname,
+      serviceId,
+      stage: 'service_selected',
+      level: 'info',
+      outcome: 'succeeded',
+    });
     setBooking({
       serviceId,
       barberId: null,
@@ -640,6 +671,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   };
 
   const handleSelectBarber = (barberId: string) => {
+    updateActiveCriticalTrace({ barberId });
+    void reportCriticalTrace({
+      traceId: bookingTraceId,
+      path: window.location.pathname,
+      serviceId: booking.serviceId || undefined,
+      barberId,
+      stage: 'staff_selected',
+      level: 'info',
+      outcome: 'succeeded',
+    });
     setBooking((prev) => ({
       ...prev,
       barberId,
@@ -693,7 +734,33 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
   const loyaltyEligible = Boolean(loyaltyPreview?.enabled && loyaltyPreview.program);
   const loyaltyFree = loyaltyEligible && Boolean(loyaltyPreview?.isFreeNext);
-  const walletAvailable = walletSummary?.wallet.availableBalance ?? 0;
+  const walletAvailable = Number(walletSummary?.wallet?.availableBalance ?? 0);
+
+  useEffect(() => {
+    const context = { traceId: bookingTraceId, path: window.location.pathname };
+    setActiveCriticalTrace(context);
+    void reportCriticalTrace({
+      ...context,
+      stage: 'booking_flow',
+      level: 'info',
+      outcome: 'started',
+      metadata: { guest: isGuest, subscriptionsEnabled, loyaltyEnabled, rewardsEnabled },
+    });
+  }, [bookingTraceId, isGuest, loyaltyEnabled, rewardsEnabled, subscriptionsEnabled]);
+
+  useEffect(() => {
+    if (currentStep !== 2 || !booking.dateTime) return;
+    void reportCriticalTrace({
+      traceId: bookingTraceId,
+      path: window.location.pathname,
+      serviceId: booking.serviceId || undefined,
+      barberId: booking.barberId || undefined,
+      selectedDateTime: booking.dateTime,
+      stage: 'confirmation_rendered',
+      level: 'info',
+      outcome: 'succeeded',
+    });
+  }, [booking.barberId, booking.dateTime, booking.serviceId, bookingTraceId, currentStep]);
 
   const eligibleCoupons = useMemo(() => {
     if (!walletSummary?.coupons || !booking.serviceId) return EMPTY_COUPONS;
@@ -876,6 +943,18 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
     setIsSubmitting(true);
 
+    void reportCriticalTrace({
+      traceId: bookingTraceId,
+      path: window.location.pathname,
+      serviceId: booking.serviceId,
+      barberId: booking.barberId,
+      selectedDateTime: booking.dateTime,
+      stage: 'appointment_submit',
+      level: 'info',
+      outcome: 'started',
+      metadata: { paymentOption, guest: isGuest },
+    });
+
     try {
       const guestContact = [guestInfo.email.trim(), guestInfo.phone.trim()].filter(Boolean).join(' · ');
       const userId = isGuest ? null : (user as User).id;
@@ -902,6 +981,17 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         const checkout = await createStripeCheckout(payload);
         clearStoredReferralAttribution();
         if (checkout?.mode === 'exempt') {
+          void reportCriticalTrace({
+            traceId: bookingTraceId,
+            path: window.location.pathname,
+            serviceId: booking.serviceId,
+            barberId: booking.barberId,
+            selectedDateTime: booking.dateTime,
+            stage: 'appointment_checkout',
+            level: 'info',
+            outcome: 'succeeded',
+            metadata: { mode: 'exempt' },
+          });
           await invalidatePostBookingData();
           setShowSuccess(true);
           setTimeout(() => {
@@ -920,13 +1010,36 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           return;
         }
         if (checkout?.checkoutUrl) {
+          void reportCriticalTrace({
+            traceId: bookingTraceId,
+            path: window.location.pathname,
+            serviceId: booking.serviceId,
+            barberId: booking.barberId,
+            selectedDateTime: booking.dateTime,
+            stage: 'appointment_checkout',
+            level: 'info',
+            outcome: 'succeeded',
+            metadata: { mode: 'redirect' },
+          });
           window.location.href = checkout.checkoutUrl;
           return;
         }
         throw new Error(t('bookingWizard.error.paymentInitFailed'));
       }
 
-      await createAppointment(payload);
+      const createdAppointment = await createAppointment(payload);
+
+      void reportCriticalTrace({
+        traceId: bookingTraceId,
+        path: window.location.pathname,
+        serviceId: booking.serviceId,
+        barberId: booking.barberId,
+        selectedDateTime: booking.dateTime,
+        appointmentId: createdAppointment?.id,
+        stage: 'appointment_submit',
+        level: 'info',
+        outcome: 'succeeded',
+      });
 
       setShowSuccess(true);
       clearStoredReferralAttribution();
@@ -947,6 +1060,20 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       }, 2000);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
+      void reportCriticalTrace({
+        traceId: bookingTraceId,
+        path: window.location.pathname,
+        serviceId: booking.serviceId,
+        barberId: booking.barberId,
+        selectedDateTime: booking.dateTime,
+        stage: 'appointment_submit',
+        level: 'error',
+        outcome: 'failed',
+        message: message || 'Error desconocido al crear la cita',
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        errorCode: isApiRequestError(error) ? `${error.kind}:${error.status}` : undefined,
+        errorStack: error instanceof Error ? error.stack?.slice(0, 8000) : undefined,
+      });
       const isSlotConflict = message.toLowerCase().includes('horario no disponible');
       const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
       if (isSlotConflict) {
@@ -1013,6 +1140,20 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         if (loadDiff !== 0) return loadDiff;
         return a.name.localeCompare(b.name);
       })[0];
+      const traceContext = {
+        traceId: bookingTraceId,
+        path: window.location.pathname,
+        serviceId: booking.serviceId || undefined,
+        barberId: chosen.id,
+        selectedDateTime: dateTime.toISOString(),
+      };
+      setActiveCriticalTrace(traceContext);
+      void reportCriticalTrace({
+        ...traceContext,
+        stage: 'time_slot_selected',
+        level: 'info',
+        outcome: 'succeeded',
+      });
       setBooking((prev) => ({
         ...prev,
         barberId: chosen.id,
@@ -1021,6 +1162,20 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       setCurrentStep(2);
       return;
     }
+    const traceContext = {
+      traceId: bookingTraceId,
+      path: window.location.pathname,
+      serviceId: booking.serviceId || undefined,
+      barberId: booking.barberId || undefined,
+      selectedDateTime: dateTime.toISOString(),
+    };
+    setActiveCriticalTrace(traceContext);
+    void reportCriticalTrace({
+      ...traceContext,
+      stage: 'time_slot_selected',
+      level: 'info',
+      outcome: 'succeeded',
+    });
     setBooking((prev) => ({ ...prev, dateTime: dateTime.toISOString() }));
     setCurrentStep(2);
   };
@@ -1390,6 +1545,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                 key={date.toISOString()}
                                 disabled={isPast}
                                 onClick={() => {
+                                  void reportCriticalTrace({
+                                    traceId: bookingTraceId,
+                                    path: window.location.pathname,
+                                    serviceId: booking.serviceId || undefined,
+                                    barberId: booking.barberId || undefined,
+                                    stage: 'date_selected',
+                                    level: 'info',
+                                    outcome: 'succeeded',
+                                    metadata: { date: format(date, 'yyyy-MM-dd') },
+                                  });
                                   setSelectedDate(startOfDay(date));
                                   setBooking((prev) => ({
                                     ...prev,
@@ -1421,6 +1586,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         {isSlotsLoading ? (
                           <div className="flex items-center justify-center py-4 sm:py-6">
                             <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-primary" />
+                          </div>
+                        ) : slotsQuery.isError ? (
+                          <div className="space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center">
+                            <p className="text-sm font-medium text-destructive">{t('bookingWizard.toast.bookingErrorDefault')}</p>
+                            <Button type="button" variant="outline" size="sm" onClick={() => void slotsQuery.refetch()}>
+                              {t('bookingWizard.toast.genericRetry')}
+                            </Button>
                           </div>
                         ) : availableSlots.length > 0 ? (
                           <div className="space-y-3 sm:space-y-4">
@@ -1570,7 +1742,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     })}
                   </div>
                 )}
-                {activeSubscriptionForBooking && (
+                {activeSubscriptionForBooking?.plan?.name && (
                   <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
                     {subscriptionFree
                       ? t('bookingWizard.step2.subscriptionApplies', { planName: activeSubscriptionForBooking.plan.name })

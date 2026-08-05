@@ -11,6 +11,7 @@ import { RemoveBrandAdminDto } from './dto/remove-brand-admin.dto';
 import { ObservabilityService } from '../observability/observability.service';
 import { PlatformI18nObservabilityService } from './platform-i18n-observability.service';
 import { PauseTenantI18nDto } from './dto/pause-tenant-i18n.dto';
+import { UpdateCriticalTraceObservabilityDto } from './dto/update-critical-trace-observability.dto';
 
 @Controller('platform')
 @UseGuards(PlatformAdminGuard)
@@ -57,6 +58,24 @@ export class PlatformAdminController {
   @Get('observability/api')
   getApiMetricsSummary(@Query('minutes') minutes?: string) {
     return this.observability.getApiMetricsSummary(this.parseWindowMinutes(minutes));
+  }
+
+  @Get('observability/critical-traces')
+  getCriticalTraceSummary(
+    @Query('minutes') minutes?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.observability.getCriticalTraceSummary({
+      windowMinutes: this.parseWindowMinutes(minutes),
+      page: Math.max(1, Math.floor(Number(page) || 1)),
+      pageSize: Math.min(200, Math.max(10, Math.floor(Number(pageSize) || 25))),
+    });
+  }
+
+  @Patch('observability/critical-traces/preferences')
+  updateCriticalTracePreferences(@Body() body: UpdateCriticalTraceObservabilityDto) {
+    return this.observability.setCriticalTracePdfInclusion(body.includeInPdf);
   }
 
   @Get('observability/i18n')

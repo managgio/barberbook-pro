@@ -1,6 +1,9 @@
 import {
   PlatformApiMetricRecord,
   PlatformApiMetricSummary,
+  CriticalTraceContext,
+  CriticalTraceReport,
+  CriticalTraceSummary,
   PlatformWebVitalContext,
   PlatformWebVitalReport,
   PlatformWebVitalSummary,
@@ -13,5 +16,7 @@ export interface PlatformObservabilityPort {
   recordApiMetric(record: PlatformApiMetricRecord): void | Promise<void>;
   getWebVitalsSummary(windowMinutes?: number): Promise<PlatformWebVitalSummary>;
   getApiMetricsSummary(windowMinutes?: number): Promise<PlatformApiMetricSummary>;
+  recordCriticalTrace(payload: CriticalTraceReport, context: CriticalTraceContext): Promise<void>;
+  getCriticalTraceSummary(params?: { windowMinutes?: number; page?: number; pageSize?: number }): Promise<CriticalTraceSummary>;
+  setCriticalTracePdfInclusion(includeInPdf: boolean): Promise<{ includeInPdf: boolean }>;
 }
-

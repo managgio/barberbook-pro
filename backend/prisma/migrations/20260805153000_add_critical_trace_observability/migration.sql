@@ -1,0 +1,42 @@
+CREATE TABLE `critical_trace_events` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `traceId` VARCHAR(80) NOT NULL,
+  `category` VARCHAR(40) NOT NULL,
+  `brandId` VARCHAR(191) NOT NULL,
+  `localId` VARCHAR(191) NOT NULL,
+  `subdomain` VARCHAR(80) NULL,
+  `userId` VARCHAR(191) NULL,
+  `userName` VARCHAR(160) NULL,
+  `userEmail` VARCHAR(254) NULL,
+  `stage` VARCHAR(80) NOT NULL,
+  `level` VARCHAR(16) NOT NULL,
+  `outcome` VARCHAR(16) NOT NULL,
+  `path` VARCHAR(300) NOT NULL,
+  `serviceId` VARCHAR(191) NULL,
+  `barberId` VARCHAR(191) NULL,
+  `appointmentId` VARCHAR(191) NULL,
+  `selectedDateTime` DATETIME(3) NULL,
+  `message` VARCHAR(1000) NULL,
+  `errorName` VARCHAR(160) NULL,
+  `errorCode` VARCHAR(160) NULL,
+  `errorStack` TEXT NULL,
+  `metadata` JSON NULL,
+  `userAgent` VARCHAR(500) NULL,
+  `occurredAt` DATETIME(3) NOT NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  INDEX `critical_trace_events_occurredAt_idx` (`occurredAt`),
+  INDEX `critical_trace_events_brandId_localId_occurredAt_idx` (`brandId`, `localId`, `occurredAt`),
+  INDEX `critical_trace_events_traceId_occurredAt_idx` (`traceId`, `occurredAt`),
+  INDEX `critical_trace_events_category_occurredAt_idx` (`category`, `occurredAt`),
+  INDEX `critical_trace_events_userId_occurredAt_idx` (`userId`, `occurredAt`),
+  INDEX `critical_trace_events_outcome_occurredAt_idx` (`outcome`, `occurredAt`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE `observability_preferences` (
+  `key` VARCHAR(80) NOT NULL,
+  `includeInPdf` BOOLEAN NOT NULL DEFAULT true,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`key`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

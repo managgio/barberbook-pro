@@ -2,6 +2,7 @@ import {
   PlatformObservabilityApiSummary,
   PlatformI18nObservabilitySummary,
   PlatformObservabilityWebVitalsSummary,
+  PlatformCriticalTraceSummary,
 } from '@/data/types';
 import { getStoredLocalId, getTenantSubdomainOverride } from '@/lib/tenant';
 import { API_BASE, buildApiUrl } from './request';
@@ -52,6 +53,21 @@ export const getPlatformI18nObservabilitySummary = async (
 ): Promise<PlatformI18nObservabilitySummary> =>
   apiRequest('/platform/observability/i18n', {
     query: { minutes },
+  });
+
+export const getPlatformCriticalTraceSummary = async (
+  minutes: number,
+  page = 1,
+  pageSize = 25,
+): Promise<PlatformCriticalTraceSummary> =>
+  apiRequest('/platform/observability/critical-traces', { query: { minutes, page, pageSize } });
+
+export const updateCriticalTracePdfInclusion = async (
+  includeInPdf: boolean,
+): Promise<{ includeInPdf: boolean }> =>
+  apiRequest('/platform/observability/critical-traces/preferences', {
+    method: 'PATCH',
+    body: { includeInPdf },
   });
 
 export const pausePlatformTenantAutoTranslate = async (

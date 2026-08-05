@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../../auth/auth.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PLATFORM_OBSERVABILITY_PORT } from '../../contexts/platform/ports/outbound/platform-observability.port';
 import { TenancyModule } from '../../tenancy/tenancy.module';
@@ -8,7 +9,7 @@ import { ObservabilityController } from './observability.controller';
 import { ObservabilityService } from './observability.service';
 
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, AuthModule],
   controllers: [ObservabilityController],
   providers: [
     ObservabilityService,

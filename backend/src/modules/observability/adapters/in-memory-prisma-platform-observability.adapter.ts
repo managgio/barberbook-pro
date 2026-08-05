@@ -1,7 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as nodemailer from 'nodemailer';
 import {
   PlatformApiMetricRecord,
+  CriticalTraceContext,
+  CriticalTraceOutcome,
+  CriticalTraceReport,
+  CriticalTraceSummary,
   PlatformWebVitalName,
   PlatformWebVitalRating,
   PlatformWebVitalReport,
@@ -39,7 +44,9 @@ const DEFAULT_PERSIST_FLUSH_INTERVAL_MS = 5_000;
 const DEFAULT_PERSIST_BATCH_SIZE = 500;
 const DEFAULT_PERSIST_BUFFER_LIMIT = 20_000;
 const DEFAULT_PERSIST_RETENTION_DAYS = 30;
+const DEFAULT_CRITICAL_TRACE_RETENTION_DAYS = 90;
 const DEFAULT_SUMMARY_QUERY_CAP = 120_000;
+const CRITICAL_TRACE_PREFERENCE_KEY = 'critical-traces';
 
 const WEB_VITAL_THRESHOLDS: Record<PlatformWebVitalName, { good: number; poor: number; unit: string }> = {
   [PlatformWebVitalName.LCP]: { good: 2500, poor: 4000, unit: 'ms' },
@@ -175,6 +182,8 @@ export class InMemoryPrismaPlatformObservabilityAdapter
   );
   private readonly persistedRetentionMs =
     parseNumber(process.env.OBSERVABILITY_PERSIST_RETENTION_DAYS, DEFAULT_PERSIST_RETENTION_DAYS) * 24 * 60 * 60 * 1000;
+  private readonly criticalTraceRetentionMs =
+    parseNumber(process.env.OBSERVABILITY_CRITICAL_TRACE_RETENTION_DAYS, DEFAULT_CRITICAL_TRACE_RETENTION_DAYS) * 24 * 60 * 60 * 1000;
   private readonly summaryQueryCap = Math.max(
     5_000,
     parseNumber(process.env.OBSERVABILITY_SUMMARY_QUERY_CAP, DEFAULT_SUMMARY_QUERY_CAP),
@@ -550,24 +559,26 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     if (now - this.lastPersistenceCleanupAt < 15 * 60_000) return;
     this.lastPersistenceCleanupAt = now;
 
-    await this.distributedLock.runWithLock(
-      'cron:observability-retention',
-      async () => {
-        const cutoff = new Date(now - this.persistedRetentionMs);
-        await Promise.all([
-          this.prisma.webVitalEvent.deleteMany({
-            where: { timestamp: { lt: cutoff } },
-          }),
-          this.prisma.apiMetricEvent.deleteMany({
-            where: { timestamp: { lt: cutoff } },
-          }),
-        ]);
-      },
-      {
-        ttlMs: 5 * 60_000,
-        onLockedMessage: 'Skipping observability retention in this instance; lock already held',
-      },
-    );
+    try {
+      await this.distributedLock.runWithLock(
+        'cron:observability-retention',
+        async () => {
+          const metricsCutoff = new Date(now - this.persistedRetentionMs);
+          const criticalTraceCutoff = new Date(now - this.criticalTraceRetentionMs);
+          await Promise.all([
+            this.prisma.webVitalEvent.deleteMany({ where: { timestamp: { lt: metricsCutoff } } }),
+            this.prisma.apiMetricEvent.deleteMany({ where: { timestamp: { lt: metricsCutoff } } }),
+            this.prisma.criticalTraceEvent.deleteMany({ where: { occurredAt: { lt: criticalTraceCutoff } } }),
+          ]);
+        },
+        {
+          ttlMs: 5 * 60_000,
+          onLockedMessage: 'Skipping observability retention in this instance; lock already held',
+        },
+      );
+    } catch (error) {
+      this.logger.warn(`Observability retention cleanup skipped: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   recordWebVital(payload: PlatformWebVitalReport, context: { localId: string; brandId: string; userAgent?: string }) {
@@ -637,6 +648,139 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     });
 
     void this.maybeAlertApiDegradation(normalized);
+  }
+
+  async recordCriticalTrace(
+    payload: CriticalTraceReport,
+    context: CriticalTraceContext,
+  ) {
+    const occurredAt =
+      typeof payload.occurredAt === 'number' && Number.isFinite(payload.occurredAt) && payload.occurredAt > 0
+        ? new Date(payload.occurredAt)
+        : new Date();
+    await this.prisma.criticalTraceEvent.create({
+      data: {
+        traceId: payload.traceId,
+        category: payload.category,
+        brandId: context.brandId,
+        localId: context.localId,
+        subdomain: context.subdomain?.slice(0, 80) || null,
+        userId: context.user?.id || null,
+        userName: context.user?.name?.slice(0, 160) || null,
+        userEmail: context.user?.email?.slice(0, 254) || null,
+        stage: payload.stage,
+        level: payload.level,
+        outcome: payload.outcome,
+        path: payload.path,
+        serviceId: payload.serviceId || null,
+        barberId: payload.barberId || null,
+        appointmentId: payload.appointmentId || null,
+        selectedDateTime: payload.selectedDateTime ? new Date(payload.selectedDateTime) : null,
+        message: payload.message || null,
+        errorName: payload.errorName || null,
+        errorCode: payload.errorCode || null,
+        errorStack: payload.errorStack || null,
+        metadata: payload.metadata ? (payload.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
+        userAgent: context.userAgent?.slice(0, 500) || null,
+        occurredAt,
+      },
+    });
+  }
+
+  async getCriticalTraceSummary(
+    params: { windowMinutes?: number; page?: number; pageSize?: number } = {},
+  ): Promise<CriticalTraceSummary> {
+    const normalizedWindow = clampWindowMinutes(params.windowMinutes);
+    const page = Math.max(1, Math.floor(params.page ?? 1));
+    const pageSize = Math.min(200, Math.max(10, Math.floor(params.pageSize ?? 25)));
+    const end = new Date();
+    const start = new Date(end.getTime() - normalizedWindow * 60_000);
+    const [events, preference, totalEvents, failedEvents] = await Promise.all([
+      this.prisma.criticalTraceEvent.findMany({
+        where: { occurredAt: { gte: start } },
+        orderBy: { occurredAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.observabilityPreference.findUnique({ where: { key: CRITICAL_TRACE_PREFERENCE_KEY } }),
+      this.prisma.criticalTraceEvent.count({ where: { occurredAt: { gte: start } } }),
+      this.prisma.criticalTraceEvent.count({
+        where: { occurredAt: { gte: start }, outcome: CriticalTraceOutcome.FAILED },
+      }),
+    ]);
+    const brandIds = [...new Set(events.map((event) => event.brandId))];
+    const localIds = [...new Set(events.map((event) => event.localId))];
+    const serviceIds = [...new Set(events.flatMap((event) => event.serviceId ? [event.serviceId] : []))];
+    const barberIds = [...new Set(events.flatMap((event) => event.barberId ? [event.barberId] : []))];
+    const [brands, locations, services, barbers] = await Promise.all([
+      this.prisma.brand.findMany({ where: { id: { in: brandIds } }, select: { id: true, name: true } }),
+      this.prisma.location.findMany({ where: { id: { in: localIds } }, select: { id: true, name: true } }),
+      this.prisma.service.findMany({
+        where: { id: { in: serviceIds }, localId: { in: localIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.barber.findMany({
+        where: { id: { in: barberIds }, localId: { in: localIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const names = <T extends { id: string; name: string }>(rows: T[]) => new Map(rows.map((row) => [row.id, row.name]));
+    const brandNames = names(brands);
+    const localNames = names(locations);
+    const serviceNames = names(services);
+    const barberNames = names(barbers);
+    return {
+      windowMinutes: normalizedWindow,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(totalEvents / pageSize)),
+      hasMore: page * pageSize < totalEvents,
+      generatedAt: end.toISOString(),
+      range: { start: start.toISOString(), end: end.toISOString() },
+      environment: this.runtimeEnvironment,
+      includeInPdf: preference?.includeInPdf ?? true,
+      totalEvents,
+      failedEvents,
+      traces: events.map((event) => ({
+        id: event.id.toString(),
+        traceId: event.traceId,
+        category: event.category,
+        brandId: event.brandId,
+        brandName: brandNames.get(event.brandId) || null,
+        localId: event.localId,
+        localName: localNames.get(event.localId) || null,
+        subdomain: event.subdomain,
+        userId: event.userId,
+        userName: event.userName,
+        userEmail: event.userEmail,
+        stage: event.stage,
+        level: event.level as CriticalTraceSummary['traces'][number]['level'],
+        outcome: event.outcome as CriticalTraceSummary['traces'][number]['outcome'],
+        path: event.path,
+        serviceId: event.serviceId,
+        serviceName: event.serviceId ? serviceNames.get(event.serviceId) || null : null,
+        barberId: event.barberId,
+        barberName: event.barberId ? barberNames.get(event.barberId) || null : null,
+        appointmentId: event.appointmentId,
+        selectedDateTime: event.selectedDateTime?.toISOString() || null,
+        message: event.message,
+        errorName: event.errorName,
+        errorCode: event.errorCode,
+        errorStack: event.errorStack,
+        metadata: event.metadata as Record<string, unknown> | null,
+        userAgent: event.userAgent,
+        occurredAt: event.occurredAt.toISOString(),
+      })),
+    };
+  }
+
+  async setCriticalTracePdfInclusion(includeInPdf: boolean) {
+    const preference = await this.prisma.observabilityPreference.upsert({
+      where: { key: CRITICAL_TRACE_PREFERENCE_KEY },
+      create: { key: CRITICAL_TRACE_PREFERENCE_KEY, includeInPdf },
+      update: { includeInPdf },
+    });
+    return { includeInPdf: preference.includeInPdf };
   }
 
   private async loadWebVitalsSince(sinceMs: number) {

@@ -1410,6 +1410,51 @@ model ApiMetricEvent {
   @@map("api_metric_events")
 }
 
+model CriticalTraceEvent {
+  id               BigInt   @id @default(autoincrement())
+  traceId          String   @db.VarChar(80)
+  category         String   @db.VarChar(40)
+  brandId          String
+  localId          String
+  subdomain        String?  @db.VarChar(80)
+  userId           String?
+  userName         String?  @db.VarChar(160)
+  userEmail        String?  @db.VarChar(254)
+  stage            String   @db.VarChar(80)
+  level            String   @db.VarChar(16)
+  outcome          String   @db.VarChar(16)
+  path             String   @db.VarChar(300)
+  serviceId        String?
+  barberId         String?
+  appointmentId    String?
+  selectedDateTime DateTime? @db.DateTime(3)
+  message          String?  @db.VarChar(1000)
+  errorName        String?  @db.VarChar(160)
+  errorCode        String?  @db.VarChar(160)
+  errorStack       String?  @db.Text
+  metadata         Json?
+  userAgent        String?  @db.VarChar(500)
+  occurredAt       DateTime @db.DateTime(3)
+  createdAt        DateTime @default(now()) @db.DateTime(3)
+
+  @@index([occurredAt])
+  @@index([brandId, localId, occurredAt])
+  @@index([traceId, occurredAt])
+  @@index([category, occurredAt])
+  @@index([userId, occurredAt])
+  @@index([outcome, occurredAt])
+  @@map("critical_trace_events")
+}
+
+model ObservabilityPreference {
+  key          String   @id @db.VarChar(80)
+  includeInPdf Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @db.DateTime(3)
+
+  @@map("observability_preferences")
+}
+
 model DistributedLock {
   lockKey   String   @id @db.VarChar(120)
   ownerId   String   @db.VarChar(80)

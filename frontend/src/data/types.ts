@@ -1410,6 +1410,53 @@ export interface PlatformObservabilityApiSummary {
   }>;
 }
 
+export type CriticalTraceLevel = 'info' | 'warning' | 'error';
+export type CriticalTraceOutcome = 'started' | 'succeeded' | 'failed';
+
+export interface PlatformCriticalTraceSummary {
+  windowMinutes: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+  generatedAt: string;
+  range: { start: string; end: string };
+  environment: string;
+  includeInPdf: boolean;
+  totalEvents: number;
+  failedEvents: number;
+  traces: Array<{
+    id: string;
+    traceId: string;
+    category: string;
+    brandId: string;
+    brandName: string | null;
+    localId: string;
+    localName: string | null;
+    subdomain: string | null;
+    userId: string | null;
+    userName: string | null;
+    userEmail: string | null;
+    stage: string;
+    level: CriticalTraceLevel;
+    outcome: CriticalTraceOutcome;
+    path: string;
+    serviceId: string | null;
+    serviceName: string | null;
+    barberId: string | null;
+    barberName: string | null;
+    appointmentId: string | null;
+    selectedDateTime: string | null;
+    message: string | null;
+    errorName: string | null;
+    errorCode: string | null;
+    errorStack: string | null;
+    metadata: Record<string, unknown> | null;
+    userAgent: string | null;
+    occurredAt: string;
+  }>;
+}
+
 export type PlatformI18nTenantStatus = 'ok' | 'warning' | 'critical' | 'paused';
 
 export interface PlatformI18nObservabilityTenantRow {

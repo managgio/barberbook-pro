@@ -20,10 +20,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useToast } from '@/hooks/use-toast';
 import {
   getPlatformApiMetricsSummary,
+  getPlatformCriticalTraceSummary,
   getPlatformI18nObservabilitySummary,
   pausePlatformTenantAutoTranslate,
   resumePlatformTenantAutoTranslate,
   getPlatformWebVitalsSummary,
+  updateCriticalTracePdfInclusion,
 } from '@/data/api/observability';
 import {
   PlatformObservabilityApiRouteSummary,
@@ -32,6 +34,7 @@ import {
   PlatformI18nTenantStatus,
   PlatformObservabilityWebVitalMetricSummary,
   PlatformObservabilityWebVitalsSummary,
+  PlatformCriticalTraceSummary,
 } from '@/data/types';
 import { isApiRequestError } from '@/lib/networkErrors';
 import { queryKeys } from '@/lib/queryKeys';
@@ -54,6 +57,10 @@ const WEB_VITAL_LEGEND = [
 const formatMs = (value: number) => `${value.toFixed(0)} ms`;
 const formatPct = (value: number) => `${value.toFixed(2)}%`;
 const formatInteger = (value: number) => value.toLocaleString('es-ES');
+const formatDateTime = (value: string) => new Intl.DateTimeFormat('es-ES', {
+  dateStyle: 'short',
+  timeStyle: 'medium',
+}).format(new Date(value));
 
 type HealthLevel = 'ok' | 'warning' | 'critical';
 
@@ -272,6 +279,73 @@ const ApiTable: React.FC<{ rows: PlatformObservabilityApiRouteSummary[] }> = ({ 
   );
 };
 
+const CriticalTraceTable: React.FC<{ data: PlatformCriticalTraceSummary }> = ({ data }) => {
+  if (data.traces.length === 0) {
+    return <p className="text-sm text-muted-foreground">No hay trazas críticas en esta ventana.</p>;
+  }
+  return (
+    <Table className="min-w-[1320px]">
+      <TableHeader>
+        <TableRow>
+          <TableHead>Fecha y hora</TableHead>
+          <TableHead>Resultado</TableHead>
+          <TableHead>Tenant / local</TableHead>
+          <TableHead>Usuario</TableHead>
+          <TableHead>Área</TableHead>
+          <TableHead>Etapa</TableHead>
+          <TableHead>Contexto funcional</TableHead>
+          <TableHead>Fecha objetivo</TableHead>
+          <TableHead>Detalle técnico</TableHead>
+          <TableHead>Trace ID</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.traces.map((trace) => {
+          const failed = trace.outcome === 'failed';
+          return (
+            <TableRow key={trace.id} className={failed ? 'bg-destructive/5' : ''}>
+              <TableCell className="whitespace-nowrap">{formatDateTime(trace.occurredAt)}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className={failed ? getHealthMeta('critical').badgeClassName : getHealthMeta('ok').badgeClassName}>
+                  {failed ? 'Error' : trace.outcome === 'started' ? 'En curso' : 'Correcto'}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <p className="font-medium">{trace.brandName || trace.subdomain || trace.brandId}</p>
+                <p className="text-xs text-muted-foreground">{trace.localName || trace.localId}</p>
+              </TableCell>
+              <TableCell>
+                <p>{trace.userName || 'Invitado/no identificado'}</p>
+                <p className="text-xs text-muted-foreground">{trace.userEmail || trace.userId || '—'}</p>
+              </TableCell>
+              <TableCell><Badge variant="secondary">{trace.category}</Badge></TableCell>
+              <TableCell className="font-mono text-xs">{trace.stage}</TableCell>
+              <TableCell>
+                <p>{trace.serviceName || trace.serviceId || '—'}</p>
+                <p className="text-xs text-muted-foreground">{trace.barberName || trace.barberId || '—'}</p>
+              </TableCell>
+              <TableCell className="whitespace-nowrap">{trace.selectedDateTime ? formatDateTime(trace.selectedDateTime) : '—'}</TableCell>
+              <TableCell className="max-w-[360px] whitespace-normal">
+                <p className={failed ? 'font-medium text-destructive' : ''}>{trace.message || 'Sin error'}</p>
+                {(trace.errorName || trace.errorCode) && (
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">{[trace.errorName, trace.errorCode].filter(Boolean).join(' · ')}</p>
+                )}
+                {trace.errorStack && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-foreground">Ver stack técnico</summary>
+                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-[10px] text-muted-foreground">{trace.errorStack}</pre>
+                  </details>
+                )}
+              </TableCell>
+              <TableCell className="font-mono text-[11px]">{trace.traceId}</TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+};
+
 const I18nTenantsTable: React.FC<{
   data: PlatformI18nObservabilitySummary;
   showIssuesOnly: boolean;
@@ -443,6 +517,8 @@ const I18nTenantsTable: React.FC<{
 const PlatformObservability: React.FC = () => {
   const [windowMinutes, setWindowMinutes] = useState<number>(60);
   const [showIssuesOnly, setShowIssuesOnly] = useState<boolean>(true);
+  const [criticalTracePage, setCriticalTracePage] = useState(1);
+  const criticalTracePageSize = 25;
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const { toast } = useToast();
 
@@ -458,6 +534,26 @@ const PlatformObservability: React.FC = () => {
     queryFn: () => getPlatformApiMetricsSummary(windowMinutes),
     staleTime: 30_000,
     placeholderData: (previous) => previous,
+  });
+
+  const criticalTracesQuery = useQuery<PlatformCriticalTraceSummary>({
+    queryKey: queryKeys.platformCriticalTraces(windowMinutes, criticalTracePage, criticalTracePageSize),
+    queryFn: () => getPlatformCriticalTraceSummary(windowMinutes, criticalTracePage, criticalTracePageSize),
+    staleTime: 10_000,
+    placeholderData: (previous) => previous,
+  });
+
+  const criticalTracesPreferenceMutation = useMutation({
+    mutationFn: updateCriticalTracePdfInclusion,
+    onSuccess: (result) => {
+      criticalTracesQuery.refetch();
+      toast({
+        title: 'Preferencia guardada',
+        description: result.includeInPdf
+          ? 'La trazabilidad crítica se incluirá en los informes PDF.'
+          : 'La trazabilidad crítica no se incluirá en los informes PDF.',
+      });
+    },
   });
 
   const i18nQuery = useQuery<PlatformI18nObservabilitySummary>({
@@ -479,7 +575,7 @@ const PlatformObservability: React.FC = () => {
     },
   });
 
-  const isRefreshing = webVitalsQuery.isFetching || apiQuery.isFetching || i18nQuery.isFetching;
+  const isRefreshing = webVitalsQuery.isFetching || apiQuery.isFetching || i18nQuery.isFetching || criticalTracesQuery.isFetching;
 
   const webVitalRows = useMemo(
     () =>
@@ -510,9 +606,10 @@ const PlatformObservability: React.FC = () => {
   const handleGenerateReport = async () => {
     setIsGeneratingReport(true);
     try {
-      const [webVitalsResult, apiResult] = await Promise.all([
+      const [webVitalsResult, apiResult, criticalTracesResult] = await Promise.all([
         webVitalsQuery.refetch(),
         apiQuery.refetch(),
+        getPlatformCriticalTraceSummary(windowMinutes, 1, 200),
       ]);
       if (!webVitalsResult.data || !apiResult.data) {
         throw new Error('No hay datos disponibles para el informe');
@@ -524,6 +621,7 @@ const PlatformObservability: React.FC = () => {
         webVitals: webVitalsResult.data,
         api: apiResult.data,
         tenants: i18nQuery.data?.tenants,
+        criticalTraces: criticalTracesResult,
       });
       toast({
         title: 'Informe generado',
@@ -558,7 +656,10 @@ const PlatformObservability: React.FC = () => {
             {isGeneratingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
             {isGeneratingReport ? 'Generando…' : 'Generar informe'}
           </Button>
-          <Select value={String(windowMinutes)} onValueChange={(value) => setWindowMinutes(Number(value))}>
+          <Select value={String(windowMinutes)} onValueChange={(value) => {
+            setWindowMinutes(Number(value));
+            setCriticalTracePage(1);
+          }}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Ventana" />
             </SelectTrigger>
@@ -573,7 +674,7 @@ const PlatformObservability: React.FC = () => {
           <Button
             variant="outline"
             onClick={() => {
-              void Promise.all([webVitalsQuery.refetch(), apiQuery.refetch(), i18nQuery.refetch()]);
+              void Promise.all([webVitalsQuery.refetch(), apiQuery.refetch(), i18nQuery.refetch(), criticalTracesQuery.refetch()]);
             }}
             disabled={isRefreshing}
           >
@@ -679,6 +780,73 @@ const PlatformObservability: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="flex min-w-0 flex-col">
+        <CardHeader className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Trazas críticas
+                <CardInfoTooltip label="Qué muestra la tabla de trazas críticas">
+                  Centraliza circuitos críticos de la plataforma. Actualmente registra reservas y está preparada para
+                  incorporar nuevas áreas sin crear tablas o pantallas independientes.
+                </CardInfoTooltip>
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Eventos: {criticalTracesQuery.data?.totalEvents ?? 0} · Errores: {criticalTracesQuery.data?.failedEvents ?? 0}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2">
+              <span className="text-xs text-muted-foreground">Incluir en PDF</span>
+              <Switch
+                checked={criticalTracesQuery.data?.includeInPdf ?? true}
+                disabled={criticalTracesPreferenceMutation.isPending || !criticalTracesQuery.data}
+                onCheckedChange={(checked) => criticalTracesPreferenceMutation.mutate(checked)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {criticalTracesQuery.error ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+              No se pudo cargar la trazabilidad crítica: {getErrorMessage(criticalTracesQuery.error)}
+            </div>
+          ) : criticalTracesQuery.data ? (
+            <>
+              <div className="overflow-x-auto">
+                <CriticalTraceTable data={criticalTracesQuery.data} />
+              </div>
+              <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Página {criticalTracesQuery.data.page} de {criticalTracesQuery.data.totalPages} · {criticalTracesQuery.data.pageSize} trazas por página
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={criticalTracesQuery.isFetching || criticalTracesQuery.data.page <= 1}
+                    onClick={() => setCriticalTracePage((page) => Math.max(1, page - 1))}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={criticalTracesQuery.isFetching || !criticalTracesQuery.data.hasMore}
+                    onClick={() => setCriticalTracePage((page) => page + 1)}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">Cargando trazabilidad crítica...</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="flex min-w-0 flex-col">
         <CardHeader className="space-y-4">
