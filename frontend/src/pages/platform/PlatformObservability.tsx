@@ -336,6 +336,14 @@ const CriticalTraceTable: React.FC<{ data: PlatformCriticalTraceSummary }> = ({ 
                     <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-[10px] text-muted-foreground">{trace.errorStack}</pre>
                   </details>
                 )}
+                {trace.metadata && Object.keys(trace.metadata).length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-foreground">Ver contexto del navegador</summary>
+                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-[10px] text-muted-foreground">
+                      {JSON.stringify(trace.metadata, null, 2)}
+                    </pre>
+                  </details>
+                )}
               </TableCell>
               <TableCell className="font-mono text-[11px]">{trace.traceId}</TableCell>
             </TableRow>

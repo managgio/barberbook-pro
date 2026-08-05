@@ -176,11 +176,11 @@ const AppointmentsPage: React.FC = () => {
               <p className="text-xs sm:text-base text-muted-foreground truncate">{t('appointments.withStaff', { barberName })}</p>
               <div className="flex items-center gap-2 sm:gap-4 mt-1 sm:mt-2 text-[11px] sm:text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <Calendar className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
                   {format(date, 'PPPP', { locale: dateLocale })}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <Clock className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
                   {format(date, 'HH:mm')}
                 </span>
                 <a
@@ -214,23 +214,25 @@ const AppointmentsPage: React.FC = () => {
             </div>
           </div>
           {!isHistorical && (
-            <div className="mt-3 sm:mt-4 flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="mt-3 sm:mt-4 flex items-center gap-2 sm:gap-3">
               <Button
                 variant="outline"
                 size="sm"
                 asChild
-                className="h-8 sm:h-9 text-xs sm:text-sm md:order-1"
+                className="h-10 min-w-0 flex-1 text-xs sm:h-10 sm:flex-none sm:px-4 sm:text-sm"
               >
-                <a href={generateCalendarLink(appointment)} target="_blank" rel="noopener noreferrer">
-                  <CalendarPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-                  {t('appointments.addToCalendar')}
+                <a href={generateCalendarLink(appointment)} target="_blank" rel="noopener noreferrer" title={t('appointments.addToCalendar')}>
+                  <CalendarPlus className="mr-1 h-4 w-4 shrink-0" />
+                  <span className="truncate">{t('appointments.addToCalendar')}</span>
                 </a>
               </Button>
-              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex gap-1.5 sm:gap-2 md:static md:order-2">
+              <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-8 w-8 sm:h-9 sm:w-9"
+                  className="h-10 w-10"
+                  aria-label={t('appointments.actions.edit')}
+                  title={t('appointments.actions.edit')}
                   onClick={() => {
                     setEditingAppointment(appointment);
                     setIsEditorOpen(true);
@@ -241,7 +243,8 @@ const AppointmentsPage: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 sm:h-9 sm:w-9 text-destructive"
+                  className="h-10 w-10 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  aria-label={t('appointments.actions.cancel')}
                   onClick={() => {
                     if (!canCancel) return;
                     setDeleteTarget(appointment);
@@ -250,7 +253,7 @@ const AppointmentsPage: React.FC = () => {
                   title={
                     !canCancel
                       ? t('appointments.cancelCutoffTooltip', { hours: cancellationCutoffHours })
-                      : undefined
+                      : t('appointments.actions.cancel')
                   }
                 >
                   <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

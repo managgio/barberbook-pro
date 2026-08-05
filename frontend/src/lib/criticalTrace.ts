@@ -56,6 +56,11 @@ export const reportActiveCriticalBookingRenderError = (error: Error, componentSt
   if (Date.now() - activeContext.activatedAt > 30 * 60_000) return;
   if (typeof window !== 'undefined' && window.location.pathname !== activeContext.path) return;
   const { activatedAt: _activatedAt, ...traceContext } = activeContext;
+  const documentElement = document.documentElement;
+  const browserTranslationDetected =
+    documentElement.classList.contains('translated-ltr') ||
+    documentElement.classList.contains('translated-rtl') ||
+    Boolean(document.querySelector('.goog-te-banner-frame, iframe.goog-te-banner-frame, [class*="goog-te-"]'));
   void reportCriticalTrace({
     ...traceContext,
     stage: 'frontend_render',
@@ -64,6 +69,13 @@ export const reportActiveCriticalBookingRenderError = (error: Error, componentSt
     message: error.message || 'Error no controlado al renderizar el flujo de reserva',
     errorName: error.name,
     errorStack: error.stack?.slice(0, 8000),
-    metadata: componentStack ? { componentStack: componentStack.slice(0, 3000) } : undefined,
+    metadata: {
+      componentStack: componentStack?.slice(0, 3000) ?? null,
+      browserTranslationDetected,
+      documentLanguage: documentElement.lang || null,
+      documentTranslate: documentElement.getAttribute('translate'),
+      documentClass: documentElement.className.slice(0, 500) || null,
+      browserLanguages: navigator.languages?.join(',').slice(0, 500) || navigator.language || null,
+    },
   });
 };

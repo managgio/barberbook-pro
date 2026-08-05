@@ -146,6 +146,7 @@ Contextos principales:
 - **AdminPermissionsContext**: permisos por rol (AdminRole + adminSidebar oculto por config).
 - **NetworkStatusMonitor**: monitor global de conectividad (`online/offline`) con feedback inmediato al usuario.
 - **AppErrorBoundary**: captura errores no controlados del arbol React y muestra fallback consistente con accion de recarga.
+- **Integridad del DOM React ante traductores de navegador**: la aplicación marca el documento y la raíz React con `translate=no`/`notranslate`, ya que el producto resuelve idiomas mediante su capa i18n nativa. Esto evita que traductores automáticos reescriban nodos administrados por React y provoquen fallos de reconciliación en flujos críticos. Las trazas de errores de render conservan señales de traducción, idioma y clases del documento para diagnóstico.
 - **AuthSessionMonitor**: escucha expiracion de sesion (401/403 global) y fuerza logout + redireccion a `/auth`.
 - **Carga diferida de Firebase SDK**: `frontend/src/lib/firebaseConfig.tsx` usa imports dinamicos (`firebase/app`, `firebase/auth`) y `AuthContext` inicializa Firebase bajo demanda al estar listo el tenant; evita incluir Firebase como dependencia estatica del `entry`.
 

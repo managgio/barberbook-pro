@@ -1474,6 +1474,8 @@
   "appointmentEditor.toast.updatedTitle": "Appointment updated",
   "appointmentEditor.toast.updateError": "Could not update appointment.",
   "appointments.addToCalendar": "Add to calendar",
+  "appointments.actions.cancel": "Cancel appointment",
+  "appointments.actions.edit": "Edit appointment",
   "appointments.calendar.details": "Appointment with {barberName}",
   "appointments.cancelCutoffTooltip": "You cannot cancel with less than {hours}h notice.",
   "appointments.cancelDialog.back": "Back",

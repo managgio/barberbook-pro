@@ -1474,6 +1474,8 @@
   "appointmentEditor.toast.updatedTitle": "Cita actualizada",
   "appointmentEditor.toast.updateError": "No se pudo actualizar la cita.",
   "appointments.addToCalendar": "Anadir al calendario",
+  "appointments.actions.cancel": "Cancelar cita",
+  "appointments.actions.edit": "Editar cita",
   "appointments.calendar.details": "Cita con {barberName}",
   "appointments.cancelCutoffTooltip": "No puedes cancelar con menos de {hours}h de antelacion.",
   "appointments.cancelDialog.back": "Volver",
