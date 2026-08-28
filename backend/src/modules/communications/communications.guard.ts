@@ -38,12 +38,8 @@ export class CommunicationsGuard implements CanActivate {
       throw new NotFoundException('Comunicados no está disponible en este local.');
     }
 
-    if (user.isSuperAdmin || user.isPlatformAdmin) {
+    if (user.isPlatformAdmin) {
       return true;
-    }
-
-    if (user.role !== 'admin') {
-      throw new ForbiddenException('Acceso restringido a administradores.');
     }
 
     const localId = this.tenantContextPort.getRequestContext().localId;

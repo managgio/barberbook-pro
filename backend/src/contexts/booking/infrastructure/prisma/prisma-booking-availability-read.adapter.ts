@@ -4,6 +4,7 @@ import { APP_TIMEZONE, endOfDayInTimeZone, startOfDayInTimeZone } from '../../..
 import {
   BookingAppointmentSlotRecord,
   BookingAvailabilityReadPort,
+  BookingClosureSlotRecord,
 } from '../../ports/outbound/booking-availability-read.port';
 
 @Injectable()
@@ -62,6 +63,50 @@ export class PrismaBookingAvailabilityReadAdapter implements BookingAvailability
       startDateTime: appointment.startDateTime,
       serviceDurationMinutes: appointment.service?.duration,
     }));
+  }
+
+  async listClosuresForBarberDay(params: {
+    localId: string;
+    barberId: string;
+    dateOnly: string;
+  }): Promise<BookingClosureSlotRecord[]> {
+    return this.listClosures({
+      localId: params.localId,
+      barberIds: [params.barberId],
+      dateOnly: params.dateOnly,
+    });
+  }
+
+  async listClosuresForBarbersDay(params: {
+    localId: string;
+    barberIds: string[];
+    dateOnly: string;
+  }): Promise<BookingClosureSlotRecord[]> {
+    return this.listClosures(params);
+  }
+
+  private async listClosures(params: {
+    localId: string;
+    barberIds: string[];
+    dateOnly: string;
+  }): Promise<BookingClosureSlotRecord[]> {
+    return this.prisma.bookingClosure.findMany({
+      where: {
+        localId: params.localId,
+        OR: [
+          { barberId: null },
+          { barberId: { in: params.barberIds } },
+        ],
+        startDateTime: { lte: endOfDayInTimeZone(params.dateOnly, APP_TIMEZONE) },
+        endDateTime: { gt: startOfDayInTimeZone(params.dateOnly, APP_TIMEZONE) },
+      },
+      select: {
+        barberId: true,
+        startDateTime: true,
+        endDateTime: true,
+      },
+      orderBy: { startDateTime: 'asc' },
+    });
   }
 
   async countWeeklyLoad(params: {

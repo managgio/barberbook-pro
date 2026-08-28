@@ -86,3 +86,29 @@ test('countWeeklyLoad deduplicates barber ids and maps grouped counts', async ()
   assert.deepEqual(groupByArgs.where.barberId, { in: ['barber-1', 'barber-2'] });
   assert.deepEqual(result, { 'barber-1': 3, 'barber-2': 1 });
 });
+
+test('listClosuresForBarbersDay scopes global and professional closures to the tenant', async () => {
+  let findManyArgs: any = null;
+  const adapter = new PrismaBookingAvailabilityReadAdapter({
+    bookingClosure: {
+      findMany: async (args: any) => {
+        findManyArgs = args;
+        return [];
+      },
+    },
+  } as any);
+
+  await adapter.listClosuresForBarbersDay({
+    localId: 'local-2',
+    barberIds: ['barber-2', 'barber-3'],
+    dateOnly: '2026-08-31',
+  });
+
+  assert.equal(findManyArgs.where.localId, 'local-2');
+  assert.deepEqual(findManyArgs.where.OR, [
+    { barberId: null },
+    { barberId: { in: ['barber-2', 'barber-3'] } },
+  ]);
+  assert.ok(findManyArgs.where.startDateTime.lte instanceof Date);
+  assert.ok(findManyArgs.where.endDateTime.gt instanceof Date);
+});

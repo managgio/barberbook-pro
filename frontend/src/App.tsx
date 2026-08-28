@@ -12,6 +12,7 @@ import { queryClient } from "./lib/queryClient";
 import NetworkStatusMonitor from "./components/common/NetworkStatusMonitor";
 import AppErrorBoundary from "./components/common/AppErrorBoundary";
 import AuthSessionMonitor from "./components/common/AuthSessionMonitor";
+import { hasTenantAdminAccess } from "./lib/userAccess";
 
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
@@ -102,9 +103,7 @@ const AppRoutes: React.FC = () => {
       return <LandingPage />;
     }
 
-    const hasAdminAccess = Boolean(
-      user.isSuperAdmin || user.isLocalAdmin || user.role === "admin" || user.isPlatformAdmin,
-    );
+    const hasAdminAccess = hasTenantAdminAccess(user);
     return <Navigate to={hasAdminAccess ? "/admin" : "/app/book"} replace />;
   };
 

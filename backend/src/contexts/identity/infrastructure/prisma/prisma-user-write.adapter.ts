@@ -11,8 +11,6 @@ import {
   UserWritePort,
 } from '../../ports/outbound/user-write.port';
 
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'c.lopemonre@gmail.com').toLowerCase();
-
 @Injectable()
 export class PrismaUserWriteAdapter implements UserWritePort {
   constructor(
@@ -264,9 +262,10 @@ export class PrismaUserWriteAdapter implements UserWritePort {
     const email = this.normalizeEmail(data.email);
     if (!email) return data;
 
-    const brandConfig = await this.tenantConfig.getBrandConfig(brandId);
-    const brandSuperAdminEmail = this.normalizeEmail(brandConfig.superAdminEmail) || SUPER_ADMIN_EMAIL;
-    const isBrandSuperAdmin = email === brandSuperAdminEmail;
+    const brandSuperAdminEmail = this.normalizeEmail(
+      await this.tenantConfig.getBrandSuperAdminEmail(brandId),
+    );
+    const isBrandSuperAdmin = Boolean(brandSuperAdminEmail) && email === brandSuperAdminEmail;
     const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(email);
 
     if (isBrandSuperAdmin || isPlatformAdmin) {
@@ -323,7 +322,9 @@ export class PrismaUserWriteAdapter implements UserWritePort {
     localId: string,
     user: Pick<User, 'id' | 'role' | 'isSuperAdmin' | 'isPlatformAdmin' | 'adminRoleId'>,
   ): Promise<void> {
-    const isAdmin = user.role === 'admin' || user.isSuperAdmin || user.isPlatformAdmin;
+    // Tenant authority is represented by LocationStaff. Legacy global flags must
+    // never create membership in a different local.
+    const isAdmin = user.role === 'admin';
     if (!isAdmin) {
       await this.prisma.locationStaff.deleteMany({
         where: { userId: user.id, localId },
@@ -348,8 +349,7 @@ export class PrismaUserWriteAdapter implements UserWritePort {
   }
 
   private async getBrandSuperAdminEmail(brandId: string): Promise<string> {
-    const brandConfig = await this.tenantConfig.getBrandConfig(brandId);
-    return this.normalizeEmail(brandConfig.superAdminEmail) || SUPER_ADMIN_EMAIL;
+    return this.normalizeEmail(await this.tenantConfig.getBrandSuperAdminEmail(brandId));
   }
 
   private async mapUserAccessRecord(params: {
@@ -389,10 +389,10 @@ export class PrismaUserWriteAdapter implements UserWritePort {
       name: params.user.name,
       email: params.user.email,
       phone: params.user.phone,
-      role: params.user.role as IdentityUserRole,
+      role: localStaff ? 'admin' : 'client',
       avatar: params.user.avatar,
       adminRoleId: params.user.adminRoleId,
-      isSuperAdmin: params.user.isSuperAdmin || email === brandSuperAdminEmail,
+      isSuperAdmin: Boolean(localStaff) && Boolean(brandSuperAdminEmail) && email === brandSuperAdminEmail,
       isPlatformAdmin: params.user.isPlatformAdmin || isPlatformAdminByEmail,
       notificationEmail: params.user.notificationEmail,
       notificationWhatsapp: params.user.notificationWhatsapp,

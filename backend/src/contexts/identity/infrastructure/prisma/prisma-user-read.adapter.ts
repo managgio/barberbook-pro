@@ -12,8 +12,6 @@ import {
   IdentityUserRole,
 } from '../../domain/entities/user-access.entity';
 
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'c.lopemonre@gmail.com').toLowerCase();
-
 type UserWithAccessRelations = User & {
   brandMemberships: Array<{ isBlocked: boolean }>;
   localStaffRoles: Array<{ adminRoleId: string | null }>;
@@ -47,6 +45,7 @@ export class PrismaUserReadAdapter implements UserReadPort {
     const brandSuperAdminEmail = await this.getBrandSuperAdminEmail(params.brandId);
     const where = this.buildUsersWhere({
       brandId: params.brandId,
+      localId: params.localId,
       role: params.role,
       query: params.query,
     });
@@ -127,12 +126,12 @@ export class PrismaUserReadAdapter implements UserReadPort {
   }
 
   private async getBrandSuperAdminEmail(brandId: string): Promise<string> {
-    const brandConfig = await this.tenantConfig.getBrandConfig(brandId);
-    return this.normalizeEmail(brandConfig.superAdminEmail) || SUPER_ADMIN_EMAIL;
+    return this.normalizeEmail(await this.tenantConfig.getBrandSuperAdminEmail(brandId));
   }
 
   private buildUsersWhere(options: {
     brandId: string;
+    localId?: string;
     ids?: string[];
     role?: IdentityUserRole;
     query?: string;
@@ -143,8 +142,10 @@ export class PrismaUserReadAdapter implements UserReadPort {
       where.id = { in: options.ids };
     }
 
-    if (options.role) {
-      where.role = options.role;
+    if (options.role && options.localId) {
+      where.localStaffRoles = options.role === 'admin'
+        ? { some: { localId: options.localId } }
+        : { none: { localId: options.localId } };
     }
 
     const query = options.query?.trim();
@@ -188,10 +189,11 @@ export class PrismaUserReadAdapter implements UserReadPort {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      role: user.role as IdentityUserRole,
+      role: user.localStaffRoles.length > 0 ? 'admin' : 'client',
       avatar: user.avatar,
       adminRoleId: user.adminRoleId,
-      isSuperAdmin: user.isSuperAdmin || email === brandSuperAdminEmail,
+      // User.isSuperAdmin is a legacy global column and cannot grant tenant authority.
+      isSuperAdmin: user.localStaffRoles.length > 0 && Boolean(brandSuperAdminEmail) && email === brandSuperAdminEmail,
       isPlatformAdmin: user.isPlatformAdmin || isPlatformAdminByEmail,
       notificationEmail: user.notificationEmail,
       notificationWhatsapp: user.notificationWhatsapp,

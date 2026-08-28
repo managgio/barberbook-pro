@@ -22,6 +22,7 @@ const buildGuard = (options?: {
     isPlatformAdmin?: boolean;
   };
   hasStaffMembership?: boolean;
+  staffAdminRoleId?: string | null;
   rolePermissions?: string[];
 }) => {
   const reflector = {
@@ -42,7 +43,7 @@ const buildGuard = (options?: {
         options?.hasStaffMembership === false
           ? null
           : {
-              adminRoleId: 'role-1',
+              adminRoleId: options?.staffAdminRoleId === undefined ? 'role-1' : options.staffAdminRoleId,
             },
     },
     adminRole: {
@@ -158,7 +159,7 @@ test('communications guard allows scheduled create when required granular permis
   assert.equal(allowed, true);
 });
 
-test('communications guard allows super admin regardless of local role permissions', async () => {
+test('communications guard allows a tenant super admin only through current local membership', async () => {
   const guard = buildGuard({
     requiredPermission: 'communications:execute',
     rolePermissions: [],
@@ -168,6 +169,7 @@ test('communications guard allows super admin regardless of local role permissio
       isSuperAdmin: true,
       isPlatformAdmin: false,
     },
+    staffAdminRoleId: null,
   });
 
   const request: Record<string, unknown> = {
@@ -177,4 +179,22 @@ test('communications guard allows super admin regardless of local role permissio
   const allowed = await guard.canActivate(createExecutionContext(request));
   assert.equal(allowed, true);
   assert.equal(request.adminUserId, 'super-1');
+});
+
+test('communications guard blocks a legacy global super admin outside the current local', async () => {
+  const guard = buildGuard({
+    requiredPermission: 'communications:execute',
+    hasStaffMembership: false,
+    user: {
+      id: 'foreign-super-1',
+      role: 'admin',
+      isSuperAdmin: true,
+      isPlatformAdmin: false,
+    },
+  });
+
+  await assert.rejects(
+    () => guard.canActivate(createExecutionContext({ method: 'POST' })),
+    (error: unknown) => error instanceof ForbiddenException,
+  );
 });

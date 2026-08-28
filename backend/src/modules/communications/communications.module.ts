@@ -10,6 +10,7 @@ import { CommunicationsGuard } from './communications.guard';
 import { CommunicationsSchedulerService } from './communications.scheduler';
 import { CommunicationsService } from './communications.service';
 import { HolidayCommunicationsController } from './holiday-communications.controller';
+import { CommunicationBookingClosureService } from './communication-booking-closure.service';
 
 @Module({
   imports: [
@@ -21,7 +22,12 @@ import { HolidayCommunicationsController } from './holiday-communications.contro
     AuditLogsModule,
   ],
   controllers: [CommunicationsController, HolidayCommunicationsController],
-  providers: [CommunicationsService, CommunicationsGuard, CommunicationsSchedulerService],
+  providers: [
+    CommunicationsService,
+    CommunicationBookingClosureService,
+    CommunicationsGuard,
+    CommunicationsSchedulerService,
+  ],
   exports: [CommunicationsService],
 })
 export class CommunicationsModule {}

@@ -40,7 +40,7 @@ export class GetAvailabilityUseCase {
     if (startDate && dateOnly < startDate) return [];
     if (endDate && dateOnly > endDate) return [];
 
-    const [barberSchedule, shopSchedule, generalHolidaysRaw, barberHolidaysRaw, targetDuration, appointments] =
+    const [barberSchedule, shopSchedule, generalHolidaysRaw, barberHolidaysRaw, targetDuration, appointments, closures] =
       await Promise.all([
         this.schedulePolicyReadPort.getBarberSchedule({ localId, barberId: query.barberId }),
         this.schedulePolicyReadPort.getShopSchedule({ localId }),
@@ -53,6 +53,11 @@ export class GetAvailabilityUseCase {
           dateOnly,
           appointmentIdToIgnore: query.appointmentIdToIgnore,
         }),
+        this.availabilityReadPort.listClosuresForBarberDay?.({
+          localId,
+          barberId: query.barberId,
+          dateOnly,
+        }) ?? Promise.resolve([]),
       ]);
 
     const generalHolidays = generalHolidaysRaw.map(normalizeDateRange);
@@ -70,6 +75,7 @@ export class GetAvailabilityUseCase {
         startDateTime: appointment.startDateTime,
         durationMinutes: appointment.serviceDurationMinutes,
       })),
+      closures,
       targetDurationMinutes: targetDuration,
       slotIntervalMinutes: query.slotIntervalMinutes,
     });

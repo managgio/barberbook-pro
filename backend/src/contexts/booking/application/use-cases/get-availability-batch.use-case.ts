@@ -37,6 +37,7 @@ export class GetAvailabilityBatchUseCase {
       barberSchedules,
       barberHolidaysByBarberIdRaw,
       appointments,
+      closures,
       eligibleBarberIds,
     ] = await Promise.all([
       this.serviceCatalogReadPort.getServiceDuration({ localId, serviceId: query.serviceId }),
@@ -51,6 +52,11 @@ export class GetAvailabilityBatchUseCase {
         dateOnly,
         appointmentIdToIgnore: query.appointmentIdToIgnore,
       }),
+      this.availabilityReadPort.listClosuresForBarbersDay?.({
+        localId,
+        barberIds: normalizedBarberIds,
+        dateOnly,
+      }) ?? Promise.resolve([]),
       query.serviceId
         ? this.barberEligibilityReadPort.getEligibleBarberIdsForService({
             localId,
@@ -106,6 +112,9 @@ export class GetAvailabilityBatchUseCase {
 
       const barberSchedule = barberSchedules[barberId] || shopSchedule;
       const barberAppointments = appointmentsByBarberId.get(barberId) || [];
+      const barberClosures = closures.filter(
+        (closure) => closure.barberId === null || closure.barberId === barberId,
+      );
 
       response[barberId] = computeAvailableSlotsForBarber({
         dateOnly,
@@ -113,6 +122,7 @@ export class GetAvailabilityBatchUseCase {
         barberSchedule,
         shopSchedule,
         appointments: barberAppointments,
+        closures: barberClosures,
         targetDurationMinutes: targetDuration,
         slotIntervalMinutes: query.slotIntervalMinutes,
       });

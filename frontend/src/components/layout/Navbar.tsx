@@ -9,6 +9,7 @@ import { useTenant } from '@/context/TenantContext';
 import { cn } from '@/lib/utils';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useI18n } from '@/hooks/useI18n';
+import { hasTenantAdminAccess } from '@/lib/userAccess';
 
 const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -30,8 +31,7 @@ const Navbar: React.FC = () => {
   const hasMultipleLocations = locations.length > 1;
   const showLocationSwitcherOnMobile = hasMultipleLocations && !hideLocationSwitcherOnMobile;
   const showUserNameOnMobile = !showLocationSwitcherOnMobile;
-  const isAdmin =
-    user?.role === 'admin' || user?.isLocalAdmin || user?.isSuperAdmin;
+  const isAdmin = hasTenantAdminAccess(user);
   const userTarget = tenant?.isPlatform
     ? '/platform'
     : isAdmin

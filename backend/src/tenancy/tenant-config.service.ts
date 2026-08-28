@@ -3,6 +3,7 @@ import { TENANT_CONTEXT_PORT, TenantContextPort } from '../contexts/platform/por
 import { PrismaService } from '../prisma/prisma.service';
 import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from './tenant-config.defaults';
 import { BrandConfigData, EffectiveTenantConfig, LocationConfigData, TenantI18nConfig, TenantThemeConfig } from './tenant-config.types';
+import { DEFAULT_BRAND_ID } from './tenant.constants';
 
 const mergeConfig = <T extends Record<string, any>>(base: T, override?: Partial<T>) => {
   if (!override) return { ...base };
@@ -138,6 +139,22 @@ export class TenantConfigService {
         ...(smsSenderId ? { smsSenderId } : {}),
       },
     };
+  }
+
+  /**
+   * Returns the super-admin identity explicitly scoped to a brand.
+   * The environment fallback belongs only to the legacy/default brand.
+   */
+  async getBrandSuperAdminEmail(brandId = this.getBrandId()): Promise<string | undefined> {
+    const config = await this.prisma.brandConfig.findUnique({
+      where: { brandId },
+      select: { data: true },
+    });
+    const configuredEmail = (config?.data as BrandConfigData | null)?.superAdminEmail;
+    const normalizedConfiguredEmail = configuredEmail?.trim().toLowerCase();
+    if (normalizedConfiguredEmail) return normalizedConfiguredEmail;
+    if (brandId !== DEFAULT_BRAND_ID) return undefined;
+    return process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
   }
 
   async getLocationConfig(localId = this.getLocalId()): Promise<LocationConfigData> {

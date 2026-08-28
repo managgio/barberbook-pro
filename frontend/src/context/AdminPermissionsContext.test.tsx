@@ -2,10 +2,18 @@ import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminPermissionsProvider, useAdminPermissions } from '@/context/AdminPermissionsContext';
-import type { AdminRole } from '@/data/types';
+import type { AdminRole, User } from '@/data/types';
 
-let authState: { user: any };
-let tenantState: { currentLocationId: string | null; tenant: any };
+let authState: { user: Partial<User> | null };
+let tenantState: {
+  currentLocationId: string | null;
+  tenant: {
+    config: {
+      features: { communicationsEnabled: boolean };
+      adminSidebar: { hiddenSections: string[]; visibleSections?: string[] };
+    };
+  };
+};
 let rolesState: AdminRole[];
 
 vi.mock('@/context/AuthContext', () => ({
@@ -99,7 +107,7 @@ describe('AdminPermissionsContext communications gating', () => {
       {
         id: 'role-1',
         name: 'Admin',
-        permissions: ['communications' as any],
+        permissions: ['communications'] as unknown as AdminRole['permissions'],
       },
     ];
 

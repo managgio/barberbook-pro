@@ -14,6 +14,11 @@ import {
 import { PlatformObservabilityPort } from '../../../contexts/platform/ports/outbound/platform-observability.port';
 import { DistributedLockService } from '../../../prisma/distributed-lock.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { buildUrgentWebVitalAlertEmail } from '../web-vital-alert-email';
+import {
+  evaluateUrgentWebVitalAlert,
+  resolveWebVitalAlertThresholds,
+} from '../web-vital-alert-policy';
 
 type WebVitalRecord = {
   name: PlatformWebVitalName;
@@ -35,6 +40,7 @@ const MAX_API_METRIC_RECORDS = 50_000;
 const WEB_VITAL_NAMES = Object.values(PlatformWebVitalName);
 const DEFAULT_ALERT_RECIPIENT = 'executive.managgio@gmail.com';
 const DEFAULT_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+const DEFAULT_WEB_VITAL_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_API_ALERT_WINDOW_MINUTES = 5;
 const DEFAULT_API_ALERT_MIN_SAMPLES = 20;
 const DEFAULT_API_ALERT_ERROR_RATE_PERCENT = 25;
@@ -48,14 +54,6 @@ const DEFAULT_CRITICAL_TRACE_RETENTION_DAYS = 90;
 const DEFAULT_SUMMARY_QUERY_CAP = 120_000;
 const CRITICAL_TRACE_PREFERENCE_KEY = 'critical-traces';
 
-const WEB_VITAL_THRESHOLDS: Record<PlatformWebVitalName, { good: number; poor: number; unit: string }> = {
-  [PlatformWebVitalName.LCP]: { good: 2500, poor: 4000, unit: 'ms' },
-  [PlatformWebVitalName.CLS]: { good: 0.1, poor: 0.25, unit: 'score' },
-  [PlatformWebVitalName.INP]: { good: 200, poor: 500, unit: 'ms' },
-  [PlatformWebVitalName.FCP]: { good: 1800, poor: 3000, unit: 'ms' },
-  [PlatformWebVitalName.TTFB]: { good: 800, poor: 1800, unit: 'ms' },
-};
-
 const WEB_VITAL_MAX_REASONABLE_VALUE: Record<PlatformWebVitalName, number> = {
   [PlatformWebVitalName.LCP]: 30_000,
   [PlatformWebVitalName.CLS]: 5,
@@ -63,9 +61,6 @@ const WEB_VITAL_MAX_REASONABLE_VALUE: Record<PlatformWebVitalName, number> = {
   [PlatformWebVitalName.FCP]: 30_000,
   [PlatformWebVitalName.TTFB]: 15_000,
 };
-
-const WEB_VITAL_ALERT_BLOCKED_PATH_PREFIXES = ['/platform'];
-const IN_APP_BROWSER_UA_MARKERS = ['instagram', 'fban', 'fbav', 'tiktok', 'line/'];
 
 const clampWindowMinutes = (value?: number) => {
   if (!value || Number.isNaN(value)) return 60;
@@ -151,6 +146,12 @@ export class InMemoryPrismaPlatformObservabilityAdapter
   private readonly alertRecipients = parseRecipients(process.env.OBSERVABILITY_ALERT_EMAILS);
   private readonly alertCooldownMs =
     parseNumber(process.env.OBSERVABILITY_ALERT_COOLDOWN_MINUTES, DEFAULT_ALERT_COOLDOWN_MS / 60_000) * 60_000;
+  private readonly webVitalAlertCooldownMs =
+    parseNumber(
+      process.env.OBSERVABILITY_ALERT_WEB_VITAL_COOLDOWN_MINUTES,
+      DEFAULT_WEB_VITAL_ALERT_COOLDOWN_MS / 60_000,
+    ) * 60_000;
+  private readonly webVitalAlertThresholds = resolveWebVitalAlertThresholds();
   private readonly apiAlertWindowMinutes = parseNumber(
     process.env.OBSERVABILITY_ALERT_API_WINDOW_MINUTES,
     DEFAULT_API_ALERT_WINDOW_MINUTES,
@@ -218,7 +219,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
   }
 
   private pruneAlertCooldown(now: number) {
-    const retentionMs = this.alertCooldownMs * 3;
+    const retentionMs = Math.max(this.alertCooldownMs, this.webVitalAlertCooldownMs) * 3;
     this.alertCooldownByKey.forEach((lastTriggeredAt, key) => {
       if (now - lastTriggeredAt > retentionMs) {
         this.alertCooldownByKey.delete(key);
@@ -226,10 +227,10 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     });
   }
 
-  private shouldTriggerAlert(key: string, now: number) {
+  private shouldTriggerAlert(key: string, now: number, cooldownMs = this.alertCooldownMs) {
     this.pruneAlertCooldown(now);
     const lastTriggeredAt = this.alertCooldownByKey.get(key);
-    if (lastTriggeredAt && now - lastTriggeredAt < this.alertCooldownMs) {
+    if (lastTriggeredAt && now - lastTriggeredAt < cooldownMs) {
       return false;
     }
     this.alertCooldownByKey.set(key, now);
@@ -286,50 +287,72 @@ export class InMemoryPrismaPlatformObservabilityAdapter
     return new Date(value).toISOString();
   }
 
-  private maybeAlertPoorWebVital(
+  private async resolveAlertTenantNames(context: { localId: string; brandId: string }) {
+    try {
+      const location = await this.prisma.location.findFirst({
+        where: {
+          id: context.localId,
+          brandId: context.brandId,
+        },
+        select: {
+          name: true,
+          brand: {
+            select: {
+              name: true,
+              _count: {
+                select: {
+                  locations: { where: { isActive: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+      return {
+        brandName: location?.brand.name || null,
+        includeLocal: (location?.brand._count.locations ?? 0) > 1,
+        localName: location?.name || null,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve tenant names for observability alert: ${error instanceof Error ? error.message : error}`,
+      );
+      return { brandName: null, includeLocal: false, localName: null };
+    }
+  }
+
+  private async maybeAlertUrgentWebVital(
     payload: PlatformWebVitalReport,
     context: { localId: string; brandId: string; userAgent?: string },
   ) {
-    if (payload.rating !== PlatformWebVitalRating.POOR) return;
-    if (!this.shouldAlertPoorWebVital(payload, context.userAgent)) return;
-    const now = Date.now();
-    const key = `web-vital:${context.brandId}:${context.localId}:${payload.name}:${payload.path}`;
-    if (!this.shouldTriggerAlert(key, now)) return;
-    const threshold = WEB_VITAL_THRESHOLDS[payload.name];
-    const lines = [
-      'Se detecto una degradacion de Web Vitals.',
-      '',
-      `Environment: ${this.runtimeEnvironment}`,
-      `Metric: ${payload.name}`,
-      `Value: ${Number(payload.value).toFixed(2)} ${threshold.unit}`,
-      `Rating: ${payload.rating}`,
-      `Thresholds: good <= ${threshold.good} ${threshold.unit}, poor > ${threshold.poor} ${threshold.unit}`,
-      `Path: ${payload.path}`,
-      `Brand ID: ${context.brandId}`,
-      `Local ID: ${context.localId}`,
-      `Timestamp: ${this.formatTimestamp(payload.timestamp || now)}`,
-      `User-Agent: ${(context.userAgent || 'unknown').slice(0, 200)}`,
-      '',
-      `Cooldown active: ${Math.round(this.alertCooldownMs / 60_000)} minutes per metric/path/local`,
-    ];
-    void this.sendAlertEmail({
-      subject: `[ALERTA][${this.runtimeEnvironment.toUpperCase()}][Web Vitals] ${payload.name} poor en ${payload.path}`,
-      lines,
+    const decision = evaluateUrgentWebVitalAlert({
+      payload,
+      userAgent: context.userAgent,
+      thresholds: this.webVitalAlertThresholds,
     });
-  }
+    if (!decision.urgent) return;
 
-  private shouldAlertPoorWebVital(payload: PlatformWebVitalReport, userAgent?: string) {
-    const path = payload.path || '';
-    if (WEB_VITAL_ALERT_BLOCKED_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) {
-      return false;
-    }
+    const now = Date.now();
+    const key = `web-vital-critical:${context.brandId}:${context.localId}:${payload.name}`;
+    if (!this.shouldTriggerAlert(key, now, this.webVitalAlertCooldownMs)) return;
 
-    const normalizedUa = String(userAgent || '').toLowerCase();
-    if (IN_APP_BROWSER_UA_MARKERS.some((marker) => normalizedUa.includes(marker))) {
-      return false;
-    }
-
-    return true;
+    const tenantNames = await this.resolveAlertTenantNames(context);
+    const email = buildUrgentWebVitalAlertEmail({
+      payload,
+      threshold: decision.threshold,
+      tenant: {
+        brandId: context.brandId,
+        brandName: tenantNames.brandName,
+        includeLocal: tenantNames.includeLocal,
+        localId: context.localId,
+        localName: tenantNames.localName,
+      },
+      runtimeEnvironment: this.runtimeEnvironment,
+      timestamp: payload.timestamp || now,
+      userAgent: context.userAgent,
+      cooldownMinutes: Math.round(this.webVitalAlertCooldownMs / 60_000),
+    });
+    await this.sendAlertEmail(email);
   }
 
   private async maybeAlertApiDegradation(record: ApiMetricRecord) {
@@ -594,10 +617,11 @@ export class InMemoryPrismaPlatformObservabilityAdapter
       );
       return;
     }
-    const safeTimestamp =
+    const requestedTimestamp =
       typeof payload.timestamp === 'number' && Number.isFinite(payload.timestamp) && payload.timestamp > 0
         ? payload.timestamp
         : now;
+    const safeTimestamp = Number.isFinite(new Date(requestedTimestamp).getTime()) ? requestedTimestamp : now;
 
     const record: WebVitalRecord = {
       name: payload.name,
@@ -625,7 +649,16 @@ export class InMemoryPrismaPlatformObservabilityAdapter
         `WebVital poor: ${payload.name}=${payload.value.toFixed(2)} path=${payload.path} local=${context.localId}`,
       );
     }
-    this.maybeAlertPoorWebVital(payload, context);
+    void this.maybeAlertUrgentWebVital(
+      {
+        name: record.name,
+        value: record.value,
+        rating: record.rating,
+        path: record.path,
+        timestamp: record.timestamp,
+      },
+      context,
+    );
   }
 
   recordApiMetric(record: ApiMetricRecord) {

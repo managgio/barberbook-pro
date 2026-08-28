@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { hasTenantAdminAccess } from '@/lib/userAccess';
 
 interface ProtectedRouteProps {
   requiredRole?: 'client' | 'admin';
@@ -31,13 +32,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole, requirePl
 
   if (requiredRole) {
     if (requiredRole === 'admin') {
-      const hasAdminAccess = Boolean(user?.isSuperAdmin || user?.isPlatformAdmin || user?.isLocalAdmin);
+      const hasAdminAccess = hasTenantAdminAccess(user);
       if (!hasAdminAccess) {
         return <Navigate to="/app" replace />;
       }
     } else if (user?.role !== requiredRole) {
       // Redirect admin to admin dashboard, client to client dashboard
-      if (user?.role === 'admin') {
+      if (hasTenantAdminAccess(user)) {
         return <Navigate to="/admin" replace />;
       }
       return <Navigate to="/app" replace />;

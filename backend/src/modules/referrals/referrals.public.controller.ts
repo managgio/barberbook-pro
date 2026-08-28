@@ -15,7 +15,7 @@ export class ReferralsPublicController {
 
   private async assertReferralOwner(req: Request | undefined, userId: string) {
     const actor = await this.authService.requireUser(req);
-    if (actor.id === userId || actor.isSuperAdmin || actor.isPlatformAdmin) {
+    if (actor.id === userId || actor.isPlatformAdmin) {
       return actor;
     }
     throw new ForbiddenException('No tienes permisos para consultar este recurso.');

@@ -20,10 +20,7 @@ export class AiAssistantGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = await this.authService.requireUser(request);
     const adminUserId = user.id;
-    if (!user.isSuperAdmin && !user.isPlatformAdmin) {
-      if (user.role !== 'admin') {
-        throw new ForbiddenException('Acceso restringido a administradores.');
-      }
+    if (!user.isPlatformAdmin) {
       const localId = this.tenantContextPort.getRequestContext().localId;
       const hasStaffMembership = await this.adminAccessReadPort.hasLocationStaffMembership({
         localId,

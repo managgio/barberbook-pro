@@ -83,7 +83,7 @@ test('admin guard allows non-admin endpoint without auth lookup', async () => {
   assert.equal(request.adminUserId, undefined);
 });
 
-test('admin guard allows super admin in admin endpoint', async () => {
+test('admin guard blocks a legacy global super admin outside the current local', async () => {
   const guard = new AdminGuard(
     { getAllAndOverride: () => true } as any,
     { locationStaff: { findUnique: async () => null } } as any,
@@ -98,10 +98,30 @@ test('admin guard allows super admin in admin endpoint', async () => {
     { getRequestContext: () => ({ localId: 'local-1' }) } as any,
   );
 
+  await assert.rejects(
+    () => guard.canActivate(createExecutionContext({})),
+    (error: unknown) => error instanceof ForbiddenException,
+  );
+});
+
+test('admin guard allows a platform administrator across tenants', async () => {
+  const guard = new AdminGuard(
+    { getAllAndOverride: () => true } as any,
+    { locationStaff: { findUnique: async () => null } } as any,
+    {
+      requireUser: async () => ({
+        id: 'platform-1',
+        role: 'admin',
+        isSuperAdmin: false,
+        isPlatformAdmin: true,
+      }),
+    } as any,
+    { getRequestContext: () => ({ localId: 'local-1' }) } as any,
+  );
+
   const request: Record<string, unknown> = {};
-  const allowed = await guard.canActivate(createExecutionContext(request));
-  assert.equal(allowed, true);
-  assert.equal(request.adminUserId, 'admin-1');
+  assert.equal(await guard.canActivate(createExecutionContext(request)), true);
+  assert.equal(request.adminUserId, 'platform-1');
 });
 
 test('admin guard blocks admin user outside location staff scope', async () => {
@@ -169,6 +189,26 @@ test('ai assistant guard blocks non-admin users', async () => {
     async () => {
       await guard.canActivate(createExecutionContext({}));
     },
+    (error: unknown) => error instanceof ForbiddenException,
+  );
+});
+
+test('ai assistant guard blocks a legacy global super admin outside the current local', async () => {
+  const guard = new AiAssistantGuard(
+    { hasLocationStaffMembership: async () => false } as any,
+    {
+      requireUser: async () => ({
+        id: 'foreign-super-admin',
+        role: 'admin',
+        isSuperAdmin: true,
+        isPlatformAdmin: false,
+      }),
+    } as any,
+    { getRequestContext: () => ({ localId: 'local-2' }) } as any,
+  );
+
+  await assert.rejects(
+    () => guard.canActivate(createExecutionContext({})),
     (error: unknown) => error instanceof ForbiddenException,
   );
 });

@@ -19,6 +19,7 @@ import { useTenant } from '@/context/TenantContext';
 import LegalFooter from '@/components/layout/LegalFooter';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useI18n } from '@/hooks/useI18n';
+import { hasTenantAdminAccess } from '@/lib/userAccess';
 
 const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -100,7 +101,7 @@ const AuthPage: React.FC = () => {
         navigate(preferredTarget, { replace: true });
         return;
       }
-      const hasAdminAccess = Boolean(user.isSuperAdmin || user.isLocalAdmin || user.role === 'admin' || user.isPlatformAdmin);
+      const hasAdminAccess = hasTenantAdminAccess(user);
       navigate(hasAdminAccess ? '/admin' : '/app/book', { replace: true });
     }
   }, [isAuthenticated, user, navigate, isPlatform, redirectTarget, fromPath, location.search]);

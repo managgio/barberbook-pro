@@ -13,3 +13,19 @@ test('site settings allow enabling phone-required policy', () => {
   });
   assert.equal(settings.profile.phoneRequired, true);
 });
+
+test('site settings keep public service descriptions disabled by default', () => {
+  const settings = normalizeSettings();
+  assert.equal(settings.services.showDescriptions, false);
+});
+
+test('site settings allow enabling public service descriptions per location', () => {
+  const settings = normalizeSettings({
+    services: {
+      categoriesEnabled: false,
+      barberServiceAssignmentEnabled: false,
+      showDescriptions: true,
+    },
+  });
+  assert.equal(settings.services.showDescriptions, true);
+});

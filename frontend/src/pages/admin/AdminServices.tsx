@@ -15,11 +15,10 @@ import {
 import { createService, deleteService, updateService } from '@/data/api/services';
 import { updateSiteSettings } from '@/data/api/settings';
 import { Service, ServiceCategory } from '@/data/types';
-import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, CheckCircle2, Sparkles, Percent, GripVertical } from 'lucide-react';
+import { Plus, Pencil, Trash2, Scissors, Clock, Loader2, FolderTree, Percent, GripVertical } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
-import { Switch } from '@/components/ui/switch';
 import { dispatchServicesUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
 import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import { fetchServiceCategoriesCached, fetchServicesCached } from '@/lib/catalogQuery';
@@ -29,6 +28,7 @@ import { useTenant } from '@/context/TenantContext';
 import { useI18n } from '@/hooks/useI18n';
 import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 import { cn } from '@/lib/utils';
+import ServicePresentationSettings from './services/ServicePresentationSettings';
 
 const UNCATEGORIZED_VALUE = 'none';
 const EMPTY_SERVICES: Service[] = [];
@@ -112,6 +112,7 @@ const AdminServices: React.FC = () => {
   const settings = settingsQuery.data ?? null;
   const isLoading = servicesQuery.isLoading || categoriesQuery.isLoading || settingsQuery.isLoading;
   const categoriesEnabled = settings?.services.categoriesEnabled ?? false;
+  const showServiceDescriptions = settings?.services.showDescriptions ?? false;
 
   useEffect(() => {
     if (!servicesQuery.error && !categoriesQuery.error && !settingsQuery.error) return;
@@ -646,6 +647,36 @@ const AdminServices: React.FC = () => {
     }
   };
 
+  const handleToggleDescriptions = async (enabled: boolean) => {
+    if (!settings) return;
+    setIsSavingSettings(true);
+    try {
+      const updated = await updateSiteSettings({
+        ...settings,
+        services: {
+          ...settings.services,
+          showDescriptions: enabled,
+        },
+      });
+      dispatchSiteSettingsUpdated(updated);
+      dispatchServicesUpdated({ source: 'admin-services' });
+      toast({
+        title: t('admin.services.toast.presentationUpdatedTitle'),
+        description: enabled
+          ? t('admin.services.toast.descriptionsVisibleDescription')
+          : t('admin.services.toast.descriptionsHiddenDescription'),
+      });
+    } catch (error) {
+      toast({
+        title: t('admin.services.toast.updateSettingsErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.services.toast.updateSettingsErrorDescription'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -672,47 +703,14 @@ const AdminServices: React.FC = () => {
 
       {/* Preferences */}
       <div className={cn('grid gap-6', categoriesEnabled ? 'lg:grid-cols-4' : 'grid-cols-1')}>
-        <Card variant="elevated" className={cn(categoriesEnabled ? 'lg:col-span-1' : 'w-full')}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              {t('admin.services.presentation.title')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-xl border border-border p-3">
-              <div>
-                <p className="font-medium text-sm text-foreground">{t('admin.services.presentation.groupByCategories')}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t('admin.services.presentation.groupByCategoriesDescription')}
-                </p>
-              </div>
-              <Switch
-                checked={categoriesEnabled}
-                disabled={!settings || isSavingSettings}
-                onCheckedChange={handleToggleCategories}
-              />
-            </div>
-            {categoriesEnabled && (
-              <>
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2 text-primary font-medium">
-                    <CheckCircle2 className="w-4 h-4" />
-                    {t('admin.services.presentation.categorizationActive')}
-                  </div>
-                  <p className="mt-2">
-                    {t('admin.services.presentation.categorizationActiveDescription')}
-                  </p>
-                </div>
-                {uncategorizedServices.length > 0 && (
-                  <div className="rounded-xl border border-amber-200/60 bg-amber-50 text-amber-700 text-xs p-3">
-                    {t('admin.services.presentation.uncategorizedWarning', { count: uncategorizedServices.length })}
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <ServicePresentationSettings
+          categoriesEnabled={categoriesEnabled}
+          disabled={!settings || isSavingSettings}
+          onToggleCategories={handleToggleCategories}
+          onToggleDescriptions={handleToggleDescriptions}
+          showDescriptions={showServiceDescriptions}
+          uncategorizedCount={uncategorizedServices.length}
+        />
 
         {/* Categories */}
         {categoriesEnabled && (

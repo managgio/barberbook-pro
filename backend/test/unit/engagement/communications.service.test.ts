@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CommunicationChannel, CommunicationStatus } from '@prisma/client';
 import { CommunicationsService } from '@/modules/communications/communications.service';
+import { CommunicationBookingClosureService } from '@/modules/communications/communication-booking-closure.service';
 import { formatDateInTimeZone, formatTimeInTimeZone } from '@/utils/timezone';
 
 const buildService = (options?: {
@@ -90,6 +91,7 @@ const buildService = (options?: {
       }),
     } as any,
     { runWithLock: async () => true } as any,
+    { ensureForCampaign: async () => 0 } as any,
   );
 
   (service as any).computePreview = async () => ({
@@ -137,6 +139,7 @@ const buildServiceForScopeFiltering = (
 
   const service = new CommunicationsService(
     prisma as any,
+    {} as any,
     {} as any,
     {} as any,
     {} as any,
@@ -400,4 +403,64 @@ test('cancellation scope keeps every appointment when one client has multiple bo
   assert.equal(result.targets.length, 2);
   assert.equal(result.appointmentsAffected, 2);
   assert.equal(result.clientsAffected, 1);
+});
+
+test('cancellation preview never excludes appointments that were previously notified', async () => {
+  const { service } = buildServiceForScopeFiltering();
+  let exclusionEnabled: boolean | undefined;
+  (service as any).resolveTargets = async () => ({ targets: [], appointmentsAffected: 0, clientsAffected: 0 });
+  (service as any).excludeAlreadyNotified = async (
+    _localId: string,
+    _channel: string,
+    targets: unknown[],
+    enabled: boolean,
+  ) => {
+    exclusionEnabled = enabled;
+    return { deliverableTargets: targets, excludedTargets: [] };
+  };
+  (service as any).resolveLocalName = async () => 'Local';
+  (service as any).tenantContextPort = {
+    getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }),
+  };
+
+  await (service as any).computePreview({
+    actionType: 'comunicar_y_cancelar',
+    scopeType: 'all_day',
+    scopeCriteria: { date: '2026-08-31' },
+    channel: 'email',
+    title: 'Cierre',
+    message: 'Cierre',
+    extraOptions: { excludeAlreadyNotified: true },
+  });
+
+  assert.equal(exclusionEnabled, false);
+});
+
+test('communication booking closure persists an exact all-day range with exclusive end', async () => {
+  let createdData: any[] = [];
+  const service = new CommunicationBookingClosureService({
+    bookingClosure: {
+      findFirst: async () => null,
+      createMany: async ({ data }: { data: any[] }) => {
+        createdData = data;
+        return { count: data.length };
+      },
+    },
+  } as any);
+
+  const count = await service.ensureForCampaign(
+    { id: 'campaign-close', localId: 'local-1' } as any,
+    {
+      actionType: 'comunicar_y_cancelar',
+      scopeType: 'all_day',
+      scopeCriteria: { dateFrom: '2026-08-30', dateTo: '2026-08-31' },
+    } as any,
+  );
+
+  assert.equal(count, 1);
+  assert.equal(createdData[0].localId, 'local-1');
+  assert.equal(createdData[0].barberId, null);
+  assert.equal(formatDateInTimeZone(createdData[0].startDateTime), '2026-08-30');
+  assert.equal(formatDateInTimeZone(createdData[0].endDateTime), '2026-09-01');
+  assert.equal(formatTimeInTimeZone(createdData[0].endDateTime), '00:00');
 });

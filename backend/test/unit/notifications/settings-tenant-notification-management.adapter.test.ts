@@ -2,6 +2,10 @@ import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SettingsTenantNotificationManagementAdapter } from '@/modules/notifications/adapters/settings-tenant-notification-management.adapter';
 import { DEFAULT_SITE_SETTINGS } from '@/modules/settings/settings.types';
+import {
+  describeEmailDeliveryError,
+  maskEmailIdentity,
+} from '@/modules/notifications/email-delivery-diagnostic';
 
 test('appointment email uses app timezone when formatting date/time', async () => {
   const sentMails: Array<{ text: string }> = [];
@@ -68,4 +72,55 @@ test('appointment email uses app timezone when formatting date/time', async () =
   assert.equal(sentMails.length, 1);
   assert.match(sentMails[0].text, /11:00/);
   assert.doesNotMatch(sentMails[0].text, /09:00/);
+});
+
+test('email transporter cache is isolated by local and refreshed when SMTP credentials change', async () => {
+  let localId = 'local-1';
+  let password = 'secret-1';
+  const createdConfigs: any[] = [];
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    {} as any,
+    {
+      getEffectiveConfig: async () => ({
+        email: { user: 'sender@example.com', password, host: 'smtp.example.com', port: 587 },
+      }),
+    } as any,
+    {} as any,
+    {
+      createTransport: (config: any) => {
+        createdConfigs.push(config);
+        return { sendMail: async () => undefined };
+      },
+    } as any,
+    {} as any,
+    {
+      getRequestContext: () => ({ brandId: 'brand-1', localId }),
+    } as any,
+  );
+
+  await (adapter as any).getTransporter();
+  await (adapter as any).getTransporter();
+  password = 'secret-2';
+  await (adapter as any).getTransporter();
+  localId = 'local-2';
+  await (adapter as any).getTransporter();
+
+  assert.equal(createdConfigs.length, 3);
+  assert.equal(createdConfigs[1].auth.pass, 'secret-2');
+});
+
+test('SMTP 535 is classified as sender authentication failure without exposing credentials', () => {
+  const diagnostic = describeEmailDeliveryError(
+    {
+      code: 'EAUTH',
+      responseCode: 535,
+      message: '535-5.7.8 Username and Password not accepted',
+    },
+    { host: 'smtp.gmail.com', user: 'sender@example.com' },
+  );
+
+  assert.equal(diagnostic.code, 'SMTP_AUTH_FAILED');
+  assert.match(diagnostic.safeMessage, /sender credentials or app password/);
+  assert.doesNotMatch(diagnostic.safeMessage, /Username and Password not accepted/);
+  assert.equal(maskEmailIdentity('sender@example.com'), 's***@example.com');
 });

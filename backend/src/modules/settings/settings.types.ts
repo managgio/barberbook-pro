@@ -55,6 +55,7 @@ export type SiteSettings = {
   services: {
     categoriesEnabled: boolean;
     barberServiceAssignmentEnabled: boolean;
+    showDescriptions: boolean;
   };
   products: {
     enabled: boolean;
@@ -116,6 +117,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   services: {
     categoriesEnabled: false,
     barberServiceAssignmentEnabled: false,
+    showDescriptions: false,
   },
   products: {
     enabled: false,

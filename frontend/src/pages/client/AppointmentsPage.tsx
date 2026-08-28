@@ -267,12 +267,23 @@ const AppointmentsPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('appointments.title')}</h1>
-        <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
-          {t('appointments.subtitle')}
-        </p>
+    <div className="w-full min-w-0 space-y-4 sm:space-y-6 animate-fade-in">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('appointments.title')}</h1>
+          <p className="text-xs sm:text-base text-muted-foreground mt-0.5 sm:mt-1">
+            {t('appointments.subtitle')}
+          </p>
+        </div>
+        <Button
+          variant="glow"
+          size="lg"
+          className="h-8 w-fit px-3 text-xs sm:h-11 sm:w-auto sm:px-5 sm:text-base"
+          onClick={() => navigate('/app/book')}
+        >
+          <CalendarPlus className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
+          {t('appointments.actions.bookAgain')}
+        </Button>
       </div>
 
       <Tabs defaultValue="upcoming" className="w-full">

@@ -8,6 +8,30 @@ import {
   AiAssistantValidationError,
 } from '@/contexts/ai-orchestration/application/errors/ai-assistant.errors';
 
+test('chat use case rejects a global super admin without current local membership', async () => {
+  const useCase = new ChatWithAiAssistantUseCase(
+    {
+      findUserById: async () => ({ id: 'foreign-admin', isSuperAdmin: true, isPlatformAdmin: false }),
+      hasLocationStaffMembership: async () => false,
+    } as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+
+  await assert.rejects(
+    () => useCase.execute({
+      adminUserId: 'foreign-admin',
+      message: 'muéstrame las citas',
+      localId: 'other-local',
+      timeZone: 'Europe/Madrid',
+    }),
+    (error: unknown) => error instanceof AiAssistantValidationError,
+  );
+});
+
 test('chat use case enforces daily message limit', async () => {
   const useCase = new ChatWithAiAssistantUseCase(
     {

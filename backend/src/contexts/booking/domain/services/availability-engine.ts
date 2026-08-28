@@ -9,12 +9,18 @@ type AvailabilityAppointment = {
   durationMinutes?: number | null;
 };
 
+type AvailabilityClosure = {
+  startDateTime: Date;
+  endDateTime: Date;
+};
+
 type ComputeSlotsParams = {
   dateOnly: string;
   timezone: string;
   barberSchedule: BookingSchedulePolicy;
   shopSchedule: BookingSchedulePolicy;
   appointments: AvailabilityAppointment[];
+  closures?: AvailabilityClosure[];
   targetDurationMinutes: number;
   slotIntervalMinutes?: number;
 };
@@ -87,6 +93,19 @@ const formatTimeInTimeZone = (date: Date, timezone: string) => {
   return `${hour}:${minute}`;
 };
 
+const formatDateInTimeZone = (date: Date, timezone: string) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value || '0000';
+  const month = parts.find((part) => part.type === 'month')?.value || '00';
+  const day = parts.find((part) => part.type === 'day')?.value || '00';
+  return `${year}-${month}-${day}`;
+};
+
 const subtractRange = (
   intervals: Array<{ start: number; end: number }>,
   block: { start: number; end: number },
@@ -125,6 +144,7 @@ export const computeAvailableSlotsForBarber = (params: ComputeSlotsParams): stri
     barberSchedule,
     shopSchedule,
     appointments,
+    closures = [],
     targetDurationMinutes,
     slotIntervalMinutes = DEFAULT_SLOT_INTERVAL_MINUTES,
   } = params;
@@ -208,6 +228,18 @@ export const computeAvailableSlotsForBarber = (params: ComputeSlotsParams): stri
 
   const breakRanges = normalizeBreaks(dayBreaks);
 
+  const closureRanges = closures.map((closure) => {
+    const startDate = formatDateInTimeZone(closure.startDateTime, timezone);
+    const endDate = formatDateInTimeZone(closure.endDateTime, timezone);
+    const start = startDate < dateOnly
+      ? 0
+      : timeToMinutes(formatTimeInTimeZone(closure.startDateTime, timezone));
+    const end = endDate > dateOnly
+      ? 24 * 60
+      : timeToMinutes(formatTimeInTimeZone(closure.endDateTime, timezone));
+    return { start, end };
+  }).filter((range) => range.end > range.start);
+
   const baseSlots = uniqueSlots.filter((slot) => {
     const slotStart = timeToMinutes(slot);
     const slotEnd = slotStart + durationWithBuffer;
@@ -215,10 +247,13 @@ export const computeAvailableSlotsForBarber = (params: ComputeSlotsParams): stri
     const overlapsBreak = breakRanges.some((range) => slotStart < range.end && slotEnd > range.start);
     if (overlapsBreak) return false;
 
+    const overlapsClosure = closureRanges.some((range) => slotStart < range.end && slotEnd > range.start);
+    if (overlapsClosure) return false;
+
     return bookedRanges.every((range) => slotEnd <= range.start || slotStart >= range.end);
   });
 
-  const blockedRanges = [...breakRanges, ...bookedRanges].filter((range) => range.end > range.start);
+  const blockedRanges = [...breakRanges, ...bookedRanges, ...closureRanges].filter((range) => range.end > range.start);
 
   const getFreeIntervalsForShift = (
     shift: { enabled: boolean; start: string; end: string },

@@ -25,8 +25,7 @@ export class UsersController {
 
   private async canManageOtherUsers(request: Request) {
     const actor = await this.authService.requireUser(request);
-    if (actor.isSuperAdmin || actor.isPlatformAdmin) return true;
-    if (actor.role !== 'admin') return false;
+    if (actor.isPlatformAdmin) return true;
     const localId = this.tenantContextPort.getRequestContext().localId;
     const staff = await this.prisma.locationStaff.findUnique({
       where: {

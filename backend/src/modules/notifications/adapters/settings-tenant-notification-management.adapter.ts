@@ -24,6 +24,8 @@ import { SettingsService } from '../../settings/settings.service';
 import { SiteSettings } from '../../settings/settings.types';
 import { UsageMetricsService } from '../../usage-metrics/usage-metrics.service';
 import { APP_TIMEZONE } from '../../../utils/timezone';
+import { createHash } from 'crypto';
+import { describeEmailDeliveryError } from '../email-delivery-diagnostic';
 
 const resolveDefaultSmtpHost = (email?: string) => {
   const normalized = (email || '').trim().toLowerCase();
@@ -48,7 +50,10 @@ type TwilioTenantConfig = {
 @Injectable()
 export class SettingsTenantNotificationManagementAdapter implements EngagementNotificationManagementPort {
   private readonly logger = new Logger(SettingsTenantNotificationManagementAdapter.name);
-  private readonly transporterCache = new Map<string, EngagementEmailTransportPort | null>();
+  private readonly transporterCache = new Map<
+    string,
+    { fingerprint: string; transporter: EngagementEmailTransportPort }
+  >();
   private readonly twilioCache = new Map<string, TwilioTenantConfig | null>();
   private settingsCache: Record<string, SiteSettings> = {};
 
@@ -66,20 +71,24 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
 
   private async getTransporter() {
     const brandId = this.getBrandId();
-    if (this.transporterCache.has(brandId)) {
-      return this.transporterCache.get(brandId) || null;
-    }
-
+    const localId = this.getLocalId();
+    const scopeKey = `${brandId}:${localId}`;
     const config = await this.tenantConfig.getEffectiveConfig();
     const emailConfig = config.email;
     if (!emailConfig?.user || !emailConfig?.password) {
-      this.logger.warn('Email credentials missing, email notifications disabled');
-      this.transporterCache.set(brandId, null);
+      this.logger.warn(`Email credentials missing, email notifications disabled brandId=${brandId} localId=${localId}`);
+      this.transporterCache.delete(scopeKey);
       return null;
     }
 
     const host = emailConfig.host || resolveDefaultSmtpHost(emailConfig.user);
     const port = emailConfig.port || 587;
+    const fingerprint = createHash('sha256')
+      .update(`${host}\u0000${port}\u0000${emailConfig.user}\u0000${emailConfig.password}`)
+      .digest('hex');
+    const cached = this.transporterCache.get(scopeKey);
+    if (cached?.fingerprint === fingerprint) return cached.transporter;
+
     const transporter = this.emailTransportFactory.createTransport({
       host,
       port,
@@ -89,7 +98,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
         pass: emailConfig.password,
       },
     });
-    this.transporterCache.set(brandId, transporter);
+    this.transporterCache.set(scopeKey, { fingerprint, transporter });
     return transporter;
   }
 
@@ -230,7 +239,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
 
     try {
       await transporter.sendMail({
-        from: `"${config.email?.fromName || brandName}" <${contactEmail}>`,
+        from: `"${config.email?.fromName || brandName}" <${config.email?.user}>`,
         to: contact.email,
         subject,
         text: textLines.join('\n'),
@@ -246,7 +255,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
           : [],
       });
     } catch (error) {
-      this.logger.error(`Error sending email to ${contact.email}: ${error}`);
+      this.logEmailDeliveryError(error, config.email);
     }
   }
 
@@ -322,7 +331,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
 
     try {
       await transporter.sendMail({
-        from: `"${config.email?.fromName || brandName}" <${contactEmail}>`,
+        from: `"${config.email?.fromName || brandName}" <${config.email?.user}>`,
         to: params.contact.email,
         subject: params.title,
         text: `${params.message}`,
@@ -338,7 +347,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
           : [],
       });
     } catch (error) {
-      this.logger.error(`Error sending referral email to ${params.contact.email}: ${error}`);
+      this.logEmailDeliveryError(error, config.email);
     }
   }
 
@@ -359,7 +368,6 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       config.branding?.shortName ||
       config.branding?.name ||
       'Managgio';
-    const fromEmail = settings.contact.email || config.email?.user || 'info@managgio.com';
     const safeMessage = params.message.replace(/\n/g, '<br/>');
     const html = `
       <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:#0f0f12; padding:24px; color:#f8fafc;">
@@ -381,15 +389,15 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
 
     try {
       await transporter.sendMail({
-        from: `"${config.email?.fromName || brandName}" <${fromEmail}>`,
+        from: `"${config.email?.fromName || brandName}" <${config.email?.user}>`,
         to,
         subject: params.subject,
         text: params.message,
         html,
       });
     } catch (error) {
-      this.logger.error(`Error sending broadcast email to ${to}: ${error}`);
-      throw error;
+      const diagnostic = this.logEmailDeliveryError(error, config.email);
+      throw new Error(`${diagnostic.code}: ${diagnostic.safeMessage}`);
     }
   }
 
@@ -584,6 +592,20 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
 
   private getLocalId() {
     return this.tenantContextPort.getRequestContext().localId;
+  }
+
+  private logEmailDeliveryError(
+    error: unknown,
+    emailConfig?: { user?: string; host?: string },
+  ) {
+    const diagnostic = describeEmailDeliveryError(error, {
+      host: emailConfig?.host || resolveDefaultSmtpHost(emailConfig?.user),
+      user: emailConfig?.user,
+    });
+    this.logger.error(
+      `${diagnostic.code} brandId=${this.getBrandId()} localId=${this.getLocalId()} ${diagnostic.safeMessage}`,
+    );
+    return diagnostic;
   }
 
   private resolveLogoPath(): string | null {

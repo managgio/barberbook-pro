@@ -525,6 +525,7 @@ export interface SiteSettings {
   services: {
     categoriesEnabled: boolean;
     barberServiceAssignmentEnabled: boolean;
+    showDescriptions: boolean;
   };
   products: {
     enabled: boolean;

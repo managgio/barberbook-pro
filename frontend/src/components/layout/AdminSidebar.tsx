@@ -50,7 +50,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ collapsed, onToggle }) => {
     [canAccessSection, settings.adminSidebar?.order],
   );
   const showNoAccessMessage =
-    user?.role === 'admin' &&
+    user?.isLocalAdmin &&
     !user?.isSuperAdmin &&
     !user?.isPlatformAdmin &&
     (!user?.adminRoleId || visibleNavItems.length === 0) &&

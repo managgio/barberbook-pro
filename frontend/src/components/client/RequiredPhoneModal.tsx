@@ -16,6 +16,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useI18n } from '@/hooks/useI18n';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
 import { useToast } from '@/hooks/use-toast';
+import { hasTenantAdminAccess } from '@/lib/userAccess';
 
 const RequiredPhoneModal: React.FC = () => {
   const { user, updateProfile } = useAuth();
@@ -29,9 +30,7 @@ const RequiredPhoneModal: React.FC = () => {
     setPhone(user?.phone || '');
   }, [user?.id, user?.phone]);
 
-  const hasAdminAccess = Boolean(
-    user?.isSuperAdmin || user?.isLocalAdmin || user?.role === 'admin' || user?.isPlatformAdmin,
-  );
+  const hasAdminAccess = hasTenantAdminAccess(user);
   const open = Boolean(
     !isLoadingSettings &&
       user &&

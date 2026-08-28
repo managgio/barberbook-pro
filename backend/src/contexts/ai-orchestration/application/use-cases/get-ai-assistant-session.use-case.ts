@@ -53,7 +53,7 @@ export class GetAiAssistantSessionUseCase {
     if (!user) {
       throw new AiAssistantValidationError('Usuario admin inválido.');
     }
-    if (user.isSuperAdmin || user.isPlatformAdmin) {
+    if (user.isPlatformAdmin) {
       return;
     }
     const hasStaffMembership = await this.adminAccessReadPort.hasLocationStaffMembership({

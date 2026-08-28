@@ -28,6 +28,7 @@ import { AiChatResponse } from '@/data/types';
 import { isApiRequestError } from '@/lib/networkErrors';
 import { cn } from '@/lib/utils';
 import { dispatchAlertsUpdated, dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
+import { hasTenantAdminAccess } from '@/lib/userAccess';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { useTenant } from '@/context/TenantContext';
 import { useI18n } from '@/hooks/useI18n';
@@ -357,9 +358,7 @@ const AdminAiAssistant: React.FC = () => {
   const sendMessage = async (prompt: string) => {
     const trimmed = prompt.trim();
     if (!trimmed || !user) return;
-    const hasAdminAccess = Boolean(
-      user.isSuperAdmin || user.isPlatformAdmin || user.isLocalAdmin || user.role === 'admin',
-    );
+    const hasAdminAccess = hasTenantAdminAccess(user);
     if (!hasAdminAccess) {
       toast({
         title: t('admin.aiAssistant.toast.restrictedTitle'),

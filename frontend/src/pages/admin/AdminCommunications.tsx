@@ -588,6 +588,13 @@ const AdminCommunications: React.FC = () => {
                     actionType: value,
                     scheduleAt: value === 'comunicar_y_cancelar' ? undefined : form.scheduleAt,
                     scopeType: value === 'comunicar_y_cancelar' && form.scopeType === 'all_clients' ? 'all_day' : form.scopeType,
+                    extraOptions: {
+                      ...form.extraOptions,
+                      excludeAlreadyNotified:
+                        value === 'comunicar_y_cancelar'
+                          ? false
+                          : form.extraOptions?.excludeAlreadyNotified,
+                    },
                   };
                   setForm(next);
                   setPreviewFresh(false);
@@ -872,7 +879,11 @@ const AdminCommunications: React.FC = () => {
                   <p className="text-xs text-muted-foreground">{t('admin.communications.form.excludeAlreadyNotifiedHint')}</p>
                 </div>
                 <Switch
-                  checked={form.extraOptions?.excludeAlreadyNotified !== false}
+                  checked={
+                    form.actionType !== 'comunicar_y_cancelar'
+                    && form.extraOptions?.excludeAlreadyNotified !== false
+                  }
+                  disabled={form.actionType === 'comunicar_y_cancelar'}
                   onCheckedChange={(checked) => {
                     setForm((prev) => ({
                       ...prev,

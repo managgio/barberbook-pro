@@ -65,6 +65,8 @@ import {
   setActiveCriticalTrace,
   updateActiveCriticalTrace,
 } from '@/lib/criticalTrace';
+import StaffHorizontalScroller from './booking/StaffHorizontalScroller';
+import PublicServiceDescription from '@/components/services/PublicServiceDescription';
 
 
 interface BookingWizardProps {
@@ -75,6 +77,7 @@ type BookingCatalogData = {
   services: Service[];
   serviceCategories: ServiceCategory[];
   categoriesEnabled: boolean;
+  showServiceDescriptions: boolean;
   productsEnabled: boolean;
   clientPurchaseEnabled: boolean;
   products: Product[];
@@ -166,6 +169,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         services,
         serviceCategories,
         categoriesEnabled: settings.services.categoriesEnabled,
+        showServiceDescriptions: settings.services.showDescriptions,
         productsEnabled: settings.products.enabled,
         clientPurchaseEnabled: settings.products.clientPurchaseEnabled,
         products,
@@ -244,6 +248,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     [catalogQuery.data?.serviceCategories],
   );
   const categoriesEnabled = catalogQuery.data?.categoriesEnabled ?? false;
+  const showServiceDescriptions = catalogQuery.data?.showServiceDescriptions ?? false;
   const productsEnabled = catalogQuery.data?.productsEnabled ?? false;
   const clientPurchaseEnabled = catalogQuery.data?.clientPurchaseEnabled ?? false;
   const products = useMemo(
@@ -639,7 +644,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           </div>
           <div className="space-y-0.5 sm:space-y-1">
             <h3 className="text-sm sm:text-base font-semibold text-foreground leading-tight">{service.name}</h3>
-            <p className="hidden sm:block text-sm text-muted-foreground line-clamp-2">{service.description}</p>
+            <PublicServiceDescription
+              className="text-xs sm:text-sm line-clamp-2"
+              description={service.description}
+              visible={showServiceDescriptions}
+            />
           </div>
             <div className="flex items-center justify-between text-xs sm:text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
@@ -1203,7 +1212,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 animate-fade-in">
+    <div className="mx-auto w-full min-w-0 max-w-4xl space-y-6 sm:space-y-8 animate-fade-in">
       {/* Header */}
       <div>
         <h1 className="text-xl sm:text-3xl font-bold text-foreground">{t('bookingWizard.title')}</h1>
@@ -1250,8 +1259,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       </div>
 
       {/* Step Content */}
-      <Card variant="elevated">
-        <CardContent className="p-4 sm:p-6">
+      <Card variant="elevated" className="min-w-0 max-w-full overflow-hidden">
+        <CardContent className="min-w-0 max-w-full p-4 sm:p-6">
           {/* Step 0: Select Service */}
           {currentStep === 0 && (
             <div className="space-y-4 sm:space-y-5">
@@ -1342,9 +1351,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
           {/* Step 1: Select Barber & Schedule */}
           {currentStep === 1 && (
-            <div className="space-y-4 sm:space-y-6">
-              <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
+            <div className="min-w-0 max-w-full space-y-4 sm:space-y-6">
+              <div className="flex min-w-0 flex-col gap-2 sm:gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <h2 className="text-lg sm:text-xl font-semibold text-foreground mb-0.5 sm:mb-1">
                     {shouldSelectBarberManually
                       ? t('bookingWizard.step1.titleManual', { staffSingularLower: copy.staff.singularLower })
@@ -1405,9 +1414,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 </div>
               )}
 
-              <div className={cn('grid gap-3 sm:gap-6', shouldSelectBarberManually && 'lg:grid-cols-[280px,1fr]')}>
+              <div className={cn('grid min-w-0 max-w-full gap-3 sm:gap-6', shouldSelectBarberManually && 'lg:grid-cols-[280px_minmax(0,1fr)]')}>
                 {shouldSelectBarberManually && (
-                  <div className="space-y-2.5 sm:space-y-4">
+                  <div className="min-w-0 max-w-full space-y-2.5 sm:space-y-4">
                     {singleAvailableBarber ? (
                       <div className="inline-flex w-fit max-w-full rounded-xl border border-primary/30 bg-primary/10 p-2 sm:p-3">
                         <div className="flex items-center gap-2 sm:gap-3">
@@ -1433,55 +1442,53 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     ) : (
                       <>
                         <p className="text-xs sm:text-sm font-medium text-muted-foreground">{t('bookingWizard.step1.selectPreferredStylist')}</p>
-                        <div
-                          className={cn(
-                            'sm:space-y-3 sm:pr-1 sm:max-h-[420px] sm:overflow-y-auto',
-                            availableBarbers.length > 1
-                              ? 'flex gap-2 overflow-x-auto pb-1 snap-x sm:block'
-                              : 'space-y-2'
-                          )}
+                        <StaffHorizontalScroller
+                          scrollable={availableBarbers.length > 1}
+                          label={availableBarbers.length > 1
+                            ? t('bookingWizard.step1.staffCarouselLabel', { staffPluralLower: copy.staff.pluralLower })
+                            : undefined}
                         >
                           {availableBarbers.length > 0 ? (
-                        availableBarbers.map((barber) => (
-                          <button
-                            key={barber.id}
-                            onClick={() => handleSelectBarber(barber.id)}
-                            className={cn(
-                              'inline-flex sm:flex rounded-xl sm:rounded-2xl border p-2 sm:p-3 items-center gap-2 sm:gap-3 text-left transition-all',
-                              availableBarbers.length > 1 && 'min-w-[148px] max-w-[148px] shrink-0 snap-start sm:min-w-0 sm:max-w-none sm:w-full',
-                              availableBarbers.length === 1 && 'w-fit max-w-[220px] sm:max-w-none sm:w-full',
-                              booking.barberId === barber.id
-                                ? 'border-primary bg-primary/5 shadow-glow'
-                                : 'border-border bg-card hover:border-primary/40'
-                            )}
-                          >
-                            <img 
-                              src={barber.photo || defaultAvatar} 
-                              alt={barber.name}
-                              loading="lazy"
-                              decoding="async"
-                              width={56}
-                              height={56}
-                              className="w-9 h-9 sm:w-14 sm:h-14 rounded-lg sm:rounded-xl object-cover"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs sm:text-base font-semibold text-foreground truncate">{barber.name}</p>
-                              <p className="hidden sm:block text-[11px] sm:text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
-                              {new Date(barber.startDate) > new Date() && (
-                                <p className="hidden sm:block text-[11px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">
-                                  {t('bookingWizard.step1.availableFrom', {
-                                    date: new Date(barber.startDate).toLocaleDateString(),
-                                  })}
-                                  {barber.endDate
-                                    ? ` · ${t('bookingWizard.step1.availableUntil', {
-                                        date: new Date(barber.endDate).toLocaleDateString(),
-                                      })}`
-                                    : ''}
-                                </p>
-                              )}
-                            </div>
-                          </button>
-                        ))
+                            availableBarbers.map((barber) => (
+                              <button
+                                key={barber.id}
+                                onClick={() => handleSelectBarber(barber.id)}
+                                className={cn(
+                                  'inline-flex sm:flex rounded-xl sm:rounded-2xl border p-2 sm:p-3 items-center gap-2 sm:gap-3 text-left transition-all',
+                                  availableBarbers.length > 1 && 'w-[78%] min-w-[220px] max-w-[280px] shrink-0 snap-start sm:w-full sm:min-w-0 sm:max-w-none',
+                                  availableBarbers.length === 1 && 'w-fit max-w-[220px] sm:max-w-none sm:w-full',
+                                  booking.barberId === barber.id
+                                    ? 'border-primary bg-primary/5 shadow-glow'
+                                    : 'border-border bg-card hover:border-primary/40'
+                                )}
+                              >
+                                <img
+                                  src={barber.photo || defaultAvatar}
+                                  alt={barber.name}
+                                  loading="lazy"
+                                  decoding="async"
+                                  width={56}
+                                  height={56}
+                                  className="w-9 h-9 sm:w-14 sm:h-14 rounded-lg sm:rounded-xl object-cover"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs sm:text-base font-semibold text-foreground truncate">{barber.name}</p>
+                                  <p className="hidden sm:block text-[11px] sm:text-xs uppercase tracking-wide text-muted-foreground">{barber.specialty}</p>
+                                  {new Date(barber.startDate) > new Date() && (
+                                    <p className="hidden sm:block text-[11px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">
+                                      {t('bookingWizard.step1.availableFrom', {
+                                        date: new Date(barber.startDate).toLocaleDateString(),
+                                      })}
+                                      {barber.endDate
+                                        ? ` · ${t('bookingWizard.step1.availableUntil', {
+                                            date: new Date(barber.endDate).toLocaleDateString(),
+                                          })}`
+                                        : ''}
+                                    </p>
+                                  )}
+                                </div>
+                              </button>
+                            ))
                           ) : (
                             <p className="text-xs sm:text-sm text-muted-foreground">
                               {booking.serviceId
@@ -1489,19 +1496,19 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                 : t('bookingWizard.step1.noActiveStaff', { staffActiveAvailabilityLabel })}
                             </p>
                           )}
-                        </div>
+                        </StaffHorizontalScroller>
                       </>
                     )}
                   </div>
                 )}
 
-                <div className="space-y-3 sm:space-y-5 rounded-2xl sm:rounded-3xl border border-border bg-muted/5 p-2.5 sm:p-4">
+                <div className="min-w-0 max-w-full space-y-3 overflow-hidden rounded-2xl border border-border bg-muted/5 p-2.5 sm:space-y-5 sm:rounded-3xl sm:p-4">
                   {canPickSlots ? (
                     <>
-                      <div className="space-y-2 sm:space-y-3">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs sm:text-sm font-medium text-muted-foreground">{t('bookingWizard.step1.selectDay')}</p>
-                          <div className="flex items-center gap-1 sm:gap-2">
+                      <div className="min-w-0 max-w-full space-y-2 sm:space-y-3">
+                        <div className="flex min-w-0 items-center justify-between gap-1">
+                          <p className="shrink-0 text-xs font-medium text-muted-foreground sm:text-sm">{t('bookingWizard.step1.selectDay')}</p>
+                          <div className="flex min-w-0 items-center gap-0.5 sm:gap-2">
                             <Button
                               type="button"
                               variant="ghost"
@@ -1511,7 +1518,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             >
                               <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </Button>
-                            <span className="text-xs sm:text-sm font-semibold text-foreground capitalize">
+                            <span className="min-w-0 truncate text-xs font-semibold text-foreground capitalize sm:text-sm">
                               {format(visibleMonth, 'MMMM yyyy', { locale: dateLocale })}
                             </span>
                             <Button
@@ -1525,7 +1532,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             </Button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-[11px] font-medium text-muted-foreground">
+                        <div className="grid min-w-0 max-w-full grid-cols-7 gap-1 text-center text-[10px] font-medium text-muted-foreground sm:text-[11px]">
                           {[
                             t('bookingWizard.weekday.mondayShort'),
                             t('bookingWizard.weekday.tuesdayShort'),
@@ -1535,10 +1542,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             t('bookingWizard.weekday.saturdayShort'),
                             t('bookingWizard.weekday.sundayShort'),
                           ].map((day) => (
-                            <span key={day}>{day}</span>
+                            <span key={day} className="min-w-0 truncate">{day}</span>
                           ))}
                         </div>
-                        <div className="grid grid-cols-7 gap-1">
+                        <div className="grid min-w-0 max-w-full grid-cols-7 gap-1">
                           {calendarDays.map((date) => {
                             const isSelected = isSameDay(date, selectedDate);
                             const isCurrentMonth = isSameMonth(date, visibleMonth);
@@ -1566,7 +1573,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                   }));
                                 }}
                                 className={cn(
-                                  'rounded-lg px-0 py-1 text-center text-[11px] sm:text-xs transition-all border flex flex-col items-center justify-center min-h-[44px] sm:min-h-[52px]',
+                                  'flex min-h-[44px] min-w-0 max-w-full flex-col items-center justify-center overflow-hidden rounded-lg border px-0 py-1 text-center text-[11px] transition-all sm:min-h-[52px] sm:text-xs',
                                   isSelected
                                     ? 'bg-primary text-primary-foreground border-primary shadow-glow'
                                     : isPast
@@ -1584,7 +1591,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                         </div>
                       </div>
 
-                      <div>
+                      <div className="min-w-0 max-w-full">
                         <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2 sm:mb-3">{t('bookingWizard.step1.availableTimes')}</p>
                         {isSlotsLoading ? (
                           <div className="flex items-center justify-center py-4 sm:py-6">
@@ -1598,11 +1605,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             </Button>
                           </div>
                         ) : availableSlots.length > 0 ? (
-                          <div className="space-y-3 sm:space-y-4">
+                          <div className="min-w-0 max-w-full space-y-3 sm:space-y-4">
                             {slotGroups.morningSlots.length > 0 && (
                               <div>
                                 <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">{t('bookingWizard.step1.morning')}</p>
-                                <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-6 gap-1 sm:gap-2">
+                                <div className="grid min-w-0 w-full grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-2 lg:grid-cols-6">
                                   {slotGroups.morningSlots.map((slot) => {
                                     const [hours, minutes] = slot.split(':');
                                     const slotDate = new Date(selectedDate);
@@ -1613,7 +1620,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                         key={slot}
                                         onClick={() => selectTimeSlot(slot)}
                                         className={cn(
-                                          'rounded-lg sm:rounded-2xl px-1.5 sm:px-3 py-1 sm:py-2 text-[11px] sm:text-sm font-semibold border transition-all',
+                                          'min-w-0 w-full overflow-hidden rounded-lg border px-1.5 py-1 text-[11px] font-semibold transition-all sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm',
                                           isSelected
                                             ? 'bg-primary text-primary-foreground border-primary shadow-glow'
                                             : 'bg-card border-border hover:border-primary/40'
@@ -1629,7 +1636,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                             {slotGroups.afternoonSlots.length > 0 && (
                               <div>
                                 <p className="text-[11px] sm:text-xs uppercase text-muted-foreground mb-1.5 sm:mb-2 tracking-wide">{t('bookingWizard.step1.afternoon')}</p>
-                                <div className="grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-6 gap-1 sm:gap-2">
+                                <div className="grid min-w-0 w-full grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-2 lg:grid-cols-6">
                                   {slotGroups.afternoonSlots.map((slot) => {
                                     const [hours, minutes] = slot.split(':');
                                     const slotDate = new Date(selectedDate);
@@ -1640,7 +1647,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                                         key={slot}
                                         onClick={() => selectTimeSlot(slot)}
                                         className={cn(
-                                          'rounded-lg sm:rounded-2xl px-1.5 sm:px-3 py-1 sm:py-2 text-[11px] sm:text-sm font-semibold border transition-all',
+                                          'min-w-0 w-full overflow-hidden rounded-lg border px-1.5 py-1 text-[11px] font-semibold transition-all sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm',
                                           isSelected
                                             ? 'bg-primary text-primary-foreground border-primary shadow-glow'
                                             : 'bg-card border-border hover:border-primary/40'

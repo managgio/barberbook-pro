@@ -28,13 +28,9 @@ export class AdminGuard implements CanActivate {
     const user = await this.authService.requireUser(request);
     const adminUserId = user.id;
 
-    if (user.isSuperAdmin || user.isPlatformAdmin) {
+    if (user.isPlatformAdmin) {
       request.adminUserId = adminUserId;
       return true;
-    }
-
-    if (user.role !== 'admin') {
-      throw new ForbiddenException('Acceso restringido a administradores.');
     }
 
     const localId = this.tenantContextPort.getRequestContext().localId;

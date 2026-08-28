@@ -61,7 +61,7 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
 
   useEffect(() => {
     let active = true;
-    if (!user || user.role !== 'admin' || !user.isLocalAdmin || user.isSuperAdmin || user.isPlatformAdmin) {
+    if (!user || !user.isLocalAdmin || user.isSuperAdmin || user.isPlatformAdmin) {
       setRoles([]);
       setIsLoading(false);
       return () => {
@@ -107,7 +107,7 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
     (permission: AdminPermissionKey) => {
       if (!user) return false;
       if (user.isSuperAdmin || user.isPlatformAdmin) return true;
-      if (user.role !== 'admin' || !user.isLocalAdmin) return false;
+      if (!user.isLocalAdmin) return false;
       if (!user.adminRoleId) return true;
       const permissions = (currentRole?.permissions || []) as AdminPermissionKey[];
       if (permissions.includes(permission)) return true;

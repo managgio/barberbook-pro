@@ -44,6 +44,7 @@ import { UpdateChannelPreferenceDto } from './dto/update-channel-preference.dto'
 import { UpdateCommunicationDraftDto } from './dto/update-communication-draft.dto';
 import { HolidayClosureActionDto } from './dto/holiday-closure-action.dto';
 import { buildHolidayClosureCommunication } from './holiday-closure-communication.factory';
+import { CommunicationBookingClosureService } from './communication-booking-closure.service';
 
 type AppointmentScopeRecord = {
   id: string;
@@ -149,6 +150,7 @@ export class CommunicationsService {
     private readonly tenantContextPort: TenantContextPort,
     @Inject(DISTRIBUTED_LOCK_PORT)
     private readonly distributedLockPort: DistributedLockPort,
+    private readonly bookingClosureService: CommunicationBookingClosureService,
   ) {}
 
   async list(dto: ListCommunicationsDto) {
@@ -545,6 +547,9 @@ export class CommunicationsService {
     const payload = this.payloadFromCampaign(campaign);
     this.validatePayloadRules(payload, false);
     const preview = await this.computePreview(payload);
+    const bookingClosuresCreated = campaign.actionType === 'comunicar_y_cancelar'
+      ? await this.bookingClosureService.ensureForCampaign(campaign, payload)
+      : 0;
     const now = new Date();
 
     const execution = await this.prisma.communicationExecution.create({
@@ -720,6 +725,7 @@ export class CommunicationsService {
       totalTargets: preview.deliverableTargets.length + preview.excludedTargets.length,
       channel: campaign.channel,
       mode: options.mode,
+      bookingClosuresCreated,
     };
 
     const updatedExecution = await this.prisma.communicationExecution.update({
@@ -787,7 +793,8 @@ export class CommunicationsService {
       localId,
       payload.channel as CommunicationChannel,
       targetsFromScope.targets,
-      payload.extraOptions?.excludeAlreadyNotified === true,
+      payload.extraOptions?.excludeAlreadyNotified === true
+        && payload.actionType === 'solo_comunicar',
     );
     const invalidRecipients = split.deliverableTargets
       .map((target) => ({

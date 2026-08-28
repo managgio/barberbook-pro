@@ -29,6 +29,7 @@ import { useTenant } from '@/context/TenantContext';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { CATALOG_STALE_TIME } from '@/lib/catalogQuery';
+import { hasTenantAdminAccess } from '@/lib/userAccess';
 import { getBarbers } from '@/data/api/barbers';
 import { getProductCategories } from '@/data/api/product-categories';
 import { getProducts } from '@/data/api/products';
@@ -39,6 +40,7 @@ import { cn } from '@/lib/utils';
 import LanguageSelector from '@/components/common/LanguageSelector';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useI18n } from '@/hooks/useI18n';
+import PublicServiceDescription from '@/components/services/PublicServiceDescription';
 
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
@@ -47,6 +49,7 @@ const productImageFallback = '/placeholder.svg';
 const EMPTY_PRODUCTS: Product[] = [];
 const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
 const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
+const EMPTY_SERVICES: Service[] = [];
 const LANDING_SECTION_ORDER = ['presentation', 'services', 'products', 'barbers', 'cta'] as const;
 type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
 const isLandingSectionKey = (value: string): value is LandingSectionKey =>
@@ -180,6 +183,7 @@ const LandingPage: React.FC = () => {
   );
   const productCategoriesEnabled = settings.products.categoriesEnabled;
   const serviceCategoriesEnabled = settings.services.categoriesEnabled;
+  const showServiceDescriptions = settings.services.showDescriptions;
   const landingConfig = tenant?.config?.landing || null;
   const productsModuleEnabled = !(tenant?.config?.adminSidebar?.hiddenSections ?? []).includes('stock');
   const localId = tenant?.currentLocalId ?? null;
@@ -214,7 +218,7 @@ const LandingPage: React.FC = () => {
   });
 
   const barbers = barbersQuery.data ?? [];
-  const services = servicesQuery.data ?? [];
+  const services = servicesQuery.data ?? EMPTY_SERVICES;
   const serviceCategories = serviceCategoriesQuery.data ?? EMPTY_SERVICE_CATEGORIES;
   const products = productsQuery.data ?? EMPTY_PRODUCTS;
   const productCategories = productCategoriesQuery.data ?? EMPTY_PRODUCT_CATEGORIES;
@@ -532,7 +536,11 @@ const LandingPage: React.FC = () => {
                           </div>
                         </div>
                         <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
-                        <p className="text-[11px] sm:text-sm text-muted-foreground line-clamp-2">{service.description}</p>
+                        <PublicServiceDescription
+                          className="text-[11px] sm:text-sm line-clamp-2"
+                          description={service.description}
+                          visible={showServiceDescriptions}
+                        />
                       </CardContent>
                     </Card>
                   ))}
@@ -569,7 +577,11 @@ const LandingPage: React.FC = () => {
                     </div>
                   </div>
                   <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
-                  <p className="text-[11px] sm:text-sm text-muted-foreground line-clamp-2">{service.description}</p>
+                  <PublicServiceDescription
+                    className="text-[11px] sm:text-sm line-clamp-2"
+                    description={service.description}
+                    visible={showServiceDescriptions}
+                  />
                 </CardContent>
               </Card>
             ))}
@@ -783,9 +795,9 @@ const LandingPage: React.FC = () => {
               <div className={`flex flex-col sm:flex-row gap-2 sm:gap-4 ${heroActionsClass}`}>
                 {isAuthenticated ? (
                   <Button variant="hero" size="xl" className="h-7 sm:h-12 text-xs sm:text-lg px-3.5 sm:px-6" asChild>
-                    <Link to={user?.role === 'admin' ? '/admin' : '/app/book'}>
+                    <Link to={hasTenantAdminAccess(user) ? '/admin' : '/app/book'}>
                       <Calendar className="w-3.5 h-3.5 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-                      {user?.role === 'admin' ? t('landing.hero.adminPanel') : t('landing.hero.bookNow')}
+                      {hasTenantAdminAccess(user) ? t('landing.hero.adminPanel') : t('landing.hero.bookNow')}
                     </Link>
                   </Button>
                 ) : (

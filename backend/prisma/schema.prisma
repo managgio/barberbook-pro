@@ -349,6 +349,7 @@ model Location {
   communicationExecutions CommunicationExecution[]
   communicationRecipientResults CommunicationRecipientResult[]
   communicationChannelPreference CommunicationChannelPreference?
+  bookingClosures       BookingClosure[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
@@ -510,6 +511,7 @@ model Barber {
   holidays                   BarberHoliday[]
   serviceAssignments         BarberServiceAssignment[]
   serviceCategoryAssignments BarberServiceCategoryAssignment[]
+  bookingClosures            BookingClosure[]
   createdAt                  DateTime                          @default(now())
   updatedAt                  DateTime                          @updatedAt
 
@@ -1114,12 +1116,30 @@ model CommunicationCampaign {
   holidayBarber   BarberHoliday?          @relation(fields: [holidayBarberId], references: [id], onDelete: SetNull)
   executions      CommunicationExecution[]
   recipientResults CommunicationRecipientResult[]
+  bookingClosures BookingClosure[]
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 
   @@index([brandId, localId, status, createdAt])
   @@index([localId, scheduledFor, status])
   @@index([originCampaignId])
+}
+
+model BookingClosure {
+  id            String                @id @default(cuid())
+  localId       String
+  local         Location              @relation(fields: [localId], references: [id], onDelete: Cascade)
+  barberId      String?
+  barber        Barber?               @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  campaignId    String
+  campaign      CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  startDateTime DateTime
+  endDateTime   DateTime
+  createdAt     DateTime              @default(now())
+
+  @@index([localId, startDateTime, endDateTime])
+  @@index([localId, barberId, startDateTime, endDateTime])
+  @@index([campaignId])
 }
 
 model CommunicationExecution {

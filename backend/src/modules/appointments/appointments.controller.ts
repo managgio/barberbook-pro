@@ -297,24 +297,22 @@ export class AppointmentsController {
       return { userId: null, adminUserId: null, isAdmin: false };
     }
 
-    if (user.isSuperAdmin || user.isPlatformAdmin) {
+    if (user.isPlatformAdmin) {
       return { userId: user.id, adminUserId: user.id, isAdmin: true };
     }
 
-    if (user.role === 'admin') {
-      const localId = this.tenantContextPort.getRequestContext().localId;
-      const membership = await this.prisma.locationStaff.findUnique({
-        where: {
-          localId_userId: {
-            localId,
-            userId: user.id,
-          },
+    const localId = this.tenantContextPort.getRequestContext().localId;
+    const membership = await this.prisma.locationStaff.findUnique({
+      where: {
+        localId_userId: {
+          localId,
+          userId: user.id,
         },
-        select: { userId: true },
-      });
-      if (membership) {
-        return { userId: user.id, adminUserId: user.id, isAdmin: true };
-      }
+      },
+      select: { userId: true },
+    });
+    if (membership) {
+      return { userId: user.id, adminUserId: user.id, isAdmin: true };
     }
 
     return { userId: user.id, adminUserId: null, isAdmin: false };
