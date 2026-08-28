@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { HolidayManagementPort } from '../../ports/outbound/holiday-management.port';
+import { endOfDayInTimeZone, startOfDayInTimeZone } from '../../../../utils/timezone';
 
 const mapRange = (start: Date, end: Date) => ({
   start: start.toISOString().split('T')[0],
@@ -97,5 +98,50 @@ export class PrismaHolidayManagementAdapter implements HolidayManagementPort {
       },
     });
   }
-}
 
+  async getAppointmentImpact(params: {
+    localId: string;
+    timezone: string;
+    start: string;
+    end: string;
+    barberId?: string;
+  }) {
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        localId: params.localId,
+        status: 'scheduled',
+        barberId: params.barberId,
+        startDateTime: {
+          gte: startOfDayInTimeZone(params.start, params.timezone),
+          lte: endOfDayInTimeZone(params.end, params.timezone),
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+        guestContact: true,
+        user: { select: { email: true } },
+      },
+    });
+
+    const recipientKeys = new Set<string>();
+    let withoutEmail = 0;
+    appointments.forEach((appointment) => {
+      const guestEmail = appointment.guestContact
+        ?.split('·')
+        .map((value) => value.trim())
+        .find((value) => value.includes('@'));
+      const email = appointment.user?.email || guestEmail || null;
+      if (!email) withoutEmail += 1;
+      recipientKeys.add(
+        appointment.userId || email?.toLowerCase() || `appointment:${appointment.id}`,
+      );
+    });
+
+    return {
+      appointmentsAffected: appointments.length,
+      clientsAffected: recipientKeys.size,
+      withoutEmail,
+    };
+  }
+}

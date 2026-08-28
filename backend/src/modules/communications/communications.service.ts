@@ -42,6 +42,8 @@ import { ListCommunicationsDto } from './dto/list-communications.dto';
 import { PreviewCommunicationDto } from './dto/preview-communication.dto';
 import { UpdateChannelPreferenceDto } from './dto/update-channel-preference.dto';
 import { UpdateCommunicationDraftDto } from './dto/update-communication-draft.dto';
+import { HolidayClosureActionDto } from './dto/holiday-closure-action.dto';
+import { buildHolidayClosureCommunication } from './holiday-closure-communication.factory';
 
 type AppointmentScopeRecord = {
   id: string;
@@ -260,8 +262,14 @@ export class CommunicationsService {
     return preview.publicPreview;
   }
 
-  async create(dto: CreateCommunicationDto, actorUserId?: string | null) {
-    await this.ensureFeatureEnabled();
+  async create(
+    dto: CreateCommunicationDto,
+    actorUserId?: string | null,
+    options?: { allowWhenFeatureDisabled?: boolean },
+  ) {
+    if (!options?.allowWhenFeatureDisabled) {
+      await this.ensureFeatureEnabled();
+    }
     this.validatePayloadRules(dto, true);
     const preview = await this.computePreview(dto);
     const { brandId, localId } = this.getTenantContext();
@@ -319,6 +327,14 @@ export class CommunicationsService {
       },
     );
     return execution;
+  }
+
+  createHolidayClosure(dto: HolidayClosureActionDto, actorUserId?: string | null) {
+    return this.create(
+      buildHolidayClosureCommunication(dto),
+      actorUserId,
+      { allowWhenFeatureDisabled: true },
+    );
   }
 
   async updateDraft(campaignId: string, dto: UpdateCommunicationDraftDto, actorUserId?: string | null) {
@@ -902,11 +918,13 @@ export class CommunicationsService {
     };
 
     if (payload.scopeType === 'all_day') {
-      const date = payload.scopeCriteria.date;
-      if (!date) throw new BadRequestException('Debes indicar fecha para "Todas las citas del día".');
+      const { start, end } = this.resolveDateScope(
+        payload.scopeCriteria,
+        'Debes indicar fecha para "Todas las citas del día".',
+      );
       where.startDateTime = {
-        gte: startOfDayInTimeZone(date),
-        lte: endOfDayInTimeZone(date),
+        gte: startOfDayInTimeZone(start),
+        lte: endOfDayInTimeZone(end),
       };
     }
 
@@ -950,9 +968,19 @@ export class CommunicationsService {
       const barberId = payload.scopeCriteria.barberId;
       if (!barberId) throw new BadRequestException('Debes seleccionar un profesional.');
       where.barberId = barberId;
-      const date = payload.scopeCriteria.date;
-      if (date) {
-        where.startDateTime = { gte: startOfDayInTimeZone(date), lte: endOfDayInTimeZone(date) };
+      if (
+        payload.scopeCriteria.date ||
+        payload.scopeCriteria.dateFrom ||
+        payload.scopeCriteria.dateTo
+      ) {
+        const { start, end } = this.resolveDateScope(
+          payload.scopeCriteria,
+          'El rango de fechas del profesional es inválido.',
+        );
+        where.startDateTime = {
+          gte: startOfDayInTimeZone(start),
+          lte: endOfDayInTimeZone(end),
+        };
       }
     }
 
@@ -1002,6 +1030,28 @@ export class CommunicationsService {
         },
       },
     });
+  }
+
+  private resolveDateScope(
+    criteria: { date?: string; dateFrom?: string; dateTo?: string },
+    missingMessage: string,
+  ) {
+    const start = criteria.dateFrom || criteria.date;
+    const end = criteria.dateTo || criteria.date;
+    if (!start || !end) throw new BadRequestException(missingMessage);
+    const normalizedStart = start <= end ? start : end;
+    const normalizedEnd = start <= end ? end : start;
+    this.assertBoundedHolidayRange(normalizedStart, normalizedEnd);
+    return { start: normalizedStart, end: normalizedEnd };
+  }
+
+  private assertBoundedHolidayRange(start: string, end: string) {
+    const startDate = new Date(`${start}T00:00:00.000Z`);
+    const endDate = new Date(`${end}T00:00:00.000Z`);
+    const days = Math.floor((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1;
+    if (!Number.isFinite(days) || days < 1 || days > 366) {
+      throw new BadRequestException('El rango del festivo debe estar entre 1 y 366 días.');
+    }
   }
 
   private async resolveShiftRangeForDate(localId: string, date: string, shiftType: ShiftType) {
@@ -1074,8 +1124,12 @@ export class CommunicationsService {
 
   private mapAppointmentToTarget(appointment: AppointmentScopeRecord): RecipientTarget {
     const guestContact = (appointment.guestContact || '').trim();
-    const guestEmail = guestContact.includes('@') ? guestContact : null;
-    const guestPhone = guestContact.includes('@') ? null : guestContact || null;
+    const guestContactParts = guestContact
+      .split('·')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const guestEmail = guestContactParts.find((value) => value.includes('@')) || null;
+    const guestPhone = guestContactParts.find((value) => !value.includes('@')) || null;
     const email = appointment.user?.email || guestEmail || null;
     const phone = appointment.user?.phone || guestPhone || null;
     const recipientName = appointment.user?.name || appointment.guestName || 'Cliente';

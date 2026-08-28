@@ -49,7 +49,11 @@ const getTimeZoneOffsetMs = (date: Date, timeZone: string) => {
     parts.minute,
     parts.second,
   );
-  return utcTime - date.getTime();
+  // Intl.DateTimeFormat only exposes precision to seconds. Comparing that value
+  // with a timestamp that still contains milliseconds shifts end-of-day values
+  // into the following day (for example 23:59:59.999 -> 00:00:00.998).
+  const dateAtSecondPrecision = Math.floor(date.getTime() / 1000) * 1000;
+  return utcTime - dateAtSecondPrecision;
 };
 
 export const makeDateInTimeZone = (dateOnly: string, time: TimeParts, timeZone = APP_TIMEZONE) => {

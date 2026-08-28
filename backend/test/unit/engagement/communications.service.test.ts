@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CommunicationChannel, CommunicationStatus } from '@prisma/client';
 import { CommunicationsService } from '@/modules/communications/communications.service';
-import { formatTimeInTimeZone } from '@/utils/timezone';
+import { formatDateInTimeZone, formatTimeInTimeZone } from '@/utils/timezone';
 
 const buildService = (options?: {
   featureEnabled?: boolean;
@@ -41,12 +41,14 @@ const buildService = (options?: {
   const calls: {
     createdStatus?: CommunicationStatus;
     preferredChannel?: CommunicationChannel;
+    createdData?: Record<string, unknown>;
   } = {};
 
   const prisma = {
     communicationCampaign: {
-      create: async ({ data }: { data: { status: CommunicationStatus } }) => {
+      create: async ({ data }: { data: { status: CommunicationStatus } & Record<string, unknown> }) => {
         calls.createdStatus = data.status;
+        calls.createdData = data;
         return { ...createdCampaign, status: data.status };
       },
       findFirst: async () => createdCampaign,
@@ -111,17 +113,21 @@ const buildService = (options?: {
     cancellableAppointments: 0,
   });
   (service as any).logAudit = async () => undefined;
+  (service as any).executeCampaignInternal = async () => ({ id: 'campaign-1', status: 'completed' });
 
   return { service, calls };
 };
 
-const buildServiceForScopeFiltering = (scheduleData?: Record<string, unknown>) => {
+const buildServiceForScopeFiltering = (
+  scheduleData?: Record<string, unknown>,
+  appointments: Array<Record<string, unknown>> = [],
+) => {
   const calls: { where?: unknown } = {};
   const prisma = {
     appointment: {
       findMany: async ({ where }: { where: unknown }) => {
         calls.where = where;
-        return [];
+        return appointments;
       },
     },
     shopSchedule: {
@@ -183,6 +189,40 @@ test('communications service rejects scheduled cancellation campaigns', async ()
     },
     (error: unknown) => error instanceof BadRequestException,
   );
+});
+
+test('holiday closure bypasses the optional communications flag and builds a ranged cancellation', async () => {
+  const { service, calls } = buildService({ featureEnabled: false });
+
+  const result = await service.createHolidayClosure(
+    {
+      type: 'barber',
+      start: '2026-08-24',
+      end: '2026-08-20',
+      barberId: 'barber-1',
+      idempotencyKey: 'holiday-action-1',
+    },
+    'admin-1',
+  );
+
+  assert.equal((result as any).status, 'completed');
+  assert.equal(calls.createdStatus, CommunicationStatus.running);
+  assert.equal(calls.createdData?.actionType, 'comunicar_y_cancelar');
+  assert.equal(calls.createdData?.scopeType, 'professional_single');
+  assert.deepEqual(calls.createdData?.scopeConfig, {
+    dateFrom: '2026-08-20',
+    dateTo: '2026-08-24',
+    barberId: 'barber-1',
+  });
+  assert.deepEqual(calls.createdData?.options, {
+    createHoliday: {
+      enabled: true,
+      type: 'barber',
+      start: '2026-08-20',
+      end: '2026-08-24',
+      barberId: 'barber-1',
+    },
+  });
 });
 
 test('communications service rejects create payload without draft/schedule/execute mode', async () => {
@@ -279,4 +319,85 @@ test('communications service applies afternoon appointment scope using local aft
   assert.ok(where.startDateTime?.lt instanceof Date);
   assert.equal(formatTimeInTimeZone(where.startDateTime!.gte!), '16:00');
   assert.equal(formatTimeInTimeZone(where.startDateTime!.lt!), '21:30');
+});
+
+test('communications service applies inclusive date ranges to holiday closures', async () => {
+  const { service, calls } = buildServiceForScopeFiltering();
+
+  await (service as any).fetchAppointmentsByScope(
+    {
+      scopeType: 'professional_single',
+      scopeCriteria: {
+        barberId: 'barber-1',
+        dateFrom: '2026-08-20',
+        dateTo: '2026-08-24',
+      },
+    },
+    'local-1',
+  );
+
+  const where = calls.where as {
+    barberId?: string;
+    startDateTime?: { gte?: Date; lte?: Date };
+  };
+  assert.equal(where.barberId, 'barber-1');
+  assert.equal(formatDateInTimeZone(where.startDateTime!.gte!), '2026-08-20');
+  assert.equal(formatDateInTimeZone(where.startDateTime!.lte!), '2026-08-24');
+  assert.equal(formatTimeInTimeZone(where.startDateTime!.lte!), '23:59');
+});
+
+test('communications service extracts guest email and phone from combined booking contact', () => {
+  const { service } = buildServiceForScopeFiltering();
+
+  const target = (service as any).mapAppointmentToTarget({
+    id: 'appointment-1',
+    userId: null,
+    guestName: 'Invitada',
+    guestContact: 'guest@example.test · +34 600 000 000',
+    status: 'scheduled',
+    startDateTime: new Date('2026-08-20T08:00:00.000Z'),
+    user: null,
+    service: { name: 'Servicio' },
+    barber: { name: 'Profesional' },
+  });
+
+  assert.equal(target.email, 'guest@example.test');
+  assert.equal(target.phone, '+34 600 000 000');
+});
+
+test('cancellation scope keeps every appointment when one client has multiple bookings', async () => {
+  const appointmentBase = {
+    userId: 'user-1',
+    guestName: null,
+    guestContact: null,
+    status: 'scheduled',
+    user: { id: 'user-1', name: 'Cliente', email: 'client@example.test', phone: null },
+    service: { name: 'Servicio' },
+    barber: { name: 'Profesional' },
+  };
+  const { service } = buildServiceForScopeFiltering(undefined, [
+    {
+      ...appointmentBase,
+      id: 'appointment-1',
+      startDateTime: new Date('2026-08-20T08:00:00.000Z'),
+    },
+    {
+      ...appointmentBase,
+      id: 'appointment-2',
+      startDateTime: new Date('2026-08-21T08:00:00.000Z'),
+    },
+  ]);
+
+  const result = await (service as any).resolveTargets(
+    {
+      actionType: 'comunicar_y_cancelar',
+      scopeType: 'all_day',
+      scopeCriteria: { dateFrom: '2026-08-20', dateTo: '2026-08-21' },
+    },
+    'local-1',
+  );
+
+  assert.equal(result.targets.length, 2);
+  assert.equal(result.appointmentsAffected, 2);
+  assert.equal(result.clientsAffected, 1);
 });

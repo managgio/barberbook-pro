@@ -174,6 +174,40 @@ test('maintenance adapter syncs statuses and triggers side effects for completed
   ]);
 });
 
+test('maintenance adapter expires an earlier-slot request when its appointment starts', async () => {
+  const updates: any[] = [];
+  const startDateTime = new Date(Date.now() - 60_000);
+  const adapter = new ModuleBookingMaintenanceAdapter(
+    {
+      appointment: {
+        findMany: async () => [
+          {
+            id: 'appt-started',
+            status: 'scheduled',
+            startDateTime,
+            earlierSlotRequested: true,
+            service: { duration: 120 },
+          },
+        ],
+        update: async (params: any) => {
+          updates.push(params);
+          return params;
+        },
+      },
+    } as any,
+    { log: async () => undefined } as any,
+    { sendAppointmentEmail: async () => undefined } as any,
+    { execute: async () => ({ failures: [] }) } as any,
+    { getRequestContext: () => requestContext } as any,
+  );
+
+  assert.equal(await adapter.syncStatusesForAllAppointments(), 1);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].where.id, 'appt-started');
+  assert.equal(updates[0].data.status, undefined);
+  assert.equal(updates[0].data.earlierSlotRequested, false);
+});
+
 test('maintenance adapter sends payment confirmation email when appointment exists', async () => {
   const emailCalls: any[] = [];
   const adapter = new ModuleBookingMaintenanceAdapter(

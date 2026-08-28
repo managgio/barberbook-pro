@@ -31,6 +31,10 @@ export class CreateStripeCheckoutDto {
 
   @IsOptional()
   @IsBoolean()
+  notifyIfEarlierSlot?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   privacyConsentGiven?: boolean;
 
   @IsOptional()

@@ -11,6 +11,7 @@ import { GetShopScheduleUseCase } from '@/contexts/booking/application/use-cases
 import { GetWeeklyLoadUseCase } from '@/contexts/booking/application/use-cases/get-weekly-load.use-case';
 import { UpdateBarberScheduleUseCase } from '@/contexts/booking/application/use-cases/update-barber-schedule.use-case';
 import { UpdateShopScheduleUseCase } from '@/contexts/booking/application/use-cases/update-shop-schedule.use-case';
+import { GetHolidayAppointmentImpactUseCase } from '@/contexts/booking/application/use-cases/get-holiday-appointment-impact.use-case';
 
 const requestContext = {
   tenantId: 'tenant-1',
@@ -35,6 +36,7 @@ test('add general holiday use case normalizes reversed range before persistence'
     getBarberHolidays: async () => [],
     addBarberHolidayIfMissing: async () => undefined,
     removeBarberHoliday: async () => undefined,
+    getAppointmentImpact: async () => ({ appointmentsAffected: 0, clientsAffected: 0, withoutEmail: 0 }),
   });
 
   const result = await useCase.execute({
@@ -72,6 +74,7 @@ test('remove barber holiday use case normalizes range and returns updated barber
     removeBarberHoliday: async (params) => {
       calls.push({ type: 'removeBarberHoliday', payload: params });
     },
+    getAppointmentImpact: async () => ({ appointmentsAffected: 0, clientsAffected: 0, withoutEmail: 0 }),
   });
 
   await useCase.execute({
@@ -186,6 +189,7 @@ test('add barber holiday use case normalizes reversed range and returns updated 
       calls.push({ type: 'addBarberHolidayIfMissing', payload: params });
     },
     removeBarberHoliday: async () => undefined,
+    getAppointmentImpact: async () => ({ appointmentsAffected: 0, clientsAffected: 0, withoutEmail: 0 }),
   });
 
   const result = await useCase.execute({
@@ -224,6 +228,7 @@ test('remove general holiday use case normalizes reversed range and returns upda
     getBarberHolidays: async () => [],
     addBarberHolidayIfMissing: async () => undefined,
     removeBarberHoliday: async () => undefined,
+    getAppointmentImpact: async () => ({ appointmentsAffected: 0, clientsAffected: 0, withoutEmail: 0 }),
   });
 
   await useCase.execute({
@@ -261,6 +266,7 @@ test('get general/barber holidays use cases keep tenant scope and ids', async ()
     },
     addBarberHolidayIfMissing: async () => undefined,
     removeBarberHoliday: async () => undefined,
+    getAppointmentImpact: async () => ({ appointmentsAffected: 0, clientsAffected: 0, withoutEmail: 0 }),
   };
 
   const getGeneral = new GetGeneralHolidaysUseCase(holidayPort);
@@ -277,6 +283,40 @@ test('get general/barber holidays use cases keep tenant scope and ids', async ()
   assert.deepEqual(calls, [
     { type: 'getGeneralHolidays', payload: { localId: 'local-1' } },
     { type: 'getBarberHolidays', payload: { localId: 'local-1', barberId: 'barber-7' } },
+  ]);
+});
+
+test('holiday appointment impact use case normalizes range and keeps tenant scope', async () => {
+  const calls: unknown[] = [];
+  const expected = { appointmentsAffected: 3, clientsAffected: 2, withoutEmail: 1 };
+  const useCase = new GetHolidayAppointmentImpactUseCase({
+    getGeneralHolidays: async () => [],
+    addGeneralHolidayIfMissing: async () => undefined,
+    removeGeneralHoliday: async () => undefined,
+    getBarberHolidays: async () => [],
+    addBarberHolidayIfMissing: async () => undefined,
+    removeBarberHoliday: async () => undefined,
+    getAppointmentImpact: async (params) => {
+      calls.push(params);
+      return expected;
+    },
+  });
+
+  const result = await useCase.execute({
+    context: requestContext,
+    range: { start: '2026-08-24', end: '2026-08-20' },
+    barberId: 'barber-1',
+  });
+
+  assert.deepEqual(result, expected);
+  assert.deepEqual(calls, [
+    {
+      localId: 'local-1',
+      timezone: 'Europe/Madrid',
+      start: '2026-08-20',
+      end: '2026-08-24',
+      barberId: 'barber-1',
+    },
   ]);
 });
 

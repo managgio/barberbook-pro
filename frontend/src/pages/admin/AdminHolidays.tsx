@@ -10,12 +10,14 @@ import {
   getHolidaysByBarber,
   addBarberHolidayRange,
   removeBarberHolidayRange,
+  getHolidayAppointmentImpact,
+  notifyAndCancelHolidayAppointments,
 } from '@/data/api/holidays';
-import { Barber, HolidayRange } from '@/data/types';
+import { Barber, HolidayAppointmentImpact, HolidayRange } from '@/data/types';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
-import { dispatchHolidaysUpdated } from '@/lib/adminEvents';
+import { dispatchAppointmentsUpdated, dispatchHolidaysUpdated } from '@/lib/adminEvents';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { fetchBarbersCached } from '@/lib/catalogQuery';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +27,11 @@ import { useForegroundRefresh } from '@/hooks/useForegroundRefresh';
 import { useToast } from '@/hooks/use-toast';
 import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
+import { Loader2 } from 'lucide-react';
+import {
+  HolidayConflictDialog,
+  PendingHoliday,
+} from '@/components/admin/holidays/HolidayConflictDialog';
 
 const EMPTY_BARBERS: Barber[] = [];
 const EMPTY_HOLIDAYS: HolidayRange[] = [];
@@ -40,6 +47,8 @@ const AdminHolidays: React.FC = () => {
   const [barberRange, setBarberRange] = useState<DateRange | undefined>();
   const [monthsToShow, setMonthsToShow] = useState(2);
   const [selectedBarber, setSelectedBarber] = useState<string>('');
+  const [pendingHoliday, setPendingHoliday] = useState<PendingHoliday | null>(null);
+  const [holidayAction, setHolidayAction] = useState<'checking' | 'saving' | 'notifying' | null>(null);
 
   const barbersQuery = useQuery({
     queryKey: queryKeys.barbers(currentLocationId, undefined, true),
@@ -126,13 +135,71 @@ const AdminHolidays: React.FC = () => {
     return { start, end };
   };
 
+  const persistHolidayWithoutNotification = async (holiday: {
+    type: 'general' | 'barber';
+    range: HolidayRange;
+    barberId?: string;
+  }) => {
+    if (holiday.type === 'general') {
+      const updated = await addGeneralHolidayRange(holiday.range);
+      queryClient.setQueryData(queryKeys.adminGeneralHolidays(currentLocationId), updated);
+      setGeneralRange(undefined);
+    } else if (holiday.barberId) {
+      const updated = await addBarberHolidayRange(holiday.barberId, holiday.range);
+      queryClient.setQueryData(
+        queryKeys.adminBarberHolidays(currentLocationId, holiday.barberId),
+        updated,
+      );
+      setBarberRange(undefined);
+    }
+    dispatchHolidaysUpdated({ source: 'admin-holidays', localId: currentLocationId });
+  };
+
+  const prepareHoliday = async (holiday: {
+    type: 'general' | 'barber';
+    range: HolidayRange;
+    barberId?: string;
+  }) => {
+    setHolidayAction('checking');
+    let impact: HolidayAppointmentImpact;
+    try {
+      impact = await getHolidayAppointmentImpact(holiday);
+    } catch {
+      toast({
+        title: t('admin.holidays.toast.impactErrorTitle'),
+        description: t('admin.holidays.toast.impactErrorDescription'),
+        variant: 'destructive',
+      });
+      setHolidayAction(null);
+      return;
+    }
+
+    if (impact.appointmentsAffected === 0) {
+      try {
+        await persistHolidayWithoutNotification(holiday);
+        toast({
+          title: t('admin.holidays.toast.savedTitle'),
+          description: t('admin.holidays.toast.savedWithoutAppointments'),
+        });
+      } catch {
+        toast({
+          title: t('admin.holidays.toast.saveErrorTitle'),
+          description: t('admin.common.tryAgainInSeconds'),
+          variant: 'destructive',
+        });
+      }
+      setHolidayAction(null);
+      return;
+    }
+
+    setPendingHoliday({ ...holiday, impact });
+    setHolidayAction(null);
+  };
+
   const handleAddGeneralHoliday = async () => {
-    const payload = rangeToPayload(generalRange);
-    if (!payload) return;
-    const updated = await addGeneralHolidayRange(payload);
-    queryClient.setQueryData(queryKeys.adminGeneralHolidays(currentLocationId), updated);
-    setGeneralRange(undefined);
-    dispatchHolidaysUpdated({ source: 'admin-holidays' });
+    const range = rangeToPayload(generalRange);
+    if (!range) return;
+    await prepareHoliday({ type: 'general', range });
   };
 
   const handleRemoveGeneralHoliday = async (range: HolidayRange) => {
@@ -142,12 +209,70 @@ const AdminHolidays: React.FC = () => {
   };
 
   const handleAddBarberHoliday = async () => {
-    const payload = rangeToPayload(barberRange);
-    if (!payload || !selectedBarber) return;
-    const updated = await addBarberHolidayRange(selectedBarber, payload);
-    queryClient.setQueryData(queryKeys.adminBarberHolidays(currentLocationId, selectedBarber), updated);
-    setBarberRange(undefined);
-    dispatchHolidaysUpdated({ source: 'admin-holidays' });
+    const range = rangeToPayload(barberRange);
+    if (!range || !selectedBarber) return;
+    await prepareHoliday({ type: 'barber', range, barberId: selectedBarber });
+  };
+
+  const handleSaveWithoutNotification = async () => {
+    if (!pendingHoliday) return;
+    setHolidayAction('saving');
+    try {
+      await persistHolidayWithoutNotification(pendingHoliday);
+      setPendingHoliday(null);
+      toast({
+        title: t('admin.holidays.toast.savedTitle'),
+        description: t('admin.holidays.toast.savedKeepingAppointments'),
+      });
+    } catch {
+      toast({
+        title: t('admin.holidays.toast.saveErrorTitle'),
+        description: t('admin.common.tryAgainInSeconds'),
+        variant: 'destructive',
+      });
+    } finally {
+      setHolidayAction(null);
+    }
+  };
+
+  const handleNotifyAndCancel = async () => {
+    if (!pendingHoliday) return;
+    setHolidayAction('notifying');
+    try {
+      await notifyAndCancelHolidayAppointments({
+        type: pendingHoliday.type,
+        range: pendingHoliday.range,
+        barberId: pendingHoliday.barberId,
+        idempotencyKey:
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `holiday-${Date.now()}`,
+      });
+      if (pendingHoliday.type === 'general') {
+        await generalHolidaysQuery.refetch();
+        setGeneralRange(undefined);
+      } else {
+        await barberHolidaysQuery.refetch();
+        setBarberRange(undefined);
+      }
+      dispatchAppointmentsUpdated({ source: 'admin-holidays', localId: currentLocationId });
+      dispatchHolidaysUpdated({ source: 'admin-holidays', localId: currentLocationId });
+      setPendingHoliday(null);
+      toast({
+        title: t('admin.holidays.toast.notifiedTitle'),
+        description: t('admin.holidays.toast.notifiedDescription', {
+          count: pendingHoliday.impact.appointmentsAffected,
+        }),
+      });
+    } catch {
+      toast({
+        title: t('admin.holidays.toast.notifyErrorTitle'),
+        description: t('admin.holidays.toast.notifyErrorDescription'),
+        variant: 'destructive',
+      });
+    } finally {
+      setHolidayAction(null);
+    }
   };
 
   const handleRemoveBarberHoliday = async (range: HolidayRange) => {
@@ -216,7 +341,11 @@ const AdminHolidays: React.FC = () => {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={handleAddGeneralHoliday} disabled={!generalRange?.from}>
+                <Button
+                  onClick={handleAddGeneralHoliday}
+                  disabled={!generalRange?.from || holidayAction === 'checking'}
+                >
+                  {holidayAction === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {t('admin.holidays.actions.blockDates')}
                 </Button>
                 <Button variant="outline" onClick={() => setGeneralRange(undefined)}>
@@ -289,8 +418,9 @@ const AdminHolidays: React.FC = () => {
               <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={handleAddBarberHoliday}
-                  disabled={!barberRange?.from || !selectedBarber}
+                  disabled={!barberRange?.from || !selectedBarber || holidayAction === 'checking'}
                 >
+                  {holidayAction === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {t('admin.holidays.actions.blockDates')}
                 </Button>
                 <Button variant="outline" onClick={() => setBarberRange(undefined)}>
@@ -327,6 +457,14 @@ const AdminHolidays: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <HolidayConflictDialog
+        pendingHoliday={pendingHoliday}
+        action={holidayAction}
+        onClose={() => setPendingHoliday(null)}
+        onSaveWithoutNotification={handleSaveWithoutNotification}
+        onNotifyAndCancel={handleNotifyAndCancel}
+      />
     </div>
   );
 };

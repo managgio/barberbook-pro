@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { AddBarberHolidayUseCase } from '../../contexts/booking/application/use-cases/add-barber-holiday.use-case';
 import { AddGeneralHolidayUseCase } from '../../contexts/booking/application/use-cases/add-general-holiday.use-case';
 import { GetBarberHolidaysUseCase } from '../../contexts/booking/application/use-cases/get-barber-holidays.use-case';
@@ -11,6 +11,8 @@ import {
 } from '../../contexts/booking/ports/outbound/holiday-management.port';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { HolidayRangeDto } from './dto/holiday-range.dto';
+import { GetHolidayAppointmentImpactUseCase } from '../../contexts/booking/application/use-cases/get-holiday-appointment-impact.use-case';
+import { HolidayImpactDto } from './dto/holiday-impact.dto';
 
 @Injectable()
 export class HolidaysService {
@@ -20,6 +22,7 @@ export class HolidaysService {
   private readonly getBarberHolidaysUseCase: GetBarberHolidaysUseCase;
   private readonly addBarberHolidayUseCase: AddBarberHolidayUseCase;
   private readonly removeBarberHolidayUseCase: RemoveBarberHolidayUseCase;
+  private readonly getHolidayAppointmentImpactUseCase: GetHolidayAppointmentImpactUseCase;
 
   constructor(
     @Inject(HOLIDAY_MANAGEMENT_PORT)
@@ -33,6 +36,7 @@ export class HolidaysService {
     this.getBarberHolidaysUseCase = new GetBarberHolidaysUseCase(this.holidayManagementPort);
     this.addBarberHolidayUseCase = new AddBarberHolidayUseCase(this.holidayManagementPort);
     this.removeBarberHolidayUseCase = new RemoveBarberHolidayUseCase(this.holidayManagementPort);
+    this.getHolidayAppointmentImpactUseCase = new GetHolidayAppointmentImpactUseCase(this.holidayManagementPort);
   }
 
   async getGeneralHolidays() {
@@ -87,6 +91,27 @@ export class HolidaysService {
         start: range.start,
         end: range.end,
       },
+    });
+  }
+
+  getAppointmentImpact(dto: HolidayImpactDto) {
+    if (dto.type === 'barber' && !dto.barberId) {
+      throw new BadRequestException('Debes indicar el profesional para este festivo.');
+    }
+    const start = dto.start <= dto.end ? dto.start : dto.end;
+    const end = dto.start <= dto.end ? dto.end : dto.start;
+    const days = Math.floor(
+      (new Date(`${end}T00:00:00.000Z`).getTime() -
+        new Date(`${start}T00:00:00.000Z`).getTime()) /
+        86_400_000,
+    ) + 1;
+    if (!Number.isFinite(days) || days < 1 || days > 366) {
+      throw new BadRequestException('El rango del festivo debe estar entre 1 y 366 días.');
+    }
+    return this.getHolidayAppointmentImpactUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      range: { start: dto.start, end: dto.end },
+      barberId: dto.type === 'barber' ? dto.barberId : undefined,
     });
   }
 }

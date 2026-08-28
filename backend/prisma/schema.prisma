@@ -614,6 +614,9 @@ model Appointment {
   notes                     String?
   guestName                 String?
   guestContact              String?
+  earlierSlotRequested      Boolean               @default(false)
+  earlierSlotNotifiedAt     DateTime?
+  earlierSlotCandidateAt    DateTime?
   reminderSent              Boolean               @default(false)
   anonymizedAt              DateTime?
   consents                  ConsentRecord[]
@@ -629,6 +632,7 @@ model Appointment {
   @@index([localId, barberId, startDateTime])
   @@index([localId, userId, startDateTime])
   @@index([localId, status, startDateTime])
+  @@index([localId, barberId, earlierSlotRequested, earlierSlotNotifiedAt, startDateTime], map: "Appointment_earlier_slot_lookup_idx")
   @@index([referralAttributionId])
   @@index([subscriptionPlanId])
   @@index([subscriptionId])

@@ -256,6 +256,9 @@ export interface Appointment {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  notifyIfEarlierSlot?: boolean;
+  earlierSlotNotificationSentAt?: string | null;
+  earlierSlotNotificationCandidateAt?: string | null;
   products?: AppointmentProductItem[];
 }
 
@@ -1056,6 +1059,8 @@ export type CommunicationStatus =
 
 export interface CommunicationScopeCriteria {
   date?: string;
+  dateFrom?: string;
+  dateTo?: string;
   startTime?: string;
   endTime?: string;
   barberId?: string;
@@ -1196,6 +1201,7 @@ export interface CreateAppointmentPayload {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  notifyIfEarlierSlot?: boolean;
   privacyConsentGiven?: boolean;
   referralAttributionId?: string;
   appliedCouponId?: string;
@@ -1292,6 +1298,12 @@ export interface AuditLog {
 export interface HolidayRange {
   start: string;
   end: string;
+}
+
+export interface HolidayAppointmentImpact {
+  appointmentsAffected: number;
+  clientsAffected: number;
+  withoutEmail: number;
 }
 
 export interface AiChatResponse {

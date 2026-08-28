@@ -14,6 +14,7 @@ import { RemoveAppointmentUseCase } from '../../contexts/booking/application/use
 import { RunAppointmentStatusSideEffectsUseCase } from '../../contexts/booking/application/use-cases/run-appointment-status-side-effects.use-case';
 import { SyncAppointmentStatusesUseCase } from '../../contexts/booking/application/use-cases/sync-appointment-statuses.use-case';
 import { UpdateAppointmentUseCase } from '../../contexts/booking/application/use-cases/update-appointment.use-case';
+import { NotifyEarlierSlotOpportunityUseCase } from '../../contexts/booking/application/use-cases/notify-earlier-slot-opportunity.use-case';
 import { AttachReferralAttributionToAppointmentUseCase } from '../../contexts/engagement/application/use-cases/attach-referral-attribution-to-appointment.use-case';
 import { HandleReferralAppointmentCancelledUseCase } from '../../contexts/engagement/application/use-cases/handle-referral-appointment-cancelled.use-case';
 import { HandleReferralAppointmentCompletedUseCase } from '../../contexts/engagement/application/use-cases/handle-referral-appointment-completed.use-case';
@@ -126,6 +127,11 @@ import { ModuleEngagementReferralRewardAdapter } from '../referrals/adapters/mod
 import { SubscriptionsCommerceSubscriptionPolicyModule } from '../subscriptions/subscriptions-commerce-subscription-policy.module';
 import { CLOCK_PORT, ClockPort } from '../../shared/application/clock.port';
 import { SystemClockAdapter } from '../../shared/infrastructure/clock/system-clock.adapter';
+import {
+  EARLIER_SLOT_NOTIFICATION_PORT,
+  EarlierSlotNotificationPort,
+} from '../../contexts/booking/ports/outbound/earlier-slot-notification.port';
+import { PrismaEarlierSlotNotificationAdapter } from './adapters/prisma-earlier-slot-notification.adapter';
 
 @Module({
   imports: [
@@ -160,6 +166,7 @@ import { SystemClockAdapter } from '../../shared/infrastructure/clock/system-clo
     { provide: BOOKING_MAINTENANCE_PORT, useClass: ModuleBookingMaintenanceAdapter },
     { provide: BOOKING_STATUS_SIDE_EFFECTS_PORT, useClass: ModuleBookingStatusSideEffectsAdapter },
     { provide: BOOKING_IDEMPOTENCY_PORT, useClass: DistributedLockBookingIdempotencyAdapter },
+    { provide: EARLIER_SLOT_NOTIFICATION_PORT, useClass: PrismaEarlierSlotNotificationAdapter },
     { provide: COMMERCE_SERVICE_PRICING_PORT, useClass: PrismaServicePricingPolicyAdapter },
     { provide: COMMERCE_LOYALTY_POLICY_READ_PORT, useClass: PrismaCommerceLoyaltyPolicyReadAdapter },
     { provide: COMMERCE_LOYALTY_POLICY_PORT, useClass: PrismaCommerceLoyaltyPolicyAdapter },
@@ -335,6 +342,14 @@ import { SystemClockAdapter } from '../../shared/infrastructure/clock/system-clo
       ) =>
         new RunAppointmentStatusSideEffectsUseCase(sideEffectsPort, idempotencyPort),
       inject: [BOOKING_STATUS_SIDE_EFFECTS_PORT, BOOKING_IDEMPOTENCY_PORT],
+    },
+    {
+      provide: NotifyEarlierSlotOpportunityUseCase,
+      useFactory: (
+        notificationPort: EarlierSlotNotificationPort,
+        clockPort: ClockPort,
+      ) => new NotifyEarlierSlotOpportunityUseCase(notificationPort, clockPort),
+      inject: [EARLIER_SLOT_NOTIFICATION_PORT, CLOCK_PORT],
     },
     {
       provide: SyncAppointmentStatusesUseCase,

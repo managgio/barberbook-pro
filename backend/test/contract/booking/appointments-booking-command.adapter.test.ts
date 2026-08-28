@@ -56,6 +56,7 @@ const buildAdapter = (overrides?: {
   prisma?: any;
   auditLogs?: any;
   sideEffects?: any;
+  earlierSlotOpportunity?: any;
   settingsService?: any;
   schedulesService?: any;
   notificationsService?: any;
@@ -67,6 +68,7 @@ const buildAdapter = (overrides?: {
   loyaltyPolicy?: any;
   walletLedger?: any;
   referralAttribution?: any;
+  onCreate?: (data: any) => void;
 }) =>
   new ModuleBookingCommandAdapter(
     overrides?.prisma ??
@@ -90,7 +92,10 @@ const buildAdapter = (overrides?: {
           cb({
             appointment: {
               findMany: async () => [],
-              create: async () => createdAppointment,
+              create: async (params: any) => {
+                overrides?.onCreate?.(params.data);
+                return createdAppointment;
+              },
               update: async () => createdAppointment,
               delete: async () => undefined,
             },
@@ -101,6 +106,7 @@ const buildAdapter = (overrides?: {
       } as any),
     overrides?.auditLogs ?? ({ log: async () => undefined } as any),
     overrides?.sideEffects ?? ({ execute: async () => ({ failures: [] }) } as any),
+    overrides?.earlierSlotOpportunity ?? ({ execute: async () => false } as any),
     overrides?.settingsService ??
       ({
         getSettings: async () => ({
@@ -192,6 +198,30 @@ test('create appointment command adapter records consent when provided', async (
   assert.equal(consentRecorded, true);
 });
 
+test('create appointment command adapter persists the earlier-slot opt-in', async () => {
+  let persistedData: any = null;
+  const adapter = buildAdapter({
+    onCreate: (data) => {
+      persistedData = data;
+    },
+  });
+
+  await adapter.createAppointment({
+    context: commandContext,
+    input: {
+      userId: 'user-1',
+      barberId: 'barber-1',
+      serviceId: 'service-1',
+      startDateTime: '2026-01-10T10:00:00.000Z',
+      privacyConsentGiven: true,
+      notifyIfEarlierSlot: true,
+    },
+    execution: { requireConsent: true },
+  } as any);
+
+  assert.equal(persistedData?.earlierSlotRequested, true);
+});
+
 test('remove appointment command adapter executes side effects, restocks and deletes', async () => {
   const sideEffectCalls: Array<{ localId: string; appointmentId: string; nextStatus: string }> = [];
   const stockUpdates: Array<{ id: string; increment: number }> = [];
@@ -204,6 +234,8 @@ test('remove appointment command adapter executes side effects, restocks and del
         findFirst: async () => ({
           id: 'appt-1',
           status: 'scheduled',
+          barberId: 'barber-1',
+          startDateTime: new Date('2026-01-10T10:00:00.000Z'),
           products: [{ productId: 'prod-1', quantity: 2 }],
         }),
       },
@@ -256,6 +288,45 @@ test('remove appointment command adapter executes side effects, restocks and del
   assert.equal(auditCalls[0].action, 'appointment.deleted');
   assert.equal(auditCalls[0].entityId, 'appt-1');
   assert.equal(auditCalls[0].locationId, 'local-1');
+});
+
+test('remove appointment command adapter publishes the released slot after deletion', async () => {
+  const opportunities: any[] = [];
+  const adapter = buildAdapter({
+    prisma: {
+      appointment: {
+        findFirst: async () => ({
+          id: 'appt-1',
+          status: 'scheduled',
+          barberId: 'barber-1',
+          startDateTime: new Date('2026-01-10T10:00:00.000Z'),
+          products: [],
+        }),
+      },
+      $transaction: async (cb: any) =>
+        cb({
+          product: { update: async () => undefined },
+          appointment: { delete: async () => undefined },
+        }),
+    } as any,
+    earlierSlotOpportunity: {
+      execute: async (command: any) => {
+        opportunities.push(command);
+        return true;
+      },
+    },
+  });
+
+  await adapter.removeAppointment({ context: commandContext, appointmentId: 'appt-1' });
+
+  assert.deepEqual(opportunities, [
+    {
+      context: commandContext,
+      releasedAppointmentId: 'appt-1',
+      barberId: 'barber-1',
+      releasedStartDateTime: new Date('2026-01-10T10:00:00.000Z'),
+    },
+  ]);
 });
 
 test('remove appointment command adapter throws when appointment does not exist', async () => {

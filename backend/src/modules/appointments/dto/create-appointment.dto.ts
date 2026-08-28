@@ -36,6 +36,10 @@ export class CreateAppointmentDto {
 
   @IsOptional()
   @IsBoolean()
+  notifyIfEarlierSlot?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   privacyConsentGiven?: boolean;
 
   @IsOptional()

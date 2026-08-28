@@ -47,6 +47,7 @@ import {
   EngagementReferralAttributionPort,
 } from '../../../contexts/engagement/ports/outbound/referral-attribution.port';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
+import { NotifyEarlierSlotOpportunityUseCase } from '../../../contexts/booking/application/use-cases/notify-earlier-slot-opportunity.use-case';
 
 type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
   include: { user: true; barber: true; service: true; products: { include: { product: true } } };
@@ -65,6 +66,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
     private readonly runAppointmentStatusSideEffectsUseCase: RunAppointmentStatusSideEffectsUseCase,
+    private readonly notifyEarlierSlotOpportunityUseCase: NotifyEarlierSlotOpportunityUseCase,
     private readonly settingsService: SettingsService,
     private readonly schedulesService: SchedulesService,
     private readonly notificationsService: NotificationsService,
@@ -286,6 +288,26 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     });
   }
 
+  private async notifyEarlierSlotOpportunity(params: {
+    context: CreateAppointmentCommand['context'] | UpdateAppointmentCommand['context'];
+    appointmentId: string;
+    barberId: string;
+    startDateTime: Date;
+  }) {
+    try {
+      await this.notifyEarlierSlotOpportunityUseCase.execute({
+        context: params.context,
+        releasedAppointmentId: params.appointmentId,
+        barberId: params.barberId,
+        releasedStartDateTime: params.startDateTime,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Earlier-slot opportunity processing failed for appointment ${params.appointmentId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   private getContact(user: any, guestName?: string | null, guestContact?: string | null) {
     const emailCandidate = user?.email || (guestContact?.includes('@') ? guestContact : null);
     const phoneCandidate = user?.phone || (!guestContact?.includes('@') ? guestContact : null);
@@ -488,6 +510,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               notes: data.notes,
               guestName: data.guestName,
               guestContact: data.guestContact,
+              earlierSlotRequested: data.notifyIfEarlierSlot === true,
               reminderSent: false,
               products: productSelection.items.length > 0
                 ? {
@@ -888,6 +911,10 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               notes: data.notes,
               guestName: data.guestName,
               guestContact: data.guestContact,
+              earlierSlotRequested:
+                nextStatus === 'scheduled' ? undefined : false,
+              earlierSlotNotifiedAt: startChanged ? null : undefined,
+              earlierSlotCandidateAt: startChanged ? null : undefined,
               reminderSent,
               products: productsInputProvided
                 ? {
@@ -919,6 +946,19 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const shouldNotify = serviceChanged || barberChanged || startChanged;
     if (shouldNotify) {
       await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
+    }
+
+    const releasedAvailability =
+      (current.status === 'scheduled' && (nextStatus === 'cancelled' || nextStatus === 'no_show')) ||
+      startChanged ||
+      barberChanged;
+    if (releasedAvailability) {
+      await this.notifyEarlierSlotOpportunity({
+        context: command.context,
+        appointmentId: current.id,
+        barberId: current.barberId,
+        startDateTime: current.startDateTime,
+      });
     }
 
     return mapAppointment(updated);
@@ -966,6 +1006,14 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       entityId: command.appointmentId,
       metadata: { status: existing.status },
     });
+    if (existing.status === 'scheduled') {
+      await this.notifyEarlierSlotOpportunity({
+        context: command.context,
+        appointmentId: existing.id,
+        barberId: existing.barberId,
+        startDateTime: existing.startDateTime,
+      });
+    }
     return { success: true };
   }
 }

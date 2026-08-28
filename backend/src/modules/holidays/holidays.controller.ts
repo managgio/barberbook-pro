@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { HolidaysService } from './holidays.service';
 import { HolidayRangeDto } from './dto/holiday-range.dto';
 import { AdminEndpoint } from '../../auth/admin.decorator';
+import { HolidayImpactDto } from './dto/holiday-impact.dto';
 
 @Controller('holidays')
 export class HolidaysController {
@@ -10,6 +11,12 @@ export class HolidaysController {
   @Get('general')
   getGeneral() {
     return this.holidaysService.getGeneralHolidays();
+  }
+
+  @Post('impact')
+  @AdminEndpoint()
+  getImpact(@Body() dto: HolidayImpactDto) {
+    return this.holidaysService.getAppointmentImpact(dto);
   }
 
   @Post('general')

@@ -52,6 +52,7 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
       id: string;
       status: AppointmentStatus;
       startDateTime: Date;
+      earlierSlotRequested?: boolean;
       service?: { duration?: number | null } | null;
     }>,
   ) {
@@ -73,16 +74,21 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
       const endTime = new Date(appointment.startDateTime.getTime() + duration * 60 * 1000);
       const confirmationThreshold = new Date(endTime.getTime() + CONFIRMATION_GRACE_MS);
       const nextStatus = now >= confirmationThreshold ? 'completed' : 'scheduled';
+      const shouldExpireEarlierSlotRequest =
+        appointment.earlierSlotRequested === true && now >= appointment.startDateTime;
 
-      if (appointment.status !== nextStatus) {
+      if (appointment.status !== nextStatus || shouldExpireEarlierSlotRequest) {
         updatedCount += 1;
-        if (nextStatus === 'completed') {
+        if (appointment.status !== nextStatus && nextStatus === 'completed') {
           completedIds.push(appointment.id);
         }
         updates.push(
           this.prisma.appointment.update({
             where: { id: appointment.id },
-            data: { status: nextStatus },
+            data: {
+              status: appointment.status !== nextStatus ? nextStatus : undefined,
+              earlierSlotRequested: shouldExpireEarlierSlotRequest ? false : undefined,
+            },
           }),
         );
       }

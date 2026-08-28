@@ -301,6 +301,7 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
       notes?: string;
       guestName?: string;
       guestContact?: string;
+      notifyIfEarlierSlot?: boolean;
       privacyConsentGiven?: boolean;
       referralAttributionId?: string;
       appliedCouponId?: string;
@@ -348,6 +349,7 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
         notes: params.data.notes,
         guestName: params.data.guestName,
         guestContact: params.data.guestContact,
+        notifyIfEarlierSlot: params.data.notifyIfEarlierSlot,
         privacyConsentGiven: params.data.privacyConsentGiven,
         referralAttributionId: params.data.referralAttributionId,
         appliedCouponId: params.data.appliedCouponId,

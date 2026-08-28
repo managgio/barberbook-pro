@@ -33,6 +33,7 @@ export type CreateAppointmentInput = {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  notifyIfEarlierSlot?: boolean;
   privacyConsentGiven?: boolean;
   referralAttributionId?: string;
   appliedCouponId?: string;

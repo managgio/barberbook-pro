@@ -90,12 +90,13 @@ Modulos principales:
 - **Products**: catalogo de productos con stock, precio y visibilidad publica.
 - **Product Categories**: categorias de productos (configurable).
 - **Appointments**: CRUD citas, disponibilidad, estados, precio final y metodo de pago.
+- **Avisos de hueco adelantado**: preferencia por cita (tambien guest) para avisar por email cuando una cancelacion o reprogramacion libera un slot compatible anterior; seleccion FIFO, claim atomico y caducidad al comenzar/cancelarse la cita (el sync de estados limpia el opt-in al alcanzar la hora de inicio).
 - **Loyalty**: tarjetas de fidelizacion (global/servicio/categoria), recompensas y progreso por cliente.
 - **Subscriptions**: planes por local, altas de suscripción (admin/cliente), vigencia y aplicación automática en precio de cita.
 - **Referrals**: programa de referidos (config local, codigos, atribuciones, wallet/cupones, analitica).
 - **Reviews**: reseñas inteligentes in-app (config local, requests, feedback privado y métricas).
 - **Schedules**: horario del local y horarios por barbero (JSON), con descansos/buffer entre citas y tolerancia de cierre con overrides por dia/fecha.
-- **Holidays**: festivos del local y por barbero.
+- **Holidays**: festivos del local y por barbero. Antes del alta, el admin obtiene un impacto tenant-scoped de citas programadas y decide entre abortar, bloquear manteniendo citas, o avisar por email y cancelarlas mediante el flujo trazable de Comunicados.
 - **Alerts**: banners/avisos con rango de fechas.
 - **Communications**: comunicados masivos admin (borrador/programado/inmediato), previsualización de impacto y trazabilidad por ejecución/destinatario.
 - **Settings**: configuracion del sitio (branding/contacto/horarios/sociales/stats visibles).
@@ -168,6 +169,7 @@ Caching y sincronizacion frontend:
 - **Landing query-driven**: `LandingPage` consume `useQuery` para `barbers`, `services`, `products(landing)` y `product-categories`, eliminando `loadData` imperativo y compartiendo cache de catalogo por `localId`.
 - **Booking cacheado por dominio**: `BookingWizard` usa `useQuery` para bootstrap de reserva (`booking-bootstrap`), staff por servicio (`barbers(localId, serviceId)`), disponibilidad por fecha (`booking-slots`, single/batch), carga semanal (`booking-weekly-load`), preview de fidelizacion (`booking-loyalty-preview`), wallet (`rewards-wallet`) y estado de consentimiento (`privacy-consent-status`), reduciendo `useEffect + fetch` repetitivos.
 - **Booking respetando módulos ocultos**: cuando el tenant oculta `subscriptions` en `adminSidebar.hiddenSections`, `BookingWizard` no consulta `GET /api/subscriptions/me/active` ni aplica suscripción al precio de reserva (evita tráfico y errores 4xx/5xx innecesarios en clientes sin módulo activo).
+- **Opt-in de adelanto en Booking**: el paso de confirmacion permite a clientes autenticados e invitados solicitar un aviso si aparece un hueco compatible anterior. El flag viaja tanto por reserva directa como por checkout Stripe y queda ligado a la cita, sin estado global de usuario.
 - **Aislamiento estricto de módulos opcionales en Booking**: `BookingWizard` consulta y aplica suscripciones, fidelización y recompensas/cupones únicamente cuando sus secciones (`subscriptions`, `loyalty`, `referrals`) están habilitadas para el tenant. Los contratos opcionales se consumen con acceso defensivo para que una respuesta parcial no pueda romper la confirmación de una cita.
 - **Admin catalogos con React Query real**: `AdminServices`, `AdminOffers`, `AdminLoyalty` y `AdminStock` eliminan `loadData` manual y cargan con `useQuery` por `localId`/`target` (`services`, `service-categories`, `offers`, `loyalty-programs`, `products-admin`, `product-categories`, `site-settings`); tras mutaciones refrescan via `refetch` selectivo e invalidacion por dominio (`dispatchServicesUpdated` / `dispatchProductsUpdated`) para mantener coherencia de precios y catalogos.
 - **Orden operativo en Servicios (admin)**: `AdminServices` incorpora tablero drag & drop para reordenar categorias, reordenar servicios dentro de cada categoria y mover servicios entre categorias; cada drop persiste en backend (`ServiceCategory.position` y `Service.position`) y se refleja en el catálogo público/cliente.
@@ -185,7 +187,7 @@ Caching y sincronizacion frontend:
 - **Reseñas admin query-driven**: `AdminReviews` consume `useQuery` para configuración (`adminReviewConfig`), métricas por rango (`adminReviewMetrics`) y feedback paginado por estado (`adminReviewFeedback`), eliminando cargas manuales por efecto y actualizando cache al resolver feedback.
 - **Alertas admin query-driven**: `AdminAlerts` consume `useQuery` (`adminAlerts`) para listado de avisos y elimina listeners manuales de `window`; las mutaciones (crear/editar/borrar/activar) refrescan por invalidación de dominio.
 - **Comunicados admin query-driven**: `AdminCommunications` consume `useQuery` para plantillas, preferencia de canal por local, historial paginado y detalle (`communications`), con mutaciones separadas (`preview/create/execute/duplicate/cancel`) e invalidación por dominio.
-- **Festivos admin query-driven**: `AdminHolidays` consume `useQuery` para festivos generales (`adminGeneralHolidays`), festivos por staff (`adminBarberHolidays`) y catálogo de barberos (`barbers`), eliminando carga manual inicial y refrescando por `focus/visibility`.
+- **Festivos admin query-driven**: `AdminHolidays` consume `useQuery` para festivos generales (`adminGeneralHolidays`), festivos por staff (`adminBarberHolidays`) y catálogo de barberos (`barbers`), eliminando carga manual inicial y refrescando por `focus/visibility`. Antes de guardar consulta `POST /api/holidays/impact`; si hay citas muestra una decisión explícita: no crear, crear conservando citas, o `POST /api/holidays/notify-and-cancel` para avisar y pasarlas a `cancelled`.
 - **PlatformBrands query-driven**: `PlatformBrands` consume `useQuery` con claves dedicadas (`platform-brands`, `platform-brand*`, `platform-location-config`) y `useMutation` para escrituras críticas (guardar marca/legal, CRUD de marca/local, asignación de admins), eliminando `load*` imperativos y centralizando refresco con `refetch` + `setQueryData`.
 - **PlatformBrands (pestaña Idiomas dedicada)**: el gobierno i18n por tenant se gestiona en la pestaña `Idiomas` (idioma principal, idiomas habilitados, auto-traducción y controles operativos); la pestaña `Config` queda sin controles i18n para evitar duplicidad y estado transitorio.
 - **Acceso directo a web del cliente (Platform > Clientes > Datos)**: la pestaña `Datos` calcula y expone un enlace "Abrir web" para la marca seleccionada (prioriza `customDomain`; fallback a `{subdomain}.{baseDomain}` según entorno), permitiendo validar rápidamente la web pública sin salir del flujo de plataforma.
@@ -267,7 +269,7 @@ Coupon | Cupon personal | Descuento %/fijo/servicio gratis por usuario
 ProductCategory | Categoria producto | Orden y descripcion de productos
 Product | Producto | Precio, stock, imagen, visibilidad y categoria
 AppointmentProduct | Linea producto | Productos agregados a la cita (qty + precio unitario)
-Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, suscripción aplicada (`subscriptionApplied`, `subscriptionPlanId`, `subscriptionId`), referidos, cupon, wallet, pagos Stripe (status/ids)
+Appointment | Cita | Cliente, barbero, servicio, fecha, precio final, metodo de pago, estado, snapshot de nombres, fidelizacion, suscripción aplicada (`subscriptionApplied`, `subscriptionPlanId`, `subscriptionId`), referidos, cupon, wallet, pagos Stripe (status/ids) y opt-in de aviso de hueco adelantado (`earlierSlotRequested*`, candidato y envio)
 ClientNote | Notas internas admin | Comentarios privados por cliente (solo admin)
 CashMovement | Movimiento de caja | Entradas/salidas manuales y operaciones de compra/venta de productos
 CashMovementProductItem | Linea de movimiento de caja | Productos y cantidades asociados a una compra/venta de caja, con snapshot de nombre y precio unitario
@@ -526,7 +528,7 @@ Documentos de referencia creados durante la migracion (detalle operativo y evide
    - Flujo operativo: plantilla editable + alcance + canal + opciones extra -> previsualización backend de impacto -> ejecución inmediata o programada.
    - Reglas de dominio: solo `solo_comunicar` y `comunicar_y_cancelar`; no existe cancelación sin comunicado, y la cancelación masiva no es programable.
    - Trazabilidad: historial de campañas con estados (`draft/scheduled/running/completed/partial/failed/cancelled`), ejecuciones con idempotencia y resultados por destinatario.
-   - Integración opcional de cierre: una ejecución puede crear festivo general o por profesional reutilizando el módulo de holidays.
+   - Integración de cierre: una ejecución puede crear festivo general o por profesional reutilizando el módulo de holidays. El flujo directo de Festivos puede usar esta capacidad aunque la pantalla opcional de Comunicados esté oculta; mantiene guard admin, alcance por `localId`, historial de campaña y cancelación a través de `AppointmentsFacade` (estado `cancelled`, nunca borrado físico) para conservar auditoría y efectos de dominio.
 
 ## Integraciones externas
 - **ImageKit**: firma y subida de imagenes. Carpetas por marca/local; al reemplazar activos se elimina el archivo anterior.
@@ -648,6 +650,7 @@ Frontend (`frontend/.env*`):
   - `(localId, barberId, startDateTime)`
   - `(localId, userId, startDateTime)`
   - `(localId, status, startDateTime)`
+  - `(localId, barberId, earlierSlotRequested, earlierSlotNotifiedAt, startDateTime)` para resolver la cola FIFO de avisos sin barridos cross-tenant.
 - Indices operativos adicionales para volumen alto:
   - `ReferralCode(localId, createdAt)`
   - `RewardTransaction(localId, status, createdAt)`

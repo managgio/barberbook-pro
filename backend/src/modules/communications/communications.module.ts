@@ -9,6 +9,7 @@ import { CommunicationsController } from './communications.controller';
 import { CommunicationsGuard } from './communications.guard';
 import { CommunicationsSchedulerService } from './communications.scheduler';
 import { CommunicationsService } from './communications.service';
+import { HolidayCommunicationsController } from './holiday-communications.controller';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { CommunicationsService } from './communications.service';
     AppointmentsModule,
     AuditLogsModule,
   ],
-  controllers: [CommunicationsController],
+  controllers: [CommunicationsController, HolidayCommunicationsController],
   providers: [CommunicationsService, CommunicationsGuard, CommunicationsSchedulerService],
   exports: [CommunicationsService],
 })

@@ -254,6 +254,7 @@ export class AppointmentsFacade {
         notes: data.notes,
         guestName: data.guestName,
         guestContact: data.guestContact,
+        notifyIfEarlierSlot: data.notifyIfEarlierSlot,
         privacyConsentGiven: data.privacyConsentGiven,
         referralAttributionId: data.referralAttributionId,
         appliedCouponId: data.appliedCouponId,

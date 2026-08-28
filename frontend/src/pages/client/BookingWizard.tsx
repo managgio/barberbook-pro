@@ -33,6 +33,7 @@ import {
   Loader2,
   CheckCircle,
   CreditCard,
+  BellRing,
 } from 'lucide-react';
 import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter } from 'date-fns';
 import { useBusinessCopy } from '@/lib/businessCopy';
@@ -128,6 +129,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [paymentOption, setPaymentOption] = useState<'local' | 'stripe'>('local');
   const [showSuccess, setShowSuccess] = useState(false);
   const [privacyConsent, setPrivacyConsent] = useState(false);
+  const [notifyIfEarlierSlot, setNotifyIfEarlierSlot] = useState(false);
 
   const [booking, setBooking] = useState<BookingState>({
     serviceId: null,
@@ -970,6 +972,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         notes: appointmentNote.trim() ? appointmentNote.trim() : undefined,
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
+        notifyIfEarlierSlot: notifyIfEarlierSlot || undefined,
         privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
         referralAttributionId,
         appliedCouponId: subscriptionFree ? undefined : selectedCouponId ?? undefined,
@@ -2040,6 +2043,31 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                     </p>
                   </div>
                 </div>
+                <hr className="border-border" />
+
+                <div className="rounded-xl border border-border bg-muted/30 p-3 sm:p-4">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="notify-earlier-slot"
+                      checked={notifyIfEarlierSlot}
+                      onCheckedChange={(value) => setNotifyIfEarlierSlot(Boolean(value))}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 space-y-1">
+                      <Label
+                        htmlFor="notify-earlier-slot"
+                        className="flex cursor-pointer items-center gap-2 text-sm font-medium leading-5 text-foreground"
+                      >
+                        <BellRing className="h-4 w-4 shrink-0 text-primary" />
+                        {t('bookingWizard.step2.earlierSlot.title')}
+                      </Label>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        {t('bookingWizard.step2.earlierSlot.description')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <hr className="border-border" />
 
                 <div className="space-y-2">

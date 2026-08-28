@@ -46,11 +46,13 @@ test('manage online payments use case delegates checkout creation to management 
       barberId: 'barber-1',
       serviceId: 'service-1',
       startDateTime: '2026-03-06T10:00:00.000Z',
+      notifyIfEarlierSlot: true,
     },
   });
 
   assert.equal(payload?.brandId, 'brand-1');
   assert.equal(payload?.localId, 'local-1');
+  assert.equal(payload?.data.notifyIfEarlierSlot, true);
   assert.deepEqual(result, {
     mode: 'stripe',
     checkoutUrl: 'https://checkout.test',
