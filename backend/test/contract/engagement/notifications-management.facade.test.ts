@@ -40,6 +40,47 @@ test('notifications facade delegates appointment email dispatch', async () => {
   assert.equal(calls[0].email, 'client@example.com');
 });
 
+test('notifications facade does not persist appointment deliveries without an email recipient', async () => {
+  let enqueueCalls = 0;
+  let dispatchCalls = 0;
+  const service = new NotificationsService(
+    basePort(),
+    {
+      enqueueAppointmentEmail: async () => {
+        enqueueCalls += 1;
+        return { id: 'delivery-direct' };
+      },
+      dispatchDelivery: async () => {
+        dispatchCalls += 1;
+        return { status: 'accepted' };
+      },
+    } as any,
+    {} as any,
+  );
+  const appointment = {
+    date: new Date('2026-03-05T10:00:00.000Z'),
+    serviceName: 'Corte',
+  };
+
+  const directResult = await service.sendAppointmentEmail(
+    { email: '   ', name: 'Invitado' },
+    appointment,
+    'creada',
+  );
+  const transactionalResult = await service.enqueueAppointmentEmailInTransaction(
+    { name: 'Invitado' },
+    appointment,
+    'creada',
+    { idempotencyKey: 'appointment:guest:created' },
+    {} as any,
+  );
+
+  assert.equal(directResult, null);
+  assert.equal(transactionalResult, null);
+  assert.equal(enqueueCalls, 0);
+  assert.equal(dispatchCalls, 0);
+});
+
 test('notifications facade delegates test sms dispatch', async () => {
   const calls: Array<{ phone: string; message: string | null | undefined }> = [];
   const service = new NotificationsService(

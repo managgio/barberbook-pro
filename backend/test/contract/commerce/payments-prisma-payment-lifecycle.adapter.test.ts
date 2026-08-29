@@ -110,6 +110,56 @@ test('markAppointmentPaid stores the email outbox record in the payment transact
   assert.equal(calls.fallback, undefined);
 });
 
+test('markAppointmentPaid does not fall back to another email attempt when no delivery was queued', async () => {
+  const calls: { queued?: number; dispatched?: number; fallback?: number } = {};
+  const tx = {
+    appointment: {
+      update: async () => ({
+        id: 'appt-guest-without-email',
+        startDateTime: new Date('2026-03-06T10:00:00.000Z'),
+        guestName: 'Invitado',
+        guestContact: null,
+        guestEmail: null,
+        guestPhone: null,
+        user: null,
+        barber: { name: 'Barbero' },
+        service: { name: 'Corte' },
+      }),
+    },
+  };
+  const adapter = new PrismaPaymentLifecycleAdapter(
+    { $transaction: async (callback: any) => callback(tx) } as any,
+    { runWithContext: async (_context: any, callback: any) => callback() } as any,
+    {
+      sendPaymentConfirmation: async () => {
+        calls.fallback = (calls.fallback || 0) + 1;
+      },
+    } as any,
+    {
+      enqueueAppointmentEmailInTransaction: async () => {
+        calls.queued = (calls.queued || 0) + 1;
+        return null;
+      },
+      dispatchEmailDelivery: async () => {
+        calls.dispatched = (calls.dispatched || 0) + 1;
+      },
+    } as any,
+  );
+
+  await adapter.markAppointmentPaid({
+    appointmentId: 'appt-guest-without-email',
+    localId: 'loc-1',
+    brandId: 'brand-1',
+    amountTotal: 25,
+    currency: 'eur',
+    paidAt: new Date('2026-03-05T12:00:00.000Z'),
+  });
+
+  assert.equal(calls.queued, 1);
+  assert.equal(calls.dispatched, undefined);
+  assert.equal(calls.fallback, undefined);
+});
+
 test('cancelAppointmentPaymentAndBooking updates payment and delegates appointment cancellation', async () => {
   const calls: { context?: Record<string, string>; updated?: any; cancelled?: any[] } = {};
   const prisma = {

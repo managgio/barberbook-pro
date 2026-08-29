@@ -49,6 +49,10 @@ test('notification retention redacts old terminal rows and deletes expired recei
     operations.find((operation) => operation.type === 'deleteMany')?.params.where.id.in,
     ['receipt-1'],
   );
+  assert.equal(
+    operations[0].params.where.OR[0].createdAt.lte.toISOString(),
+    '2026-08-15T03:25:00.000Z',
+  );
   assert.equal(operations[0].params.take, 500);
   assert.equal(operations[3].params.take, 500);
 });

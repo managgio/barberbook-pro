@@ -135,9 +135,9 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
   },
   {
     key: 'email-deliveries',
-    label: 'Historial de correo',
+    label: 'Incidencias de envíos',
     labelKey: 'admin.section.emailDeliveries.label',
-    description: 'Entregas SMTP, reintentos y fallos de correo del local.',
+    description: 'Fallos y reintentos de correo, SMS y WhatsApp del local.',
     descriptionKey: 'admin.section.emailDeliveries.description',
     defaultVisible: true,
   },
@@ -166,6 +166,16 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     defaultVisible: true,
   },
 ];
+
+const ADMIN_SECTION_BY_KEY = new Map(
+  ADMIN_SECTIONS.map((section) => [section.key, section]),
+);
+
+export const getAdminSectionDefinition = (key: AdminSectionKey) => {
+  const section = ADMIN_SECTION_BY_KEY.get(key);
+  if (!section) throw new Error(`Unknown admin section: ${key}`);
+  return section;
+};
 
 export const ADMIN_SECTION_KEYS: AdminSectionKey[] = ADMIN_SECTIONS.map((section) => section.key);
 

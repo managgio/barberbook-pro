@@ -12,6 +12,9 @@ import { NotificationDeliveryEnqueueOptions, NotificationDeliveryListFilters } f
 import { NotificationDeliveryOutboxService } from './notification-delivery-outbox.service';
 import { NotificationDeliveryHistoryService } from './notification-delivery-history.service';
 
+const hasEmailRecipient = (contact: EngagementNotificationContactInfo) =>
+  Boolean(contact.email?.trim());
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -29,6 +32,7 @@ export class NotificationsService {
     action: EngagementNotificationAppointmentAction,
     options: NotificationDeliveryEnqueueOptions = {},
   ) {
+    if (!hasEmailRecipient(contact)) return Promise.resolve(null);
     return this.deliveryOutbox
       .enqueueAppointmentEmail(contact, appointment, action, options)
       .then((delivery) => this.dispatchNotificationDelivery(delivery.id));
@@ -41,6 +45,7 @@ export class NotificationsService {
     options: NotificationDeliveryEnqueueOptions,
     transaction: Prisma.TransactionClient,
   ) {
+    if (!hasEmailRecipient(contact)) return Promise.resolve(null);
     return this.deliveryOutbox.enqueueAppointmentEmail(contact, appointment, action, options, transaction);
   }
 

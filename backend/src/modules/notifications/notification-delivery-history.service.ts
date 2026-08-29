@@ -24,6 +24,10 @@ const DISABLED_CODES = [
   'SMS_DISABLED',
   'WHATSAPP_DISABLED',
 ];
+const MISSING_RECIPIENT_CODES = [
+  'EMAIL_RECIPIENT_MISSING',
+  'PHONE_RECIPIENT_MISSING',
+];
 
 const maskRecipient = (channel: NotificationDeliveryChannel, address?: string | null) => {
   const normalized = (address || '').trim();
@@ -96,6 +100,10 @@ export class NotificationDeliveryHistoryService {
         redactedAt: null,
         channel: { in: enabledChannels },
         status: { in: [NotificationDeliveryStatus.failed, NotificationDeliveryStatus.skipped] },
+        NOT: {
+          status: NotificationDeliveryStatus.skipped,
+          lastErrorCode: { in: MISSING_RECIPIENT_CODES },
+        },
       },
       data: {
         status: NotificationDeliveryStatus.pending,

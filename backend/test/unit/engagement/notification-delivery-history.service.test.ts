@@ -36,3 +36,26 @@ test('tenant delivery history is paginated and restricted to enabled channels', 
   assert.match(serializedWhere, /retrying/);
   assert.match(serializedWhere, /failed/);
 });
+
+test('tenant delivery history rejects retries for missing-recipient records', async () => {
+  let retryWhere: any = null;
+  const service = new NotificationDeliveryHistoryService(
+    {
+      notificationDelivery: {
+        updateMany: async (params: any) => {
+          retryWhere = params.where;
+          return { count: 0 };
+        },
+      },
+    } as any,
+    { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
+    { getEffectiveConfig: async () => ({ notificationPrefs: { email: true } }) } as any,
+    { dispatchDelivery: async () => { throw new Error('must not dispatch'); } } as any,
+  );
+
+  const result = await service.retryForCurrentTenant('delivery-missing-recipient');
+
+  assert.deepEqual(result, { success: false });
+  assert.match(JSON.stringify(retryWhere.NOT), /EMAIL_RECIPIENT_MISSING/);
+  assert.match(JSON.stringify(retryWhere.NOT), /PHONE_RECIPIENT_MISSING/);
+});

@@ -1,8 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { NotificationDeliveryHistory } from '@/data/api/notificationDeliveries';
 import { NotificationDeliveryHistoryPanel } from './NotificationDeliveryHistoryPanel';
+
+afterEach(cleanup);
 
 const history: NotificationDeliveryHistory = {
   page: 1,
@@ -47,6 +49,44 @@ const history: NotificationDeliveryHistory = {
   ],
 };
 
+const skippedHistory: NotificationDeliveryHistory = {
+  ...history,
+  counts: {
+    pending: 0,
+    processing: 0,
+    accepted: 0,
+    retrying: 0,
+    failed: 0,
+    skipped: 1,
+  },
+  items: [
+    {
+      ...history.items[0],
+      id: 'delivery-skipped',
+      channel: 'email',
+      kind: 'appointment_created',
+      status: 'skipped',
+      attemptCount: 1,
+      maxAttempts: 5,
+      lastErrorCode: 'EMAIL_RECIPIENT_MISSING',
+      lastErrorMessage: 'No recipient email is available.',
+      failedAt: null,
+      skippedAt: '2026-08-29T10:00:00.000Z',
+      attempts: [
+        {
+          id: 'attempt-skipped',
+          attemptNumber: 1,
+          status: 'skipped',
+          providerMessageId: null,
+          errorCode: 'EMAIL_RECIPIENT_MISSING',
+          errorMessage: 'No recipient email is available.',
+          occurredAt: '2026-08-29T10:00:00.000Z',
+        },
+      ],
+    },
+  ],
+};
+
 describe('NotificationDeliveryHistoryPanel', () => {
   it('shows multichannel tenant context, safe diagnostics and retry actions', () => {
     const onRetry = vi.fn();
@@ -74,5 +114,23 @@ describe('NotificationDeliveryHistoryPanel', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Reintentar' })[0]);
     expect(onRetry).toHaveBeenCalledWith('delivery-1');
+  });
+
+  it('marks skipped deliveries as final and hides pointless missing-recipient retries', () => {
+    render(
+      <NotificationDeliveryHistoryPanel
+        data={skippedHistory}
+        filters={{ status: 'all', kind: 'all', channel: 'all', brandId: 'all', localId: 'all' }}
+        canRetry
+        onFilterChange={vi.fn()}
+        onPageChange={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('No requiere reintentos').length).toBeGreaterThan(0);
+    expect(screen.queryByText('1 de 5')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
   });
 });

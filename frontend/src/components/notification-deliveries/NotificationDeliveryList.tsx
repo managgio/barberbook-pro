@@ -55,6 +55,10 @@ const kindOptions: DeliveryFilterOption[] = [
   { value: 'all', label: 'Todos los tipos' },
   ...Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label })),
 ];
+const NON_RETRYABLE_SKIPPED_CODES = new Set([
+  'EMAIL_RECIPIENT_MISSING',
+  'PHONE_RECIPIENT_MISSING',
+]);
 
 const RetryButton = ({
   item,
@@ -65,7 +69,8 @@ const RetryButton = ({
   retryingId?: string | null;
   onRetry?: (deliveryId: string) => void;
 }) => {
-  const retryable = item.status === 'failed' || item.status === 'skipped';
+  const retryable = item.status === 'failed'
+    || (item.status === 'skipped' && !NON_RETRYABLE_SKIPPED_CODES.has(item.lastErrorCode || ''));
   if (!retryable || !onRetry) return null;
   return (
     <Button
@@ -89,8 +94,14 @@ const DeliveryDetails = ({ item }: { item: NotificationDeliveryItem }) => (
     <div className="mt-2 space-y-1 rounded-md border border-border/60 bg-muted/20 p-2 text-muted-foreground">
       <p>ID: <span className="font-mono text-foreground">{item.id}</span></p>
       <p>Proveedor: <span className="font-mono text-foreground">{item.providerMessageId || '-'}</span></p>
-      <p>Intentos: <span className="text-foreground">{item.attemptCount} de {item.maxAttempts}</span></p>
-      <p>Próximo intento: <span className="text-foreground">{formatDeliveryDateTime(item.nextAttemptAt)}</span></p>
+      {item.status === 'skipped' ? (
+        <p>Reintentos: <span className="text-foreground">No requiere reintentos</span></p>
+      ) : (
+        <>
+          <p>Intentos: <span className="text-foreground">{item.attemptCount} de {item.maxAttempts}</span></p>
+          <p>Próximo intento: <span className="text-foreground">{formatDeliveryDateTime(item.nextAttemptAt)}</span></p>
+        </>
+      )}
       {item.attempts.map((attempt) => (
         <p key={attempt.id}>
           Intento {attempt.attemptNumber}: {attempt.status}{attempt.errorCode ? ` - ${attempt.errorCode}` : ''}

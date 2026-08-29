@@ -75,6 +75,40 @@ test('appointment email uses app timezone when formatting date/time', async () =
   assert.doesNotMatch(sentMails[0].text, /09:00/);
 });
 
+test('appointment email keeps a defensive missing-recipient result before SMTP', async () => {
+  let transportCreations = 0;
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    {} as any,
+    {
+      getEffectiveConfig: async () => ({
+        notificationPrefs: { email: true },
+        email: { user: 'sender@example.com', password: 'secret' },
+      }),
+    } as any,
+    {} as any,
+    {
+      createTransport: () => {
+        transportCreations += 1;
+        return { sendMail: async () => undefined };
+      },
+    } as any,
+    {} as any,
+    { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
+  );
+
+  const result = await adapter.sendAppointmentEmail(
+    { name: 'Invitado' },
+    { date: new Date('2026-07-01T09:00:00.000Z'), serviceName: 'Corte' },
+    'creada',
+  );
+
+  assert.equal(result.status, 'skipped');
+  if (result.status === 'skipped') {
+    assert.equal(result.code, 'EMAIL_RECIPIENT_MISSING');
+  }
+  assert.equal(transportCreations, 0);
+});
+
 test('Twilio authentication failures are critical and never expose provider messages', () => {
   const diagnostic = describeTwilioDeliveryError(
     { code: 20003, status: 401, message: 'Authenticate with secret token abc123' },

@@ -21,6 +21,7 @@ import {
   MailWarning,
 } from 'lucide-react';
 import { AdminSectionKey } from '@/data/types';
+import { getAdminSectionDefinition } from '@/data/adminSections';
 import type { BusinessCopy } from '@/lib/businessCopy';
 
 export type AdminNavItem = {
@@ -32,27 +33,38 @@ export type AdminNavItem = {
   keywords?: string[];
 };
 
-export const adminNavItems: AdminNavItem[] = [
-  { href: '/admin', label: 'Dashboard', labelKey: 'admin.nav.dashboard', icon: LayoutDashboard, section: 'dashboard', keywords: ['resumen', 'inicio'] },
-  { href: '/admin/calendar', label: 'Calendario', labelKey: 'admin.nav.calendar', icon: Calendar, section: 'calendar', keywords: ['agenda', 'citas'] },
-  { href: '/admin/search', label: 'Buscar Citas', labelKey: 'admin.nav.search', icon: Search, section: 'search', keywords: ['busqueda', 'clientes'] },
-  { href: '/admin/clients', label: 'Clientes', labelKey: 'admin.nav.clients', icon: Users, section: 'clients', keywords: ['usuarios'] },
-  { href: '/admin/cash-register', label: 'Caja Registradora', labelKey: 'admin.nav.cashRegister', icon: Wallet, section: 'cash-register', keywords: ['ventas', 'caja'] },
-  { href: '/admin/stock', label: 'Control de stock', labelKey: 'admin.nav.stock', icon: Boxes, section: 'stock', keywords: ['inventario', 'productos'] },
-  { href: '/admin/services', label: 'Servicios', labelKey: 'admin.nav.services', icon: Scissors, section: 'services', keywords: ['prestaciones'] },
-  { href: '/admin/barbers', label: 'Barberos', labelKey: 'admin.nav.barbers', icon: UserCircle, section: 'barbers', keywords: ['staff', 'equipo'] },
-  { href: '/admin/subscriptions', label: 'Suscripciones', labelKey: 'admin.nav.subscriptions', icon: Repeat, section: 'subscriptions', keywords: ['planes', 'mensual'] },
-  { href: '/admin/loyalty', label: 'Fidelización', labelKey: 'admin.nav.loyalty', icon: Award, section: 'loyalty', keywords: ['puntos', 'recompensas'] },
-  { href: '/admin/referrals', label: 'Referidos', labelKey: 'admin.nav.referrals', icon: UserPlus, section: 'referrals', keywords: ['invitaciones'] },
-  { href: '/admin/reviews', label: 'Reseñas', labelKey: 'admin.nav.reviews', icon: Star, section: 'reviews', keywords: ['ratings', 'opiniones'] },
-  { href: '/admin/alerts', label: 'Alertas', labelKey: 'admin.nav.alerts', icon: Bell, section: 'alerts', keywords: ['avisos'] },
-  { href: '/admin/communications', label: 'Comunicados', labelKey: 'admin.nav.communications', icon: Megaphone, section: 'communications', keywords: ['mensajes', 'cancelaciones'] },
-  { href: '/admin/deliveries', label: 'Incidencias de envíos', labelKey: 'admin.nav.emailDeliveries', icon: MailWarning, section: 'email-deliveries', keywords: ['email', 'sms', 'whatsapp', 'entregas', 'errores'] },
-  { href: '/admin/offers', label: 'Ofertas', labelKey: 'admin.nav.offers', icon: Tag, section: 'offers', keywords: ['descuentos', 'promos'] },
-  { href: '/admin/holidays', label: 'Festivos', labelKey: 'admin.nav.holidays', icon: CalendarDays, section: 'holidays', keywords: ['cierres'] },
-  { href: '/admin/settings', label: 'Configuración', labelKey: 'admin.nav.settings', icon: Settings, section: 'settings', keywords: ['ajustes'] },
-  { href: '/admin/roles', label: 'Roles', labelKey: 'admin.nav.roles', icon: Shield, section: 'roles', keywords: ['permisos'] },
+type AdminNavItemDefinition = Omit<AdminNavItem, 'label' | 'labelKey'>;
+
+const ADMIN_NAV_ITEM_DEFINITIONS: AdminNavItemDefinition[] = [
+  { href: '/admin', icon: LayoutDashboard, section: 'dashboard', keywords: ['resumen', 'inicio'] },
+  { href: '/admin/calendar', icon: Calendar, section: 'calendar', keywords: ['agenda', 'citas'] },
+  { href: '/admin/search', icon: Search, section: 'search', keywords: ['busqueda', 'clientes'] },
+  { href: '/admin/clients', icon: Users, section: 'clients', keywords: ['usuarios'] },
+  { href: '/admin/cash-register', icon: Wallet, section: 'cash-register', keywords: ['ventas', 'caja'] },
+  { href: '/admin/stock', icon: Boxes, section: 'stock', keywords: ['inventario', 'productos'] },
+  { href: '/admin/services', icon: Scissors, section: 'services', keywords: ['prestaciones'] },
+  { href: '/admin/barbers', icon: UserCircle, section: 'barbers', keywords: ['staff', 'equipo'] },
+  { href: '/admin/subscriptions', icon: Repeat, section: 'subscriptions', keywords: ['planes', 'mensual'] },
+  { href: '/admin/loyalty', icon: Award, section: 'loyalty', keywords: ['puntos', 'recompensas'] },
+  { href: '/admin/referrals', icon: UserPlus, section: 'referrals', keywords: ['invitaciones'] },
+  { href: '/admin/reviews', icon: Star, section: 'reviews', keywords: ['ratings', 'opiniones'] },
+  { href: '/admin/alerts', icon: Bell, section: 'alerts', keywords: ['avisos'] },
+  { href: '/admin/communications', icon: Megaphone, section: 'communications', keywords: ['mensajes', 'cancelaciones'] },
+  { href: '/admin/deliveries', icon: MailWarning, section: 'email-deliveries', keywords: ['email', 'sms', 'whatsapp', 'entregas', 'errores'] },
+  { href: '/admin/offers', icon: Tag, section: 'offers', keywords: ['descuentos', 'promos'] },
+  { href: '/admin/holidays', icon: CalendarDays, section: 'holidays', keywords: ['cierres'] },
+  { href: '/admin/settings', icon: Settings, section: 'settings', keywords: ['ajustes'] },
+  { href: '/admin/roles', icon: Shield, section: 'roles', keywords: ['permisos'] },
 ];
+
+export const adminNavItems: AdminNavItem[] = ADMIN_NAV_ITEM_DEFINITIONS.map((item) => {
+  const section = getAdminSectionDefinition(item.section);
+  return {
+    ...item,
+    label: section.label,
+    labelKey: section.labelKey,
+  };
+});
 
 export const resolveAdminNavItemLabel = (
   item: AdminNavItem,
