@@ -239,119 +239,152 @@ enum CommunicationRecipientStatus {
   excluded
 }
 
+enum NotificationDeliveryChannel {
+  email
+  sms
+  whatsapp
+}
+
+enum NotificationDeliveryKind {
+  appointment_created
+  appointment_updated
+  appointment_cancelled
+  earlier_slot
+  reminder
+  communication
+  referral_reward
+}
+
+enum NotificationDeliveryStatus {
+  pending
+  processing
+  accepted
+  retrying
+  failed
+  skipped
+}
+
+enum NotificationDeliveryAttemptStatus {
+  accepted
+  failed
+  skipped
+}
+
 model User {
-  id                     String                @id @default(cuid())
-  firebaseUid            String?               @unique
-  name                   String
-  email                  String                @unique
-  phone                  String?
-  role                   UserRole              @default(client)
-  notificationEmail      Boolean               @default(true)
-  notificationWhatsapp   Boolean               @default(false)
-  notificationSms        Boolean               @default(true)
-  prefersBarberSelection Boolean               @default(true)
-  avatar                 String?
-  isSuperAdmin           Boolean               @default(false)
-  isPlatformAdmin        Boolean               @default(false)
-  adminRoleId            String?
-  adminRole              AdminRole?            @relation(fields: [adminRoleId], references: [id])
-  appointments           Appointment[]
-  referralCodes          ReferralCode[]
-  referrerAttributions   ReferralAttribution[] @relation("ReferralReferrer")
-  referredAttributions   ReferralAttribution[] @relation("ReferralReferred")
-  rewardWallets          RewardWallet[]
-  rewardTransactions     RewardTransaction[]
-  coupons                Coupon[]
-  reviewRequests         ReviewRequest[]
-  barber                 Barber?
-  brandMemberships       BrandUser[]
-  localStaffRoles        LocationStaff[]
-  clientNotes            ClientNote[]          @relation("ClientNoteUser")
-  authoredClientNotes    ClientNote[]          @relation("ClientNoteAuthor")
-  createdCommunicationCampaigns CommunicationCampaign[] @relation("CommunicationCampaignCreatedBy")
-  initiatedCommunicationExecutions CommunicationExecution[] @relation("CommunicationExecutionInitiatedBy")
+  id                                     String                           @id @default(cuid())
+  firebaseUid                            String?                          @unique
+  name                                   String
+  email                                  String                           @unique
+  phone                                  String?
+  role                                   UserRole                         @default(client)
+  notificationEmail                      Boolean                          @default(true)
+  notificationWhatsapp                   Boolean                          @default(false)
+  notificationSms                        Boolean                          @default(true)
+  prefersBarberSelection                 Boolean                          @default(true)
+  avatar                                 String?
+  isSuperAdmin                           Boolean                          @default(false)
+  isPlatformAdmin                        Boolean                          @default(false)
+  adminRoleId                            String?
+  adminRole                              AdminRole?                       @relation(fields: [adminRoleId], references: [id])
+  appointments                           Appointment[]
+  referralCodes                          ReferralCode[]
+  referrerAttributions                   ReferralAttribution[]            @relation("ReferralReferrer")
+  referredAttributions                   ReferralAttribution[]            @relation("ReferralReferred")
+  rewardWallets                          RewardWallet[]
+  rewardTransactions                     RewardTransaction[]
+  coupons                                Coupon[]
+  reviewRequests                         ReviewRequest[]
+  barber                                 Barber?
+  brandMemberships                       BrandUser[]
+  localStaffRoles                        LocationStaff[]
+  clientNotes                            ClientNote[]                     @relation("ClientNoteUser")
+  authoredClientNotes                    ClientNote[]                     @relation("ClientNoteAuthor")
+  createdCommunicationCampaigns          CommunicationCampaign[]          @relation("CommunicationCampaignCreatedBy")
+  initiatedCommunicationExecutions       CommunicationExecution[]         @relation("CommunicationExecutionInitiatedBy")
   updatedCommunicationChannelPreferences CommunicationChannelPreference[] @relation("CommunicationChannelPreferenceUpdatedBy")
-  communicationRecipientResults CommunicationRecipientResult[]
-  auditLogs              AuditLog[]
-  subscriptions          UserSubscription[]
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
+  communicationRecipientResults          CommunicationRecipientResult[]
+  auditLogs                              AuditLog[]
+  subscriptions                          UserSubscription[]
+  createdAt                              DateTime                         @default(now())
+  updatedAt                              DateTime                         @updatedAt
 }
 
 model Brand {
-  id                 String                   @id @default(cuid())
-  name               String
-  subdomain          String                   @unique
-  customDomain       String?                  @unique
-  defaultLocationId  String?                  @unique
-  defaultLocation    Location?                @relation("BrandDefaultLocation", fields: [defaultLocationId], references: [id])
-  isActive           Boolean                  @default(true)
-  locations          Location[]
-  referralTemplates  ReferralConfigTemplate[]
-  users              BrandUser[]
-  config             BrandConfig?
-  legalSettings      BrandLegalSettings?
-  consentRecords     ConsentRecord[]
-  auditLogs          AuditLog[]
-  providerUsageDaily ProviderUsageDaily[]
-  localizedContents  LocalizedContent[]
-  localizedTranslations LocalizedContentTranslation[]
+  id                     String                        @id @default(cuid())
+  name                   String
+  subdomain              String                        @unique
+  customDomain           String?                       @unique
+  defaultLocationId      String?                       @unique
+  defaultLocation        Location?                     @relation("BrandDefaultLocation", fields: [defaultLocationId], references: [id])
+  isActive               Boolean                       @default(true)
+  locations              Location[]
+  referralTemplates      ReferralConfigTemplate[]
+  users                  BrandUser[]
+  config                 BrandConfig?
+  legalSettings          BrandLegalSettings?
+  consentRecords         ConsentRecord[]
+  auditLogs              AuditLog[]
+  providerUsageDaily     ProviderUsageDaily[]
+  localizedContents      LocalizedContent[]
+  localizedTranslations  LocalizedContentTranslation[]
   communicationCampaigns CommunicationCampaign[]
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  notificationDeliveries NotificationDelivery[]
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
 }
 
 model Location {
-  id                    String                 @id @default(cuid())
-  brandId               String
-  brand                 Brand                  @relation(fields: [brandId], references: [id])
-  defaultForBrand       Brand?                 @relation("BrandDefaultLocation")
-  name                  String
-  slug                  String?
-  isActive              Boolean                @default(true)
-  adminRoles            AdminRole[]
-  staffRoles            LocationStaff[]
-  barbers               Barber[]
-  productCategories     ProductCategory[]
-  products              Product[]
-  services              Service[]
-  appointments          Appointment[]
-  cashMovements         CashMovement[]
-  alerts                Alert[]
-  generalHolidays       GeneralHoliday[]
-  barberHolidays        BarberHoliday[]
-  clientNotes           ClientNote[]
-  shopSchedule          ShopSchedule?
-  siteSettings          SiteSettings?
-  barberSchedules       BarberSchedule[]
-  serviceCategories     ServiceCategory[]
-  offers                Offer[]
-  loyaltyPrograms       LoyaltyProgram[]
-  referralProgramConfig ReferralProgramConfig?
-  referralCodes         ReferralCode[]
-  referralAttributions  ReferralAttribution[]
-  reviewProgramConfig   ReviewProgramConfig?
-  reviewRequests        ReviewRequest[]
-  rewardWallets         RewardWallet[]
-  rewardTransactions    RewardTransaction[]
-  coupons               Coupon[]
-  subscriptionPlans     SubscriptionPlan[]
-  userSubscriptions     UserSubscription[]
-  aiChatSessions        AiChatSession[]
-  aiChatMessages        AiChatMessage[]
-  aiBusinessFacts       AiBusinessFact[]
-  config                LocationConfig?
-  consentRecords        ConsentRecord[]
-  auditLogs             AuditLog[]
-  localizedContents     LocalizedContent[]
-  localizedTranslations LocalizedContentTranslation[]
-  communicationCampaigns CommunicationCampaign[]
-  communicationExecutions CommunicationExecution[]
-  communicationRecipientResults CommunicationRecipientResult[]
+  id                             String                          @id @default(cuid())
+  brandId                        String
+  brand                          Brand                           @relation(fields: [brandId], references: [id])
+  defaultForBrand                Brand?                          @relation("BrandDefaultLocation")
+  name                           String
+  slug                           String?
+  isActive                       Boolean                         @default(true)
+  adminRoles                     AdminRole[]
+  staffRoles                     LocationStaff[]
+  barbers                        Barber[]
+  productCategories              ProductCategory[]
+  products                       Product[]
+  services                       Service[]
+  appointments                   Appointment[]
+  cashMovements                  CashMovement[]
+  alerts                         Alert[]
+  generalHolidays                GeneralHoliday[]
+  barberHolidays                 BarberHoliday[]
+  clientNotes                    ClientNote[]
+  shopSchedule                   ShopSchedule?
+  siteSettings                   SiteSettings?
+  barberSchedules                BarberSchedule[]
+  serviceCategories              ServiceCategory[]
+  offers                         Offer[]
+  loyaltyPrograms                LoyaltyProgram[]
+  referralProgramConfig          ReferralProgramConfig?
+  referralCodes                  ReferralCode[]
+  referralAttributions           ReferralAttribution[]
+  reviewProgramConfig            ReviewProgramConfig?
+  reviewRequests                 ReviewRequest[]
+  rewardWallets                  RewardWallet[]
+  rewardTransactions             RewardTransaction[]
+  coupons                        Coupon[]
+  subscriptionPlans              SubscriptionPlan[]
+  userSubscriptions              UserSubscription[]
+  aiChatSessions                 AiChatSession[]
+  aiChatMessages                 AiChatMessage[]
+  aiBusinessFacts                AiBusinessFact[]
+  config                         LocationConfig?
+  consentRecords                 ConsentRecord[]
+  auditLogs                      AuditLog[]
+  localizedContents              LocalizedContent[]
+  localizedTranslations          LocalizedContentTranslation[]
+  communicationCampaigns         CommunicationCampaign[]
+  communicationExecutions        CommunicationExecution[]
+  communicationRecipientResults  CommunicationRecipientResult[]
   communicationChannelPreference CommunicationChannelPreference?
-  bookingClosures       BookingClosure[]
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  bookingClosures                BookingClosure[]
+  notificationDeliveries         NotificationDelivery[]
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
 
   @@unique([brandId, slug])
   @@index([brandId])
@@ -442,22 +475,22 @@ model LocationConfig {
 }
 
 model LocalizedContent {
-  id             String                @id @default(cuid())
-  scope          LocalizedContentScope @default(location)
+  id             String                        @id @default(cuid())
+  scope          LocalizedContentScope         @default(location)
   brandId        String
-  brand          Brand                 @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand          Brand                         @relation(fields: [brandId], references: [id], onDelete: Cascade)
   localId        String?
-  local          Location?             @relation(fields: [localId], references: [id], onDelete: Cascade)
-  entityType     String                @db.VarChar(64)
-  entityId       String                @db.VarChar(64)
-  fieldKey       String                @db.VarChar(64)
-  sourceLanguage String                @db.VarChar(10)
-  sourceText     String                @db.Text
-  sourceHash     String                @db.VarChar(64)
-  sourceVersion  Int                   @default(1)
+  local          Location?                     @relation(fields: [localId], references: [id], onDelete: Cascade)
+  entityType     String                        @db.VarChar(64)
+  entityId       String                        @db.VarChar(64)
+  fieldKey       String                        @db.VarChar(64)
+  sourceLanguage String                        @db.VarChar(10)
+  sourceText     String                        @db.Text
+  sourceHash     String                        @db.VarChar(64)
+  sourceVersion  Int                           @default(1)
   translations   LocalizedContentTranslation[]
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
 
   @@unique([scope, brandId, localId, entityType, entityId, fieldKey])
   @@index([brandId, localId, entityType, entityId])
@@ -465,25 +498,25 @@ model LocalizedContent {
 }
 
 model LocalizedContentTranslation {
-  id                   String                    @id @default(cuid())
+  id                   String                     @id @default(cuid())
   contentId            String
-  content              LocalizedContent          @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  content              LocalizedContent           @relation(fields: [contentId], references: [id], onDelete: Cascade)
   brandId              String
-  brand                Brand                     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand                Brand                      @relation(fields: [brandId], references: [id], onDelete: Cascade)
   localId              String?
-  local                Location?                 @relation(fields: [localId], references: [id], onDelete: Cascade)
-  language             String                    @db.VarChar(10)
-  translatedText       String                    @db.Text
+  local                Location?                  @relation(fields: [localId], references: [id], onDelete: Cascade)
+  language             String                     @db.VarChar(10)
+  translatedText       String                     @db.Text
   status               LocalizedTranslationStatus @default(pending)
   source               LocalizedTranslationSource @default(ai)
-  manualLocked         Boolean                   @default(false)
-  basedOnSourceVersion Int                       @default(1)
+  manualLocked         Boolean                    @default(false)
+  basedOnSourceVersion Int                        @default(1)
   provider             String?
   model                String?
-  errorMessage         String?                   @db.Text
+  errorMessage         String?                    @db.Text
   lastGeneratedAt      DateTime?
-  createdAt            DateTime                  @default(now())
-  updatedAt            DateTime                  @updatedAt
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
 
   @@unique([contentId, language])
   @@index([brandId, localId, language, status])
@@ -577,57 +610,60 @@ model Product {
 }
 
 model Appointment {
-  id                        String                @id @default(cuid())
-  localId                   String
-  local                     Location              @relation(fields: [localId], references: [id])
-  userId                    String?
-  user                      User?                 @relation(fields: [userId], references: [id])
-  barberId                  String
-  barber                    Barber                @relation(fields: [barberId], references: [id])
-  barberNameSnapshot        String?
-  serviceId                 String
-  service                   Service               @relation(fields: [serviceId], references: [id])
-  serviceNameSnapshot       String?
-  loyaltyProgramId          String?
-  loyaltyProgram            LoyaltyProgram?       @relation(fields: [loyaltyProgramId], references: [id])
-  loyaltyRewardApplied      Boolean               @default(false)
-  referralAttributionId     String?
-  referralAttribution       ReferralAttribution?  @relation("ReferralAttributionAppointments", fields: [referralAttributionId], references: [id])
-  appliedCouponId           String?
-  appliedCoupon             Coupon?               @relation(fields: [appliedCouponId], references: [id])
-  walletAppliedAmount       Decimal               @default(0) @db.Decimal(10, 2)
-  subscriptionApplied       Boolean               @default(false)
-  subscriptionPlanId        String?
-  subscriptionPlan          SubscriptionPlan?     @relation(fields: [subscriptionPlanId], references: [id], onDelete: SetNull)
-  subscriptionId            String?
-  subscription              UserSubscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  products                  AppointmentProduct[]
-  startDateTime             DateTime
-  price                     Decimal               @db.Decimal(10, 2)
-  paymentMethod             PaymentMethod?
-  paymentStatus             PaymentStatus         @default(in_person)
-  paymentAmount             Decimal?              @db.Decimal(10, 2)
-  paymentCurrency           String?               @db.VarChar(10)
-  paymentPaidAt             DateTime?
-  paymentExpiresAt          DateTime?
-  stripePaymentIntentId     String?               @unique
-  stripeCheckoutSessionId   String?               @unique
-  status                    AppointmentStatus     @default(scheduled)
-  notes                     String?
-  guestName                 String?
-  guestContact              String?
-  earlierSlotRequested      Boolean               @default(false)
-  earlierSlotNotifiedAt     DateTime?
-  earlierSlotCandidateAt    DateTime?
-  reminderSent              Boolean               @default(false)
-  anonymizedAt              DateTime?
-  consents                  ConsentRecord[]
-  rewardTransactions        RewardTransaction[]
-  referralFirstAppointments ReferralAttribution[] @relation("ReferralFirstAppointment")
-  reviewRequest             ReviewRequest?        @relation("AppointmentReviewRequest")
+  id                            String                         @id @default(cuid())
+  localId                       String
+  local                         Location                       @relation(fields: [localId], references: [id])
+  userId                        String?
+  user                          User?                          @relation(fields: [userId], references: [id])
+  barberId                      String
+  barber                        Barber                         @relation(fields: [barberId], references: [id])
+  barberNameSnapshot            String?
+  serviceId                     String
+  service                       Service                        @relation(fields: [serviceId], references: [id])
+  serviceNameSnapshot           String?
+  loyaltyProgramId              String?
+  loyaltyProgram                LoyaltyProgram?                @relation(fields: [loyaltyProgramId], references: [id])
+  loyaltyRewardApplied          Boolean                        @default(false)
+  referralAttributionId         String?
+  referralAttribution           ReferralAttribution?           @relation("ReferralAttributionAppointments", fields: [referralAttributionId], references: [id])
+  appliedCouponId               String?
+  appliedCoupon                 Coupon?                        @relation(fields: [appliedCouponId], references: [id])
+  walletAppliedAmount           Decimal                        @default(0) @db.Decimal(10, 2)
+  subscriptionApplied           Boolean                        @default(false)
+  subscriptionPlanId            String?
+  subscriptionPlan              SubscriptionPlan?              @relation(fields: [subscriptionPlanId], references: [id], onDelete: SetNull)
+  subscriptionId                String?
+  subscription                  UserSubscription?              @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  products                      AppointmentProduct[]
+  startDateTime                 DateTime
+  price                         Decimal                        @db.Decimal(10, 2)
+  paymentMethod                 PaymentMethod?
+  paymentStatus                 PaymentStatus                  @default(in_person)
+  paymentAmount                 Decimal?                       @db.Decimal(10, 2)
+  paymentCurrency               String?                        @db.VarChar(10)
+  paymentPaidAt                 DateTime?
+  paymentExpiresAt              DateTime?
+  stripePaymentIntentId         String?                        @unique
+  stripeCheckoutSessionId       String?                        @unique
+  status                        AppointmentStatus              @default(scheduled)
+  notes                         String?
+  guestName                     String?
+  guestContact                  String?
+  guestEmail                    String?                        @db.VarChar(254)
+  guestPhone                    String?                        @db.VarChar(40)
+  earlierSlotRequested          Boolean                        @default(false)
+  earlierSlotNotifiedAt         DateTime?
+  earlierSlotCandidateAt        DateTime?
+  reminderSent                  Boolean                        @default(false)
+  anonymizedAt                  DateTime?
+  consents                      ConsentRecord[]
+  rewardTransactions            RewardTransaction[]
+  referralFirstAppointments     ReferralAttribution[]          @relation("ReferralFirstAppointment")
+  reviewRequest                 ReviewRequest?                 @relation("AppointmentReviewRequest")
   communicationRecipientResults CommunicationRecipientResult[]
-  createdAt                 DateTime              @default(now())
-  updatedAt                 DateTime              @updatedAt
+  notificationDeliveries        NotificationDelivery[]
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
 
   @@index([localId])
   @@index([localId, startDateTime])
@@ -641,23 +677,23 @@ model Appointment {
 }
 
 model SubscriptionPlan {
-  id            String                   @id @default(cuid())
-  localId       String
-  local         Location                 @relation(fields: [localId], references: [id])
-  name          String
-  description   String?
-  price         Decimal                  @db.Decimal(10, 2)
-  durationValue Int
-  durationUnit  SubscriptionDurationUnit
-  isActive      Boolean                  @default(true)
-  isArchived    Boolean                  @default(false)
+  id                    String                   @id @default(cuid())
+  localId               String
+  local                 Location                 @relation(fields: [localId], references: [id])
+  name                  String
+  description           String?
+  price                 Decimal                  @db.Decimal(10, 2)
+  durationValue         Int
+  durationUnit          SubscriptionDurationUnit
+  isActive              Boolean                  @default(true)
+  isArchived            Boolean                  @default(false)
   availabilityStartDate DateTime?
   availabilityEndDate   DateTime?
-  displayOrder  Int                      @default(0)
-  subscriptions UserSubscription[]
-  appointments  Appointment[]
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
+  displayOrder          Int                      @default(0)
+  subscriptions         UserSubscription[]
+  appointments          Appointment[]
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
 
   @@index([localId, isArchived, isActive])
   @@index([localId, isArchived, isActive, availabilityStartDate, availabilityEndDate])
@@ -665,29 +701,29 @@ model SubscriptionPlan {
 }
 
 model UserSubscription {
-  id           String                 @id @default(cuid())
-  localId      String
-  local        Location               @relation(fields: [localId], references: [id])
-  userId       String
-  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  planId       String
-  plan         SubscriptionPlan       @relation(fields: [planId], references: [id])
-  status       UserSubscriptionStatus @default(active)
-  source       UserSubscriptionSource @default(admin)
-  startDate    DateTime
-  endDate      DateTime
-  paymentStatus PaymentStatus         @default(paid)
-  paymentMethod PaymentMethod?
-  paymentAmount Decimal?              @db.Decimal(10, 2)
-  paymentCurrency String?             @db.VarChar(10)
-  paymentPaidAt DateTime?
-  stripePaymentIntentId String?       @unique
-  stripeCheckoutSessionId String?     @unique
-  cancelledAt  DateTime?
-  notes        String?
-  appointments Appointment[]
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
+  id                      String                 @id @default(cuid())
+  localId                 String
+  local                   Location               @relation(fields: [localId], references: [id])
+  userId                  String
+  user                    User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId                  String
+  plan                    SubscriptionPlan       @relation(fields: [planId], references: [id])
+  status                  UserSubscriptionStatus @default(active)
+  source                  UserSubscriptionSource @default(admin)
+  startDate               DateTime
+  endDate                 DateTime
+  paymentStatus           PaymentStatus          @default(paid)
+  paymentMethod           PaymentMethod?
+  paymentAmount           Decimal?               @db.Decimal(10, 2)
+  paymentCurrency         String?                @db.VarChar(10)
+  paymentPaidAt           DateTime?
+  stripePaymentIntentId   String?                @unique
+  stripeCheckoutSessionId String?                @unique
+  cancelledAt             DateTime?
+  notes                   String?
+  appointments            Appointment[]
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
 
   @@index([localId, userId, status, startDate, endDate])
   @@index([userId, localId])
@@ -1042,27 +1078,27 @@ model Alert {
 }
 
 model GeneralHoliday {
-  id        Int      @id @default(autoincrement())
-  localId   String
-  local     Location @relation(fields: [localId], references: [id])
-  start     DateTime
-  end       DateTime
+  id                     Int                     @id @default(autoincrement())
+  localId                String
+  local                  Location                @relation(fields: [localId], references: [id])
+  start                  DateTime
+  end                    DateTime
   communicationCampaigns CommunicationCampaign[]
-  createdAt DateTime @default(now())
+  createdAt              DateTime                @default(now())
 
   @@index([localId])
 }
 
 model BarberHoliday {
-  id        Int      @id @default(autoincrement())
-  localId   String
-  local     Location @relation(fields: [localId], references: [id])
-  barberId  String
-  barber    Barber   @relation(fields: [barberId], references: [id])
-  start     DateTime
-  end       DateTime
+  id                     Int                     @id @default(autoincrement())
+  localId                String
+  local                  Location                @relation(fields: [localId], references: [id])
+  barberId               String
+  barber                 Barber                  @relation(fields: [barberId], references: [id])
+  start                  DateTime
+  end                    DateTime
   communicationCampaigns CommunicationCampaign[]
-  createdAt DateTime @default(now())
+  createdAt              DateTime                @default(now())
 
   @@index([localId])
 }
@@ -1084,41 +1120,41 @@ model SiteSettings {
 }
 
 model CommunicationCampaign {
-  id              String                  @id @default(cuid())
-  brandId         String
-  brand           Brand                   @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  localId         String
-  local           Location                @relation(fields: [localId], references: [id], onDelete: Cascade)
-  createdByUserId String?
-  createdByUser   User?                   @relation("CommunicationCampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  id               String                         @id @default(cuid())
+  brandId          String
+  brand            Brand                          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  localId          String
+  local            Location                       @relation(fields: [localId], references: [id], onDelete: Cascade)
+  createdByUserId  String?
+  createdByUser    User?                          @relation("CommunicationCampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   originCampaignId String?
-  originCampaign  CommunicationCampaign?  @relation("CommunicationCampaignOrigin", fields: [originCampaignId], references: [id], onDelete: SetNull)
-  derivedCampaigns CommunicationCampaign[] @relation("CommunicationCampaignOrigin")
-  actionType      CommunicationActionType
-  scopeType       CommunicationScopeType
-  channel         CommunicationChannel
-  templateKey     CommunicationTemplateKey
-  status          CommunicationStatus     @default(draft)
-  title           String
-  subject         String?
-  message         String                  @db.Text
-  internalNote    String?                 @db.Text
-  scopeConfig     Json?
-  options         Json?
-  impactSummary   Json?
-  resultSummary   Json?
-  scheduledFor    DateTime?
-  executedAt      DateTime?
-  cancelledAt     DateTime?
+  originCampaign   CommunicationCampaign?         @relation("CommunicationCampaignOrigin", fields: [originCampaignId], references: [id], onDelete: SetNull)
+  derivedCampaigns CommunicationCampaign[]        @relation("CommunicationCampaignOrigin")
+  actionType       CommunicationActionType
+  scopeType        CommunicationScopeType
+  channel          CommunicationChannel
+  templateKey      CommunicationTemplateKey
+  status           CommunicationStatus            @default(draft)
+  title            String
+  subject          String?
+  message          String                         @db.Text
+  internalNote     String?                        @db.Text
+  scopeConfig      Json?
+  options          Json?
+  impactSummary    Json?
+  resultSummary    Json?
+  scheduledFor     DateTime?
+  executedAt       DateTime?
+  cancelledAt      DateTime?
   holidayGeneralId Int?
-  holidayGeneral  GeneralHoliday?         @relation(fields: [holidayGeneralId], references: [id], onDelete: SetNull)
-  holidayBarberId Int?
-  holidayBarber   BarberHoliday?          @relation(fields: [holidayBarberId], references: [id], onDelete: SetNull)
-  executions      CommunicationExecution[]
+  holidayGeneral   GeneralHoliday?                @relation(fields: [holidayGeneralId], references: [id], onDelete: SetNull)
+  holidayBarberId  Int?
+  holidayBarber    BarberHoliday?                 @relation(fields: [holidayBarberId], references: [id], onDelete: SetNull)
+  executions       CommunicationExecution[]
   recipientResults CommunicationRecipientResult[]
-  bookingClosures BookingClosure[]
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  bookingClosures  BookingClosure[]
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
 
   @@index([brandId, localId, status, createdAt])
   @@index([localId, scheduledFor, status])
@@ -1143,51 +1179,51 @@ model BookingClosure {
 }
 
 model CommunicationExecution {
-  id               String                      @id @default(cuid())
-  campaignId       String
-  campaign         CommunicationCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  localId          String
-  local            Location                    @relation(fields: [localId], references: [id], onDelete: Cascade)
+  id                String                         @id @default(cuid())
+  campaignId        String
+  campaign          CommunicationCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  localId           String
+  local             Location                       @relation(fields: [localId], references: [id], onDelete: Cascade)
   initiatedByUserId String?
-  initiatedByUser  User?                       @relation("CommunicationExecutionInitiatedBy", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
-  mode             CommunicationExecutionMode
-  idempotencyKey   String                      @db.VarChar(100)
-  status           CommunicationExecutionStatus @default(running)
-  startedAt        DateTime                    @default(now())
-  finishedAt       DateTime?
-  summary          Json?
-  errorMessage     String?                     @db.Text
-  recipientResults CommunicationRecipientResult[]
+  initiatedByUser   User?                          @relation("CommunicationExecutionInitiatedBy", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+  mode              CommunicationExecutionMode
+  idempotencyKey    String                         @db.VarChar(100)
+  status            CommunicationExecutionStatus   @default(running)
+  startedAt         DateTime                       @default(now())
+  finishedAt        DateTime?
+  summary           Json?
+  errorMessage      String?                        @db.Text
+  recipientResults  CommunicationRecipientResult[]
 
   @@unique([campaignId, idempotencyKey])
   @@index([localId, status, startedAt])
 }
 
 model CommunicationRecipientResult {
-  id                      String                     @id @default(cuid())
+  id                      String                       @id @default(cuid())
   campaignId              String
-  campaign                CommunicationCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign                CommunicationCampaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   executionId             String
-  execution               CommunicationExecution     @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution               CommunicationExecution       @relation(fields: [executionId], references: [id], onDelete: Cascade)
   localId                 String
-  local                   Location                   @relation(fields: [localId], references: [id], onDelete: Cascade)
+  local                   Location                     @relation(fields: [localId], references: [id], onDelete: Cascade)
   userId                  String?
-  user                    User?                      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user                    User?                        @relation(fields: [userId], references: [id], onDelete: SetNull)
   appointmentId           String?
-  appointment             Appointment?               @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  recipientKey            String                     @db.VarChar(191)
+  appointment             Appointment?                 @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  recipientKey            String                       @db.VarChar(191)
   recipientName           String?
   recipientEmail          String?
   recipientPhone          String?
   channel                 CommunicationChannel
   status                  CommunicationRecipientStatus
-  errorCode               String?                    @db.VarChar(100)
-  errorMessage            String?                    @db.Text
-  excludedAlreadyNotified Boolean                    @default(false)
-  cancelledAppointment    Boolean                    @default(false)
+  errorCode               String?                      @db.VarChar(100)
+  errorMessage            String?                      @db.Text
+  excludedAlreadyNotified Boolean                      @default(false)
+  cancelledAppointment    Boolean                      @default(false)
   notifiedAt              DateTime?
-  createdAt               DateTime                   @default(now())
-  updatedAt               DateTime                   @updatedAt
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
 
   @@index([localId, campaignId])
   @@index([executionId])
@@ -1435,31 +1471,31 @@ model ApiMetricEvent {
 }
 
 model CriticalTraceEvent {
-  id               BigInt   @id @default(autoincrement())
-  traceId          String   @db.VarChar(80)
-  category         String   @db.VarChar(40)
+  id               BigInt    @id @default(autoincrement())
+  traceId          String    @db.VarChar(80)
+  category         String    @db.VarChar(40)
   brandId          String
   localId          String
-  subdomain        String?  @db.VarChar(80)
+  subdomain        String?   @db.VarChar(80)
   userId           String?
-  userName         String?  @db.VarChar(160)
-  userEmail        String?  @db.VarChar(254)
-  stage            String   @db.VarChar(80)
-  level            String   @db.VarChar(16)
-  outcome          String   @db.VarChar(16)
-  path             String   @db.VarChar(300)
+  userName         String?   @db.VarChar(160)
+  userEmail        String?   @db.VarChar(254)
+  stage            String    @db.VarChar(80)
+  level            String    @db.VarChar(16)
+  outcome          String    @db.VarChar(16)
+  path             String    @db.VarChar(300)
   serviceId        String?
   barberId         String?
   appointmentId    String?
   selectedDateTime DateTime? @db.DateTime(3)
-  message          String?  @db.VarChar(1000)
-  errorName        String?  @db.VarChar(160)
-  errorCode        String?  @db.VarChar(160)
-  errorStack       String?  @db.Text
+  message          String?   @db.VarChar(1000)
+  errorName        String?   @db.VarChar(160)
+  errorCode        String?   @db.VarChar(160)
+  errorStack       String?   @db.Text
   metadata         Json?
-  userAgent        String?  @db.VarChar(500)
-  occurredAt       DateTime @db.DateTime(3)
-  createdAt        DateTime @default(now()) @db.DateTime(3)
+  userAgent        String?   @db.VarChar(500)
+  occurredAt       DateTime  @db.DateTime(3)
+  createdAt        DateTime  @default(now()) @db.DateTime(3)
 
   @@index([occurredAt])
   @@index([brandId, localId, occurredAt])
@@ -1468,6 +1504,63 @@ model CriticalTraceEvent {
   @@index([userId, occurredAt])
   @@index([outcome, occurredAt])
   @@map("critical_trace_events")
+}
+
+model NotificationDelivery {
+  id                      String                      @id @default(cuid())
+  brandId                 String
+  brand                   Brand                       @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  localId                 String
+  local                   Location                    @relation(fields: [localId], references: [id], onDelete: Cascade)
+  appointmentId           String?
+  appointment             Appointment?                @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  channel                 NotificationDeliveryChannel @default(email)
+  kind                    NotificationDeliveryKind
+  status                  NotificationDeliveryStatus  @default(pending)
+  idempotencyKeyHash      String                      @unique(map: "nd_idempotency_hash_key") @db.Char(64)
+  recipientAddress        String?                     @db.VarChar(254)
+  recipientName           String?                     @db.VarChar(191)
+  title                   String                      @db.VarChar(255)
+  payload                 Json?
+  correlationId           String?                     @db.VarChar(80)
+  attemptCount            Int                         @default(0)
+  maxAttempts             Int                         @default(5)
+  nextAttemptAt           DateTime?                    @db.DateTime(3)
+  processingStartedAt     DateTime?                    @db.DateTime(3)
+  providerMessageId       String?                     @db.VarChar(191)
+  lastErrorCode           String?                     @db.VarChar(100)
+  lastErrorMessage        String?                     @db.VarChar(500)
+  acceptedAt              DateTime?                    @db.DateTime(3)
+  failedAt                DateTime?                    @db.DateTime(3)
+  skippedAt               DateTime?                    @db.DateTime(3)
+  criticalTraceReportedAt DateTime?                    @db.DateTime(3)
+  redactedAt              DateTime?                    @db.DateTime(3)
+  attempts                NotificationDeliveryAttempt[]
+  createdAt               DateTime                     @default(now()) @db.DateTime(3)
+  updatedAt               DateTime                     @updatedAt @db.DateTime(3)
+
+  @@index([localId, status, channel, nextAttemptAt, createdAt], map: "nd_local_status_channel_due_idx")
+  @@index([brandId, status, channel, createdAt], map: "nd_brand_status_channel_created_idx")
+  @@index([status, redactedAt, createdAt], map: "nd_status_redacted_created_idx")
+  @@index([appointmentId, createdAt], map: "nd_appointment_created_idx")
+  @@index([createdAt], map: "nd_created_idx")
+  @@map("notification_deliveries")
+}
+
+model NotificationDeliveryAttempt {
+  id                BigInt                            @id @default(autoincrement())
+  deliveryId        String
+  delivery          NotificationDelivery               @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  attemptNumber     Int
+  status            NotificationDeliveryAttemptStatus
+  providerMessageId String?                           @db.VarChar(191)
+  errorCode         String?                           @db.VarChar(100)
+  errorMessage      String?                           @db.VarChar(500)
+  occurredAt        DateTime                          @default(now()) @db.DateTime(3)
+
+  @@unique([deliveryId, attemptNumber], map: "nda_delivery_attempt_key")
+  @@index([deliveryId, occurredAt], map: "nda_delivery_occurred_idx")
+  @@map("notification_delivery_attempts")
 }
 
 model ObservabilityPreference {

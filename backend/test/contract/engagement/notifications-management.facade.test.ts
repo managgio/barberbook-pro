@@ -4,23 +4,30 @@ import { NotificationsService } from '@/modules/notifications/notifications.serv
 import { EngagementNotificationManagementPort } from '@/contexts/engagement/ports/outbound/notification-management.port';
 
 const basePort = (): EngagementNotificationManagementPort => ({
-  sendAppointmentEmail: async () => undefined,
-  sendReferralRewardEmail: async () => undefined,
-  sendBroadcastEmail: async () => undefined,
-  sendReminderSms: async () => undefined,
+  sendAppointmentEmail: async () => ({ status: 'accepted' }),
+  sendReferralRewardEmail: async () => ({ status: 'accepted' }),
+  sendBroadcastEmail: async () => ({ status: 'accepted' }),
+  sendBroadcastSms: async () => ({ status: 'accepted' }),
+  sendBroadcastWhatsapp: async () => ({ status: 'accepted' }),
+  sendReminderSms: async () => ({ status: 'accepted' }),
   sendTestSms: async () => ({ success: true, sid: 'SM_BASE' }),
-  sendReminderWhatsapp: async () => undefined,
+  sendReminderWhatsapp: async () => ({ status: 'accepted' }),
   sendTestWhatsapp: async () => ({ success: true, sid: 'WA_BASE' }),
 });
 
 test('notifications facade delegates appointment email dispatch', async () => {
   const calls: Array<{ action: string; email: string | null | undefined }> = [];
-  const service = new NotificationsService({
-    ...basePort(),
-    sendAppointmentEmail: async (contact, _appointment, action) => {
-      calls.push({ action, email: contact.email });
-    },
-  });
+  const service = new NotificationsService(
+    basePort(),
+    {
+      enqueueAppointmentEmail: async (contact: any, _appointment: any, action: string) => {
+        calls.push({ action, email: contact.email });
+        return { id: 'delivery-1' };
+      },
+      dispatchDelivery: async () => ({ status: 'accepted' }),
+    } as any,
+    {} as any,
+  );
 
   await service.sendAppointmentEmail(
     { email: 'client@example.com', name: 'Client' },
@@ -35,13 +42,17 @@ test('notifications facade delegates appointment email dispatch', async () => {
 
 test('notifications facade delegates test sms dispatch', async () => {
   const calls: Array<{ phone: string; message: string | null | undefined }> = [];
-  const service = new NotificationsService({
-    ...basePort(),
-    sendTestSms: async (phone, message) => {
-      calls.push({ phone, message });
-      return { success: true, sid: 'SM_123' };
+  const service = new NotificationsService(
+    {
+      ...basePort(),
+      sendTestSms: async (phone, message) => {
+        calls.push({ phone, message });
+        return { success: true, sid: 'SM_123' };
+      },
     },
-  });
+    {} as any,
+    {} as any,
+  );
 
   const result = await service.sendTestSms('+34600111222', 'hola');
 

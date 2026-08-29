@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AppointmentsController } from '@/modules/appointments/appointments.controller';
 
 const createAppointmentPayload = {
@@ -123,6 +123,33 @@ test('create forces authenticated client bookings to self userId when omitted', 
   assert.equal(calls.create?.data.userId, 'client-1');
   assert.equal(calls.create?.context.actorUserId, null);
   assert.equal(calls.create?.context.requireConsent, true);
+});
+
+test('guest booking requires a valid email and forwards normalized structured contact', async () => {
+  const { controller, calls } = buildController({ user: null });
+
+  await assert.rejects(
+    () => controller.create(
+      { ...createAppointmentPayload, guestName: 'Invitado', guestEmail: 'no-es-email' } as any,
+      { headers: {} } as any,
+    ),
+    BadRequestException,
+  );
+
+  await controller.create(
+    {
+      ...createAppointmentPayload,
+      guestName: ' Invitada ',
+      guestEmail: ' Client@Example.COM ',
+      guestPhone: ' +34 600 000 000 ',
+    } as any,
+    { headers: {} } as any,
+  );
+
+  assert.equal(calls.create?.data.guestName, 'Invitada');
+  assert.equal(calls.create?.data.guestEmail, 'client@example.com');
+  assert.equal(calls.create?.data.guestPhone, '+34 600 000 000');
+  assert.equal(calls.create?.data.guestContact, 'client@example.com · +34 600 000 000');
 });
 
 test('update rejects client attempts to set non-cancelled status', async () => {

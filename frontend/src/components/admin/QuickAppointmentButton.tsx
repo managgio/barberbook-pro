@@ -23,6 +23,7 @@ import {
   fetchServiceCategoriesCached,
   fetchServicesCached,
 } from '@/lib/catalogQuery';
+import SlidingSegmentedControl from '@/components/ui/sliding-segmented-control';
 
 const QuickAppointmentButton: React.FC = () => {
   const { toast } = useToast();
@@ -437,37 +438,29 @@ const QuickAppointmentButton: React.FC = () => {
               {/* Client selection */}
               <div className="space-y-3">
                 <Label className="text-base text-foreground block">{t('quickAppointment.client.title')}</Label>
-                <div className="inline-flex rounded-2xl border border-border bg-muted/50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setUseGuest(false)}
-                    className={cn(
-                      'px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2',
-                      !useGuest
-                        ? 'bg-background text-foreground shadow'
-                        : 'text-muted-foreground'
-                    )}
-                  >
-                    <UserCircle2 className="w-4 h-4" />
-                    {t('quickAppointment.client.registered')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUseGuest(true);
-                      setSelectedClientId(null);
-                    }}
-                    className={cn(
-                      'px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2',
-                      useGuest
-                        ? 'bg-background text-foreground shadow'
-                        : 'text-muted-foreground'
-                    )}
-                  >
-                    <Plus className="w-4 h-4" />
-                    {t('quickAppointment.client.guest')}
-                  </button>
-                </div>
+                <SlidingSegmentedControl
+                  ariaLabel={t('quickAppointment.client.title')}
+                  className="rounded-2xl border-border bg-muted/50"
+                  optionClassName="rounded-xl px-4 py-2"
+                  value={useGuest ? 'guest' : 'registered'}
+                  onValueChange={(value) => {
+                    const nextUseGuest = value === 'guest';
+                    setUseGuest(nextUseGuest);
+                    if (nextUseGuest) setSelectedClientId(null);
+                  }}
+                  options={[
+                    {
+                      value: 'registered',
+                      label: t('quickAppointment.client.registered'),
+                      icon: <UserCircle2 className="h-4 w-4" />,
+                    },
+                    {
+                      value: 'guest',
+                      label: t('quickAppointment.client.guest'),
+                      icon: <Plus className="h-4 w-4" />,
+                    },
+                  ]}
+                />
 
                 {!useGuest ? (
                   <div className="space-y-3">

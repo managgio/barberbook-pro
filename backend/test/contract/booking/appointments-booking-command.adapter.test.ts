@@ -94,7 +94,7 @@ const buildAdapter = (overrides?: {
               findMany: async () => [],
               create: async (params: any) => {
                 overrides?.onCreate?.(params.data);
-                return createdAppointment;
+                return { ...createdAppointment, ...params.data };
               },
               update: async () => createdAppointment,
               delete: async () => undefined,
@@ -220,6 +220,51 @@ test('create appointment command adapter persists the earlier-slot opt-in', asyn
   } as any);
 
   assert.equal(persistedData?.earlierSlotRequested, true);
+});
+
+test('guest booking persists structured contact and queues confirmation inside the transaction', async () => {
+  let persistedData: any = null;
+  const queued: any[] = [];
+  const dispatched: string[] = [];
+  const adapter = buildAdapter({
+    onCreate: (data) => {
+      persistedData = data;
+    },
+    notificationsService: {
+      enqueueAppointmentEmailInTransaction: async (...args: any[]) => {
+        queued.push(args);
+        return { id: 'delivery-1' };
+      },
+      dispatchEmailDelivery: async (deliveryId: string) => {
+        dispatched.push(deliveryId);
+      },
+      sendAppointmentEmail: async () => {
+        throw new Error('legacy direct send must not run');
+      },
+    },
+  });
+
+  await adapter.createAppointment({
+    context: commandContext,
+    input: {
+      barberId: 'barber-1',
+      serviceId: 'service-1',
+      startDateTime: '2026-01-10T10:00:00.000Z',
+      guestName: 'Invitada',
+      guestEmail: 'INVITADA@example.com',
+      guestPhone: '+34 600 000 000',
+      privacyConsentGiven: true,
+    },
+    execution: { requireConsent: true },
+  } as any);
+
+  assert.equal(persistedData.guestEmail, 'invitada@example.com');
+  assert.equal(persistedData.guestPhone, '+34 600 000 000');
+  assert.equal(persistedData.guestContact, 'invitada@example.com · +34 600 000 000');
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0][0].email, 'invitada@example.com');
+  assert.equal(queued[0][3].idempotencyKey, 'appointment:appt-1:created');
+  assert.deepEqual(dispatched, ['delivery-1']);
 });
 
 test('remove appointment command adapter executes side effects, restocks and deletes', async () => {

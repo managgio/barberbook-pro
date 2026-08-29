@@ -1,10 +1,10 @@
-import { EngagementNotificationManagementPort } from '../../ports/outbound/notification-management.port';
+import { EngagementNotificationDeliveryQueuePort } from '../../ports/outbound/notification-delivery-queue.port';
 import { EngagementNotificationReminderPort } from '../../ports/outbound/notification-reminder.port';
 
 export class RunNotificationRemindersUseCase {
   constructor(
     private readonly reminderPort: EngagementNotificationReminderPort,
-    private readonly notificationManagementPort: EngagementNotificationManagementPort,
+    private readonly deliveryQueuePort: EngagementNotificationDeliveryQueuePort,
   ) {}
 
   async execute(params: { windowStart: Date; windowEnd: Date; smsEnabled: boolean; whatsappEnabled: boolean }) {
@@ -24,10 +24,20 @@ export class RunNotificationRemindersUseCase {
       }
 
       if (params.smsEnabled && reminder.allowSms) {
-        await this.notificationManagementPort.sendReminderSms(reminder.contact, reminder.appointment);
+        await this.deliveryQueuePort.queueReminder({
+          channel: 'sms',
+          appointmentId: reminder.appointmentId,
+          contact: reminder.contact,
+          appointment: reminder.appointment,
+        });
       }
       if (params.whatsappEnabled && reminder.allowWhatsapp) {
-        await this.notificationManagementPort.sendReminderWhatsapp(reminder.contact, reminder.appointment);
+        await this.deliveryQueuePort.queueReminder({
+          channel: 'whatsapp',
+          appointmentId: reminder.appointmentId,
+          contact: reminder.contact,
+          appointment: reminder.appointment,
+        });
       }
 
       await this.reminderPort.markReminderSent(reminder.appointmentId);

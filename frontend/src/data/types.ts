@@ -256,6 +256,8 @@ export interface Appointment {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  guestEmail?: string | null;
+  guestPhone?: string | null;
   notifyIfEarlierSlot?: boolean;
   earlierSlotNotificationSentAt?: string | null;
   earlierSlotNotificationCandidateAt?: string | null;
@@ -1007,6 +1009,7 @@ export type AdminSectionKey =
   | 'reviews'
   | 'alerts'
   | 'communications'
+  | 'email-deliveries'
   | 'holidays'
   | 'roles'
   | 'settings'
@@ -1202,6 +1205,8 @@ export interface CreateAppointmentPayload {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  guestEmail?: string;
+  guestPhone?: string;
   notifyIfEarlierSlot?: boolean;
   privacyConsentGiven?: boolean;
   referralAttributionId?: string;

@@ -4,8 +4,9 @@ import { SettingsTenantNotificationManagementAdapter } from '@/modules/notificat
 import { DEFAULT_SITE_SETTINGS } from '@/modules/settings/settings.types';
 import {
   describeEmailDeliveryError,
+  describeTwilioDeliveryError,
   maskEmailIdentity,
-} from '@/modules/notifications/email-delivery-diagnostic';
+} from '@/modules/notifications/notification-delivery-diagnostic';
 
 test('appointment email uses app timezone when formatting date/time', async () => {
   const sentMails: Array<{ text: string }> = [];
@@ -74,6 +75,26 @@ test('appointment email uses app timezone when formatting date/time', async () =
   assert.doesNotMatch(sentMails[0].text, /09:00/);
 });
 
+test('Twilio authentication failures are critical and never expose provider messages', () => {
+  const diagnostic = describeTwilioDeliveryError(
+    { code: 20003, status: 401, message: 'Authenticate with secret token abc123' },
+    'sms',
+  );
+
+  assert.equal(diagnostic.code, 'TWILIO_AUTH_FAILED');
+  assert.equal(diagnostic.retryable, false);
+  assert.equal(diagnostic.critical, true);
+  assert.doesNotMatch(diagnostic.safeMessage, /abc123/);
+});
+
+test('Twilio opted-out recipients fail without retry or critical promotion', () => {
+  const diagnostic = describeTwilioDeliveryError({ code: 21610 }, 'whatsapp');
+
+  assert.equal(diagnostic.code, 'RECIPIENT_OPTED_OUT');
+  assert.equal(diagnostic.retryable, false);
+  assert.equal(diagnostic.critical, false);
+});
+
 test('email transporter cache is isolated by local and refreshed when SMTP credentials change', async () => {
   let localId = 'local-1';
   let password = 'secret-1';
@@ -123,4 +144,41 @@ test('SMTP 535 is classified as sender authentication failure without exposing c
   assert.match(diagnostic.safeMessage, /sender credentials or app password/);
   assert.doesNotMatch(diagnostic.safeMessage, /Username and Password not accepted/);
   assert.equal(maskEmailIdentity('sender@example.com'), 's***@example.com');
+});
+
+test('SMTP rejected recipients are not reported as accepted deliveries', async () => {
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    { getSettings: async () => DEFAULT_SITE_SETTINGS } as any,
+    {
+      getEffectiveConfig: async () => ({
+        notificationPrefs: { email: true },
+        email: { user: 'sender@example.com', password: 'secret' },
+      }),
+    } as any,
+    {} as any,
+    {
+      createTransport: () => ({
+        sendMail: async () => ({
+          messageId: 'smtp-message-1',
+          accepted: [],
+          rejected: ['client@example.com'],
+        }),
+      }),
+    } as any,
+    {} as any,
+    { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
+  );
+
+  const result = await adapter.sendBroadcastEmail({
+    contact: { email: 'client@example.com' },
+    subject: 'Aviso',
+    message: 'Mensaje',
+  });
+
+  assert.equal(result.status, 'failed');
+  if (result.status === 'failed') {
+    assert.equal(result.code, 'EMAIL_RECIPIENT_REJECTED');
+    assert.equal(result.retryable, false);
+    assert.equal(result.critical, false);
+  }
 });

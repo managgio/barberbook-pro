@@ -39,8 +39,9 @@ test('earlier-slot adapter scopes candidates, claims one atomically and sends th
     } as any,
     { execute: async () => ['10:00'] } as any,
     {
-      sendBroadcastEmail: async (payload: any) => {
-        emails.push(payload);
+      queueBroadcastEmail: async (payload: any, options: any) => {
+        emails.push({ ...payload, options });
+        return { deliveryId: 'delivery-1', result: { status: 'accepted' } };
       },
     } as any,
     {
@@ -68,4 +69,7 @@ test('earlier-slot adapter scopes candidates, claims one atomically and sends th
   assert.equal(emails.length, 1);
   assert.equal(emails[0].contact.email, 'ana@example.test');
   assert.match(emails[0].message, /no queda reservado automáticamente/i);
+  assert.equal(emails[0].options.appointmentId, 'appointment-target');
+  assert.equal(emails[0].options.kind, 'earlier_slot');
+  assert.match(emails[0].options.idempotencyKey, /appointment-target:earlier-slot/);
 });

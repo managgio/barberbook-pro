@@ -13,9 +13,10 @@ import { PlatformAdminGuard } from '../platform-admin/platform-admin.guard';
 import { AuthModule } from '../../auth/auth.module';
 import { PrismaPaymentLifecycleAdapter } from './adapters/prisma-payment-lifecycle.adapter';
 import { PrismaStripePaymentManagementAdapter } from './adapters/prisma-stripe-payment-management.adapter';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [AppointmentsModule, TenancyModule, AuthModule, CommerceStripePaymentGatewayModule],
+  imports: [AppointmentsModule, TenancyModule, AuthModule, CommerceStripePaymentGatewayModule, NotificationsModule],
   providers: [
     PrismaPaymentLifecycleAdapter,
     PrismaStripePaymentManagementAdapter,

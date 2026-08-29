@@ -15,6 +15,8 @@ export type CommerceCreateOnlinePaymentCheckoutInput = {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  guestEmail?: string;
+  guestPhone?: string;
   notifyIfEarlierSlot?: boolean;
   privacyConsentGiven?: boolean;
   referralAttributionId?: string;

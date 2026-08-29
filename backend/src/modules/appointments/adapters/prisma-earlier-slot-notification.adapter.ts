@@ -8,14 +8,9 @@ import { findFirstEarlierSlot } from '../../../contexts/booking/domain/services/
 import { NotificationsService } from '../../notifications/notifications.service';
 import { SettingsService } from '../../settings/settings.service';
 import { CLOCK_PORT, ClockPort } from '../../../shared/application/clock.port';
+import { parseGuestContact } from '../../../shared/domain/guest-contact';
 
 const CANDIDATE_BATCH_SIZE = 50;
-
-const parseGuestEmail = (contact?: string | null) =>
-  contact
-    ?.split('·')
-    .map((value) => value.trim())
-    .find((value) => value.includes('@')) || null;
 
 @Injectable()
 export class PrismaEarlierSlotNotificationAdapter implements EarlierSlotNotificationPort {
@@ -60,7 +55,7 @@ export class PrismaEarlierSlotNotificationAdapter implements EarlierSlotNotifica
     const slotsByService = new Map<string, string[]>();
 
     for (const candidate of candidates) {
-      const email = candidate.user?.email || parseGuestEmail(candidate.guestContact);
+      const email = candidate.user?.email || parseGuestContact(candidate).email;
       if (!email) continue;
 
       let availableSlots = slotsByService.get(candidate.serviceId);
@@ -108,18 +103,26 @@ export class PrismaEarlierSlotNotificationAdapter implements EarlierSlotNotifica
           dateStyle: 'full',
           timeStyle: 'short',
         }).format(availableStart);
-        await this.notificationsService.sendBroadcastEmail({
-          contact: {
-            email,
-            name: candidate.user?.name || candidate.guestName || null,
+        await this.notificationsService.queueBroadcastEmail(
+          {
+            contact: {
+              email,
+              name: candidate.user?.name || candidate.guestName || null,
+            },
+            subject: 'Se ha quedado un hueco libre antes de tu cita',
+            message: [
+              `Hay una cita disponible el ${formattedSlot}.`,
+              'Es compatible con el servicio de tu reserva actual.',
+              'Si quieres adelantarla, entra en la web o contacta con el establecimiento cuanto antes. El hueco no queda reservado automáticamente.',
+            ].join('\n\n'),
           },
-          subject: 'Se ha quedado un hueco libre antes de tu cita',
-          message: [
-            `Hay una cita disponible el ${formattedSlot}.`,
-            'Es compatible con el servicio de tu reserva actual.',
-            'Si quieres adelantarla, entra en la web o contacta con el establecimiento cuanto antes. El hueco no queda reservado automáticamente.',
-          ].join('\n\n'),
-        });
+          {
+            kind: 'earlier_slot',
+            appointmentId: candidate.id,
+            idempotencyKey: `appointment:${candidate.id}:earlier-slot:${availableStart.toISOString()}`,
+            correlationId: command.context.correlationId,
+          },
+        );
         return true;
       } catch (error) {
         await this.prisma.appointment.updateMany({

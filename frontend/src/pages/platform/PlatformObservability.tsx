@@ -39,6 +39,12 @@ import {
 import { isApiRequestError } from '@/lib/networkErrors';
 import { queryKeys } from '@/lib/queryKeys';
 import { formatCriticalTraceBreadcrumbs } from '@/lib/criticalTracePresentation';
+import { NotificationDeliveryHistoryPanel } from '@/components/notification-deliveries/NotificationDeliveryHistoryPanel';
+import type { DeliveryTableFilters } from '@/components/notification-deliveries/NotificationDeliveryList';
+import {
+  getPlatformNotificationDeliveries,
+  getPlatformNotificationDeliveryFilters,
+} from '@/data/api/notificationDeliveries';
 
 const WINDOWS = [
   { label: '60 min', value: 60 },
@@ -54,6 +60,14 @@ const WEB_VITAL_LEGEND = [
   { name: 'FCP', description: 'Momento en que aparece el primer contenido en pantalla.' },
   { name: 'TTFB', description: 'Tiempo hasta recibir el primer byte de respuesta del servidor.' },
 ] as const;
+
+const initialDeliveryFilters: DeliveryTableFilters = {
+  status: 'all',
+  kind: 'all',
+  channel: 'all',
+  brandId: 'all',
+  localId: 'all',
+};
 
 const formatMs = (value: number) => `${value.toFixed(0)} ms`;
 const formatPct = (value: number) => `${value.toFixed(2)}%`;
@@ -533,6 +547,8 @@ const PlatformObservability: React.FC = () => {
   const [windowMinutes, setWindowMinutes] = useState<number>(60);
   const [showIssuesOnly, setShowIssuesOnly] = useState<boolean>(true);
   const [criticalTracePage, setCriticalTracePage] = useState(1);
+  const [deliveryPage, setDeliveryPage] = useState(1);
+  const [deliveryFilters, setDeliveryFilters] = useState<DeliveryTableFilters>(initialDeliveryFilters);
   const criticalTracePageSize = 25;
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const { toast } = useToast();
@@ -571,6 +587,27 @@ const PlatformObservability: React.FC = () => {
     },
   });
 
+  const deliveryFilterOptionsQuery = useQuery({
+    queryKey: queryKeys.platformNotificationDeliveryFilters(),
+    queryFn: getPlatformNotificationDeliveryFilters,
+    staleTime: 60_000,
+  });
+
+  const notificationDeliveriesQuery = useQuery({
+    queryKey: queryKeys.platformNotificationDeliveries(deliveryPage, deliveryFilters),
+    queryFn: () => getPlatformNotificationDeliveries({
+      page: deliveryPage,
+      pageSize: 25,
+      status: deliveryFilters.status === 'all' ? undefined : deliveryFilters.status,
+      kind: deliveryFilters.kind === 'all' ? undefined : deliveryFilters.kind,
+      channel: deliveryFilters.channel === 'all' ? undefined : deliveryFilters.channel,
+      brandId: deliveryFilters.brandId === 'all' ? undefined : deliveryFilters.brandId,
+      localId: deliveryFilters.localId === 'all' ? undefined : deliveryFilters.localId,
+    }),
+    staleTime: 15_000,
+    placeholderData: (previous) => previous,
+  });
+
   const i18nQuery = useQuery<PlatformI18nObservabilitySummary>({
     queryKey: queryKeys.platformObservabilityI18n(windowMinutes),
     queryFn: () => getPlatformI18nObservabilitySummary(windowMinutes),
@@ -590,7 +627,37 @@ const PlatformObservability: React.FC = () => {
     },
   });
 
-  const isRefreshing = webVitalsQuery.isFetching || apiQuery.isFetching || i18nQuery.isFetching || criticalTracesQuery.isFetching;
+  const isRefreshing = webVitalsQuery.isFetching || apiQuery.isFetching || i18nQuery.isFetching || criticalTracesQuery.isFetching || notificationDeliveriesQuery.isFetching;
+
+  const deliveryBrandOptions = useMemo(() => [
+    { value: 'all', label: 'Todos los tenants' },
+    ...(deliveryFilterOptionsQuery.data || []).map((brand) => ({ value: brand.id, label: brand.name })),
+  ], [deliveryFilterOptionsQuery.data]);
+
+  const deliveryLocalOptions = useMemo(() => {
+    const brands = deliveryFilterOptionsQuery.data || [];
+    const visibleBrands = deliveryFilters.brandId === 'all'
+      ? brands
+      : brands.filter((brand) => brand.id === deliveryFilters.brandId);
+    return [
+      { value: 'all', label: 'Todos los locales' },
+      ...visibleBrands.flatMap((brand) => (brand.locations || []).map((local) => ({
+        value: local.id,
+        label: deliveryFilters.brandId === 'all' ? `${brand.name} - ${local.name}` : local.name,
+      }))),
+    ];
+  }, [deliveryFilterOptionsQuery.data, deliveryFilters.brandId]);
+
+  const handleDeliveryFilterChange = <K extends keyof DeliveryTableFilters>(
+    key: K,
+    value: DeliveryTableFilters[K],
+  ) => {
+    setDeliveryFilters((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === 'brandId' ? { localId: 'all' } : {}),
+    }));
+  };
 
   const webVitalRows = useMemo(
     () =>
@@ -689,7 +756,7 @@ const PlatformObservability: React.FC = () => {
           <Button
             variant="outline"
             onClick={() => {
-              void Promise.all([webVitalsQuery.refetch(), apiQuery.refetch(), i18nQuery.refetch(), criticalTracesQuery.refetch()]);
+              void Promise.all([webVitalsQuery.refetch(), apiQuery.refetch(), i18nQuery.refetch(), criticalTracesQuery.refetch(), notificationDeliveriesQuery.refetch()]);
             }}
             disabled={isRefreshing}
           >
@@ -803,8 +870,8 @@ const PlatformObservability: React.FC = () => {
               <CardTitle className="flex items-center gap-2">
                 Trazas críticas
                 <CardInfoTooltip label="Qué muestra la tabla de trazas críticas">
-                  Centraliza circuitos críticos de la plataforma. Actualmente registra reservas y está preparada para
-                  incorporar nuevas áreas sin crear tablas o pantallas independientes.
+                  Centraliza circuitos críticos de la plataforma. Los fallos graves o agotados del correo se promueven
+                  aquí, mientras el historial operativo completo permanece en el panel inferior.
                 </CardInfoTooltip>
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -862,6 +929,22 @@ const PlatformObservability: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      <NotificationDeliveryHistoryPanel
+        title="Incidencias de envíos de todos los tenants"
+        description="Seguimiento de correo, SMS y WhatsApp. Solo los fallos graves o definitivamente agotados generan una traza crítica."
+        data={notificationDeliveriesQuery.data}
+        isLoading={notificationDeliveriesQuery.isLoading}
+        isFetching={notificationDeliveriesQuery.isFetching}
+        error={notificationDeliveriesQuery.error}
+        filters={deliveryFilters}
+        brandOptions={deliveryBrandOptions}
+        localOptions={deliveryLocalOptions}
+        showTenant
+        onFilterChange={handleDeliveryFilterChange}
+        onPageChange={setDeliveryPage}
+        onRefresh={() => void notificationDeliveriesQuery.refetch()}
+      />
 
       <Card className="flex min-w-0 flex-col">
         <CardHeader className="space-y-4">

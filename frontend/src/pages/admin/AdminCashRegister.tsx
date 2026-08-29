@@ -55,6 +55,7 @@ import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
+import SlidingSegmentedControl from '@/components/ui/sliding-segmented-control';
 
 const PAYMENT_METHOD_KEYS: Record<PaymentMethod | 'unknown', string> = {
   cash: 'admin.common.paymentMethod.cash',
@@ -923,24 +924,15 @@ const AdminCashRegister: React.FC = () => {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>{t('admin.cashRegister.movements.title')}</CardTitle>
             {productsEnabled && (
-              <div className="inline-flex rounded-lg border border-border/70 bg-muted/20 p-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={movementMode === 'manual' ? 'default' : 'ghost'}
-                  onClick={() => setMovementMode('manual')}
-                >
-                  {t('admin.cashRegister.movements.mode.manual')}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={movementMode === 'products' ? 'default' : 'ghost'}
-                  onClick={() => setMovementMode('products')}
-                >
-                  {t('admin.cashRegister.movements.mode.products')}
-                </Button>
-              </div>
+              <SlidingSegmentedControl
+                ariaLabel={t('admin.cashRegister.movements.title')}
+                value={movementMode}
+                onValueChange={(value) => setMovementMode(value as 'manual' | 'products')}
+                options={[
+                  { value: 'manual', label: t('admin.cashRegister.movements.mode.manual') },
+                  { value: 'products', label: t('admin.cashRegister.movements.mode.products') },
+                ]}
+              />
             )}
           </div>
           <p className="text-sm text-muted-foreground">

@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { RunNotificationRemindersUseCase } from '@/contexts/engagement/application/use-cases/run-notification-reminders.use-case';
-import { EngagementNotificationManagementPort } from '@/contexts/engagement/ports/outbound/notification-management.port';
+import { EngagementNotificationDeliveryQueuePort } from '@/contexts/engagement/ports/outbound/notification-delivery-queue.port';
 import {
   EngagementNotificationReminderPort,
   EngagementPendingReminder,
@@ -12,14 +12,8 @@ const baseReminderPort = (reminders: EngagementPendingReminder[]): EngagementNot
   markReminderSent: async () => undefined,
 });
 
-const baseNotificationPort = (): EngagementNotificationManagementPort => ({
-  sendAppointmentEmail: async () => undefined,
-  sendReferralRewardEmail: async () => undefined,
-  sendBroadcastEmail: async () => undefined,
-  sendReminderSms: async () => undefined,
-  sendTestSms: async () => ({ success: true, sid: 'sms' }),
-  sendReminderWhatsapp: async () => undefined,
-  sendTestWhatsapp: async () => ({ success: true, sid: 'wa' }),
+const baseDeliveryQueuePort = (): EngagementNotificationDeliveryQueuePort => ({
+  queueReminder: async () => undefined,
 });
 
 test('run notification reminders short-circuits when channels are disabled', async () => {
@@ -31,7 +25,7 @@ test('run notification reminders short-circuits when channels are disabled', asy
     },
     markReminderSent: async () => undefined,
   };
-  const useCase = new RunNotificationRemindersUseCase(reminderPort, baseNotificationPort());
+  const useCase = new RunNotificationRemindersUseCase(reminderPort, baseDeliveryQueuePort());
 
   const result = await useCase.execute({
     windowStart: new Date('2026-03-07T10:00:00.000Z'),
@@ -62,16 +56,12 @@ test('run notification reminders sends enabled channels and marks reminder', asy
       marked.push(appointmentId);
     },
   };
-  const notificationPort: EngagementNotificationManagementPort = {
-    ...baseNotificationPort(),
-    sendReminderSms: async () => {
-      sent.push('sms');
-    },
-    sendReminderWhatsapp: async () => {
-      sent.push('whatsapp');
+  const deliveryQueuePort: EngagementNotificationDeliveryQueuePort = {
+    queueReminder: async ({ channel }) => {
+      sent.push(channel);
     },
   };
-  const useCase = new RunNotificationRemindersUseCase(reminderPort, notificationPort);
+  const useCase = new RunNotificationRemindersUseCase(reminderPort, deliveryQueuePort);
 
   const result = await useCase.execute({
     windowStart: new Date('2026-03-07T10:00:00.000Z'),
@@ -103,16 +93,12 @@ test('run notification reminders skips reminder when contact permissions are dis
       marked.push(appointmentId);
     },
   };
-  const notificationPort: EngagementNotificationManagementPort = {
-    ...baseNotificationPort(),
-    sendReminderSms: async () => {
-      sent.push('sms');
-    },
-    sendReminderWhatsapp: async () => {
-      sent.push('whatsapp');
+  const deliveryQueuePort: EngagementNotificationDeliveryQueuePort = {
+    queueReminder: async ({ channel }) => {
+      sent.push(channel);
     },
   };
-  const useCase = new RunNotificationRemindersUseCase(reminderPort, notificationPort);
+  const useCase = new RunNotificationRemindersUseCase(reminderPort, deliveryQueuePort);
 
   const result = await useCase.execute({
     windowStart: new Date('2026-03-07T10:00:00.000Z'),

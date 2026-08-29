@@ -50,7 +50,24 @@ Una cita puede solicitar aviso si aparece un hueco anterior. La preferencia est�
 
 ## Notificaciones
 
-Los casos de uso consumen puertos de engagement; los adapters resuelven configuración efectiva por tenant. Los fallos de proveedor no deben corromper el estado de la cita. En procesos masivos sí se registra por destinatario si fue enviado, falló, fue excluido o se canceló su cita.
+Los casos de uso consumen puertos de engagement; los adapters resuelven configuración efectiva por tenant. Los fallos de proveedor no deben corromper el estado de la cita.
+
+Las notificaciones usan una outbox multicanal tenant-scoped:
+
+1. la creación, edición, cancelación o confirmación de pago guarda el correo en la misma transacción que el cambio de la cita;
+2. correo, SMS y WhatsApp se envían después del commit o desde trabajos tenant-scoped, nunca dentro de una transacción de negocio larga;
+3. una clave de idempotencia estable evita duplicados;
+4. los fallos transitorios se reintentan con backoff y lotes acotados;
+5. los rechazos definitivos quedan visibles, pero no generan ruido crítico global;
+6. los fallos graves de configuración y los transitorios que agotan reintentos se promueven a trazas críticas.
+
+`accepted` significa que SMTP o Twilio aceptaron la solicitud. No equivale a lectura ni a entrega final si el proveedor no ofrece webhooks de eventos. El historial tenant muestra solo incidencias de métodos habilitados, destinatario enmascarado, código seguro, intentos y acción manual de reintento. Platform dispone de la vista cross-tenant paginada y filtrable por método, tenant y local, siempre protegida por `PlatformAdminGuard`.
+
+Los recordatorios y comunicados de SMS/WhatsApp pasan por la misma outbox. Marcar un recordatorio como procesado significa que quedó persistido de forma durable; sus reintentos posteriores son responsabilidad del worker. La retención anonimiza datos personales una vez dejan de ser operativamente útiles.
+
+Las reservas de invitado guardan `guestEmail` y `guestPhone` por separado. `guestContact` se conserva temporalmente como puente de compatibilidad y la migración rellena los campos estructurados desde los datos existentes.
+
+En procesos masivos también se registra por destinatario si fue enviado, falló, fue excluido o se canceló su cita.
 
 ## Pruebas críticas
 
@@ -61,3 +78,5 @@ Los casos de uso consumen puertos de engagement; los adapters resuelven configur
 - invitados y contactos inválidos;
 - cancelación de todas las citas aunque el cliente estuviera notificado;
 - expiración/deduplicación de avisos de hueco.
+- outbox multicanal idempotente, backoff, clasificación SMTP/Twilio, retención y promoción crítica;
+- contacto estructurado de invitados y confirmación después de pago Stripe.

@@ -30,7 +30,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -54,12 +54,15 @@ import {
 } from '@/data/adminSections';
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
 import MarkdownContent from '@/components/common/MarkdownContent';
+import PlatformBrandTabsNav from '@/components/platform/PlatformBrandTabsNav';
+import {
+  PLATFORM_BRAND_TABS,
+  type PlatformBrandTab,
+} from '@/components/platform/platformBrandTabs';
 
 const PLATFORM_BRAND_STORAGE_KEY = 'platform:brands:selected';
 const PLATFORM_TAB_STORAGE_KEY = 'platform:brands:tab';
-const PLATFORM_BRAND_TABS = ['datos', 'locales', 'admins', 'sidebar', 'landing', 'config', 'idiomas', 'legal'] as const;
 const LOCATION_SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-type PlatformBrandTab = (typeof PLATFORM_BRAND_TABS)[number];
 type JsonRecord = Record<string, unknown>;
 
 interface PlatformAdmin {
@@ -2979,16 +2982,7 @@ const PlatformBrands: React.FC = () => {
               className="space-y-6"
             >
               <div className="sticky top-0 z-10 -mx-6 border-b border-border/60 bg-card px-6 py-3 shadow-[0_10px_24px_-20px_hsl(var(--background)/0.9)]">
-                <TabsList className="scrollbar-none flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto sm:grid sm:grid-cols-8 sm:justify-center sm:overflow-visible">
-                  <TabsTrigger value="datos">Datos</TabsTrigger>
-                  <TabsTrigger value="locales">Locales</TabsTrigger>
-                  <TabsTrigger value="admins">Admins</TabsTrigger>
-                  <TabsTrigger value="sidebar">Sidebar</TabsTrigger>
-                  <TabsTrigger value="landing">Landing</TabsTrigger>
-                  <TabsTrigger value="config">Config</TabsTrigger>
-                  <TabsTrigger value="idiomas">Idiomas</TabsTrigger>
-                  <TabsTrigger value="legal">Legal</TabsTrigger>
-                </TabsList>
+                <PlatformBrandTabsNav activeTab={activeTab} />
               </div>
 
               <TabsContent value="datos" className="space-y-6">

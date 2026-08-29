@@ -12,6 +12,7 @@ import { ObservabilityService } from '../observability/observability.service';
 import { PlatformI18nObservabilityService } from './platform-i18n-observability.service';
 import { PauseTenantI18nDto } from './dto/pause-tenant-i18n.dto';
 import { UpdateCriticalTraceObservabilityDto } from './dto/update-critical-trace-observability.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Controller('platform')
 @UseGuards(PlatformAdminGuard)
@@ -20,6 +21,7 @@ export class PlatformAdminController {
     private readonly platformService: PlatformAdminService,
     private readonly observability: ObservabilityService,
     private readonly i18nObservability: PlatformI18nObservabilityService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private parseWindowMinutes(raw?: string) {
@@ -76,6 +78,52 @@ export class PlatformAdminController {
   @Patch('observability/critical-traces/preferences')
   updateCriticalTracePreferences(@Body() body: UpdateCriticalTraceObservabilityDto) {
     return this.observability.setCriticalTracePdfInclusion(body.includeInPdf);
+  }
+
+  @Get('observability/deliveries')
+  getDeliveryOverview(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
+    @Query('kind') kind?: string,
+    @Query('brandId') brandId?: string,
+    @Query('localId') localId?: string,
+    @Query('channel') channel?: string,
+  ) {
+    return this.notifications.listPlatformNotificationDeliveries({
+      page: Math.max(1, Math.floor(Number(page) || 1)),
+      pageSize: Math.min(100, Math.max(10, Math.floor(Number(pageSize) || 25))),
+      status,
+      kind,
+      brandId,
+      localId,
+      channel,
+    });
+  }
+
+  @Get('observability/delivery-filters')
+  getDeliveryFilterOptions() {
+    return this.notifications.listPlatformNotificationDeliveryFilters();
+  }
+
+  @Get('observability/email-deliveries')
+  getLegacyEmailDeliveryOverview(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
+    @Query('kind') kind?: string,
+    @Query('brandId') brandId?: string,
+    @Query('localId') localId?: string,
+  ) {
+    return this.notifications.listPlatformNotificationDeliveries({
+      page: Math.max(1, Math.floor(Number(page) || 1)),
+      pageSize: Math.min(100, Math.max(10, Math.floor(Number(pageSize) || 25))),
+      status,
+      kind,
+      brandId,
+      localId,
+      channel: 'email',
+    });
   }
 
   @Get('observability/i18n')

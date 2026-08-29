@@ -10,6 +10,8 @@ export type UpdateAppointmentInput = {
   notes?: string;
   guestName?: string;
   guestContact?: string;
+  guestEmail?: string;
+  guestPhone?: string;
   price?: number;
   paymentMethod?: string | null;
   referralAttributionId?: string | null;

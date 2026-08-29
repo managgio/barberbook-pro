@@ -10,6 +10,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { mapAppointment } from '../appointments.mapper';
+import { parseGuestContact } from '../../../shared/domain/guest-contact';
 
 const DEFAULT_SERVICE_DURATION = 30;
 const CONFIRMATION_GRACE_MS = 60 * 1000;
@@ -107,12 +108,17 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
     return updatedCount;
   }
 
-  private getContact(user: any, guestName?: string | null, guestContact?: string | null) {
-    const emailCandidate = user?.email || (guestContact?.includes('@') ? guestContact : null);
-    const phoneCandidate = user?.phone || (!guestContact?.includes('@') ? guestContact : null);
+  private getContact(
+    user: any,
+    guestName?: string | null,
+    guestContact?: string | null,
+    guestEmail?: string | null,
+    guestPhone?: string | null,
+  ) {
+    const structuredGuestContact = parseGuestContact({ guestContact, guestEmail, guestPhone });
     return {
-      email: emailCandidate || null,
-      phone: phoneCandidate || null,
+      email: user?.email || structuredGuestContact.email,
+      phone: user?.phone || structuredGuestContact.phone,
       name: user?.name || guestName || null,
     };
   }
@@ -154,6 +160,8 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
         OR: [
           { guestName: { not: null } },
           { guestContact: { not: null } },
+          { guestEmail: { not: null } },
+          { guestPhone: { not: null } },
           { notes: { not: null } },
         ],
       },
@@ -169,7 +177,13 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
     });
     if (!appointment) return;
 
-    const contact = this.getContact(appointment.user, appointment.guestName, appointment.guestContact);
+    const contact = this.getContact(
+      appointment.user,
+      appointment.guestName,
+      appointment.guestContact,
+      appointment.guestEmail,
+      appointment.guestPhone,
+    );
     const allowEmail = appointment.user ? appointment.user.notificationEmail !== false : true;
     if (!allowEmail) return;
 
@@ -181,6 +195,10 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
         barberName: appointment.barber?.name,
       },
       'creada',
+      {
+        appointmentId: appointment.id,
+        idempotencyKey: `appointment:${appointment.id}:created`,
+      },
     );
   }
 
@@ -201,6 +219,8 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
       data: {
         guestName: shouldRedactGuest ? ANONYMIZED_NAME : existing.guestName,
         guestContact: shouldRedactGuest ? buildAnonymizedContact(params.appointmentId) : existing.guestContact,
+        guestEmail: shouldRedactGuest ? buildAnonymizedContact(params.appointmentId) : existing.guestEmail,
+        guestPhone: shouldRedactGuest ? null : existing.guestPhone,
         notes: null,
         anonymizedAt: new Date(),
       },

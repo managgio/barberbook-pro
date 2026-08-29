@@ -10,6 +10,7 @@ import { BarbersService } from '../../barbers/barbers.service';
 import { LegalService } from '../../legal/legal.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { mapAppointment } from '../appointments.mapper';
+import { buildLegacyGuestContact, parseGuestContact } from '../../../shared/domain/guest-contact';
 import { CreateAppointmentCommand } from '../../../contexts/booking/application/commands/create-appointment.command';
 import { RemoveAppointmentCommand } from '../../../contexts/booking/application/commands/remove-appointment.command';
 import { UpdateAppointmentCommand } from '../../../contexts/booking/application/commands/update-appointment.command';
@@ -308,18 +309,29 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     }
   }
 
-  private getContact(user: any, guestName?: string | null, guestContact?: string | null) {
-    const emailCandidate = user?.email || (guestContact?.includes('@') ? guestContact : null);
-    const phoneCandidate = user?.phone || (!guestContact?.includes('@') ? guestContact : null);
+  private getContact(
+    user: any,
+    guestName?: string | null,
+    guestContact?: string | null,
+    guestEmail?: string | null,
+    guestPhone?: string | null,
+  ) {
+    const structuredGuestContact = parseGuestContact({ guestContact, guestEmail, guestPhone });
     return {
-      email: emailCandidate || null,
-      phone: phoneCandidate || null,
+      email: user?.email || structuredGuestContact.email,
+      phone: user?.phone || structuredGuestContact.phone,
       name: user?.name || guestName || null,
     };
   }
 
   private async notifyAppointment(appointment: AppointmentWithRelations, action: 'creada' | 'actualizada' | 'cancelada') {
-    const contact = this.getContact(appointment.user, appointment.guestName, appointment.guestContact);
+    const contact = this.getContact(
+      appointment.user,
+      appointment.guestName,
+      appointment.guestContact,
+      appointment.guestEmail,
+      appointment.guestPhone,
+    );
     const allowEmail = appointment.user ? appointment.user.notificationEmail !== false : true;
     if (allowEmail) {
       await this.notificationsService.sendAppointmentEmail(
@@ -340,6 +352,8 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
 
   private async createAppointmentWithPrisma(command: CreateAppointmentCommand): Promise<unknown> {
     const data = command.input;
+    const structuredGuestContact = parseGuestContact(data);
+    const legacyGuestContact = data.guestContact?.trim() || buildLegacyGuestContact(structuredGuestContact);
     const requireConsent = command.execution?.requireConsent !== false;
     let consentRequired = requireConsent;
     if (requireConsent && data.userId) {
@@ -408,7 +422,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       : await this.engagementReferralAttributionPort.resolveAttributionForBooking({
           referralAttributionId: data.referralAttributionId ?? null,
           userId: data.userId ?? null,
-          guestContact: data.guestContact ?? null,
+          guestContact: legacyGuestContact,
         });
     const productSelection = await this.resolveProductSelection(localId, requestedProducts, {
       allowInactive: isAdminActor,
@@ -456,6 +470,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const paymentCurrency = paymentContext?.currency || DEFAULT_CURRENCY;
 
     let appointment: AppointmentWithRelations;
+    let queuedEmailDeliveryId: string | null = null;
     try {
       appointment = await this.prisma.$transaction(
         async (tx) => {
@@ -509,7 +524,9 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               status: nextStatus,
               notes: data.notes,
               guestName: data.guestName,
-              guestContact: data.guestContact,
+              guestContact: legacyGuestContact,
+              guestEmail: structuredGuestContact.email,
+              guestPhone: structuredGuestContact.phone,
               earlierSlotRequested: data.notifyIfEarlierSlot === true,
               reminderSent: false,
               products: productSelection.items.length > 0
@@ -530,7 +547,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               attributionId: referralAttribution.id,
               appointmentId: created.id,
               userId: data.userId ?? null,
-              guestContact: data.guestContact ?? null,
+              guestContact: legacyGuestContact,
               tx,
             });
           }
@@ -560,6 +577,35 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
             );
           }
 
+          if (!command.execution?.skipNotifications && paymentStatus !== PaymentStatus.pending) {
+            const contact = this.getContact(
+              created.user,
+              created.guestName,
+              created.guestContact,
+              created.guestEmail,
+              created.guestPhone,
+            );
+            const allowEmail = created.user ? created.user.notificationEmail !== false : true;
+            if (allowEmail && this.notificationsService.enqueueAppointmentEmailInTransaction) {
+              const queued = await this.notificationsService.enqueueAppointmentEmailInTransaction(
+                contact,
+                {
+                  date: created.startDateTime,
+                  serviceName: created.service?.name,
+                  barberName: created.barber?.name,
+                },
+                'creada',
+                {
+                  appointmentId: created.id,
+                  idempotencyKey: `appointment:${created.id}:created`,
+                  correlationId: command.context.correlationId,
+                },
+                tx,
+              );
+              queuedEmailDeliveryId = queued?.id ?? null;
+            }
+          }
+
           return created;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -586,7 +632,9 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       });
     }
 
-    if (!command.execution?.skipNotifications && paymentStatus !== PaymentStatus.pending) {
+    if (queuedEmailDeliveryId) {
+      await this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
+    } else if (!command.execution?.skipNotifications && paymentStatus !== PaymentStatus.pending) {
       await this.notifyAppointment(appointment, 'creada');
     }
 
@@ -633,6 +681,16 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     }
 
     const nextStatus = (data.status ?? current.status) as AppointmentStatus;
+    const guestContactInputProvided =
+      data.guestContact !== undefined || data.guestEmail !== undefined || data.guestPhone !== undefined;
+    const nextStructuredGuestContact = parseGuestContact({
+      guestContact: data.guestContact === undefined ? current.guestContact : data.guestContact,
+      guestEmail: data.guestEmail === undefined ? current.guestEmail : data.guestEmail,
+      guestPhone: data.guestPhone === undefined ? current.guestPhone : data.guestPhone,
+    });
+    const nextLegacyGuestContact = guestContactInputProvided
+      ? buildLegacyGuestContact(nextStructuredGuestContact)
+      : undefined;
     const startChanged =
       data.startDateTime && new Date(data.startDateTime).getTime() !== current.startDateTime.getTime();
     const serviceChanged = data.serviceId !== undefined && data.serviceId !== current.serviceId;
@@ -847,6 +905,9 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
     const nextDuration = await this.getServiceDuration(localId, nextServiceId);
 
+    const shouldNotify = serviceChanged || barberChanged || startChanged || isCancelled;
+    const notificationAction = isCancelled ? 'cancelada' : 'actualizada';
+    let queuedEmailDeliveryId: string | null = null;
     let updated: AppointmentWithRelations | any;
     try {
       updated = await this.prisma.$transaction(
@@ -876,7 +937,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
             }
           }
 
-          return tx.appointment.update({
+          const persisted = await tx.appointment.update({
             where: { id: command.appointmentId },
             data: {
               userId: data.userId,
@@ -910,7 +971,9 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               status: data.status as any,
               notes: data.notes,
               guestName: data.guestName,
-              guestContact: data.guestContact,
+              guestContact: nextLegacyGuestContact,
+              guestEmail: guestContactInputProvided ? nextStructuredGuestContact.email : undefined,
+              guestPhone: guestContactInputProvided ? nextStructuredGuestContact.phone : undefined,
               earlierSlotRequested:
                 nextStatus === 'scheduled' ? undefined : false,
               earlierSlotNotifiedAt: startChanged ? null : undefined,
@@ -929,6 +992,37 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
             },
             include: { user: true, barber: true, service: true, products: { include: { product: true } } },
           });
+
+          if (shouldNotify) {
+            const contact = this.getContact(
+              persisted.user,
+              persisted.guestName,
+              persisted.guestContact,
+              persisted.guestEmail,
+              persisted.guestPhone,
+            );
+            const allowEmail = persisted.user ? persisted.user.notificationEmail !== false : true;
+            if (allowEmail && this.notificationsService.enqueueAppointmentEmailInTransaction) {
+              const queued = await this.notificationsService.enqueueAppointmentEmailInTransaction(
+                contact,
+                {
+                  date: persisted.startDateTime,
+                  serviceName: persisted.service?.name,
+                  barberName: persisted.barber?.name,
+                },
+                notificationAction,
+                {
+                  appointmentId: persisted.id,
+                  idempotencyKey: `appointment:${persisted.id}:${notificationAction}:${persisted.updatedAt.toISOString()}`,
+                  correlationId: command.context.correlationId,
+                },
+                tx,
+              );
+              queuedEmailDeliveryId = queued?.id ?? null;
+            }
+          }
+
+          return persisted;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
@@ -943,9 +1037,10 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       await this.runStatusSideEffects(localId, updated.id, nextStatus);
     }
 
-    const shouldNotify = serviceChanged || barberChanged || startChanged;
-    if (shouldNotify) {
-      await this.notifyAppointment(updated, isCancelled ? 'cancelada' : 'actualizada');
+    if (queuedEmailDeliveryId) {
+      await this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
+    } else if (shouldNotify) {
+      await this.notifyAppointment(updated, notificationAction);
     }
 
     const releasedAvailability =

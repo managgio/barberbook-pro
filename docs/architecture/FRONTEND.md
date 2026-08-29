@@ -32,10 +32,12 @@ Al cambiar de local se refresca el perfil tenant-scoped y se aíslan las queries
 - Las políticas calculables se extraen a funciones puras con tests.
 - Evita efectos que duplican estado derivado y dependencias inestables.
 - Mantén lazy loading en rutas pesadas y evita aumentar el chunk inicial.
+- Las incidencias de notificaciones se componen en `components/notification-deliveries/`; la página tenant y Observabilidad de Platform reutilizan el mismo panel, tabla, tarjetas móviles y filtros por columna.
 
 ## UX, accesibilidad e i18n
 
 - Labels, foco, teclado, estados de carga/error/vacío y contraste son obligatorios.
+- Los grupos construidos con `TabsList` comparten un indicador deslizante accesible desde el componente base; no dupliques medición ni animación en cada página.
 - Toda acción destructiva o masiva muestra impacto y confirmación.
 - No introduzcas texto visible inline si existe infraestructura i18n.
 - Actualiza al menos `es.json` y `en.json`, y ejecuta `npm run i18n:check`.
@@ -45,6 +47,7 @@ Al cambiar de local se refresca el perfil tenant-scoped y se aíslan las queries
 
 - Conserva los budgets y mediciones de [PERF_BASELINE.md](../perf/PERF_BASELINE.md).
 - Pagina listas, virtualiza cuando el volumen lo justifique y evita peticiones por elemento.
+- Los historiales operativos filtran y paginan en servidor. Las opciones ligeras de tenant/local se cargan por un endpoint específico, sin reutilizar respuestas de configuración completas.
 - Optimiza imágenes y no añadas dependencias grandes para una utilidad pequeña.
 
 ## Verificación mínima

@@ -13,6 +13,7 @@ import {
   CommunicationExecutionStatus,
   CommunicationRecipientStatus,
   CommunicationStatus,
+  NotificationDeliveryChannel,
   Prisma,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -45,12 +46,15 @@ import { UpdateCommunicationDraftDto } from './dto/update-communication-draft.dt
 import { HolidayClosureActionDto } from './dto/holiday-closure-action.dto';
 import { buildHolidayClosureCommunication } from './holiday-closure-communication.factory';
 import { CommunicationBookingClosureService } from './communication-booking-closure.service';
+import { parseGuestContact } from '../../shared/domain/guest-contact';
 
 type AppointmentScopeRecord = {
   id: string;
   userId: string | null;
   guestName: string | null;
   guestContact: string | null;
+  guestEmail: string | null;
+  guestPhone: string | null;
   status: string;
   startDateTime: Date;
   user: { id: string; name: string; email: string; phone: string | null } | null;
@@ -661,7 +665,7 @@ export class CommunicationsService {
 
       try {
         const rendered = this.renderCampaignMessage(campaign, target, localName);
-        await this.sendThroughChannel(campaign.channel, target, rendered);
+        await this.sendThroughChannel(campaign.channel, target, rendered, execution.id);
         sent += 1;
         recipientRows.push({
           campaignId: campaign.id,
@@ -1015,6 +1019,8 @@ export class CommunicationsService {
         userId: true,
         guestName: true,
         guestContact: true,
+        guestEmail: true,
+        guestPhone: true,
         status: true,
         startDateTime: true,
         user: {
@@ -1130,15 +1136,9 @@ export class CommunicationsService {
   }
 
   private mapAppointmentToTarget(appointment: AppointmentScopeRecord): RecipientTarget {
-    const guestContact = (appointment.guestContact || '').trim();
-    const guestContactParts = guestContact
-      .split('·')
-      .map((value) => value.trim())
-      .filter(Boolean);
-    const guestEmail = guestContactParts.find((value) => value.includes('@')) || null;
-    const guestPhone = guestContactParts.find((value) => !value.includes('@')) || null;
-    const email = appointment.user?.email || guestEmail || null;
-    const phone = appointment.user?.phone || guestPhone || null;
+    const guestContact = parseGuestContact(appointment);
+    const email = appointment.user?.email || guestContact.email;
+    const phone = appointment.user?.phone || guestContact.phone;
     const recipientName = appointment.user?.name || appointment.guestName || 'Cliente';
     const recipientKey = this.buildRecipientKey({
       userId: appointment.userId,
@@ -1235,30 +1235,29 @@ export class CommunicationsService {
     channel: CommunicationChannel,
     target: RecipientTarget,
     rendered: { subject: string; body: string },
+    executionId: string,
   ) {
-    if (channel === 'email') {
-      await this.notificationsService.sendBroadcastEmail({
-        contact: {
-          email: target.email,
-          name: target.recipientName,
-        },
-        subject: rendered.subject,
-        message: rendered.body,
-      });
-      return;
-    }
-    if (channel === 'sms') {
-      if (!target.phone) throw new BadRequestException('No hay teléfono para SMS.');
-      await this.notificationsService.sendTestSms(target.phone, rendered.body);
-      return;
-    }
-    if (!target.phone) throw new BadRequestException('No hay teléfono para WhatsApp.');
-    await this.notificationsService.sendTestWhatsapp(target.phone, {
+    const deliveryChannel = NotificationDeliveryChannel[channel];
+    const queued = await this.notificationsService.queueBroadcastNotification(deliveryChannel, {
+      contact: {
+        email: target.email,
+        phone: target.phone,
+        name: target.recipientName,
+      },
+      title: rendered.subject,
       message: rendered.body,
-      name: target.recipientName,
       date: target.appointmentDate ? this.formatDate(target.appointmentDate) : undefined,
       time: target.appointmentDate ? this.formatTime(target.appointmentDate) : undefined,
+    }, {
+      appointmentId: target.appointmentId,
+      correlationId: executionId,
+      idempotencyKey: `communication:${executionId}:${target.recipientKey}:${channel}`,
     });
+    const result = queued.result;
+    if (result?.status !== 'accepted') {
+      const errorCode = result?.errorCode || 'NOTIFICATION_DELIVERY_QUEUED';
+      throw new Error(`${errorCode}: El envío no fue aceptado en el primer intento.`);
+    }
   }
 
   private async tryCreateHolidayFromOptions(

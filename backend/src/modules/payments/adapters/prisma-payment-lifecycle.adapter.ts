@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { PaymentMethod, PaymentStatus, Prisma, UserSubscriptionStatus } from '@prisma/client';
 import {
   CommerceAppointmentPaymentLifecycleState,
@@ -10,6 +10,8 @@ import {
 } from '../../../contexts/platform/ports/outbound/tenant-context-runner.port';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AppointmentsFacade } from '../../appointments/appointments.facade';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { parseGuestContact } from '../../../shared/domain/guest-contact';
 
 type AppointmentLifecycleRecord = Prisma.AppointmentGetPayload<{
   select: {
@@ -38,6 +40,8 @@ export class PrismaPaymentLifecycleAdapter implements CommercePaymentLifecyclePo
     @Inject(TENANT_CONTEXT_RUNNER_PORT)
     private readonly tenantContextRunnerPort: TenantContextRunnerPort,
     private readonly appointmentsFacade: AppointmentsFacade,
+    @Optional()
+    private readonly notificationsService?: NotificationsService,
   ) {}
 
   async findAppointmentById(appointmentId: string): Promise<CommerceAppointmentPaymentLifecycleState | null> {
@@ -94,19 +98,50 @@ export class PrismaPaymentLifecycleAdapter implements CommercePaymentLifecyclePo
     await this.tenantContextRunnerPort.runWithContext(
       { localId: params.localId, brandId: params.brandId },
       async () => {
-        await this.prisma.appointment.update({
-          where: { id: params.appointmentId },
-          data: {
-            paymentStatus: PaymentStatus.paid,
-            paymentPaidAt: params.paidAt,
-            paymentMethod: PaymentMethod.stripe,
-            paymentAmount:
-              params.amountTotal !== null ? new Prisma.Decimal(params.amountTotal) : undefined,
-            paymentCurrency: params.currency,
-            paymentExpiresAt: null,
-          },
+        let queuedEmailDeliveryId: string | null = null;
+        await this.prisma.$transaction(async (tx) => {
+          const appointment = await tx.appointment.update({
+            where: { id: params.appointmentId },
+            data: {
+              paymentStatus: PaymentStatus.paid,
+              paymentPaidAt: params.paidAt,
+              paymentMethod: PaymentMethod.stripe,
+              paymentAmount:
+                params.amountTotal !== null ? new Prisma.Decimal(params.amountTotal) : undefined,
+              paymentCurrency: params.currency,
+              paymentExpiresAt: null,
+            },
+            include: { user: true, barber: true, service: true },
+          });
+          const guestContact = parseGuestContact(appointment);
+          const allowEmail = appointment.user ? appointment.user.notificationEmail !== false : true;
+          if (allowEmail && this.notificationsService) {
+            const queued = await this.notificationsService.enqueueAppointmentEmailInTransaction(
+              {
+                email: appointment.user?.email || guestContact.email,
+                phone: appointment.user?.phone || guestContact.phone,
+                name: appointment.user?.name || appointment.guestName || null,
+              },
+              {
+                date: appointment.startDateTime,
+                serviceName: appointment.service?.name,
+                barberName: appointment.barber?.name,
+              },
+              'creada',
+              {
+                appointmentId: appointment.id,
+                idempotencyKey: `appointment:${appointment.id}:created`,
+              },
+              tx,
+            );
+            queuedEmailDeliveryId = queued?.id ?? null;
+          }
         });
-        await this.appointmentsFacade.sendPaymentConfirmation(params.appointmentId);
+        if (queuedEmailDeliveryId && this.notificationsService) {
+          await this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
+        } else {
+          await this.appointmentsFacade.sendPaymentConfirmation(params.appointmentId);
+        }
       },
     );
   }

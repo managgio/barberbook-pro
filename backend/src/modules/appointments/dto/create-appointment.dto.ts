@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsEnum, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AppointmentStatus } from '@prisma/client';
 import { AppointmentProductDto } from './appointment-product.dto';
@@ -28,11 +28,23 @@ export class CreateAppointmentDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(191)
   guestName?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(320)
   guestContact?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  guestEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  guestPhone?: string;
 
   @IsOptional()
   @IsBoolean()

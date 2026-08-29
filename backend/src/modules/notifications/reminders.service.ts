@@ -2,9 +2,9 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { schedule, ScheduledTask } from 'node-cron';
 import { RunNotificationRemindersUseCase } from '../../contexts/engagement/application/use-cases/run-notification-reminders.use-case';
 import {
-  ENGAGEMENT_NOTIFICATION_MANAGEMENT_PORT,
-  EngagementNotificationManagementPort,
-} from '../../contexts/engagement/ports/outbound/notification-management.port';
+  ENGAGEMENT_NOTIFICATION_DELIVERY_QUEUE_PORT,
+  EngagementNotificationDeliveryQueuePort,
+} from '../../contexts/engagement/ports/outbound/notification-delivery-queue.port';
 import {
   ENGAGEMENT_NOTIFICATION_REMINDER_PORT,
   EngagementNotificationReminderPort,
@@ -35,12 +35,12 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     private readonly activeLocationIteratorPort: ActiveLocationIteratorPort,
     @Inject(ENGAGEMENT_NOTIFICATION_REMINDER_PORT)
     private readonly reminderPort: EngagementNotificationReminderPort,
-    @Inject(ENGAGEMENT_NOTIFICATION_MANAGEMENT_PORT)
-    private readonly notificationManagementPort: EngagementNotificationManagementPort,
+    @Inject(ENGAGEMENT_NOTIFICATION_DELIVERY_QUEUE_PORT)
+    private readonly deliveryQueuePort: EngagementNotificationDeliveryQueuePort,
   ) {
     this.runNotificationRemindersUseCase = new RunNotificationRemindersUseCase(
       this.reminderPort,
-      this.notificationManagementPort,
+      this.deliveryQueuePort,
     );
   }
 

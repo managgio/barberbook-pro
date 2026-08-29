@@ -108,6 +108,7 @@ export const AdminPermissionsProvider: React.FC<{ children: ReactNode }> = ({ ch
       if (!user) return false;
       if (user.isSuperAdmin || user.isPlatformAdmin) return true;
       if (!user.isLocalAdmin) return false;
+      if (permission === 'email-deliveries') return true;
       if (!user.adminRoleId) return true;
       const permissions = (currentRole?.permissions || []) as AdminPermissionKey[];
       if (permissions.includes(permission)) return true;

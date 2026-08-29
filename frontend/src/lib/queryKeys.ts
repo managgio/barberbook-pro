@@ -204,6 +204,11 @@ export const queryKeys = {
     ["communications", localId || "default", "templates"] as const,
   adminCommunicationChannelPreference: (localId: string | null | undefined) =>
     ["communications", localId || "default", "channel-preference"] as const,
+  adminNotificationDeliveries: (
+    localId: string | null | undefined,
+    page: number,
+    filters: { status: string; kind: string; channel: string },
+  ) => ["notification-deliveries", localId || "default", page, filters.status, filters.kind, filters.channel] as const,
   adminGeneralHolidays: (localId: string | null | undefined) =>
     ["holidays", localId || "default", "general"] as const,
   adminBarberHolidays: (localId: string | null | undefined, barberId: string | null | undefined) =>
@@ -242,4 +247,17 @@ export const queryKeys = {
     ["platform-observability-api", windowMinutes] as const,
   platformObservabilityI18n: (windowMinutes: number) =>
     ["platform-observability-i18n", windowMinutes] as const,
+  platformNotificationDeliveries: (
+    page: number,
+    filters: { status: string; kind: string; channel: string; brandId: string; localId: string },
+  ) => [
+    "platform-notification-deliveries",
+    page,
+    filters.status,
+    filters.kind,
+    filters.channel,
+    filters.brandId,
+    filters.localId,
+  ] as const,
+  platformNotificationDeliveryFilters: () => ["platform-notification-delivery-filters"] as const,
 };

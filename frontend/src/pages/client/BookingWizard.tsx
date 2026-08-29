@@ -981,6 +981,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         notes: appointmentNote.trim() ? appointmentNote.trim() : undefined,
         guestName: isGuest ? guestInfo.name.trim() : undefined,
         guestContact: isGuest ? (guestContact || undefined) : undefined,
+        guestEmail: isGuest ? guestInfo.email.trim() : undefined,
+        guestPhone: isGuest ? (guestInfo.phone.trim() || undefined) : undefined,
         notifyIfEarlierSlot: notifyIfEarlierSlot || undefined,
         privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
         referralAttributionId,

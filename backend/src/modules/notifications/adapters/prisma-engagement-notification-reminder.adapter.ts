@@ -5,6 +5,7 @@ import {
 } from '../../../contexts/engagement/ports/outbound/notification-reminder.port';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../../contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { parseGuestContact } from '../../../shared/domain/guest-contact';
 
 @Injectable()
 export class PrismaEngagementNotificationReminderAdapter implements EngagementNotificationReminderPort {
@@ -34,12 +35,9 @@ export class PrismaEngagementNotificationReminderAdapter implements EngagementNo
     });
 
     return appointments.map((appointment) => {
-      const emailCandidate =
-        appointment.user?.email ||
-        (appointment.guestContact && appointment.guestContact.includes('@') ? appointment.guestContact : null);
-      const phoneCandidate =
-        appointment.user?.phone ||
-        (appointment.guestContact && !appointment.guestContact.includes('@') ? appointment.guestContact : null);
+      const structuredGuestContact = parseGuestContact(appointment);
+      const emailCandidate = appointment.user?.email || structuredGuestContact.email;
+      const phoneCandidate = appointment.user?.phone || structuredGuestContact.phone;
 
       return {
         appointmentId: appointment.id,

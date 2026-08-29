@@ -33,6 +33,8 @@ export const mapAppointment = (appointment: AppointmentWithProducts) => ({
   notes: appointment.notes || null,
   guestName: appointment.guestName || null,
   guestContact: appointment.guestContact || null,
+  guestEmail: appointment.guestEmail || null,
+  guestPhone: appointment.guestPhone || null,
   notifyIfEarlierSlot: appointment.earlierSlotRequested === true,
   earlierSlotNotificationSentAt: appointment.earlierSlotNotifiedAt?.toISOString() || null,
   earlierSlotNotificationCandidateAt: appointment.earlierSlotCandidateAt?.toISOString() || null,

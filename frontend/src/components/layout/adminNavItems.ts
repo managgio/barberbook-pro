@@ -18,6 +18,7 @@ import {
   Star,
   Repeat,
   Megaphone,
+  MailWarning,
 } from 'lucide-react';
 import { AdminSectionKey } from '@/data/types';
 import type { BusinessCopy } from '@/lib/businessCopy';
@@ -46,6 +47,7 @@ export const adminNavItems: AdminNavItem[] = [
   { href: '/admin/reviews', label: 'Reseñas', labelKey: 'admin.nav.reviews', icon: Star, section: 'reviews', keywords: ['ratings', 'opiniones'] },
   { href: '/admin/alerts', label: 'Alertas', labelKey: 'admin.nav.alerts', icon: Bell, section: 'alerts', keywords: ['avisos'] },
   { href: '/admin/communications', label: 'Comunicados', labelKey: 'admin.nav.communications', icon: Megaphone, section: 'communications', keywords: ['mensajes', 'cancelaciones'] },
+  { href: '/admin/deliveries', label: 'Incidencias de envíos', labelKey: 'admin.nav.emailDeliveries', icon: MailWarning, section: 'email-deliveries', keywords: ['email', 'sms', 'whatsapp', 'entregas', 'errores'] },
   { href: '/admin/offers', label: 'Ofertas', labelKey: 'admin.nav.offers', icon: Tag, section: 'offers', keywords: ['descuentos', 'promos'] },
   { href: '/admin/holidays', label: 'Festivos', labelKey: 'admin.nav.holidays', icon: CalendarDays, section: 'holidays', keywords: ['cierres'] },
   { href: '/admin/settings', label: 'Configuración', labelKey: 'admin.nav.settings', icon: Settings, section: 'settings', keywords: ['ajustes'] },

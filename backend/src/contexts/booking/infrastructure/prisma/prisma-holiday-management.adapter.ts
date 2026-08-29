@@ -120,6 +120,7 @@ export class PrismaHolidayManagementAdapter implements HolidayManagementPort {
         id: true,
         userId: true,
         guestContact: true,
+        guestEmail: true,
         user: { select: { email: true } },
       },
     });
@@ -127,7 +128,7 @@ export class PrismaHolidayManagementAdapter implements HolidayManagementPort {
     const recipientKeys = new Set<string>();
     let withoutEmail = 0;
     appointments.forEach((appointment) => {
-      const guestEmail = appointment.guestContact
+      const guestEmail = appointment.guestEmail || appointment.guestContact
         ?.split('·')
         .map((value) => value.trim())
         .find((value) => value.includes('@'));

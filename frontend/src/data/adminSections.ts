@@ -134,6 +134,14 @@ export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     defaultVisible: false,
   },
   {
+    key: 'email-deliveries',
+    label: 'Historial de correo',
+    labelKey: 'admin.section.emailDeliveries.label',
+    description: 'Entregas SMTP, reintentos y fallos de correo del local.',
+    descriptionKey: 'admin.section.emailDeliveries.description',
+    defaultVisible: true,
+  },
+  {
     key: 'holidays',
     label: 'Festivos',
     labelKey: 'admin.section.holidays.label',
@@ -170,6 +178,7 @@ export const ADMIN_REQUIRED_SECTIONS: AdminSectionKey[] = [
   'barbers',
   'holidays',
   'settings',
+  'email-deliveries',
 ];
 
 const ADMIN_SECTION_DEFAULT_VISIBILITY = new Map<AdminSectionKey, boolean>(

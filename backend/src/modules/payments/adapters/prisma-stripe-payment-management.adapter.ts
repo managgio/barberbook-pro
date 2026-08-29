@@ -17,6 +17,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TenantConfigService } from '../../../tenancy/tenant-config.service';
 import { AppointmentsFacade } from '../../appointments/appointments.facade';
+import { parseGuestContact } from '../../../shared/domain/guest-contact';
 
 type StripeAccountStatus = {
   chargesEnabled: boolean;
@@ -31,21 +32,6 @@ type StripeConfigSnapshot = {
   localEnabled: boolean;
   brandAccountId?: string;
   localAccountId?: string;
-};
-
-const parseGuestContact = (contact?: string | null) => {
-  if (!contact) return { email: null, phone: null };
-  const parts = contact.split('·').map((part) => part.trim()).filter(Boolean);
-  let email: string | null = null;
-  let phone: string | null = null;
-  parts.forEach((part) => {
-    if (part.includes('@')) {
-      email = email || part;
-    } else {
-      phone = phone || part;
-    }
-  });
-  return { email, phone };
 };
 
 @Injectable()
@@ -301,6 +287,8 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
       notes?: string;
       guestName?: string;
       guestContact?: string;
+      guestEmail?: string;
+      guestPhone?: string;
       notifyIfEarlierSlot?: boolean;
       privacyConsentGiven?: boolean;
       referralAttributionId?: string;
@@ -326,7 +314,7 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
     }
 
     if (!params.data.userId) {
-      const contact = parseGuestContact(params.data.guestContact);
+      const contact = parseGuestContact(params.data);
       if (!contact.email) {
         throw new BadRequestException('Necesitamos un correo para completar el pago.');
       }
@@ -349,6 +337,8 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
         notes: params.data.notes,
         guestName: params.data.guestName,
         guestContact: params.data.guestContact,
+        guestEmail: params.data.guestEmail,
+        guestPhone: params.data.guestPhone,
         notifyIfEarlierSlot: params.data.notifyIfEarlierSlot,
         privacyConsentGiven: params.data.privacyConsentGiven,
         referralAttributionId: params.data.referralAttributionId,
@@ -386,7 +376,7 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
 
     const customerEmail = params.data.userId
       ? (await this.prisma.user.findUnique({ where: { id: params.data.userId }, select: { email: true } }))?.email
-      : parseGuestContact(params.data.guestContact).email;
+      : parseGuestContact(params.data).email;
 
     const unitAmount = Math.max(0, Math.round(appointment.price * 100));
     if (unitAmount <= 0) {

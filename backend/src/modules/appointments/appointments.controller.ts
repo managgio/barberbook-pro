@@ -20,6 +20,8 @@ import { AdminEndpoint } from '../../auth/admin.decorator';
 import { AuthService } from '../../auth/auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
+import { isEmail } from 'class-validator';
+import { buildLegacyGuestContact, parseGuestContact } from '../../shared/domain/guest-contact';
 
 type RequestActor = {
   userId: string | null;
@@ -251,8 +253,24 @@ export class AppointmentsController {
           throw new ForbiddenException('No puedes crear citas para otro cliente.');
         }
         payload.userId = actor.userId;
+        payload.guestName = undefined;
+        payload.guestContact = undefined;
+        payload.guestEmail = undefined;
+        payload.guestPhone = undefined;
       } else if (payload.userId) {
         throw new BadRequestException('No puedes asignar userId en una reserva como invitado.');
+      } else {
+        const contact = parseGuestContact(payload);
+        if (!payload.guestName?.trim()) {
+          throw new BadRequestException('Necesitamos el nombre para crear una reserva como invitado.');
+        }
+        if (!contact.email || !isEmail(contact.email)) {
+          throw new BadRequestException('Necesitamos un correo válido para crear una reserva como invitado.');
+        }
+        payload.guestName = payload.guestName.trim();
+        payload.guestEmail = contact.email;
+        payload.guestPhone = contact.phone || undefined;
+        payload.guestContact = buildLegacyGuestContact(contact) || undefined;
       }
     }
 

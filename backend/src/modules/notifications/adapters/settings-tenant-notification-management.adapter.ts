@@ -15,6 +15,7 @@ import {
   EngagementNotificationAppointmentAction,
   EngagementNotificationAppointmentInfo,
   EngagementNotificationContactInfo,
+  EngagementNotificationDeliveryResult,
   EngagementNotificationManagementPort,
   EngagementTestWhatsappInput,
 } from '../../../contexts/engagement/ports/outbound/notification-management.port';
@@ -25,7 +26,7 @@ import { SiteSettings } from '../../settings/settings.types';
 import { UsageMetricsService } from '../../usage-metrics/usage-metrics.service';
 import { APP_TIMEZONE } from '../../../utils/timezone';
 import { createHash } from 'crypto';
-import { describeEmailDeliveryError } from '../email-delivery-diagnostic';
+import { describeEmailDeliveryError, describeTwilioDeliveryError } from '../notification-delivery-diagnostic';
 
 const resolveDefaultSmtpHost = (email?: string) => {
   const normalized = (email || '').trim().toLowerCase();
@@ -45,6 +46,38 @@ type TwilioTenantConfig = {
   smsSenderId?: string | null;
   whatsappFrom?: string | null;
   whatsappTemplateSid?: string | null;
+};
+
+const readProviderMessageId = (result: unknown) => {
+  if (!result || typeof result !== 'object') return null;
+  const messageId = (result as { messageId?: unknown }).messageId;
+  return typeof messageId === 'string' ? messageId : null;
+};
+
+const escapeHtml = (value: unknown) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const resolveSendMailResult = (result: unknown): EngagementNotificationDeliveryResult => {
+  if (result && typeof result === 'object') {
+    const info = result as { accepted?: unknown; rejected?: unknown };
+    const rejected = Array.isArray(info.rejected) ? info.rejected : [];
+    const accepted = Array.isArray(info.accepted) ? info.accepted : null;
+    if (rejected.length > 0 || (accepted && accepted.length === 0)) {
+      return {
+        status: 'failed',
+        code: 'EMAIL_RECIPIENT_REJECTED',
+        message: 'The SMTP server rejected the recipient address.',
+        retryable: false,
+        critical: false,
+      };
+    }
+  }
+  return { status: 'accepted', providerMessageId: readProviderMessageId(result) };
 };
 
 @Injectable()
@@ -129,11 +162,24 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     contact: EngagementNotificationContactInfo,
     appointment: EngagementNotificationAppointmentInfo,
     action: EngagementNotificationAppointmentAction,
-  ) {
+  ): Promise<EngagementNotificationDeliveryResult> {
     const config = await this.tenantConfig.getEffectiveConfig();
-    if (config.notificationPrefs?.email === false) return;
+    if (config.notificationPrefs?.email === false) {
+      return { status: 'skipped', code: 'EMAIL_DISABLED', message: 'Email notifications are disabled for this tenant.' };
+    }
+    if (!contact.email) {
+      return { status: 'skipped', code: 'EMAIL_RECIPIENT_MISSING', message: 'No recipient email is available.' };
+    }
     const transporter = await this.getTransporter();
-    if (!transporter || !contact.email) return;
+    if (!transporter) {
+      return {
+        status: 'failed',
+        code: 'SMTP_NOT_CONFIGURED',
+        message: 'Tenant SMTP credentials are not configured.',
+        retryable: false,
+        critical: true,
+      };
+    }
     const settings = await this.getSettings();
     const formattedDate = this.formatAppointmentEmailDate(appointment.date);
 
@@ -167,22 +213,30 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const location = appointment.location || settings.location.label || 'Le Blond Hair Salon';
     const logoPath = this.resolveLogoPath();
     const logoCid = logoPath ? 'brand-logo' : undefined;
+    const safeBrandName = escapeHtml(brandName);
+    const safeContactName = escapeHtml(contact.name || 'cliente');
+    const safeFormattedDate = escapeHtml(formattedDate);
+    const safeServiceName = escapeHtml(appointment.serviceName);
+    const safeBarberName = escapeHtml(appointment.barberName);
+    const safeLocation = escapeHtml(location);
+    const safeContactEmail = escapeHtml(contactEmail);
+    const safeContactPhone = escapeHtml(contactPhone);
 
     const html = `
       <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:#f8fafc;">
         <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
           <tr style="background:linear-gradient(135deg, rgba(244,114,182,0.18), rgba(139,92,246,0.1)); border-bottom:1px solid rgba(255,255,255,0.08);">
             <td style="padding:22px 26px; display:flex; align-items:center; gap:22px;">
-              ${logoCid ? `<img src="cid:${logoCid}" alt="${brandName}" width="48" height="48" style="border-radius:12px; display:block; background:#000; padding:6px;" />` : ''}
+              ${logoCid ? `<img src="cid:${logoCid}" alt="${safeBrandName}" width="48" height="48" style="border-radius:12px; display:block; background:#000; padding:6px;" />` : ''}
               <div style="margin-left:8px;">
-                <div style="font-weight:700; font-size:18px; color:#fff;">${brandName}</div>
+                <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
                 <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">${action === 'cancelada' ? 'Cita cancelada' : 'Cita ' + action}</div>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:24px;">
-              <p style="margin:0 0 12px; font-size:16px;">Hola ${contact.name || 'cliente'},</p>
+              <p style="margin:0 0 12px; font-size:16px;">Hola ${safeContactName},</p>
               <p style="margin:0 0 16px; color:rgba(248,250,252,0.8); line-height:1.6;">
                 ${action === 'cancelada'
                   ? 'Tu cita ha sido cancelada.'
@@ -191,13 +245,13 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
               <div style="border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; background:rgba(255,255,255,0.02); margin-bottom:16px;">
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85); margin-bottom:10px;">
                   <div>Fecha y hora:&nbsp;</div>
-                  <div style="text-align:right; color:${brandColor}; font-weight:700;">${formattedDate}</div>
+                  <div style="text-align:right; color:${brandColor}; font-weight:700;">${safeFormattedDate}</div>
                 </div>
                 ${
                   appointment.serviceName
                     ? `<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85); margin-bottom:10px;">
                         <div>Servicio:&nbsp;</div>
-                        <div style="text-align:right; color:#fff; font-weight:700;">${appointment.serviceName}</div>
+                        <div style="text-align:right; color:#fff; font-weight:700;">${safeServiceName}</div>
                       </div>`
                     : ''
                 }
@@ -205,13 +259,13 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
                   appointment.barberName
                     ? `<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85); margin-bottom:10px;">
                         <div>Barbero:&nbsp;</div>
-                        <div style="text-align:right; color:#fff; font-weight:700;">${appointment.barberName}</div>
+                        <div style="text-align:right; color:#fff; font-weight:700;">${safeBarberName}</div>
                       </div>`
                     : ''
                 }
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85);">
                   <div>Ubicación:&nbsp;</div>
-                  <div style="text-align:right; color:#fff; font-weight:700;">${location}</div>
+                  <div style="text-align:right; color:#fff; font-weight:700;">${safeLocation}</div>
                 </div>
               </div>
               <p style="margin:0 0 12px; color:rgba(248,250,252,0.75);">
@@ -222,15 +276,15 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
               <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:rgba(244,114,182,0.12); color:#fff; border:1px solid rgba(244,114,182,0.4);">
                 <div style="font-weight:600; margin-bottom:4px;">Contacto</div>
                 <div style="font-size:14px; color:rgba(248,250,252,0.8);">
-                  <a href="mailto:${contactEmail}" style="color:#fff; text-decoration:none;">${contactEmail}</a>
-                  ${contactPhone ? `<br/><a href="https://wa.me/${contactPhone.replace(/\\D/g, '')}" style="color:#fff; text-decoration:none;">${contactPhone}</a>` : ''}
+                  <a href="mailto:${safeContactEmail}" style="color:#fff; text-decoration:none;">${safeContactEmail}</a>
+                  ${contactPhone ? `<br/><a href="https://wa.me/${contactPhone.replace(/\\D/g, '')}" style="color:#fff; text-decoration:none;">${safeContactPhone}</a>` : ''}
                 </div>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:16px 24px; background:#0d0d10; color:rgba(248,250,252,0.6); font-size:12px; text-align:center;">
-              © ${new Date().getFullYear()} ${brandName}. Cuidamos tu look con detalle.
+              © ${new Date().getFullYear()} ${safeBrandName}. Cuidamos tu look con detalle.
             </td>
           </tr>
         </table>
@@ -238,7 +292,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     `;
 
     try {
-      await transporter.sendMail({
+      const result = await transporter.sendMail({
         from: `"${config.email?.fromName || brandName}" <${config.email?.user}>`,
         to: contact.email,
         subject,
@@ -254,8 +308,16 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
             ]
           : [],
       });
+      return resolveSendMailResult(result);
     } catch (error) {
-      this.logEmailDeliveryError(error, config.email);
+      const diagnostic = this.logEmailDeliveryError(error, config.email);
+      return {
+        status: 'failed',
+        code: diagnostic.code,
+        message: diagnostic.safeMessage,
+        retryable: diagnostic.retryable,
+        critical: diagnostic.critical,
+      };
     }
   }
 
@@ -265,11 +327,24 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     message: string;
     ctaLabel?: string;
     ctaUrl?: string;
-  }) {
+  }): Promise<EngagementNotificationDeliveryResult> {
     const config = await this.tenantConfig.getEffectiveConfig();
-    if (config.notificationPrefs?.email === false) return;
+    if (config.notificationPrefs?.email === false) {
+      return { status: 'skipped', code: 'EMAIL_DISABLED', message: 'Email notifications are disabled for this tenant.' };
+    }
+    if (!params.contact.email) {
+      return { status: 'skipped', code: 'EMAIL_RECIPIENT_MISSING', message: 'No recipient email is available.' };
+    }
     const transporter = await this.getTransporter();
-    if (!transporter || !params.contact.email) return;
+    if (!transporter) {
+      return {
+        status: 'failed',
+        code: 'SMTP_NOT_CONFIGURED',
+        message: 'Tenant SMTP credentials are not configured.',
+        retryable: false,
+        critical: true,
+      };
+    }
     const settings = await this.getSettings();
     const brandName =
       settings.branding.shortName ||
@@ -282,26 +357,32 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const brandDark = '#0f0f12';
     const logoPath = this.resolveLogoPath();
     const logoCid = logoPath ? 'brand-logo' : undefined;
-    const ctaLabel = params.ctaLabel || 'Ver mi recompensa';
-    const ctaUrl = params.ctaUrl;
+    const ctaLabel = escapeHtml(params.ctaLabel || 'Ver mi recompensa');
+    const ctaUrl = params.ctaUrl && (/^https?:\/\//i.test(params.ctaUrl) || params.ctaUrl.startsWith('/'))
+      ? escapeHtml(params.ctaUrl)
+      : undefined;
+    const safeBrandName = escapeHtml(brandName);
+    const safeContactName = escapeHtml(params.contact.name || 'cliente');
+    const safeMessage = escapeHtml(params.message).replace(/\n/g, '<br/>');
+    const safeContactEmail = escapeHtml(contactEmail);
 
     const html = `
       <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:#f8fafc;">
         <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
           <tr style="background:linear-gradient(135deg, rgba(244,114,182,0.18), rgba(139,92,246,0.1)); border-bottom:1px solid rgba(255,255,255,0.08);">
             <td style="padding:22px 26px; display:flex; align-items:center; gap:22px;">
-              ${logoCid ? `<img src="cid:${logoCid}" alt="${brandName}" width="48" height="48" style="border-radius:12px; display:block; background:#000; padding:6px;" />` : ''}
+              ${logoCid ? `<img src="cid:${logoCid}" alt="${safeBrandName}" width="48" height="48" style="border-radius:12px; display:block; background:#000; padding:6px;" />` : ''}
               <div style="margin-left:8px;">
-                <div style="font-weight:700; font-size:18px; color:#fff;">${brandName}</div>
+                <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
                 <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">Programa de referidos</div>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:24px;">
-              <p style="margin:0 0 12px; font-size:16px;">Hola ${params.contact.name || 'cliente'},</p>
+              <p style="margin:0 0 12px; font-size:16px;">Hola ${safeContactName},</p>
               <p style="margin:0 0 16px; color:rgba(248,250,252,0.8); line-height:1.6;">
-                ${params.message}
+                ${safeMessage}
               </p>
               ${
                 ctaUrl
@@ -315,14 +396,14 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
               <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:rgba(244,114,182,0.12); color:#fff; border:1px solid rgba(244,114,182,0.4);">
                 <div style="font-weight:600; margin-bottom:4px;">Contacto</div>
                 <div style="font-size:14px; color:rgba(248,250,252,0.8);">
-                  <a href="mailto:${contactEmail}" style="color:#fff; text-decoration:none;">${contactEmail}</a>
+                  <a href="mailto:${safeContactEmail}" style="color:#fff; text-decoration:none;">${safeContactEmail}</a>
                 </div>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:16px 24px; background:#0d0d10; color:rgba(248,250,252,0.6); font-size:12px; text-align:center;">
-              © ${new Date().getFullYear()} ${brandName}. Gracias por confiar en nosotros.
+              © ${new Date().getFullYear()} ${safeBrandName}. Gracias por confiar en nosotros.
             </td>
           </tr>
         </table>
@@ -330,7 +411,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     `;
 
     try {
-      await transporter.sendMail({
+      const result = await transporter.sendMail({
         from: `"${config.email?.fromName || brandName}" <${config.email?.user}>`,
         to: params.contact.email,
         subject: params.title,
@@ -346,8 +427,16 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
             ]
           : [],
       });
+      return resolveSendMailResult(result);
     } catch (error) {
-      this.logEmailDeliveryError(error, config.email);
+      const diagnostic = this.logEmailDeliveryError(error, config.email);
+      return {
+        status: 'failed',
+        code: diagnostic.code,
+        message: diagnostic.safeMessage,
+        retryable: diagnostic.retryable,
+        critical: diagnostic.critical,
+      };
     }
   }
 
@@ -355,12 +444,25 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     contact: EngagementNotificationContactInfo;
     subject: string;
     message: string;
-  }) {
+  }): Promise<EngagementNotificationDeliveryResult> {
     const config = await this.tenantConfig.getEffectiveConfig();
-    if (config.notificationPrefs?.email === false) return;
+    if (config.notificationPrefs?.email === false) {
+      return { status: 'skipped', code: 'EMAIL_DISABLED', message: 'Email notifications are disabled for this tenant.' };
+    }
     const transporter = await this.getTransporter();
     const to = params.contact.email?.trim();
-    if (!transporter || !to) return;
+    if (!to) {
+      return { status: 'skipped', code: 'EMAIL_RECIPIENT_MISSING', message: 'No recipient email is available.' };
+    }
+    if (!transporter) {
+      return {
+        status: 'failed',
+        code: 'SMTP_NOT_CONFIGURED',
+        message: 'Tenant SMTP credentials are not configured.',
+        retryable: false,
+        critical: true,
+      };
+    }
     const settings = await this.getSettings();
     const brandName =
       settings.branding.shortName ||
@@ -368,13 +470,14 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       config.branding?.shortName ||
       config.branding?.name ||
       'Managgio';
-    const safeMessage = params.message.replace(/\n/g, '<br/>');
+    const safeMessage = escapeHtml(params.message).replace(/\n/g, '<br/>');
+    const safeBrandName = escapeHtml(brandName);
     const html = `
       <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:#0f0f12; padding:24px; color:#f8fafc;">
         <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
           <tr>
             <td style="padding:22px 24px; border-bottom:1px solid rgba(255,255,255,0.08);">
-              <div style="font-weight:700; font-size:18px; color:#fff;">${brandName}</div>
+              <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
               <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">Comunicado</div>
             </td>
           </tr>
@@ -388,163 +491,83 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     `;
 
     try {
-      await transporter.sendMail({
+      const result = await transporter.sendMail({
         from: `"${config.email?.fromName || brandName}" <${config.email?.user}>`,
         to,
         subject: params.subject,
         text: params.message,
         html,
       });
+      return resolveSendMailResult(result);
     } catch (error) {
       const diagnostic = this.logEmailDeliveryError(error, config.email);
-      throw new Error(`${diagnostic.code}: ${diagnostic.safeMessage}`);
+      return {
+        status: 'failed',
+        code: diagnostic.code,
+        message: diagnostic.safeMessage,
+        retryable: diagnostic.retryable,
+        critical: diagnostic.critical,
+      };
     }
   }
 
   async sendReminderSms(contact: EngagementNotificationContactInfo, appointment: EngagementNotificationAppointmentInfo) {
-    const twilioConfig = await this.getTwilio();
-    if (!twilioConfig || !contact.phone) return;
-    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
-    if (!normalizedPhone) {
-      this.logger.warn(`SMS skipped due to invalid phone: ${contact.phone}`);
-      return;
-    }
-    const senderId = await this.resolveSmsSenderId(twilioConfig.smsSenderId || null);
     const formattedDate = this.formatReminderSmsDate(appointment.date);
     const message = `Recordatorio: cita ${formattedDate}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
+    return this.sendSmsMessage(contact, message);
+  }
 
-    try {
-      if (!twilioConfig.messagingServiceSid && !senderId) {
-        this.logger.warn('Twilio sender missing, SMS reminders disabled');
-        return;
-      }
-      const result = await twilioConfig.client.messages.create({
-        ...(twilioConfig.messagingServiceSid ? { messagingServiceSid: twilioConfig.messagingServiceSid } : { from: senderId! }),
-        to: normalizedPhone,
-        body: message,
-      });
-      const rawPrice = result.price ? Math.abs(Number(result.price)) : null;
-      const priceUnit = result.priceUnit?.toUpperCase();
-      const fallbackCost = this.getTwilioSmsCostUsd();
-      const costUsd = priceUnit && priceUnit !== 'USD'
-        ? fallbackCost
-        : (Number.isFinite(rawPrice) ? rawPrice : fallbackCost);
-      if (costUsd !== null || fallbackCost !== null) {
-        void this.usageMetrics.recordTwilioUsage({
-          costUsd,
-          messages: 1,
-        });
-      } else {
-        void this.usageMetrics.recordTwilioUsage({ messages: 1 });
-      }
-    } catch (error) {
-      this.logger.error(`Error sending SMS to ${contact.phone}: ${error}`);
-    }
+  sendBroadcastSms(params: {
+    contact: EngagementNotificationContactInfo;
+    message: string;
+  }) {
+    return this.sendSmsMessage(params.contact, params.message);
   }
 
   async sendTestSms(phone: string, message?: string | null) {
-    const twilioConfig = await this.getTwilio();
-    if (!twilioConfig) {
-      throw new BadRequestException('Twilio no está configurado.');
-    }
-    const normalizedPhone = this.normalizePhoneNumber(phone);
-    if (!normalizedPhone) {
-      throw new BadRequestException('El teléfono debe tener formato internacional (ej: +346XXXXXXXX).');
-    }
-    const senderId = await this.resolveSmsSenderId(twilioConfig.smsSenderId || null);
-    if (!twilioConfig.messagingServiceSid && !senderId) {
-      throw new BadRequestException('El sender ID alfanumérico no es válido.');
-    }
     const settings = await this.getSettings();
     const fallbackMessage = `SMS de prueba de ${settings.branding.shortName || settings.branding.name || 'Managgio'}.`;
     const body = (message || fallbackMessage).trim();
     if (!body) {
       throw new BadRequestException('El mensaje no puede estar vacío.');
     }
-
-    try {
-      const result = await twilioConfig.client.messages.create({
-        ...(twilioConfig.messagingServiceSid
-          ? { messagingServiceSid: twilioConfig.messagingServiceSid }
-          : { from: senderId! }),
-        to: normalizedPhone,
-        body,
-      });
-      return { success: true, sid: result.sid };
-    } catch (error) {
-      this.logger.error(`Error sending test SMS to ${normalizedPhone}: ${error}`);
-      throw new BadRequestException('No se pudo enviar el SMS de prueba.');
-    }
+    const result = await this.sendSmsMessage({ phone }, body);
+    if (result.status !== 'accepted') throw new BadRequestException(result.message);
+    return { success: true, sid: result.providerMessageId || '' };
   }
 
   async sendReminderWhatsapp(
     contact: EngagementNotificationContactInfo,
     appointment: EngagementNotificationAppointmentInfo,
   ) {
-    const twilioConfig = await this.getTwilio();
-    if (!twilioConfig || !contact.phone) return;
-    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
-    if (!normalizedPhone) {
-      this.logger.warn(`WhatsApp skipped due to invalid phone: ${contact.phone}`);
-      return;
-    }
-    const whatsappFrom = this.normalizePhoneNumber(twilioConfig.whatsappFrom || '');
-    if (!whatsappFrom) {
-      this.logger.warn('Twilio WhatsApp sender missing, WhatsApp reminders disabled');
-      return;
-    }
     const brandName = await this.resolveBrandName();
     const { dateValue, timeValue } = this.formatDateTime(appointment.date);
-    const templateVariables = this.buildWhatsappTemplateVariables({
+    const message = `Recordatorio: cita ${dateValue} ${timeValue}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
+    return this.sendWhatsappMessage(contact, message, {
       name: contact.name || 'Cliente',
       brand: brandName,
       date: dateValue,
       time: timeValue,
     });
-    const message = `Recordatorio: cita ${dateValue} ${timeValue}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
+  }
 
-    try {
-      const basePayload = {
-        from: `whatsapp:${whatsappFrom}`,
-        to: `whatsapp:${normalizedPhone}`,
-      };
-      const result = await twilioConfig.client.messages.create(
-        twilioConfig.whatsappTemplateSid
-          ? { ...basePayload, contentSid: twilioConfig.whatsappTemplateSid, contentVariables: templateVariables }
-          : { ...basePayload, body: message },
-      );
-      const rawPrice = result.price ? Math.abs(Number(result.price)) : null;
-      const priceUnit = result.priceUnit?.toUpperCase();
-      const fallbackCost = this.getTwilioSmsCostUsd();
-      const costUsd = priceUnit && priceUnit !== 'USD'
-        ? fallbackCost
-        : (Number.isFinite(rawPrice) ? rawPrice : fallbackCost);
-      if (costUsd !== null || fallbackCost !== null) {
-        void this.usageMetrics.recordTwilioUsage({
-          costUsd,
-          messages: 1,
-        });
-      } else {
-        void this.usageMetrics.recordTwilioUsage({ messages: 1 });
-      }
-    } catch (error) {
-      this.logger.error(`Error sending WhatsApp to ${normalizedPhone}: ${error}`);
-    }
+  async sendBroadcastWhatsapp(params: {
+    contact: EngagementNotificationContactInfo;
+    message: string;
+    date?: string;
+    time?: string;
+  }) {
+    const brandName = await this.resolveBrandName();
+    const now = this.formatDateTime(new Date());
+    return this.sendWhatsappMessage(params.contact, params.message, {
+      name: params.contact.name || 'Cliente',
+      brand: brandName,
+      date: params.date || now.dateValue,
+      time: params.time || now.timeValue,
+    });
   }
 
   async sendTestWhatsapp(phone: string, options?: EngagementTestWhatsappInput) {
-    const twilioConfig = await this.getTwilio();
-    if (!twilioConfig) {
-      throw new BadRequestException('Twilio no está configurado.');
-    }
-    const normalizedPhone = this.normalizePhoneNumber(phone);
-    if (!normalizedPhone) {
-      throw new BadRequestException('El teléfono debe tener formato internacional (ej: +346XXXXXXXX).');
-    }
-    const whatsappFrom = this.normalizePhoneNumber(twilioConfig.whatsappFrom || '');
-    if (!whatsappFrom) {
-      throw new BadRequestException('El número de WhatsApp de Twilio no está configurado.');
-    }
     const settings = await this.getSettings();
     const brandName = options?.brand?.trim()
       || settings.branding.shortName
@@ -554,13 +577,114 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const body = (options?.message || fallbackMessage).trim();
     const now = new Date();
     const { dateValue, timeValue } = this.formatDateTime(now);
-    const templateVariables = this.buildWhatsappTemplateVariables({
+    const result = await this.sendWhatsappMessage({ phone, name: options?.name }, body, {
       name: options?.name?.trim() || 'Cliente',
       brand: brandName,
       date: options?.date?.trim() || dateValue,
       time: options?.time?.trim() || timeValue,
     });
+    if (result.status !== 'accepted') throw new BadRequestException(result.message);
+    return { success: true, sid: result.providerMessageId || '' };
+  }
 
+  private async sendSmsMessage(
+    contact: EngagementNotificationContactInfo,
+    body: string,
+  ): Promise<EngagementNotificationDeliveryResult> {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    if (config.notificationPrefs?.sms === false) {
+      return { status: 'skipped', code: 'SMS_DISABLED', message: 'SMS notifications are disabled for this tenant.' };
+    }
+    if (!contact.phone) {
+      return { status: 'skipped', code: 'PHONE_RECIPIENT_MISSING', message: 'No recipient phone is available.' };
+    }
+    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
+    if (!normalizedPhone) {
+      return {
+        status: 'failed',
+        code: 'PHONE_RECIPIENT_INVALID',
+        message: 'The recipient phone must use international format.',
+        retryable: false,
+        critical: false,
+      };
+    }
+    const twilioConfig = await this.getTwilio();
+    if (!twilioConfig) {
+      return {
+        status: 'failed',
+        code: 'TWILIO_NOT_CONFIGURED',
+        message: 'Twilio credentials are not configured for this tenant.',
+        retryable: false,
+        critical: true,
+      };
+    }
+    const senderId = await this.resolveSmsSenderId(twilioConfig.smsSenderId || null);
+    if (!twilioConfig.messagingServiceSid && !senderId) {
+      return {
+        status: 'failed',
+        code: 'SMS_SENDER_MISSING',
+        message: 'No valid SMS sender is configured for this tenant.',
+        retryable: false,
+        critical: true,
+      };
+    }
+    try {
+      const result = await twilioConfig.client.messages.create({
+        ...(twilioConfig.messagingServiceSid
+          ? { messagingServiceSid: twilioConfig.messagingServiceSid }
+          : { from: senderId! }),
+        to: normalizedPhone,
+        body,
+      });
+      this.recordTwilioUsage(result);
+      return { status: 'accepted', providerMessageId: result.sid };
+    } catch (error) {
+      return this.toTwilioFailure(error, 'sms');
+    }
+  }
+
+  private async sendWhatsappMessage(
+    contact: EngagementNotificationContactInfo,
+    body: string,
+    templateData: { name: string; brand: string; date: string; time: string },
+  ): Promise<EngagementNotificationDeliveryResult> {
+    const config = await this.tenantConfig.getEffectiveConfig();
+    if (config.notificationPrefs?.whatsapp === false) {
+      return { status: 'skipped', code: 'WHATSAPP_DISABLED', message: 'WhatsApp notifications are disabled for this tenant.' };
+    }
+    if (!contact.phone) {
+      return { status: 'skipped', code: 'PHONE_RECIPIENT_MISSING', message: 'No recipient phone is available.' };
+    }
+    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
+    if (!normalizedPhone) {
+      return {
+        status: 'failed',
+        code: 'PHONE_RECIPIENT_INVALID',
+        message: 'The recipient phone must use international format.',
+        retryable: false,
+        critical: false,
+      };
+    }
+    const twilioConfig = await this.getTwilio();
+    if (!twilioConfig) {
+      return {
+        status: 'failed',
+        code: 'TWILIO_NOT_CONFIGURED',
+        message: 'Twilio credentials are not configured for this tenant.',
+        retryable: false,
+        critical: true,
+      };
+    }
+    const whatsappFrom = this.normalizePhoneNumber(twilioConfig.whatsappFrom || '');
+    if (!whatsappFrom) {
+      return {
+        status: 'failed',
+        code: 'WHATSAPP_SENDER_MISSING',
+        message: 'No valid WhatsApp sender is configured for this tenant.',
+        retryable: false,
+        critical: true,
+      };
+    }
     try {
       const basePayload = {
         from: `whatsapp:${whatsappFrom}`,
@@ -568,14 +692,44 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       };
       const result = await twilioConfig.client.messages.create(
         twilioConfig.whatsappTemplateSid
-          ? { ...basePayload, contentSid: twilioConfig.whatsappTemplateSid, contentVariables: templateVariables }
+          ? {
+              ...basePayload,
+              contentSid: twilioConfig.whatsappTemplateSid,
+              contentVariables: this.buildWhatsappTemplateVariables(templateData),
+            }
           : { ...basePayload, body },
       );
-      return { success: true, sid: result.sid };
+      this.recordTwilioUsage(result);
+      return { status: 'accepted', providerMessageId: result.sid };
     } catch (error) {
-      this.logger.error(`Error sending test WhatsApp to ${normalizedPhone}: ${error}`);
-      throw new BadRequestException('No se pudo enviar el WhatsApp de prueba.');
+      return this.toTwilioFailure(error, 'whatsapp');
     }
+  }
+
+  private recordTwilioUsage(result: { price: string | null; priceUnit: string | null }) {
+    const rawPrice = result.price ? Math.abs(Number(result.price)) : null;
+    const priceUnit = result.priceUnit?.toUpperCase();
+    const fallbackCost = this.getTwilioSmsCostUsd();
+    const costUsd = priceUnit && priceUnit !== 'USD'
+      ? fallbackCost
+      : (Number.isFinite(rawPrice) ? rawPrice : fallbackCost);
+    void this.usageMetrics.recordTwilioUsage(
+      costUsd !== null || fallbackCost !== null ? { costUsd, messages: 1 } : { messages: 1 },
+    );
+  }
+
+  private toTwilioFailure(error: unknown, channel: 'sms' | 'whatsapp'): EngagementNotificationDeliveryResult {
+    const diagnostic = describeTwilioDeliveryError(error, channel);
+    this.logger.error(
+      `${diagnostic.code} brandId=${this.getBrandId()} localId=${this.getLocalId()} ${diagnostic.safeMessage}`,
+    );
+    return {
+      status: 'failed',
+      code: diagnostic.code,
+      message: diagnostic.safeMessage,
+      retryable: diagnostic.retryable,
+      critical: diagnostic.critical,
+    };
   }
 
   private async getSettings(): Promise<SiteSettings> {

@@ -10,9 +10,10 @@ import { AuthModule } from '../../auth/auth.module';
 import { ObservabilityModule } from '../observability/observability.module';
 import { PrismaImageKitPlatformAdminManagementAdapter } from './adapters/prisma-imagekit-platform-admin-management.adapter';
 import { PlatformI18nObservabilityService } from './platform-i18n-observability.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, UsageMetricsModule, ImageKitModule, AuthModule, ObservabilityModule],
+  imports: [PrismaModule, UsageMetricsModule, ImageKitModule, AuthModule, ObservabilityModule, NotificationsModule],
   controllers: [PlatformAdminController],
   providers: [
     PlatformAdminService,

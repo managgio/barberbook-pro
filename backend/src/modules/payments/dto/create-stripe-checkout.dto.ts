@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AppointmentProductDto } from '../../appointments/dto/appointment-product.dto';
 
@@ -23,11 +23,23 @@ export class CreateStripeCheckoutDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(191)
   guestName?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(320)
   guestContact?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  guestEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  guestPhone?: string;
 
   @IsOptional()
   @IsBoolean()
