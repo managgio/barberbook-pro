@@ -749,7 +749,7 @@ const AdminCashRegister: React.FC = () => {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={hasMultipleBarbers ? 'grid gap-6 lg:grid-cols-2' : 'grid gap-6'}>
         <Card variant="elevated" className="min-w-0">
           <CardHeader className="space-y-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -819,59 +819,61 @@ const AdminCashRegister: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card variant="elevated" className="flex flex-col">
-          <CardHeader className="space-y-1">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>{t('admin.cashRegister.byStaff.title', { staffSingularLower: copy.staff.singularLower })}</CardTitle>
-              <Select
-                value={barberPaymentMethodFilter}
-                onValueChange={(value) => setBarberPaymentMethodFilter(value as 'all' | PaymentMethod | 'unknown')}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder={t('admin.cashRegister.filter.method')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('admin.cashRegister.allMethods')}</SelectItem>
-                  <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
-                  <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
-                  <SelectItem value="bizum">{t('admin.cashRegister.paymentMethod.bizum')}</SelectItem>
-                  {stripeEnabled && <SelectItem value="stripe">{t('admin.cashRegister.paymentMethod.stripe')}</SelectItem>}
-                  <SelectItem value="unknown">{t('admin.common.paymentMethod.none')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t('admin.cashRegister.byStaff.subtitle')}
-            </p>
-          </CardHeader>
-          <CardContent className="flex-1 space-y-4">
-            {barberTotals.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
-                {t('admin.cashRegister.byStaff.empty')}
+        {hasMultipleBarbers && (
+          <Card variant="elevated" className="flex flex-col">
+            <CardHeader className="space-y-1">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle>{t('admin.cashRegister.byStaff.title', { staffSingularLower: copy.staff.singularLower })}</CardTitle>
+                <Select
+                  value={barberPaymentMethodFilter}
+                  onValueChange={(value) => setBarberPaymentMethodFilter(value as 'all' | PaymentMethod | 'unknown')}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder={t('admin.cashRegister.filter.method')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('admin.cashRegister.allMethods')}</SelectItem>
+                    <SelectItem value="cash">{t('admin.common.paymentMethod.cash')}</SelectItem>
+                    <SelectItem value="card">{t('admin.common.paymentMethod.card')}</SelectItem>
+                    <SelectItem value="bizum">{t('admin.cashRegister.paymentMethod.bizum')}</SelectItem>
+                    {stripeEnabled && <SelectItem value="stripe">{t('admin.cashRegister.paymentMethod.stripe')}</SelectItem>}
+                    <SelectItem value="unknown">{t('admin.common.paymentMethod.none')}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ) : (
-              barberTotals.map((barber) => (
-                <div key={barber.id} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-foreground">{barber.name}</p>
-                      <p className="text-xs text-muted-foreground">{t('admin.cashRegister.byStaff.servicesCount', { count: barber.count })}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {currencyFormatter.format(barber.total)}
-                    </p>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted">
-                    <div
-                      className="h-2 rounded-full bg-primary"
-                      style={{ width: `${maxBarberTotal ? (barber.total / maxBarberTotal) * 100 : 0}%` }}
-                    />
-                  </div>
+              <p className="text-sm text-muted-foreground">
+                {t('admin.cashRegister.byStaff.subtitle')}
+              </p>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4">
+              {barberTotals.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground">
+                  {t('admin.cashRegister.byStaff.empty')}
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                barberTotals.map((barber) => (
+                  <div key={barber.id} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-foreground">{barber.name}</p>
+                        <p className="text-xs text-muted-foreground">{t('admin.cashRegister.byStaff.servicesCount', { count: barber.count })}</p>
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {currencyFormatter.format(barber.total)}
+                      </p>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-primary"
+                        style={{ width: `${maxBarberTotal ? (barber.total / maxBarberTotal) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {productsEnabled && (

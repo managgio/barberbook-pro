@@ -1650,7 +1650,6 @@
   "bookingWizard.step2.couponPercent": "{value}% descuento",
   "bookingWizard.step2.dateTime": "Fecha y hora",
   "bookingWizard.step2.editProducts": "Editar productos",
-  "bookingWizard.step2.earlierSlot.description": "Te enviaremos un correo si se libera un hueco compatible antes de tu cita. El hueco no se reserva automaticamente y la solicitud caduca al llegar la cita.",
   "bookingWizard.step2.earlierSlot.title": "Avisadme si puedo adelantar mi cita",
   "bookingWizard.step2.freeByLoyalty": "Cita gratis por fidelizacion",
   "bookingWizard.step2.guestEmail": "Correo *",

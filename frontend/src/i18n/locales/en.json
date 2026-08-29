@@ -1650,7 +1650,6 @@
   "bookingWizard.step2.couponPercent": "{value}% discount",
   "bookingWizard.step2.dateTime": "Date and time",
   "bookingWizard.step2.editProducts": "Edit products",
-  "bookingWizard.step2.earlierSlot.description": "We will email you if a compatible earlier slot becomes available. The slot is not held automatically, and the request expires when your appointment begins.",
   "bookingWizard.step2.earlierSlot.title": "Notify me if I can move my appointment earlier",
   "bookingWizard.step2.freeByLoyalty": "Free appointment by loyalty",
   "bookingWizard.step2.guestEmail": "Email *",

@@ -178,7 +178,6 @@ export const ADMIN_REQUIRED_SECTIONS: AdminSectionKey[] = [
   'barbers',
   'holidays',
   'settings',
-  'email-deliveries',
 ];
 
 const ADMIN_SECTION_DEFAULT_VISIBILITY = new Map<AdminSectionKey, boolean>(

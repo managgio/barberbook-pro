@@ -2062,17 +2062,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       onCheckedChange={(value) => setNotifyIfEarlierSlot(Boolean(value))}
                       className="mt-0.5"
                     />
-                    <div className="min-w-0 space-y-1">
+                    <div className="min-w-0">
                       <Label
                         htmlFor="notify-earlier-slot"
-                        className="flex cursor-pointer items-center gap-2 text-sm font-medium leading-5 text-foreground"
+                        className="flex cursor-pointer items-start gap-2 text-sm font-medium leading-5 text-foreground"
                       >
-                        <BellRing className="h-4 w-4 shrink-0 text-primary" />
+                        <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                         {t('bookingWizard.step2.earlierSlot.title')}
                       </Label>
-                      <p className="text-xs leading-5 text-muted-foreground">
-                        {t('bookingWizard.step2.earlierSlot.description')}
-                      </p>
                     </div>
                   </div>
                 </div>
