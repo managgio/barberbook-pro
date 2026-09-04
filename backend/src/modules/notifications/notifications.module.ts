@@ -20,6 +20,7 @@ import { ENGAGEMENT_NOTIFICATION_DELIVERY_QUEUE_PORT } from '../../contexts/enga
 import { OutboxNotificationDeliveryQueueAdapter } from './adapters/outbox-notification-delivery-queue.adapter';
 import { NotificationDeliveryAttemptRecorder } from './notification-delivery-attempt-recorder.service';
 import { NotificationDeliveryCriticalReporter } from './notification-delivery-critical-reporter.service';
+import { TenantEmailConnectionVerifier } from './tenant-email-connection-verifier.service';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { NotificationDeliveryCriticalReporter } from './notification-delivery-cr
     OutboxNotificationDeliveryQueueAdapter,
     NotificationDeliveryAttemptRecorder,
     NotificationDeliveryCriticalReporter,
+    TenantEmailConnectionVerifier,
     {
       provide: ENGAGEMENT_NOTIFICATION_MANAGEMENT_PORT,
       useExisting: SettingsTenantNotificationManagementAdapter,
@@ -56,6 +58,6 @@ import { NotificationDeliveryCriticalReporter } from './notification-delivery-cr
     },
     RemindersService,
   ],
-  exports: [NotificationsService, NotificationDeliveryOutboxService],
+  exports: [NotificationsService, NotificationDeliveryOutboxService, TenantEmailConnectionVerifier],
 })
 export class NotificationsModule {}

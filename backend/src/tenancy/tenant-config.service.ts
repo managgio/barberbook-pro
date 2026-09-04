@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from './tenant-config.defaults';
 import { BrandConfigData, EffectiveTenantConfig, LocationConfigData, TenantI18nConfig, TenantThemeConfig } from './tenant-config.types';
 import { DEFAULT_BRAND_ID } from './tenant.constants';
+import { normalizeSmtpConfig } from '../contexts/engagement/domain/services/smtp-config.policy';
 
 const mergeConfig = <T extends Record<string, any>>(base: T, override?: Partial<T>) => {
   if (!override) return { ...base };
@@ -134,6 +135,7 @@ export class TenantConfigService {
     const smsSenderId = (config.data as BrandConfigData)?.twilio?.smsSenderId?.trim() || undefined;
     return {
       ...merged,
+      email: normalizeSmtpConfig(merged.email),
       twilio: {
         ...fallback.twilio,
         ...(smsSenderId ? { smsSenderId } : {}),

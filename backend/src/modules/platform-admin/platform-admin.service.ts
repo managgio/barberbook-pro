@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   PLATFORM_ADMIN_MANAGEMENT_PORT,
   PlatformAdminManagementPort,
@@ -9,12 +9,20 @@ import {
   PlatformUpdateBrandInput,
   PlatformUpdateLocationInput,
 } from '../../contexts/platform/ports/outbound/platform-admin-management.port';
+import { TenantEmailConnectionVerifier } from '../notifications/tenant-email-connection-verifier.service';
+import {
+  hasPlatformEmailConnectionChanged,
+  preparePlatformConfigUpdate,
+  redactPlatformEmailSecret,
+  resolvePlatformEmailVerificationConfig,
+} from './platform-email-config.policy';
 
 @Injectable()
 export class PlatformAdminService {
   constructor(
     @Inject(PLATFORM_ADMIN_MANAGEMENT_PORT)
     private readonly platformAdminManagementPort: PlatformAdminManagementPort,
+    private readonly emailConnectionVerifier: TenantEmailConnectionVerifier,
   ) {}
 
   listBrands() {
@@ -53,8 +61,9 @@ export class PlatformAdminService {
     return this.platformAdminManagementPort.deleteLocation(id);
   }
 
-  getBrandConfig(brandId: string) {
-    return this.platformAdminManagementPort.getBrandConfig(brandId);
+  async getBrandConfig(brandId: string) {
+    const config = await this.platformAdminManagementPort.getBrandConfig(brandId);
+    return redactPlatformEmailSecret(config);
   }
 
   listBrandAdmins(brandId: string) {
@@ -69,8 +78,29 @@ export class PlatformAdminService {
     return this.platformAdminManagementPort.removeBrandAdmin(brandId, data);
   }
 
-  updateBrandConfig(brandId: string, data: Record<string, unknown>) {
-    return this.platformAdminManagementPort.updateBrandConfig(brandId, data);
+  async updateBrandConfig(brandId: string, data: Record<string, unknown>) {
+    const current = await this.platformAdminManagementPort.getBrandConfig(brandId);
+    const prepared = preparePlatformConfigUpdate(current, data);
+    if (hasPlatformEmailConnectionChanged(current, prepared)) {
+      const verification = await this.emailConnectionVerifier.verify(
+        resolvePlatformEmailVerificationConfig(current, prepared.email),
+      );
+      if (!verification.ok) {
+        throw new BadRequestException({
+          code: verification.code,
+          message: verification.message,
+          endpoint: verification.endpoint,
+        });
+      }
+    }
+    return this.platformAdminManagementPort.updateBrandConfig(brandId, prepared);
+  }
+
+  async verifyBrandEmailConfig(brandId: string, email: Record<string, unknown>) {
+    const current = await this.platformAdminManagementPort.getBrandConfig(brandId);
+    return this.emailConnectionVerifier.verify(
+      resolvePlatformEmailVerificationConfig(current, email),
+    );
   }
 
   getLocationConfig(localId: string) {

@@ -7,6 +7,7 @@ test('creates email transport and delegates sendMail payload', async () => {
   const adapter = new NodemailerEmailTransportFactoryAdapter((config) => {
     calls.push({ kind: 'createTransport', config });
     return {
+      verify: async () => true,
       sendMail: async (payload: unknown) => {
         calls.push({ kind: 'sendMail', payload: payload as Record<string, unknown> });
         return { accepted: ['client@example.com'] };
@@ -18,6 +19,11 @@ test('creates email transport and delegates sendMail payload', async () => {
     host: 'smtp.example.com',
     port: 587,
     secure: false,
+    requireTLS: true,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
+    tls: { minVersion: 'TLSv1.2', servername: 'smtp.example.com' },
     auth: { user: 'mailer@example.com', pass: 'secret' },
   });
   await transport.sendMail({

@@ -7,6 +7,7 @@ import {
 } from '../../ports/outbound/email-transport-factory.port';
 
 type NodemailerCreateTransport = (config: EngagementEmailTransportConfig) => {
+  verify(): Promise<unknown>;
   sendMail(payload: unknown): Promise<unknown>;
 };
 

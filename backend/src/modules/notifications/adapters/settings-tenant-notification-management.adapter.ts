@@ -27,18 +27,11 @@ import { UsageMetricsService } from '../../usage-metrics/usage-metrics.service';
 import { APP_TIMEZONE } from '../../../utils/timezone';
 import { createHash } from 'crypto';
 import { describeEmailDeliveryError, describeTwilioDeliveryError } from '../notification-delivery-diagnostic';
-
-const resolveDefaultSmtpHost = (email?: string) => {
-  const normalized = (email || '').trim().toLowerCase();
-  const domain = normalized.includes('@') ? normalized.split('@')[1] : '';
-  const isOutlookFamily =
-    domain === 'outlook.com' ||
-    domain === 'hotmail.com' ||
-    domain === 'live.com' ||
-    domain === 'msn.com' ||
-    domain.startsWith('outlook.');
-  return isOutlookFamily ? 'smtp.office365.com' : 'smtp.gmail.com';
-};
+import {
+  buildSmtpTransportConfig,
+  normalizeSmtpConfig,
+  resolveDefaultSmtpHost,
+} from '../../../contexts/engagement/domain/services/smtp-config.policy';
 
 type TwilioTenantConfig = {
   client: EngagementTwilioClientPort;
@@ -107,7 +100,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const localId = this.getLocalId();
     const scopeKey = `${brandId}:${localId}`;
     const config = await this.tenantConfig.getEffectiveConfig();
-    const emailConfig = config.email;
+    const emailConfig = normalizeSmtpConfig(config.email);
     if (!emailConfig?.user || !emailConfig?.password) {
       this.logger.warn(`Email credentials missing, email notifications disabled brandId=${brandId} localId=${localId}`);
       this.transporterCache.delete(scopeKey);
@@ -122,15 +115,12 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const cached = this.transporterCache.get(scopeKey);
     if (cached?.fingerprint === fingerprint) return cached.transporter;
 
-    const transporter = this.emailTransportFactory.createTransport({
+    const transporter = this.emailTransportFactory.createTransport(buildSmtpTransportConfig({
       host,
       port,
-      secure: port === 465,
-      auth: {
-        user: emailConfig.user,
-        pass: emailConfig.password,
-      },
-    });
+      user: emailConfig.user,
+      password: emailConfig.password,
+    }));
     this.transporterCache.set(scopeKey, { fingerprint, transporter });
     return transporter;
   }

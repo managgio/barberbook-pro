@@ -6,6 +6,14 @@ export type EngagementEmailTransportConfig = {
   host: string;
   port: number;
   secure: boolean;
+  requireTLS: boolean;
+  connectionTimeout: number;
+  greetingTimeout: number;
+  socketTimeout: number;
+  tls: {
+    minVersion: 'TLSv1.2';
+    servername: string;
+  };
   auth: {
     user: string;
     pass: string;
@@ -28,6 +36,7 @@ export type EngagementSendEmailPayload = {
 };
 
 export interface EngagementEmailTransportPort {
+  verify(): Promise<unknown>;
   sendMail(payload: EngagementSendEmailPayload): Promise<unknown>;
 }
 

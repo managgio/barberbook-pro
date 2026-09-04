@@ -50,6 +50,10 @@ const basePort = (): PlatformAdminManagementPort => ({
   getBrandHealth: async () => ({}),
 });
 
+const emailVerifier = {
+  verify: async () => ({ ok: true, code: 'SMTP_CONNECTION_OK', message: 'ok' }),
+} as any;
+
 test('platform admin facade delegates create brand to management port', async () => {
   const calls: PlatformCreateBrandInput[] = [];
   const service = new PlatformAdminService({
@@ -58,7 +62,7 @@ test('platform admin facade delegates create brand to management port', async ()
       calls.push(input);
       return { id: 'brand-1', ...input };
     },
-  });
+  }, emailVerifier);
 
   const result = await service.createBrand({
     name: 'Brand',
@@ -78,7 +82,7 @@ test('platform admin facade delegates usage metrics reads', async () => {
       calls.push(windowDays);
       return basePort().getUsageMetrics(windowDays);
     },
-  });
+  }, emailVerifier);
 
   const result = await service.getUsageMetrics(14);
 
@@ -87,3 +91,54 @@ test('platform admin facade delegates usage metrics reads', async () => {
   assert.equal(result.windowDays, 7);
 });
 
+test('platform admin facade never returns the stored SMTP password', async () => {
+  const service = new PlatformAdminService({
+    ...basePort(),
+    getBrandConfig: async () => ({
+      email: { user: 'sender@gmail.com', password: 'secret-app-password' },
+    }),
+  }, emailVerifier);
+
+  const result = await service.getBrandConfig('brand-1') as any;
+
+  assert.equal(result.email.password, undefined);
+  assert.equal(result.email.passwordConfigured, true);
+});
+
+test('platform admin verifies changed SMTP credentials before persisting them', async () => {
+  const persisted: any[] = [];
+  const verified: any[] = [];
+  const service = new PlatformAdminService({
+    ...basePort(),
+    getBrandConfig: async () => ({
+      email: {
+        user: 'sender@gmail.com',
+        password: 'old-password',
+        host: 'smtp.gmail.com',
+        port: 587,
+      },
+    }),
+    updateBrandConfig: async (_brandId, data) => {
+      persisted.push(data);
+      return data;
+    },
+  }, {
+    verify: async (config: any) => {
+      verified.push(config);
+      return { ok: true, code: 'SMTP_CONNECTION_OK', message: 'ok' };
+    },
+  } as any);
+
+  await service.updateBrandConfig('brand-1', {
+    email: {
+      user: 'sender@gmail.com',
+      password: 'neww pass wordd here',
+      host: 'smtp.gmail.com',
+      port: 587,
+    },
+  });
+
+  assert.equal(verified.length, 1);
+  assert.equal(verified[0].password, 'newwpassworddhere');
+  assert.equal((persisted[0].email as any).password, 'newwpassworddhere');
+});
