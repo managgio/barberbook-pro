@@ -59,6 +59,9 @@ import {
   PLATFORM_BRAND_TABS,
   type PlatformBrandTab,
 } from '@/components/platform/platformBrandTabs';
+import PlatformSmtpConfigSection, {
+  type PlatformEmailConfig,
+} from '@/components/platform/PlatformSmtpConfigSection';
 
 const PLATFORM_BRAND_STORAGE_KEY = 'platform:brands:selected';
 const PLATFORM_TAB_STORAGE_KEY = 'platform:brands:tab';
@@ -4205,53 +4208,14 @@ const PlatformBrands: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="space-y-3">
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Email SMTP</p>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label>Usuario</Label>
-                            <Input
-                              placeholder="cuenta@outlook.com o cuenta@gmail.com"
-                              value={brandConfig.email?.user || ''}
-                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'user'], e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Password</Label>
-                            <Input
-                              type="password"
-                              value={brandConfig.email?.password || ''}
-                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'password'], e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Host</Label>
-                            <Input
-                              value={brandConfig.email?.host || ''}
-                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'host'], e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Puerto</Label>
-                            <Input
-                              value={brandConfig.email?.port || ''}
-                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'port'], e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-2 md:col-span-2">
-                            <Label>From name</Label>
-                            <Input
-                              value={brandConfig.email?.fromName || ''}
-                              onChange={(e) => setBrandConfig((prev) => updateNestedValue(prev, ['email', 'fromName'], e.target.value))}
-                            />
-                          </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Acepta cuentas Outlook y Gmail. Si dejas Host vacío, se detecta automáticamente:
-                          Outlook/Hotmail/Live/MSN usa <span className="font-mono">smtp.office365.com</span> y el resto{' '}
-                          <span className="font-mono">smtp.gmail.com</span>.
-                        </p>
-                      </div>
+                      {selectedBrandId && (
+                        <PlatformSmtpConfigSection
+                          brandId={selectedBrandId}
+                          config={brandConfig.email as PlatformEmailConfig | undefined}
+                          onChange={(field, value) =>
+                            setBrandConfig((prev) => updateNestedValue(prev, ['email', field], value))}
+                        />
+                      )}
 
                       <div className="space-y-3">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Twilio</p>

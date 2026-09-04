@@ -67,3 +67,16 @@ test('manual verification reuses the stored secret when the password field is em
 
   assert.equal(result?.password, 'abcdefghijklmnop');
 });
+
+test('an explicitly empty email section removes the stored SMTP configuration', () => {
+  const result = preparePlatformConfigUpdate({
+    email: {
+      user: 'sender@gmail.com',
+      password: 'stored-password',
+      host: 'smtp.gmail.com',
+      port: 587,
+    },
+  }, { email: {} });
+
+  assert.equal(result.email, undefined);
+});

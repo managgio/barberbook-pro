@@ -13,6 +13,7 @@ import { PlatformI18nObservabilityService } from './platform-i18n-observability.
 import { PauseTenantI18nDto } from './dto/pause-tenant-i18n.dto';
 import { UpdateCriticalTraceObservabilityDto } from './dto/update-critical-trace-observability.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { VerifyBrandEmailConfigDto } from './dto/verify-brand-email-config.dto';
 
 @Controller('platform')
 @UseGuards(PlatformAdminGuard)
@@ -219,6 +220,11 @@ export class PlatformAdminController {
   @Patch('brands/:id/config')
   updateBrandConfig(@Param('id') brandId: string, @Body() data: UpdateConfigDto) {
     return this.platformService.updateBrandConfig(brandId, data.data);
+  }
+
+  @Post('brands/:id/config/email/verify')
+  verifyBrandEmailConfig(@Param('id') brandId: string, @Body() data: VerifyBrandEmailConfigDto) {
+    return this.platformService.verifyBrandEmailConfig(brandId, data);
   }
 
   @Get('locations/:id/config')

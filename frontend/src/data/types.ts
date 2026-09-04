@@ -314,6 +314,18 @@ export interface OperationSuccessResponse {
 
 export type PlatformConfigData = Record<string, unknown>;
 
+export type PlatformEmailVerification = {
+  ok: boolean;
+  code: string;
+  message: string;
+  endpoint?: {
+    host: string;
+    port: number;
+    user: string;
+    secure: boolean;
+  };
+};
+
 export interface PlatformRoleSummary {
   id: string;
   name: string;

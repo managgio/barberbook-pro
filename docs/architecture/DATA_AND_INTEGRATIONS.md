@@ -33,6 +33,10 @@ La configuración efectiva puede variar por marca/local. El transporte se cachea
 
 - `535`, `EAUTH` o “Username and Password not accepted” significan fallo de autenticación del remitente, no dirección destinataria inválida.
 - Verifica usuario SMTP, contraseña o app password, host, puerto y políticas del proveedor.
+- Las app passwords de Google se normalizan eliminando sus espacios de agrupación. Las contraseñas de otros proveedores solo eliminan espacios exteriores.
+- El puerto 587 exige STARTTLS y el 465 usa TLS implícito. El transporte exige TLS 1.2 como mínimo y aplica timeouts acotados.
+- Platform nunca devuelve la contraseña SMTP persistida. Solo informa `passwordConfigured` y conserva el secreto si el campo queda vacío.
+- Una modificación de usuario, contraseña, host o puerto se autentica con `verify()` antes de persistirse. Platform también ofrece una prueba manual que reutiliza de forma segura el secreto guardado.
 - El `From` técnico usa la cuenta autenticada; el contacto comercial se muestra en contenido.
 - Los logs usan `SMTP_AUTH_FAILED`, tenant y usuario enmascarado; no incluyen contraseña ni destinatario.
 - Un `sendMail` sin excepción no basta: si el proveedor devuelve destinatarios rechazados, la entrega se clasifica como `EMAIL_RECIPIENT_REJECTED`.
@@ -47,6 +51,8 @@ La configuración efectiva puede variar por marca/local. El transporte se cachea
 - `skipped`: no se intentó por preferencia desactivada o falta de destinatario.
 
 El worker procesa una vez por minuto, usa lock distribuido y consulta únicamente entregas vencidas de marcas/locales activos. Cada fila recupera su contexto tenant antes de enviarse y el lote queda limitado a 100 elementos. Correo, SMS y WhatsApp comparten clasificación, backoff, idempotencia, intentos y promoción a trazas críticas. Las cargas incluyen una clave de idempotencia cuyo valor persistido está hasheado. El payload necesario para reintentar nunca se escribe en logs ni respuestas HTTP.
+
+Las confirmaciones de cita se encolan dentro de la transacción de reserva. El intento inmediato se lanza en segundo plano y la respuesta HTTP no espera al proveedor; si el proceso se interrumpe, el worker recupera la entrega persistida. Un fallo SMTP nunca revierte ni invalida una reserva confirmada.
 
 ### Retención y minimización
 

@@ -138,7 +138,7 @@ export class PrismaPaymentLifecycleAdapter implements CommercePaymentLifecyclePo
           }
         });
         if (queuedEmailDeliveryId && this.notificationsService) {
-          await this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
+          void this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
         } else if (!this.notificationsService) {
           await this.appointmentsFacade.sendPaymentConfirmation(params.appointmentId);
         }

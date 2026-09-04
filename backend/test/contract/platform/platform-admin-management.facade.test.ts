@@ -129,7 +129,7 @@ test('platform admin verifies changed SMTP credentials before persisting them', 
     },
   } as any);
 
-  await service.updateBrandConfig('brand-1', {
+  const result = await service.updateBrandConfig('brand-1', {
     email: {
       user: 'sender@gmail.com',
       password: 'neww pass wordd here',
@@ -141,4 +141,68 @@ test('platform admin verifies changed SMTP credentials before persisting them', 
   assert.equal(verified.length, 1);
   assert.equal(verified[0].password, 'newwpassworddhere');
   assert.equal((persisted[0].email as any).password, 'newwpassworddhere');
+  assert.equal((result.email as any).password, undefined);
+  assert.equal((result.email as any).passwordConfigured, true);
+});
+
+test('platform admin never persists SMTP credentials rejected by the provider', async () => {
+  let persistenceCalls = 0;
+  const service = new PlatformAdminService({
+    ...basePort(),
+    getBrandConfig: async () => ({}),
+    updateBrandConfig: async () => {
+      persistenceCalls += 1;
+      return {};
+    },
+  }, {
+    verify: async () => ({
+      ok: false,
+      code: 'SMTP_AUTH_FAILED',
+      message: 'SMTP authentication rejected.',
+    }),
+  } as any);
+
+  await assert.rejects(
+    () => service.updateBrandConfig('brand-1', {
+      email: {
+        user: 'sender@gmail.com',
+        password: 'invalid-app-password',
+        host: 'smtp.gmail.com',
+        port: 587,
+      },
+    }),
+    (error: any) => error instanceof Error && error.message.includes('SMTP authentication rejected'),
+  );
+  assert.equal(persistenceCalls, 0);
+});
+
+test('platform admin can remove an invalid stored SMTP configuration without verifying it', async () => {
+  let verificationCalls = 0;
+  let persisted: any;
+  const service = new PlatformAdminService({
+    ...basePort(),
+    getBrandConfig: async () => ({
+      email: {
+        user: 'sender@gmail.com',
+        password: 'invalid-password',
+        host: 'smtp.gmail.com',
+        port: 587,
+      },
+    }),
+    updateBrandConfig: async (_brandId, data) => {
+      persisted = data;
+      return data;
+    },
+  }, {
+    verify: async () => {
+      verificationCalls += 1;
+      return { ok: false, code: 'SMTP_AUTH_FAILED', message: 'rejected' };
+    },
+  } as any);
+
+  const result = await service.updateBrandConfig('brand-1', { email: {} });
+
+  assert.equal(verificationCalls, 0);
+  assert.equal(persisted.email, undefined);
+  assert.equal(result.email, undefined);
 });

@@ -633,7 +633,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     }
 
     if (queuedEmailDeliveryId) {
-      await this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
+      void this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
     } else if (!command.execution?.skipNotifications && paymentStatus !== PaymentStatus.pending) {
       await this.notifyAppointment(appointment, 'creada');
     }
@@ -1038,7 +1038,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     }
 
     if (queuedEmailDeliveryId) {
-      await this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
+      void this.notificationsService.dispatchEmailDelivery(queuedEmailDeliveryId);
     } else if (shouldNotify) {
       await this.notifyAppointment(updated, notificationAction);
     }

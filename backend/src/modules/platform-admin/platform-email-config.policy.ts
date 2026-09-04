@@ -15,7 +15,7 @@ export const redactPlatformEmailSecret = (configValue: unknown): JsonRecord => {
   const email = asRecord(config.email);
   if (Object.keys(email).length === 0) return { ...config };
   const passwordConfigured = Boolean(readPassword(email.password));
-  const publicEmail = { ...email, passwordConfigured };
+  const publicEmail: JsonRecord = { ...email, passwordConfigured };
   delete publicEmail.password;
   return { ...config, email: publicEmail };
 };
@@ -34,6 +34,13 @@ export const preparePlatformConfigUpdate = (
   const incomingEmail = asRecord(incoming.email);
   const suppliedPassword = readPassword(incomingEmail.password);
   const storedPassword = readPassword(currentEmail.password);
+  const hasIncomingEmailDetails = ['user', 'host', 'port', 'fromName']
+    .some((field) => String(incomingEmail[field] ?? '').trim().length > 0);
+  if (!suppliedPassword && !hasIncomingEmailDetails) {
+    const result = { ...incoming };
+    delete result.email;
+    return result;
+  }
   const normalizedEmail = normalizeSmtpConfig({
     ...incomingEmail,
     password: suppliedPassword ?? storedPassword,

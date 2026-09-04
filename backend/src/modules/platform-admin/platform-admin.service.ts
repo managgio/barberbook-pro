@@ -10,6 +10,7 @@ import {
   PlatformUpdateLocationInput,
 } from '../../contexts/platform/ports/outbound/platform-admin-management.port';
 import { TenantEmailConnectionVerifier } from '../notifications/tenant-email-connection-verifier.service';
+import { SmtpConfigInput } from '../../contexts/engagement/domain/services/smtp-config.policy';
 import {
   hasPlatformEmailConnectionChanged,
   preparePlatformConfigUpdate,
@@ -81,7 +82,7 @@ export class PlatformAdminService {
   async updateBrandConfig(brandId: string, data: Record<string, unknown>) {
     const current = await this.platformAdminManagementPort.getBrandConfig(brandId);
     const prepared = preparePlatformConfigUpdate(current, data);
-    if (hasPlatformEmailConnectionChanged(current, prepared)) {
+    if (prepared.email && hasPlatformEmailConnectionChanged(current, prepared)) {
       const verification = await this.emailConnectionVerifier.verify(
         resolvePlatformEmailVerificationConfig(current, prepared.email),
       );
@@ -93,10 +94,11 @@ export class PlatformAdminService {
         });
       }
     }
-    return this.platformAdminManagementPort.updateBrandConfig(brandId, prepared);
+    await this.platformAdminManagementPort.updateBrandConfig(brandId, prepared);
+    return redactPlatformEmailSecret(prepared);
   }
 
-  async verifyBrandEmailConfig(brandId: string, email: Record<string, unknown>) {
+  async verifyBrandEmailConfig(brandId: string, email: SmtpConfigInput) {
     const current = await this.platformAdminManagementPort.getBrandConfig(brandId);
     return this.emailConnectionVerifier.verify(
       resolvePlatformEmailVerificationConfig(current, email),

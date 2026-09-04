@@ -267,6 +267,49 @@ test('guest booking persists structured contact and queues confirmation inside t
   assert.deepEqual(dispatched, ['delivery-1']);
 });
 
+test('booking response does not wait for the SMTP delivery attempt', async () => {
+  let dispatchStarted = false;
+  const adapter = buildAdapter({
+    notificationsService: {
+      enqueueAppointmentEmailInTransaction: async () => ({ id: 'delivery-slow-smtp' }),
+      dispatchEmailDelivery: async () => {
+        dispatchStarted = true;
+        await new Promise(() => undefined);
+      },
+      sendAppointmentEmail: async () => {
+        throw new Error('legacy direct send must not run');
+      },
+    },
+  });
+
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error('booking waited for SMTP')), 250);
+  });
+  try {
+    const result = await Promise.race([
+      adapter.createAppointment({
+        context: commandContext,
+        input: {
+          barberId: 'barber-1',
+          serviceId: 'service-1',
+          startDateTime: '2026-01-10T10:00:00.000Z',
+          guestName: 'Invitada',
+          guestEmail: 'invitada@example.com',
+          privacyConsentGiven: true,
+        },
+        execution: { requireConsent: true },
+      } as any),
+      timeoutPromise,
+    ]);
+
+    assert.ok(result);
+    assert.equal(dispatchStarted, true);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+});
+
 test('remove appointment command adapter executes side effects, restocks and deletes', async () => {
   const sideEffectCalls: Array<{ localId: string; appointmentId: string; nextStatus: string }> = [];
   const stockUpdates: Array<{ id: string; increment: number }> = [];

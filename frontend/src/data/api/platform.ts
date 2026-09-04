@@ -6,6 +6,7 @@ import {
   PlatformBrandConfigRecord,
   PlatformBrandSummary,
   PlatformConfigData,
+  PlatformEmailVerification,
   PlatformLocationConfigRecord,
   PlatformLocationSummary,
   PlatformUsageMetrics,
@@ -86,6 +87,15 @@ export const updatePlatformBrandConfig = async (
   apiRequest(`/platform/brands/${brandId}/config`, {
     method: 'PATCH',
     body: { data },
+  });
+
+export const verifyPlatformBrandEmailConfig = async (
+  brandId: string,
+  email: Record<string, unknown>,
+): Promise<PlatformEmailVerification> =>
+  apiRequest(`/platform/brands/${brandId}/config/email/verify`, {
+    method: 'POST',
+    body: email,
   });
 
 export const getPlatformLocationConfig = async (localId: string): Promise<PlatformConfigData> =>

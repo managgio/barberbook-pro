@@ -130,7 +130,12 @@ export class TenantConfigService {
       where: { brandId },
       select: { data: true },
     });
-    if (!config?.data) return fallback;
+    if (!config?.data) {
+      return {
+        ...fallback,
+        email: normalizeSmtpConfig(fallback.email),
+      };
+    }
     const merged = mergeConfig(fallback, config.data as BrandConfigData);
     const smsSenderId = (config.data as BrandConfigData)?.twilio?.smsSenderId?.trim() || undefined;
     return {
