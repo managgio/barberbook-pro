@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useI18n } from '@/hooks/useI18n';
 import { mergeShopScheduleAvailability } from '@/lib/shopSchedule';
 import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
+import ExtraordinaryOpeningsSettings from '@/components/admin/settings/ExtraordinaryOpeningsSettings';
 import {
   Loader2,
   MapPin,
@@ -49,12 +50,12 @@ const DAY_KEYS: DayKey[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'frida
 
 const SHIFT_KEYS = ['morning', 'afternoon'] as const;
 type ShiftKey = (typeof SHIFT_KEYS)[number];
-type SettingsTab = 'identity' | 'operations' | 'availability';
+type SettingsTab = 'identity' | 'operations' | 'availability' | 'extraordinary-openings';
 
 const cloneSettings = (data: SiteSettings): SiteSettings => JSON.parse(JSON.stringify(data));
 const DEFAULT_BREAK_RANGE: BreakRange = { start: '13:30', end: '14:00' };
 const SETTINGS_TAB_STORAGE_KEY = 'admin-settings-active-tab';
-const SETTINGS_TABS: SettingsTab[] = ['identity', 'operations', 'availability'];
+const SETTINGS_TABS: SettingsTab[] = ['identity', 'operations', 'availability', 'extraordinary-openings'];
 const PHONE_PREFIX = '+34';
 
 const AdminSettings: React.FC = () => {
@@ -561,6 +562,16 @@ const AdminSettings: React.FC = () => {
     await handleSave();
   };
 
+  const handleExtraordinaryOpeningsUpdated = (
+    extraordinaryOpenings: NonNullable<ShopSchedule['extraordinaryOpenings']>,
+  ) => {
+    setShopSchedule((current) => current ? { ...current, extraordinaryOpenings } : current);
+    setSettings((current) => ({
+      ...current,
+      openingHours: { ...current.openingHours, extraordinaryOpenings },
+    }));
+  };
+
   const handleShiftTimeChange = (
     day: DayKey,
     shift: ShiftKey,
@@ -683,8 +694,8 @@ const AdminSettings: React.FC = () => {
         className="space-y-6"
       >
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="h-auto w-max justify-start gap-1 rounded-xl bg-muted/60 p-1">
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="h-auto w-max justify-start gap-1 rounded-xl bg-muted/60 p-1">
               <TabsTrigger value="identity" className="min-h-9 whitespace-nowrap">
                 {t('admin.settings.tabs.identity')}
               </TabsTrigger>
@@ -694,15 +705,20 @@ const AdminSettings: React.FC = () => {
               <TabsTrigger value="availability" className="min-h-9 whitespace-nowrap">
                 {t('admin.settings.tabs.availability')}
               </TabsTrigger>
+              <TabsTrigger value="extraordinary-openings" className="min-h-9 whitespace-nowrap">
+                {t('admin.settings.tabs.extraordinaryOpenings')}
+              </TabsTrigger>
             </TabsList>
           </div>
-          <div className="flex flex-wrap items-center gap-2 md:shrink-0">
-            <Button onClick={handleSaveByActiveTab} disabled={isCurrentTabSaveDisabled}>
-              {isCurrentTabSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              <Settings className="w-4 h-4 mr-2" />
-              {t('admin.settings.saveChanges')}
-            </Button>
-          </div>
+          {activeTab !== 'extraordinary-openings' && (
+            <div className="flex flex-wrap items-center gap-2 md:shrink-0">
+              <Button onClick={handleSaveByActiveTab} disabled={isCurrentTabSaveDisabled}>
+                {isCurrentTabSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                <Settings className="w-4 h-4 mr-2" />
+                {t('admin.settings.saveChanges')}
+              </Button>
+            </div>
+          )}
         </div>
 
         <TabsContent value="identity" className="mt-0 space-y-6">
@@ -1715,6 +1731,14 @@ const AdminSettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="extraordinary-openings" className="mt-0 space-y-6">
+          <ExtraordinaryOpeningsSettings
+            openings={shopSchedule?.extraordinaryOpenings ?? {}}
+            isLoading={isScheduleLoading || !shopSchedule}
+            onOpeningsUpdated={handleExtraordinaryOpeningsUpdated}
+          />
         </TabsContent>
       </Tabs>
 

@@ -26,6 +26,15 @@ test('schedule support normalize matches legacy normalize', () => {
         { start: '13:30', end: '14:00' },
       ],
     },
+    extraordinaryOpenings: {
+      '2026-10-05': {
+        name: 'Apertura especial',
+        allProfessionals: false,
+        barberIds: ['barber-1'],
+        morning: { enabled: true, start: '10:00', end: '14:00' },
+        afternoon: { enabled: false, start: '00:00', end: '00:00' },
+      },
+    },
     monday: { open: '08:00', close: '16:00', closed: false },
     tuesday: {
       closed: false,

@@ -443,6 +443,16 @@ export interface BreakRange {
   end: string;
 }
 
+export interface ExtraordinaryOpening {
+  name?: string;
+  allProfessionals: boolean;
+  barberIds: string[];
+  morning: ShiftSchedule;
+  afternoon: ShiftSchedule;
+}
+
+export type ExtraordinaryOpeningsByDate = Record<string, ExtraordinaryOpening>;
+
 export interface ShopSchedule {
   bufferMinutes?: number;
   endOverflowMinutes?: number;
@@ -450,6 +460,7 @@ export interface ShopSchedule {
   endOverflowByDate?: Record<string, number>;
   breaks?: Record<DayKey, BreakRange[]>;
   breaksByDate?: Record<string, BreakRange[]>;
+  extraordinaryOpenings?: ExtraordinaryOpeningsByDate;
   monday: DaySchedule;
   tuesday: DaySchedule;
   wednesday: DaySchedule;
@@ -457,6 +468,13 @@ export interface ShopSchedule {
   friday: DaySchedule;
   saturday: DaySchedule;
   sunday: DaySchedule;
+}
+
+export interface ExtraordinaryOpeningConflictSummary {
+  generalHoliday: boolean;
+  generalClosure: boolean;
+  barberHolidayIds: string[];
+  barberClosureIds: string[];
 }
 
 export interface Alert {

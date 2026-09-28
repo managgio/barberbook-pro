@@ -1,4 +1,8 @@
 import { isDateInRange } from '../value-objects/date-range';
+import {
+  extraordinaryOpeningToDaySchedule,
+  resolveExtraordinaryOpening,
+} from '../value-objects/extraordinary-opening';
 import { BookingSchedulePolicy, BreakRange, resolveDayKey } from '../value-objects/schedule';
 import { DEFAULT_SLOT_INTERVAL_MINUTES, minutesToTime, timeToMinutes } from '../value-objects/time-slot';
 
@@ -17,6 +21,7 @@ type AvailabilityClosure = {
 type ComputeSlotsParams = {
   dateOnly: string;
   timezone: string;
+  barberId: string;
   barberSchedule: BookingSchedulePolicy;
   shopSchedule: BookingSchedulePolicy;
   appointments: AvailabilityAppointment[];
@@ -141,6 +146,7 @@ export const computeAvailableSlotsForBarber = (params: ComputeSlotsParams): stri
   const {
     dateOnly,
     timezone,
+    barberId,
     barberSchedule,
     shopSchedule,
     appointments,
@@ -150,7 +156,14 @@ export const computeAvailableSlotsForBarber = (params: ComputeSlotsParams): stri
   } = params;
 
   const dayKey = resolveDayKey(dateOnly, timezone);
-  const daySchedule = barberSchedule[dayKey];
+  const extraordinaryOpening = resolveExtraordinaryOpening({
+    openings: shopSchedule.extraordinaryOpenings,
+    dateOnly,
+    barberId,
+  });
+  const daySchedule = extraordinaryOpening
+    ? extraordinaryOpeningToDaySchedule(extraordinaryOpening)
+    : barberSchedule[dayKey];
   if (!daySchedule || daySchedule.closed) return [];
 
   const bufferMinutes = normalizePositiveInt(shopSchedule.bufferMinutes);

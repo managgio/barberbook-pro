@@ -11,6 +11,7 @@ import {
   ShopSchedule,
   DEFAULT_SHOP_SCHEDULE,
 } from './schedule.types';
+import { normalizeExtraordinaryOpenings } from '../../contexts/booking/domain/value-objects/extraordinary-opening';
 
 export const DAY_KEYS: DayKey[] = [
   'monday',
@@ -216,6 +217,7 @@ export const normalizeSchedule = (
   }
   normalized.breaks = normalizeBreaks(schedule?.breaks);
   normalized.breaksByDate = normalizeBreaksByDate(schedule?.breaksByDate);
+  normalized.extraordinaryOpenings = normalizeExtraordinaryOpenings(schedule?.extraordinaryOpenings);
   DAY_KEYS.forEach((day) => {
     const fallback = cloneDaySchedule(DEFAULT_SHOP_SCHEDULE[day]);
     const dayData = schedule?.[day] as Partial<DaySchedule> | undefined;

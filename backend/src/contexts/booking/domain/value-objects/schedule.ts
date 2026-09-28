@@ -29,6 +29,16 @@ export type BreakRange = {
 export type BreakSchedule = Record<DayKey, BreakRange[]>;
 export type BreakScheduleByDate = Record<string, BreakRange[]>;
 
+export type ExtraordinaryOpening = {
+  name?: string;
+  allProfessionals: boolean;
+  barberIds: string[];
+  morning: ShiftSchedule;
+  afternoon: ShiftSchedule;
+};
+
+export type ExtraordinaryOpeningsByDate = Record<string, ExtraordinaryOpening>;
+
 export type BookingSchedulePolicy = {
   bufferMinutes?: number;
   endOverflowMinutes?: number;
@@ -36,6 +46,7 @@ export type BookingSchedulePolicy = {
   endOverflowByDate?: Record<string, number>;
   breaks?: BreakSchedule;
   breaksByDate?: BreakScheduleByDate;
+  extraordinaryOpenings?: ExtraordinaryOpeningsByDate;
   monday: DaySchedule;
   tuesday: DaySchedule;
   wednesday: DaySchedule;

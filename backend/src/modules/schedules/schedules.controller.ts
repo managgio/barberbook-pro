@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
 import { UpsertScheduleDto } from './dto/upsert-schedule.dto';
 import { AdminEndpoint } from '../../auth/admin.decorator';
+import { UpdateExtraordinaryOpeningsDto } from './dto/update-extraordinary-openings.dto';
+import { ExtraordinaryOpeningConflictsDto } from './dto/extraordinary-opening-conflicts.dto';
 
 @Controller('schedules')
 export class SchedulesController {
@@ -16,6 +18,18 @@ export class SchedulesController {
   @AdminEndpoint()
   updateShopSchedule(@Body() body: UpsertScheduleDto) {
     return this.schedulesService.updateShopSchedule(body.schedule);
+  }
+
+  @Put('shop/extraordinary-openings')
+  @AdminEndpoint()
+  updateExtraordinaryOpenings(@Body() body: UpdateExtraordinaryOpeningsDto) {
+    return this.schedulesService.updateExtraordinaryOpenings(body.extraordinaryOpenings);
+  }
+
+  @Post('shop/extraordinary-openings/conflicts')
+  @AdminEndpoint()
+  getExtraordinaryOpeningConflicts(@Body() body: ExtraordinaryOpeningConflictsDto) {
+    return this.schedulesService.getExtraordinaryOpeningConflicts(body);
   }
 
   @Get('barbers/:barberId')

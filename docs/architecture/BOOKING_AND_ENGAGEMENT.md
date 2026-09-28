@@ -14,6 +14,10 @@ Los casos de uso single y batch comparten el mismo motor. La creación y edició
 
 La edición conjunta de horario y pausas del local se persiste mediante una sola escritura del agregado `ShopSchedule`. El adapter sincroniza después `SiteSettings.openingHours`; la UI no debe lanzar en paralelo ambos endpoints contra los mismos registros.
 
+Las aperturas extraordinarias forman parte de `ShopSchedule` y se administran desde una vista dedicada de Configuración. Cada entrada pertenece al local del request, identifica una fecha civil, define turno de mañana y/o tarde y se aplica a todos los profesionales activos o a una selección tenant-scoped. La apertura sustituye el horario semanal del profesional solo para esa fecha y selección. Los festivos generales o del profesional, los `BookingClosure`, las pausas, las citas existentes y los límites de contratación siguen teniendo prioridad. La escritura usa un endpoint dedicado para no sobrescribir accidentalmente pausas, tolerancias u horario semanal, y las escrituras generales de horario preservan estas aperturas.
+
+Antes de guardar, la UI consulta un resumen seguro de conflictos para el local actual. El resumen solo expone si existe festivo o cierre general y los IDs de profesionales seleccionados con un bloqueo, sin datos de otros tenants ni información personal.
+
 `BookingClosure` usa intervalos `[startDateTime, endDateTime)`, puede ser general (`barberId = null`) o de un profesional y siempre está tenant-scoped. Los cierres se consultan por solapamiento e índice de local/fechas.
 
 ## Festivos
@@ -78,6 +82,7 @@ En procesos masivos también se registra por destinatario si fue enviado, falló
 ## Pruebas críticas
 
 - motor de disponibilidad e intervalos solapados;
+- aperturas extraordinarias en días semanalmente cerrados, selección de profesionales y prioridad de festivos/cierres;
 - single/batch availability y comprobación final de reserva;
 - scope Prisma de citas y cierres;
 - idempotencia de comunicados;

@@ -7,6 +7,7 @@ import {
   DaySchedule,
   ShiftSchedule,
 } from '../../../domain/value-objects/schedule';
+import { normalizeExtraordinaryOpenings } from '../../../domain/value-objects/extraordinary-opening';
 
 const createDaySchedule = (
   morning: [string, string] | null,
@@ -40,6 +41,7 @@ export const DEFAULT_SHOP_SCHEDULE: BookingSchedulePolicy = {
     sunday: [],
   },
   breaksByDate: {},
+  extraordinaryOpenings: {},
   monday: createDaySchedule(['09:00', '14:00'], ['15:00', '20:00']),
   tuesday: createDaySchedule(['09:00', '14:00'], ['15:00', '20:00']),
   wednesday: createDaySchedule(['09:00', '14:00'], ['15:00', '20:00']),
@@ -224,6 +226,7 @@ export const normalizeSchedule = (
   }
   normalized.breaks = normalizeBreaks(schedule?.breaks);
   normalized.breaksByDate = normalizeBreaksByDate(schedule?.breaksByDate);
+  normalized.extraordinaryOpenings = normalizeExtraordinaryOpenings(schedule?.extraordinaryOpenings);
   DAY_KEYS.forEach((day) => {
     const fallback = cloneDaySchedule(DEFAULT_SHOP_SCHEDULE[day]);
     const dayData = schedule?.[day] as Partial<DaySchedule> | undefined;

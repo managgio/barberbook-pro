@@ -119,6 +119,7 @@ export class GetAvailabilityBatchUseCase {
       response[barberId] = computeAvailableSlotsForBarber({
         dateOnly,
         timezone: query.context.timezone,
+        barberId,
         barberSchedule,
         shopSchedule,
         appointments: barberAppointments,

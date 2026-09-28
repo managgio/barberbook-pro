@@ -137,6 +137,15 @@ export class PrismaPlatformSettingsManagementAdapter implements PlatformSettings
     const localId = await this.resolveScopedLocalId();
     const context = this.tenantContextPort.getRequestContext();
     const normalized = normalizeSettings(settings as SiteSettings);
+    const existingShopSchedule = await this.prisma.shopSchedule.findUnique({
+      where: { localId },
+      select: { data: true },
+    });
+    normalized.openingHours.extraordinaryOpenings = existingShopSchedule
+      ? normalizeSettings({
+        openingHours: existingShopSchedule.data as SiteSettings['openingHours'],
+      }).openingHours.extraordinaryOpenings
+      : {};
     const runtimeFlags = await this.resolveRuntimeFlags();
     normalized.products.enabled = runtimeFlags.productsEnabled;
 

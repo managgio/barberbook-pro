@@ -63,6 +63,7 @@ test('blocks overlapping slots for existing appointment', () => {
   const slots = computeAvailableSlotsForBarber({
     dateOnly: '2026-03-04',
     timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
     barberSchedule: schedule,
     shopSchedule: schedule,
     appointments: [
@@ -86,6 +87,7 @@ test('respects buffer between appointments', () => {
   const slots = computeAvailableSlotsForBarber({
     dateOnly: '2026-03-04',
     timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
     barberSchedule: schedule,
     shopSchedule: schedule,
     appointments: [
@@ -108,6 +110,7 @@ test('applies end overflow by date', () => {
   const slots = computeAvailableSlotsForBarber({
     dateOnly: '2026-03-04',
     timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
     barberSchedule: schedule,
     shopSchedule: schedule,
     appointments: [],
@@ -127,6 +130,7 @@ test('removes slots that overlap breaks by day and date', () => {
   const slots = computeAvailableSlotsForBarber({
     dateOnly: '2026-03-04',
     timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
     barberSchedule: schedule,
     shopSchedule: schedule,
     appointments: [],
@@ -142,6 +146,7 @@ test('removes every slot that overlaps a persisted booking closure', () => {
   const slots = computeAvailableSlotsForBarber({
     dateOnly: '2026-03-04',
     timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
     barberSchedule: schedule,
     shopSchedule: schedule,
     appointments: [],
@@ -170,4 +175,92 @@ test('detects blocked dates by holiday ranges', () => {
 
   assert.equal(blocked, true);
   assert.equal(allowed, false);
+});
+
+test('extraordinary opening creates slots on a normally closed date', () => {
+  const schedule = createSchedule();
+  schedule.extraordinaryOpenings = {
+    '2026-03-07': {
+      name: 'Apertura especial',
+      allProfessionals: true,
+      barberIds: [],
+      morning: { enabled: true, start: '10:00', end: '12:00' },
+      afternoon: { enabled: false, start: '00:00', end: '00:00' },
+    },
+  };
+
+  const slots = computeAvailableSlotsForBarber({
+    dateOnly: '2026-03-07',
+    timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
+    barberSchedule: schedule,
+    shopSchedule: schedule,
+    appointments: [],
+    targetDurationMinutes: 30,
+  });
+
+  assert.equal(slots[0], '10:00');
+  assert.equal(slots.includes('11:30'), true);
+});
+
+test('extraordinary opening only overrides selected professionals', () => {
+  const schedule = createSchedule();
+  schedule.extraordinaryOpenings = {
+    '2026-03-07': {
+      allProfessionals: false,
+      barberIds: ['barber-1'],
+      morning: { enabled: true, start: '10:00', end: '12:00' },
+      afternoon: { enabled: false, start: '00:00', end: '00:00' },
+    },
+  };
+
+  const selectedSlots = computeAvailableSlotsForBarber({
+    dateOnly: '2026-03-07',
+    timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
+    barberSchedule: schedule,
+    shopSchedule: schedule,
+    appointments: [],
+    targetDurationMinutes: 30,
+  });
+  const otherSlots = computeAvailableSlotsForBarber({
+    dateOnly: '2026-03-07',
+    timezone: 'Europe/Madrid',
+    barberId: 'barber-2',
+    barberSchedule: schedule,
+    shopSchedule: schedule,
+    appointments: [],
+    targetDurationMinutes: 30,
+  });
+
+  assert.equal(selectedSlots.length > 0, true);
+  assert.deepEqual(otherSlots, []);
+});
+
+test('persisted closure still blocks an extraordinary opening', () => {
+  const schedule = createSchedule();
+  schedule.extraordinaryOpenings = {
+    '2026-03-07': {
+      allProfessionals: true,
+      barberIds: [],
+      morning: { enabled: true, start: '10:00', end: '12:00' },
+      afternoon: { enabled: false, start: '00:00', end: '00:00' },
+    },
+  };
+
+  const slots = computeAvailableSlotsForBarber({
+    dateOnly: '2026-03-07',
+    timezone: 'Europe/Madrid',
+    barberId: 'barber-1',
+    barberSchedule: schedule,
+    shopSchedule: schedule,
+    appointments: [],
+    closures: [{
+      startDateTime: new Date('2026-03-07T09:00:00.000Z'),
+      endDateTime: new Date('2026-03-07T11:00:00.000Z'),
+    }],
+    targetDurationMinutes: 30,
+  });
+
+  assert.deepEqual(slots, []);
 });

@@ -26,6 +26,13 @@ export class PrismaScheduleManagementAdapter implements ScheduleManagementPort {
 
   async updateShopSchedule(params: { localId: string; schedule: BookingSchedulePolicy }): Promise<BookingSchedulePolicy> {
     const normalized = normalizeSchedule(params.schedule) as BookingSchedulePolicy;
+    const existingSchedule = await this.prisma.shopSchedule.findUnique({
+      where: { localId: params.localId },
+      select: { data: true },
+    });
+    normalized.extraordinaryOpenings = existingSchedule
+      ? normalizeSchedule(existingSchedule.data as Partial<BookingSchedulePolicy>).extraordinaryOpenings
+      : {};
     await this.prisma.shopSchedule.upsert({
       where: { localId: params.localId },
       update: { data: normalized },

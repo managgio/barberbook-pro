@@ -10,6 +10,12 @@ import {
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { BookingSchedulePolicy } from '../../contexts/booking/domain/value-objects/schedule';
 import { ShopSchedule } from './schedule.types';
+import { GetExtraordinaryOpeningConflictsUseCase } from '../../contexts/booking/application/use-cases/get-extraordinary-opening-conflicts.use-case';
+import { UpdateExtraordinaryOpeningsUseCase } from '../../contexts/booking/application/use-cases/update-extraordinary-openings.use-case';
+import {
+  EXTRAORDINARY_OPENING_MANAGEMENT_PORT,
+  ExtraordinaryOpeningManagementPort,
+} from '../../contexts/booking/ports/outbound/extraordinary-opening-management.port';
 
 @Injectable()
 export class SchedulesService {
@@ -17,17 +23,27 @@ export class SchedulesService {
   private readonly updateShopScheduleUseCase: UpdateShopScheduleUseCase;
   private readonly getBarberScheduleUseCase: GetBarberScheduleUseCase;
   private readonly updateBarberScheduleUseCase: UpdateBarberScheduleUseCase;
+  private readonly getExtraordinaryOpeningConflictsUseCase: GetExtraordinaryOpeningConflictsUseCase;
+  private readonly updateExtraordinaryOpeningsUseCase: UpdateExtraordinaryOpeningsUseCase;
 
   constructor(
     @Inject(SCHEDULE_MANAGEMENT_PORT)
     private readonly scheduleManagementPort: ScheduleManagementPort,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
+    @Inject(EXTRAORDINARY_OPENING_MANAGEMENT_PORT)
+    private readonly extraordinaryOpeningManagementPort: ExtraordinaryOpeningManagementPort,
   ) {
     this.getShopScheduleUseCase = new GetShopScheduleUseCase(this.scheduleManagementPort);
     this.updateShopScheduleUseCase = new UpdateShopScheduleUseCase(this.scheduleManagementPort);
     this.getBarberScheduleUseCase = new GetBarberScheduleUseCase(this.scheduleManagementPort);
     this.updateBarberScheduleUseCase = new UpdateBarberScheduleUseCase(this.scheduleManagementPort);
+    this.getExtraordinaryOpeningConflictsUseCase = new GetExtraordinaryOpeningConflictsUseCase(
+      this.extraordinaryOpeningManagementPort,
+    );
+    this.updateExtraordinaryOpeningsUseCase = new UpdateExtraordinaryOpeningsUseCase(
+      this.extraordinaryOpeningManagementPort,
+    );
   }
 
   async getShopSchedule(): Promise<ShopSchedule> {
@@ -41,6 +57,28 @@ export class SchedulesService {
       context: this.tenantContextPort.getRequestContext(),
       schedule: schedule as BookingSchedulePolicy,
     }) as Promise<ShopSchedule>;
+  }
+
+  async updateExtraordinaryOpenings(
+    extraordinaryOpenings: NonNullable<ShopSchedule['extraordinaryOpenings']>,
+  ): Promise<ShopSchedule> {
+    return this.updateExtraordinaryOpeningsUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      openings: extraordinaryOpenings,
+    }) as Promise<ShopSchedule>;
+  }
+
+  getExtraordinaryOpeningConflicts(params: {
+    date: string;
+    allProfessionals: boolean;
+    barberIds: string[];
+  }) {
+    return this.getExtraordinaryOpeningConflictsUseCase.execute({
+      context: this.tenantContextPort.getRequestContext(),
+      dateOnly: params.date,
+      allProfessionals: params.allProfessionals,
+      barberIds: params.barberIds,
+    });
   }
 
   async getBarberSchedule(barberId: string): Promise<ShopSchedule> {

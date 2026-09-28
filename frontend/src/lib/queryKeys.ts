@@ -215,6 +215,11 @@ export const queryKeys = {
     ["holidays", localId || "default", "barber", barberId || "none"] as const,
   shopSchedule: (localId: string | null | undefined) =>
     ["shop-schedule", localId || "default"] as const,
+  extraordinaryOpeningConflicts: (
+    localId: string | null | undefined,
+    date: string,
+    professionalScope: string,
+  ) => ["shop-schedule", localId || "default", "extraordinary-conflicts", date, professionalScope] as const,
   productCategories: (localId: string | null | undefined, withProducts = true) =>
     ["product-categories", localId || "default", withProducts ? "with-products" : "plain"] as const,
   localizationEntity: (

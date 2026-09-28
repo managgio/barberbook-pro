@@ -69,6 +69,7 @@ export class GetAvailabilityUseCase {
     return computeAvailableSlotsForBarber({
       dateOnly,
       timezone: query.context.timezone,
+      barberId: query.barberId,
       barberSchedule,
       shopSchedule,
       appointments: appointments.map((appointment) => ({
