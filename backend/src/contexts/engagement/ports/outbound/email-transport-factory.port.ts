@@ -23,6 +23,7 @@ export type EngagementEmailTransportConfig = {
 export type EngagementEmailAttachment = {
   filename: string;
   path: string;
+  contentType?: string;
   cid?: string;
 };
 

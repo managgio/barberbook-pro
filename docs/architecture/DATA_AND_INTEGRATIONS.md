@@ -38,6 +38,8 @@ La configuración efectiva puede variar por marca/local. El transporte se cachea
 - Platform nunca devuelve la contraseña SMTP persistida. Solo informa `passwordConfigured` y conserva el secreto si el campo queda vacío.
 - Una modificación de usuario, contraseña, host o puerto se autentica con `verify()` antes de persistirse. Platform también ofrece una prueba manual que reutiliza de forma segura el secreto guardado.
 - El `From` técnico usa la cuenta autenticada; el contacto comercial se muestra en contenido.
+- Las plantillas HTML resuelven el color desde `theme.primary` y el logo desde el `branding` efectivo del tenant. Si falta el color se usa el tono neutro de Managgio, nunca el branding de otro tenant. En correos de fondo oscuro se prioriza `logoDarkUrl`, con fallback a `logoUrl` y `logoLightUrl`.
+- Los logos HTTPS del endpoint ImageKit configurado se transforman a un PNG acotado y se adjuntan con CID para que los clientes de correo no dependan de la carga de imágenes remotas. Un logo HTTPS externo se referencia como imagen remota y nunca se descarga desde el backend; URLs no HTTPS se omiten.
 - Los logs usan `SMTP_AUTH_FAILED`, tenant y usuario enmascarado; no incluyen contraseña ni destinatario.
 - Un `sendMail` sin excepción no basta: si el proveedor devuelve destinatarios rechazados, la entrega se clasifica como `EMAIL_RECIPIENT_REJECTED`.
 

@@ -1,6 +1,4 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import * as path from 'path';
-import * as fs from 'fs';
 import {
   ENGAGEMENT_EMAIL_TRANSPORT_FACTORY_PORT,
   EngagementEmailTransportFactoryPort,
@@ -33,6 +31,12 @@ import {
   requireCompleteSmtpConfig,
   resolveDefaultSmtpHost,
 } from '../../../contexts/engagement/domain/services/smtp-config.policy';
+import {
+  escapeEmailHtml,
+  getTenantEmailLogoAttachments,
+  renderBrandedEmail,
+  resolveTenantEmailBranding,
+} from '../email-branding';
 
 type EmailTransportFailure = Extract<EngagementNotificationDeliveryResult, { status: 'failed' }>;
 type EmailTransportResolution =
@@ -52,14 +56,6 @@ const readProviderMessageId = (result: unknown) => {
   const messageId = (result as { messageId?: unknown }).messageId;
   return typeof messageId === 'string' ? messageId : null;
 };
-
-const escapeHtml = (value: unknown) =>
-  String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 
 const resolveSendMailResult = (result: unknown): EngagementNotificationDeliveryResult => {
   if (result && typeof result === 'object') {
@@ -205,29 +201,29 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       config.branding?.shortName ||
       config.branding?.name ||
       'Le Blond Hair Salon';
-    const brandColor = '#f472b6';
-    const brandDark = '#0f0f12';
+    const emailBranding = resolveTenantEmailBranding(config);
+    const brandColor = emailBranding.accentText;
+    const brandDark = emailBranding.background;
     const contactEmail = settings.contact.email || config.email?.user || 'info@leblond.com';
     const contactPhone = settings.contact.phone || '';
     const location = appointment.location || settings.location.label || 'Le Blond Hair Salon';
-    const logoPath = this.resolveLogoPath();
-    const logoCid = logoPath ? 'brand-logo' : undefined;
-    const safeBrandName = escapeHtml(brandName);
-    const safeContactName = escapeHtml(contact.name || 'cliente');
-    const safeFormattedDate = escapeHtml(formattedDate);
-    const safeServiceName = escapeHtml(appointment.serviceName);
-    const safeBarberName = escapeHtml(appointment.barberName);
-    const safeLocation = escapeHtml(location);
-    const safeContactEmail = escapeHtml(contactEmail);
-    const safeContactPhone = escapeHtml(contactPhone);
+    const logoSrc = emailBranding.logo?.src;
+    const safeBrandName = escapeEmailHtml(brandName);
+    const safeContactName = escapeEmailHtml(contact.name || 'cliente');
+    const safeFormattedDate = escapeEmailHtml(formattedDate);
+    const safeServiceName = escapeEmailHtml(appointment.serviceName);
+    const safeBarberName = escapeEmailHtml(appointment.barberName);
+    const safeLocation = escapeEmailHtml(location);
+    const safeContactEmail = escapeEmailHtml(contactEmail);
+    const safeContactPhone = escapeEmailHtml(contactPhone);
 
     const html = `
       <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:#f8fafc;">
-        <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
-          <tr style="background:linear-gradient(135deg, rgba(244,114,182,0.18), rgba(139,92,246,0.1)); border-bottom:1px solid rgba(255,255,255,0.08);">
-            <td style="padding:22px 26px; display:flex; align-items:center; gap:22px;">
-              ${logoCid ? `<img src="cid:${logoCid}" alt="${safeBrandName}" width="48" height="48" style="border-radius:12px; display:block; background:#000; padding:6px;" />` : ''}
-              <div style="margin-left:8px;">
+        <table role="presentation" style="width:100%; max-width:640px; margin:0 auto; background:${emailBranding.cardBackground}; border-radius:16px; overflow:hidden; border:1px solid ${emailBranding.borderColor};">
+          <tr style="background:${emailBranding.headerBackground}; border-top:4px solid ${emailBranding.primary}; border-bottom:1px solid ${emailBranding.borderColor};">
+            <td style="padding:22px 26px;">
+              ${logoSrc ? `<img src="${escapeEmailHtml(logoSrc)}" alt="${safeBrandName}" width="56" style="display:inline-block; width:56px; height:auto; max-height:56px; border:0; vertical-align:middle; margin-right:16px;" />` : ''}
+              <div style="display:inline-block; vertical-align:middle; text-align:left;">
                 <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
                 <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">${action === 'cancelada' ? 'Cita cancelada' : 'Cita ' + action}</div>
               </div>
@@ -272,7 +268,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
                   ? 'Si quieres reprogramar, contáctanos y te ayudamos.'
                   : 'Si necesitas ajustar algo de tu cita, estamos disponibles para ayudarte.'}
               </p>
-              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:rgba(244,114,182,0.12); color:#fff; border:1px solid rgba(244,114,182,0.4);">
+              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:${emailBranding.panelBackground}; color:#fff; border:1px solid ${emailBranding.borderColor};">
                 <div style="font-weight:600; margin-bottom:4px;">Contacto</div>
                 <div style="font-size:14px; color:rgba(248,250,252,0.8);">
                   <a href="mailto:${safeContactEmail}" style="color:#fff; text-decoration:none;">${safeContactEmail}</a>
@@ -297,15 +293,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
         subject,
         text: textLines.join('\n'),
         html,
-        attachments: logoCid && logoPath
-          ? [
-              {
-                filename: path.basename(logoPath),
-                path: logoPath,
-                cid: logoCid,
-              },
-            ]
-          : [],
+        attachments: getTenantEmailLogoAttachments(emailBranding),
       });
       return resolveSendMailResult(result);
     } catch (error) {
@@ -345,26 +333,26 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       config.branding?.name ||
       'Managgio';
     const contactEmail = settings.contact.email || config.email?.user || 'info@leblond.com';
-    const brandColor = '#f472b6';
-    const brandDark = '#0f0f12';
-    const logoPath = this.resolveLogoPath();
-    const logoCid = logoPath ? 'brand-logo' : undefined;
-    const ctaLabel = escapeHtml(params.ctaLabel || 'Ver mi recompensa');
+    const emailBranding = resolveTenantEmailBranding(config);
+    const brandColor = emailBranding.primary;
+    const brandDark = emailBranding.background;
+    const logoSrc = emailBranding.logo?.src;
+    const ctaLabel = escapeEmailHtml(params.ctaLabel || 'Ver mi recompensa');
     const ctaUrl = params.ctaUrl && (/^https?:\/\//i.test(params.ctaUrl) || params.ctaUrl.startsWith('/'))
-      ? escapeHtml(params.ctaUrl)
+      ? escapeEmailHtml(params.ctaUrl)
       : undefined;
-    const safeBrandName = escapeHtml(brandName);
-    const safeContactName = escapeHtml(params.contact.name || 'cliente');
-    const safeMessage = escapeHtml(params.message).replace(/\n/g, '<br/>');
-    const safeContactEmail = escapeHtml(contactEmail);
+    const safeBrandName = escapeEmailHtml(brandName);
+    const safeContactName = escapeEmailHtml(params.contact.name || 'cliente');
+    const safeMessage = escapeEmailHtml(params.message).replace(/\n/g, '<br/>');
+    const safeContactEmail = escapeEmailHtml(contactEmail);
 
     const html = `
       <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:#f8fafc;">
-        <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
-          <tr style="background:linear-gradient(135deg, rgba(244,114,182,0.18), rgba(139,92,246,0.1)); border-bottom:1px solid rgba(255,255,255,0.08);">
-            <td style="padding:22px 26px; display:flex; align-items:center; gap:22px;">
-              ${logoCid ? `<img src="cid:${logoCid}" alt="${safeBrandName}" width="48" height="48" style="border-radius:12px; display:block; background:#000; padding:6px;" />` : ''}
-              <div style="margin-left:8px;">
+        <table role="presentation" style="width:100%; max-width:640px; margin:0 auto; background:${emailBranding.cardBackground}; border-radius:16px; overflow:hidden; border:1px solid ${emailBranding.borderColor};">
+          <tr style="background:${emailBranding.headerBackground}; border-top:4px solid ${emailBranding.primary}; border-bottom:1px solid ${emailBranding.borderColor};">
+            <td style="padding:22px 26px;">
+              ${logoSrc ? `<img src="${escapeEmailHtml(logoSrc)}" alt="${safeBrandName}" width="56" style="display:inline-block; width:56px; height:auto; max-height:56px; border:0; vertical-align:middle; margin-right:16px;" />` : ''}
+              <div style="display:inline-block; vertical-align:middle; text-align:left;">
                 <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
                 <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">Programa de referidos</div>
               </div>
@@ -379,13 +367,13 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
               ${
                 ctaUrl
                   ? `<div style="margin-top:20px;">
-                      <a href="${ctaUrl}" style="display:inline-block; padding:12px 18px; border-radius:999px; background:${brandColor}; color:#0b0b0e; text-decoration:none; font-weight:600;">
+                      <a href="${ctaUrl}" style="display:inline-block; padding:12px 18px; border-radius:999px; background:${brandColor}; color:${emailBranding.primaryForeground}; text-decoration:none; font-weight:600;">
                         ${ctaLabel}
                       </a>
                     </div>`
                   : ''
               }
-              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:rgba(244,114,182,0.12); color:#fff; border:1px solid rgba(244,114,182,0.4);">
+              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:${emailBranding.panelBackground}; color:#fff; border:1px solid ${emailBranding.borderColor};">
                 <div style="font-weight:600; margin-bottom:4px;">Contacto</div>
                 <div style="font-size:14px; color:rgba(248,250,252,0.8);">
                   <a href="mailto:${safeContactEmail}" style="color:#fff; text-decoration:none;">${safeContactEmail}</a>
@@ -409,15 +397,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
         subject: params.title,
         text: `${params.message}`,
         html,
-        attachments: logoCid && logoPath
-          ? [
-              {
-                filename: path.basename(logoPath),
-                path: logoPath,
-                cid: logoCid,
-              },
-            ]
-          : [],
+        attachments: getTenantEmailLogoAttachments(emailBranding),
       });
       return resolveSendMailResult(result);
     } catch (error) {
@@ -455,25 +435,15 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       config.branding?.shortName ||
       config.branding?.name ||
       'Managgio';
-    const safeMessage = escapeHtml(params.message).replace(/\n/g, '<br/>');
-    const safeBrandName = escapeHtml(brandName);
-    const html = `
-      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:#0f0f12; padding:24px; color:#f8fafc;">
-        <table style="width:100%; max-width:640px; margin:0 auto; background:#121218; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.06);">
-          <tr>
-            <td style="padding:22px 24px; border-bottom:1px solid rgba(255,255,255,0.08);">
-              <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
-              <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">Comunicado</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:24px; color:rgba(248,250,252,0.88); line-height:1.6;">
-              ${safeMessage}
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
+    const emailBranding = resolveTenantEmailBranding(config);
+    const safeMessage = escapeEmailHtml(params.message).replace(/\n/g, '<br/>');
+    const html = renderBrandedEmail({
+      branding: emailBranding,
+      brandName,
+      eyebrow: 'Comunicado',
+      bodyHtml: `<div style="color:#dfdfe4; line-height:1.65;">${safeMessage}</div>`,
+      footerText: `© ${new Date().getFullYear()} ${brandName}.`,
+    });
 
     try {
       const result = await transporter.sendMail({
@@ -482,6 +452,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
         subject: params.subject,
         text: params.message,
         html,
+        attachments: getTenantEmailLogoAttachments(emailBranding),
       });
       return resolveSendMailResult(result);
     } catch (error) {
@@ -745,14 +716,6 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       `${diagnostic.code} brandId=${this.getBrandId()} localId=${this.getLocalId()} ${diagnostic.safeMessage}`,
     );
     return diagnostic;
-  }
-
-  private resolveLogoPath(): string | null {
-    const candidate = path.resolve(process.cwd(), 'assets', 'leBlondLogo.png');
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-    return null;
   }
 
   private getTwilioSmsCostUsd() {

@@ -77,6 +77,94 @@ test('appointment email uses app timezone when formatting date/time', async () =
   assert.doesNotMatch(sentMails[0].text, /09:00/);
 });
 
+test('all HTML email templates use the effective tenant color and embedded tenant logo', async () => {
+  const sentMails: Array<{
+    html: string;
+    attachments?: Array<{
+      filename: string;
+      path: string;
+      contentType?: string;
+      cid?: string;
+    }>;
+  }> = [];
+  const logoUrl = 'https://ik.imagekit.io/managgio/brands/ronin/logo.png';
+  const settingsService = {
+    getSettings: async () => ({
+      ...DEFAULT_SITE_SETTINGS,
+      branding: {
+        ...DEFAULT_SITE_SETTINGS.branding,
+        name: 'Ronin Blade & Brush',
+        shortName: 'Ronin',
+      },
+    }),
+  } as any;
+  const tenantConfig = {
+    getEffectiveConfig: async () => ({
+      notificationPrefs: { email: true },
+      email: {
+        user: 'sender@example.com',
+        password: 'secret',
+        host: 'smtp.example.com',
+        port: 587,
+        fromName: 'Ronin',
+      },
+      branding: {
+        name: 'Ronin Blade & Brush',
+        shortName: 'Ronin',
+        logoDarkUrl: logoUrl,
+      },
+      theme: { primary: '#d4af37', mode: 'dark' },
+      imagekit: { urlEndpoint: 'https://ik.imagekit.io/managgio' },
+    }),
+  } as any;
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    settingsService,
+    tenantConfig,
+    { recordTwilioUsage: async () => undefined } as any,
+    {
+      createTransport: () => ({
+        sendMail: async (payload: typeof sentMails[number]) => {
+          sentMails.push(payload);
+        },
+      }),
+    } as any,
+    {} as any,
+    {
+      getRequestContext: () => ({ brandId: 'brand-ronin', localId: 'local-ronin' }),
+    } as any,
+  );
+
+  await adapter.sendAppointmentEmail(
+    { email: 'client@example.com', name: 'Cliente' },
+    { date: new Date('2026-10-05T13:30:00.000Z'), serviceName: 'Corte' },
+    'creada',
+  );
+  await adapter.sendReferralRewardEmail({
+    contact: { email: 'client@example.com', name: 'Cliente' },
+    title: 'Recompensa',
+    message: 'Tienes una recompensa',
+    ctaUrl: 'https://ronin.managgio.com',
+  });
+  await adapter.sendBroadcastEmail({
+    contact: { email: 'client@example.com', name: 'Cliente' },
+    subject: 'Comunicado',
+    message: 'Mensaje de Ronin',
+  });
+
+  assert.equal(sentMails.length, 3);
+  sentMails.forEach((mail) => {
+    assert.match(mail.html, /cid:tenant-brand-logo/);
+    assert.match(mail.html, /#d4af37/);
+    assert.doesNotMatch(mail.html, /#f472b6/);
+    assert.deepEqual(mail.attachments, [{
+      filename: 'tenant-brand-logo.png',
+      path: `${logoUrl}?tr=w-160%2Cf-png%2Cq-90`,
+      contentType: 'image/png',
+      cid: 'tenant-brand-logo',
+    }]);
+  });
+});
+
 test('appointment email keeps a defensive missing-recipient result before SMTP', async () => {
   let transportCreations = 0;
   const adapter = new SettingsTenantNotificationManagementAdapter(
