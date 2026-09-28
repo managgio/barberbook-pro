@@ -34,6 +34,19 @@ export const createExtraordinaryOpeningDraft = (date = ''): ExtraordinaryOpening
   afternoon: { enabled: true, start: '16:00', end: '20:00' },
 });
 
+export const resolveExtraordinaryOpeningProfessionalScope = (
+  draft: ExtraordinaryOpeningDraft,
+  activeBarberIds: string[],
+): ExtraordinaryOpeningDraft => {
+  if (activeBarberIds.length !== 1) return draft;
+
+  return {
+    ...draft,
+    allProfessionals: false,
+    barberIds: [activeBarberIds[0]],
+  };
+};
+
 const isValidDateOnly = (value: string) => {
   if (!ISO_DATE_REGEX.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);

@@ -22,6 +22,7 @@ import {
   ExtraordinaryOpeningValidationError,
   openingToDraft,
   removeExtraordinaryOpening,
+  resolveExtraordinaryOpeningProfessionalScope,
   upsertExtraordinaryOpening,
   validateExtraordinaryOpeningDraft,
 } from '@/lib/extraordinaryOpenings';
@@ -88,24 +89,33 @@ const ExtraordinaryOpeningsSettings: React.FC<ExtraordinaryOpeningsSettingsProps
     () => new Map(activeBarbers.map((barber) => [barber.id, barber])),
     [activeBarbers],
   );
-  const professionalScope = draft.allProfessionals
+  const activeBarberIds = useMemo(
+    () => (barbersQuery.isSuccess ? activeBarbers.map((barber) => barber.id) : []),
+    [activeBarbers, barbersQuery.isSuccess],
+  );
+  const scopedDraft = useMemo(
+    () => resolveExtraordinaryOpeningProfessionalScope(draft, activeBarberIds),
+    [activeBarberIds, draft],
+  );
+  const hasSingleProfessional = activeBarberIds.length === 1;
+  const professionalScope = scopedDraft.allProfessionals
     ? 'all'
-    : [...draft.barberIds].sort().join(',');
+    : [...scopedDraft.barberIds].sort().join(',');
   const conflictsQuery = useQuery({
     queryKey: queryKeys.extraordinaryOpeningConflicts(
       currentLocationId,
-      draft.date,
+      scopedDraft.date,
       professionalScope,
     ),
     queryFn: () => getExtraordinaryOpeningConflicts({
-      date: draft.date,
-      allProfessionals: draft.allProfessionals,
-      barberIds: draft.allProfessionals ? [] : draft.barberIds,
+      date: scopedDraft.date,
+      allProfessionals: scopedDraft.allProfessionals,
+      barberIds: scopedDraft.allProfessionals ? [] : scopedDraft.barberIds,
     }),
     enabled: Boolean(
       isFormOpen
-      && /^\d{4}-\d{2}-\d{2}$/.test(draft.date)
-      && (draft.allProfessionals || draft.barberIds.length > 0),
+      && /^\d{4}-\d{2}-\d{2}$/.test(scopedDraft.date)
+      && (scopedDraft.allProfessionals || scopedDraft.barberIds.length > 0),
     ),
   });
 
@@ -145,16 +155,16 @@ const ExtraordinaryOpeningsSettings: React.FC<ExtraordinaryOpeningsSettingsProps
   };
 
   const saveOpening = async () => {
-    const error = validateExtraordinaryOpeningDraft(draft);
+    const error = validateExtraordinaryOpeningDraft(scopedDraft);
     if (error) {
       setValidationError(t(VALIDATION_KEYS[error]));
       return;
     }
-    if (draft.date < today) {
+    if (scopedDraft.date < today) {
       setValidationError(t('admin.settings.extraordinary.validation.pastDate'));
       return;
     }
-    if (draft.date !== editingDate && openings[draft.date]) {
+    if (scopedDraft.date !== editingDate && openings[scopedDraft.date]) {
       setValidationError(t('admin.settings.extraordinary.validation.duplicateDate'));
       return;
     }
@@ -164,7 +174,7 @@ const ExtraordinaryOpeningsSettings: React.FC<ExtraordinaryOpeningsSettingsProps
       const nextOpenings = upsertExtraordinaryOpening({
         openings,
         originalDate: editingDate,
-        draft,
+        draft: scopedDraft,
       });
       const updatedSchedule = await updateExtraordinaryOpenings(nextOpenings);
       onOpeningsUpdated(updatedSchedule.extraordinaryOpenings ?? {});
@@ -244,10 +254,11 @@ const ExtraordinaryOpeningsSettings: React.FC<ExtraordinaryOpeningsSettingsProps
 
       {isFormOpen && (
         <ExtraordinaryOpeningForm
-          draft={draft}
+          draft={scopedDraft}
           editingDate={editingDate}
           today={today}
           activeBarbers={activeBarbers}
+          hideProfessionalSelection={hasSingleProfessional}
           isProfessionalsLoading={barbersQuery.isLoading}
           professionalsLoadFailed={Boolean(barbersQuery.error)}
           isSaving={isSaving}

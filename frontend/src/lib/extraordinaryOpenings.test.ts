@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createExtraordinaryOpeningDraft,
   removeExtraordinaryOpening,
+  resolveExtraordinaryOpeningProfessionalScope,
   upsertExtraordinaryOpening,
   validateExtraordinaryOpeningDraft,
 } from '@/lib/extraordinaryOpenings';
@@ -24,6 +25,29 @@ describe('extraordinary openings', () => {
     draft.morning.end = '17:00';
     draft.afternoon.start = '16:00';
     expect(validateExtraordinaryOpeningDraft(draft)).toBe('shiftsOverlap');
+  });
+
+  it('assigns an opening to the only active professional', () => {
+    const draft = createExtraordinaryOpeningDraft('2026-10-05');
+
+    const resolved = resolveExtraordinaryOpeningProfessionalScope(draft, ['barber-1']);
+
+    expect(resolved).toMatchObject({
+      allProfessionals: false,
+      barberIds: ['barber-1'],
+    });
+    expect(draft).toMatchObject({
+      allProfessionals: true,
+      barberIds: [],
+    });
+  });
+
+  it('keeps the chosen scope when the location does not have exactly one professional', () => {
+    const draft = createExtraordinaryOpeningDraft('2026-10-05');
+
+    expect(resolveExtraordinaryOpeningProfessionalScope(draft, [])).toBe(draft);
+    expect(resolveExtraordinaryOpeningProfessionalScope(draft, ['barber-1', 'barber-2']))
+      .toBe(draft);
   });
 
   it('moves an edited opening when its date changes and keeps its selected professionals', () => {

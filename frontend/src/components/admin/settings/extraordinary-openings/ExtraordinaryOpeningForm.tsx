@@ -21,6 +21,7 @@ type ExtraordinaryOpeningFormProps = {
   editingDate: string | null;
   today: string;
   activeBarbers: Barber[];
+  hideProfessionalSelection: boolean;
   isProfessionalsLoading: boolean;
   professionalsLoadFailed: boolean;
   isSaving: boolean;
@@ -89,6 +90,7 @@ const ExtraordinaryOpeningForm: React.FC<ExtraordinaryOpeningFormProps> = ({
   editingDate,
   today,
   activeBarbers,
+  hideProfessionalSelection,
   isProfessionalsLoading,
   professionalsLoadFailed,
   isSaving,
@@ -186,71 +188,75 @@ const ExtraordinaryOpeningForm: React.FC<ExtraordinaryOpeningFormProps> = ({
           />
         </div>
 
-        <div className="space-y-3">
-          <Label>{t('admin.settings.extraordinary.professionals')}</Label>
-          <RadioGroup
-            value={draft.allProfessionals ? 'all' : 'selected'}
-            onValueChange={(value) => updateDraft({ allProfessionals: value === 'all' })}
-            className="grid gap-3 md:grid-cols-2"
-          >
-            <Label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 p-4">
-              <RadioGroupItem value="all" className="mt-0.5" disabled={isSaving} />
-              <span>
-                <span className="block font-medium">
-                  {t('admin.settings.extraordinary.allProfessionals')}
+        {!hideProfessionalSelection && (
+          <div className="space-y-3">
+            <Label>{t('admin.settings.extraordinary.professionals')}</Label>
+            <RadioGroup
+              value={draft.allProfessionals ? 'all' : 'selected'}
+              onValueChange={(value) => updateDraft({ allProfessionals: value === 'all' })}
+              className="grid gap-3 md:grid-cols-2"
+            >
+              <Label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 p-4">
+                <RadioGroupItem value="all" className="mt-0.5" disabled={isSaving} />
+                <span>
+                  <span className="block font-medium">
+                    {t('admin.settings.extraordinary.allProfessionals')}
+                  </span>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    {t('admin.settings.extraordinary.allProfessionalsHint')}
+                  </span>
                 </span>
-                <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                  {t('admin.settings.extraordinary.allProfessionalsHint')}
+              </Label>
+              <Label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 p-4">
+                <RadioGroupItem value="selected" className="mt-0.5" disabled={isSaving} />
+                <span>
+                  <span className="block font-medium">
+                    {t('admin.settings.extraordinary.selectedProfessionals')}
+                  </span>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    {t('admin.settings.extraordinary.selectedProfessionalsHint')}
+                  </span>
                 </span>
-              </span>
-            </Label>
-            <Label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 p-4">
-              <RadioGroupItem value="selected" className="mt-0.5" disabled={isSaving} />
-              <span>
-                <span className="block font-medium">
-                  {t('admin.settings.extraordinary.selectedProfessionals')}
-                </span>
-                <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                  {t('admin.settings.extraordinary.selectedProfessionalsHint')}
-                </span>
-              </span>
-            </Label>
-          </RadioGroup>
+              </Label>
+            </RadioGroup>
 
-          {!draft.allProfessionals && (
-            <div className="grid gap-2 rounded-xl border border-border/70 bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-3">
-              {isProfessionalsLoading && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('admin.settings.extraordinary.loadingProfessionals')}
-                </div>
-              )}
-              {professionalsLoadFailed && (
-                <p className="text-sm text-destructive">
-                  {t('admin.settings.extraordinary.professionalsLoadError')}
-                </p>
-              )}
-              {!isProfessionalsLoading && !professionalsLoadFailed && activeBarbers.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {t('admin.settings.extraordinary.noProfessionals')}
-                </p>
-              )}
-              {activeBarbers.map((barber) => (
-                <Label
-                  key={barber.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg bg-background/80 p-3"
-                >
-                  <Checkbox
-                    checked={draft.barberIds.includes(barber.id)}
-                    disabled={isSaving}
-                    onCheckedChange={(checked) => toggleBarber(barber.id, checked === true)}
-                  />
-                  <span>{barber.name}</span>
-                </Label>
-              ))}
-            </div>
-          )}
-        </div>
+            {!draft.allProfessionals && (
+              <div className="grid gap-2 rounded-xl border border-border/70 bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                {isProfessionalsLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t('admin.settings.extraordinary.loadingProfessionals')}
+                  </div>
+                )}
+                {professionalsLoadFailed && (
+                  <p className="text-sm text-destructive">
+                    {t('admin.settings.extraordinary.professionalsLoadError')}
+                  </p>
+                )}
+                {!isProfessionalsLoading
+                  && !professionalsLoadFailed
+                  && activeBarbers.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {t('admin.settings.extraordinary.noProfessionals')}
+                    </p>
+                )}
+                {activeBarbers.map((barber) => (
+                  <Label
+                    key={barber.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg bg-background/80 p-3"
+                  >
+                    <Checkbox
+                      checked={draft.barberIds.includes(barber.id)}
+                      disabled={isSaving}
+                      onCheckedChange={(checked) => toggleBarber(barber.id, checked === true)}
+                    />
+                    <span>{barber.name}</span>
+                  </Label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {isCheckingConflicts && (
           <div className="flex items-center gap-2 rounded-lg border border-border/70 p-3 text-sm text-muted-foreground">
