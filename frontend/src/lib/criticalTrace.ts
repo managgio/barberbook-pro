@@ -85,6 +85,11 @@ export const updateActiveCriticalTrace = (context: Partial<CriticalTraceContext>
   activeContext = { ...activeContext, ...context };
 };
 
+export const discardCriticalTrace = (traceId: string) => {
+  traceBuffers.delete(traceId);
+  if (activeContext?.traceId === traceId) activeContext = null;
+};
+
 export const reportCriticalTrace = async (payload: CriticalTracePayload) => {
   const occurredAt = payload.occurredAt ?? Date.now();
   const isFailure = payload.outcome === 'failed' || payload.level === 'error';

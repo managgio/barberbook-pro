@@ -35,6 +35,25 @@ export type SmtpTransportConfig = {
   };
 };
 
+export type SmtpConfigValidationCode =
+  | 'SMTP_CONFIG_INCOMPLETE'
+  | 'SMTP_GOOGLE_APP_PASSWORD_INVALID';
+
+export type SmtpConfigValidationIssue = {
+  code: SmtpConfigValidationCode;
+  message: string;
+};
+
+export class SmtpConfigValidationError extends Error {
+  constructor(
+    readonly code: SmtpConfigValidationCode,
+    readonly safeMessage: string,
+  ) {
+    super(code);
+    this.name = 'SmtpConfigValidationError';
+  }
+}
+
 const GMAIL_SMTP_HOSTS = new Set(['smtp.gmail.com', 'smtp.googlemail.com']);
 const OUTLOOK_DOMAINS = new Set(['outlook.com', 'hotmail.com', 'live.com', 'msn.com']);
 
@@ -84,11 +103,31 @@ export const normalizeSmtpConfig = (input?: SmtpConfigInput | null): NormalizedS
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 };
 
-export const requireCompleteSmtpConfig = (input?: SmtpConfigInput | null): CompleteSmtpConfig => {
+export const getSmtpConfigValidationIssue = (
+  input?: SmtpConfigInput | null,
+): SmtpConfigValidationIssue | null => {
   const normalized = normalizeSmtpConfig(input);
   if (!normalized?.user || !normalized.password || !normalized.host || !normalized.port) {
-    throw new Error('SMTP_CONFIG_INCOMPLETE');
+    return {
+      code: 'SMTP_CONFIG_INCOMPLETE',
+      message: 'SMTP user, app password, host and port are required.',
+    };
   }
+  if (isGoogleSmtp(normalized.host, normalized.user) && normalized.password.length !== 16) {
+    return {
+      code: 'SMTP_GOOGLE_APP_PASSWORD_INVALID',
+      message: 'Google app passwords must contain exactly 16 characters after spaces are removed.',
+    };
+  }
+  return null;
+};
+
+export const requireCompleteSmtpConfig = (input?: SmtpConfigInput | null): CompleteSmtpConfig => {
+  const issue = getSmtpConfigValidationIssue(input);
+  if (issue) {
+    throw new SmtpConfigValidationError(issue.code, issue.message);
+  }
+  const normalized = normalizeSmtpConfig(input);
   return normalized as CompleteSmtpConfig;
 };
 

@@ -39,6 +39,7 @@ import {
 import { isApiRequestError } from '@/lib/networkErrors';
 import { queryKeys } from '@/lib/queryKeys';
 import { formatCriticalTraceBreadcrumbs } from '@/lib/criticalTracePresentation';
+import { getWebVitalHealth, type HealthLevel } from '@/lib/platformObservabilityHealth';
 import { NotificationDeliveryHistoryPanel } from '@/components/notification-deliveries/NotificationDeliveryHistoryPanel';
 import type { DeliveryTableFilters } from '@/components/notification-deliveries/NotificationDeliveryList';
 import {
@@ -77,8 +78,6 @@ const formatDateTime = (value: string) => new Intl.DateTimeFormat('es-ES', {
   timeStyle: 'medium',
 }).format(new Date(value));
 
-type HealthLevel = 'ok' | 'warning' | 'critical';
-
 const HEALTH_PRIORITY: Record<HealthLevel, number> = {
   critical: 0,
   warning: 1,
@@ -105,12 +104,6 @@ const getHealthMeta = (level: HealthLevel) => {
     badgeClassName: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     rowClassName: '',
   };
-};
-
-const getWebVitalHealth = (row: PlatformObservabilityWebVitalMetricSummary): HealthLevel => {
-  if (row.ratings.poor > 0) return 'critical';
-  if (row.ratings.needsImprovement > 0) return 'warning';
-  return 'ok';
 };
 
 const getApiHealth = (row: PlatformObservabilityApiRouteSummary): HealthLevel => {
@@ -216,6 +209,7 @@ const WebVitalsTable: React.FC<{ rows: PlatformObservabilityWebVitalMetricSummar
           <TableHead>Estado</TableHead>
           <TableHead>Métrica</TableHead>
           <TableHead>Promedio</TableHead>
+          <TableHead>P75</TableHead>
           <TableHead>P95</TableHead>
           <TableHead>Muestras</TableHead>
           <TableHead>Poor</TableHead>
@@ -239,6 +233,7 @@ const WebVitalsTable: React.FC<{ rows: PlatformObservabilityWebVitalMetricSummar
                 </div>
               </TableCell>
               <TableCell>{row.name === 'CLS' ? row.avg.toFixed(3) : formatMs(row.avg)}</TableCell>
+              <TableCell>{row.name === 'CLS' ? row.p75.toFixed(3) : formatMs(row.p75)}</TableCell>
               <TableCell>{row.name === 'CLS' ? row.p95.toFixed(3) : formatMs(row.p95)}</TableCell>
               <TableCell>{row.count}</TableCell>
               <TableCell className={row.ratings.poor > 0 ? 'text-destructive font-medium' : ''}>{row.ratings.poor}</TableCell>

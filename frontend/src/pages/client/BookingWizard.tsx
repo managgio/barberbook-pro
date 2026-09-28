@@ -61,10 +61,12 @@ import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
 import {
   createCriticalTraceId,
+  discardCriticalTrace,
   reportCriticalTrace,
   setActiveCriticalTrace,
   updateActiveCriticalTrace,
 } from '@/lib/criticalTrace';
+import { classifyBookingSubmitError } from '@/lib/bookingSubmitError';
 import StaffHorizontalScroller from './booking/StaffHorizontalScroller';
 import PublicServiceDescription from '@/components/services/PublicServiceDescription';
 
@@ -1074,23 +1076,28 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       }, 2000);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
-      void reportCriticalTrace({
-        traceId: bookingTraceId,
-        path: window.location.pathname,
-        serviceId: booking.serviceId,
-        barberId: booking.barberId,
-        selectedDateTime: booking.dateTime,
-        stage: 'appointment_submit',
-        level: 'error',
-        outcome: 'failed',
-        message: message || 'Error desconocido al crear la cita',
-        errorName: error instanceof Error ? error.name : 'UnknownError',
-        errorCode: isApiRequestError(error) ? `${error.kind}:${error.status}` : undefined,
-        errorStack: error instanceof Error ? error.stack?.slice(0, 8000) : undefined,
-      });
-      const isSlotConflict = message.toLowerCase().includes('horario no disponible');
-      const isBarberMismatch = message.toLowerCase().includes('no está disponible para este servicio');
-      if (isSlotConflict) {
+      const submitErrorKind = classifyBookingSubmitError(message);
+      const isExpectedBusinessConflict =
+        isApiRequestError(error) && error.status === 400 && submitErrorKind !== 'unexpected';
+      if (isExpectedBusinessConflict) {
+        discardCriticalTrace(bookingTraceId);
+      } else {
+        void reportCriticalTrace({
+          traceId: bookingTraceId,
+          path: window.location.pathname,
+          serviceId: booking.serviceId,
+          barberId: booking.barberId,
+          selectedDateTime: booking.dateTime,
+          stage: 'appointment_submit',
+          level: 'error',
+          outcome: 'failed',
+          message: message || 'Error desconocido al crear la cita',
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+          errorCode: isApiRequestError(error) ? `${error.kind}:${error.status}` : undefined,
+          errorStack: error instanceof Error ? error.stack?.slice(0, 8000) : undefined,
+        });
+      }
+      if (submitErrorKind === 'slot_conflict') {
         toast({
           title: t('bookingWizard.toast.slotTakenTitle'),
           description: t('bookingWizard.toast.slotTakenDescription'),
@@ -1098,7 +1105,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         });
         setBooking((prev) => ({ ...prev, dateTime: null }));
         await slotsQuery.refetch();
-      } else if (isBarberMismatch) {
+      } else if (submitErrorKind === 'staff_mismatch') {
         toast({
           title: t('bookingWizard.toast.staffUnavailableTitle', { staffSingular: copy.staff.singular }),
           description: t('bookingWizard.toast.staffUnavailableDescription', { staffSingularLower: copy.staff.singularLower }),

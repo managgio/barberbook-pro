@@ -6,7 +6,7 @@ vi.mock('@/data/api/request', () => ({
   apiRequest: apiRequestMock,
 }));
 
-import { reportCriticalTrace } from '@/lib/criticalTrace';
+import { discardCriticalTrace, reportCriticalTrace, setActiveCriticalTrace } from '@/lib/criticalTrace';
 
 describe('criticalTrace', () => {
   beforeEach(() => {
@@ -66,5 +66,21 @@ describe('criticalTrace', () => {
       expect.objectContaining({ stage: 'booking_flow', elapsedMs: 0 }),
       expect.objectContaining({ stage: 'service_selected', elapsedMs: 250, serviceId: 'service-1' }),
     ]);
+  });
+
+  it('discards an expected business conflict without persisting its buffered trail', async () => {
+    setActiveCriticalTrace({ traceId: 'expected-conflict', path: '/app/book' });
+    await reportCriticalTrace({
+      traceId: 'expected-conflict',
+      path: '/app/book',
+      stage: 'booking_flow',
+      level: 'info',
+      outcome: 'started',
+      occurredAt: 2_000,
+    });
+
+    discardCriticalTrace('expected-conflict');
+
+    expect(apiRequestMock).not.toHaveBeenCalled();
   });
 });

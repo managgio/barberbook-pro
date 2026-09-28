@@ -41,14 +41,35 @@ test('returns a safe authentication diagnostic when the provider rejects the cre
 
   const result = await verifier.verify({
     user: 'sender@gmail.com',
-    password: 'secret-value',
+    password: 'abcdefghijklmnop',
     host: 'smtp.gmail.com',
     port: 587,
   });
 
   assert.equal(result.ok, false);
   assert.equal(result.code, 'SMTP_AUTH_FAILED');
-  assert.doesNotMatch(JSON.stringify(result), /secret-value|Username and Password not accepted/);
+  assert.doesNotMatch(JSON.stringify(result), /abcdefghijklmnop|Username and Password not accepted/);
+});
+
+test('rejects an invalid Gmail app password shape before opening a connection', async () => {
+  let created = false;
+  const verifier = new TenantEmailConnectionVerifier({
+    createTransport: () => {
+      created = true;
+      return { verify: async () => true, sendMail: async () => undefined };
+    },
+  });
+
+  const result = await verifier.verify({
+    user: 'sender@gmail.com',
+    password: 'abcd efgh ijkl mnop qr',
+    host: 'smtp.gmail.com',
+    port: 587,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'SMTP_GOOGLE_APP_PASSWORD_INVALID');
+  assert.equal(created, false);
 });
 
 test('does not open a connection for an incomplete configuration', async () => {

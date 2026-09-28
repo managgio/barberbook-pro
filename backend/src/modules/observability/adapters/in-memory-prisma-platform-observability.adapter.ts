@@ -963,6 +963,7 @@ export class InMemoryPrismaPlatformObservabilityAdapter
           path: first.path,
           count: records.length,
           avg: Number((values.reduce((sum, value) => sum + value, 0) / records.length).toFixed(2)),
+          p75: percentile(values, 0.75),
           p95: percentile(values, 0.95),
           ratings: {
             good: records.filter((record) => record.rating === PlatformWebVitalRating.GOOD).length,

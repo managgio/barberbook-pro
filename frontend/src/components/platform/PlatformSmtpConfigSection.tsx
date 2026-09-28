@@ -11,6 +11,7 @@ export type PlatformEmailConfig = Record<string, unknown> & {
   user?: string;
   password?: string;
   passwordConfigured?: boolean;
+  validationCode?: string | null;
   host?: string;
   port?: string | number;
   fromName?: string;
@@ -29,6 +30,20 @@ export default function PlatformSmtpConfigSection({
 }: PlatformSmtpConfigSectionProps) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const normalizedPassword = (config.password || '').replace(/\s+/g, '');
+  const normalizedHost = (config.host || '').trim().toLowerCase();
+  const normalizedUser = (config.user || '').trim().toLowerCase();
+  const isGoogleSmtp = normalizedHost === 'smtp.gmail.com'
+    || normalizedHost === 'smtp.googlemail.com'
+    || /@(gmail|googlemail)\.com$/.test(normalizedUser);
+  const newPasswordInvalid = Boolean(config.password && isGoogleSmtp && normalizedPassword.length !== 16);
+  const storedPasswordInvalid = !config.password
+    && config.validationCode === 'SMTP_GOOGLE_APP_PASSWORD_INVALID';
+  const passwordValidationMessage = newPasswordInvalid
+    ? t('platform.smtp.passwordInvalid', { count: normalizedPassword.length })
+    : storedPasswordInvalid
+      ? t('platform.smtp.storedPasswordInvalid')
+      : null;
   const verifyMutation = useMutation({
     mutationFn: () => verifyPlatformBrandEmailConfig(brandId, {
       user: config.user || '',
@@ -82,12 +97,19 @@ export default function PlatformSmtpConfigSection({
             id="platform-smtp-password"
             type="password"
             autoComplete="new-password"
+            aria-invalid={Boolean(passwordValidationMessage)}
+            aria-describedby={passwordValidationMessage ? 'platform-smtp-password-error' : undefined}
             value={config.password || ''}
             placeholder={config.passwordConfigured
               ? t('platform.smtp.passwordConfigured')
               : t('platform.smtp.passwordPlaceholder')}
             onChange={(event) => onChange('password', event.target.value)}
           />
+          {passwordValidationMessage && (
+            <p id="platform-smtp-password-error" role="alert" className="text-xs text-destructive">
+              {passwordValidationMessage}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="platform-smtp-host">{t('platform.smtp.host')}</Label>
@@ -123,7 +145,7 @@ export default function PlatformSmtpConfigSection({
           type="button"
           variant="outline"
           className="shrink-0"
-          disabled={verifyMutation.isPending}
+          disabled={verifyMutation.isPending || newPasswordInvalid}
           onClick={() => verifyMutation.mutate()}
         >
           {verifyMutation.isPending

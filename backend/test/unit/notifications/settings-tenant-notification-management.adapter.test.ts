@@ -19,6 +19,8 @@ test('appointment email uses app timezone when formatting date/time', async () =
       email: {
         user: 'sender@example.com',
         password: 'secret',
+        host: 'smtp.example.com',
+        port: 587,
         fromName: 'Le Blond',
       },
       branding: {
@@ -153,12 +155,12 @@ test('email transporter cache is isolated by local and refreshed when SMTP crede
     } as any,
   );
 
-  await (adapter as any).getTransporter();
-  await (adapter as any).getTransporter();
+  await (adapter as any).getTransporter({ user: 'sender@example.com', password, host: 'smtp.example.com', port: 587 });
+  await (adapter as any).getTransporter({ user: 'sender@example.com', password, host: 'smtp.example.com', port: 587 });
   password = 'secret-2';
-  await (adapter as any).getTransporter();
+  await (adapter as any).getTransporter({ user: 'sender@example.com', password, host: 'smtp.example.com', port: 587 });
   localId = 'local-2';
-  await (adapter as any).getTransporter();
+  await (adapter as any).getTransporter({ user: 'sender@example.com', password, host: 'smtp.example.com', port: 587 });
 
   assert.equal(createdConfigs.length, 3);
   assert.equal(createdConfigs[1].auth.pass, 'secret-2');
@@ -186,7 +188,7 @@ test('SMTP rejected recipients are not reported as accepted deliveries', async (
     {
       getEffectiveConfig: async () => ({
         notificationPrefs: { email: true },
-        email: { user: 'sender@example.com', password: 'secret' },
+        email: { user: 'sender@example.com', password: 'secret', host: 'smtp.example.com', port: 587 },
       }),
     } as any,
     {} as any,
@@ -215,4 +217,45 @@ test('SMTP rejected recipients are not reported as accepted deliveries', async (
     assert.equal(result.retryable, false);
     assert.equal(result.critical, false);
   }
+});
+
+test('invalid Gmail app password configuration fails without contacting SMTP', async () => {
+  let transportCreations = 0;
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    { getSettings: async () => DEFAULT_SITE_SETTINGS } as any,
+    {
+      getEffectiveConfig: async () => ({
+        notificationPrefs: { email: true },
+        email: {
+          user: 'sender@gmail.com',
+          password: 'abcd efgh ijkl mnop qr',
+          host: 'smtp.gmail.com',
+          port: 587,
+        },
+      }),
+    } as any,
+    {} as any,
+    {
+      createTransport: () => {
+        transportCreations += 1;
+        return { sendMail: async () => undefined };
+      },
+    } as any,
+    {} as any,
+    { getRequestContext: () => ({ brandId: 'brand-ronin', localId: 'local-ronin' }) } as any,
+  );
+
+  const result = await adapter.sendBroadcastEmail({
+    contact: { email: 'client@example.com' },
+    subject: 'Aviso',
+    message: 'Mensaje',
+  });
+
+  assert.equal(result.status, 'failed');
+  if (result.status === 'failed') {
+    assert.equal(result.code, 'SMTP_GOOGLE_APP_PASSWORD_INVALID');
+    assert.equal(result.retryable, false);
+    assert.equal(result.critical, true);
+  }
+  assert.equal(transportCreations, 0);
 });

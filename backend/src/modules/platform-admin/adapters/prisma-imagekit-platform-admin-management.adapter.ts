@@ -12,6 +12,7 @@ import {
   PlatformUpdateBrandInput,
   PlatformUpdateLocationInput,
 } from '../../../contexts/platform/ports/outbound/platform-admin-management.port';
+import { getSmtpConfigValidationIssue } from '../../../contexts/engagement/domain/services/smtp-config.policy';
 
 const mergeRecords = <T extends Record<string, any>>(base: T, override?: Partial<T>): T => {
   if (!override) return { ...base };
@@ -214,6 +215,15 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
       return { key: 'email', status: 'disabled', summary: 'Email desactivado', details: [] };
     }
     const email = config?.email || {};
+    const validationIssue = getSmtpConfigValidationIssue(email);
+    if (validationIssue?.code === 'SMTP_GOOGLE_APP_PASSWORD_INVALID') {
+      return {
+        key: 'email',
+        status: 'error',
+        summary: 'SMTP inválido',
+        details: ['La contraseña de aplicación de Google debe tener exactamente 16 caracteres.'],
+      };
+    }
     const missing: string[] = [];
     if (!email.user) missing.push('user');
     if (!email.password) missing.push('password');

@@ -63,6 +63,7 @@ export type PlatformWebVitalSummary = {
     path: string;
     count: number;
     avg: number;
+    p75: number;
     p95: number;
     ratings: { good: number; needsImprovement: number; poor: number };
     firstSeenAt: string;

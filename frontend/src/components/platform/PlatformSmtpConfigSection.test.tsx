@@ -1,10 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import PlatformSmtpConfigSection from './PlatformSmtpConfigSection';
 
 const verifyMock = vi.fn();
 const toastMock = vi.fn();
+
+afterEach(() => {
+  cleanup();
+  verifyMock.mockReset();
+  toastMock.mockReset();
+});
 
 vi.mock('@/data/api/platform', () => ({
   verifyPlatformBrandEmailConfig: (...args: unknown[]) => verifyMock(...args),
@@ -17,11 +23,11 @@ vi.mock('@/hooks/use-toast', () => ({
 vi.mock('@/hooks/useI18n', () => ({
   useI18n: () => ({
     t: (key: string, values?: Record<string, string | number>) =>
-      values ? `${key}:${values.host}:${values.port}` : key,
+      values ? `${key}:${Object.values(values).join(':')}` : key,
   }),
 }));
 
-const renderSection = () => {
+const renderSection = (config: Record<string, unknown> = {}) => {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -35,6 +41,7 @@ const renderSection = () => {
           host: 'smtp.gmail.com',
           port: 587,
           fromName: 'Ronin',
+          ...config,
         }}
         onChange={vi.fn()}
       />
@@ -67,5 +74,21 @@ describe('PlatformSmtpConfigSection', () => {
       });
     });
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'default' }));
+  });
+
+  it('shows an invalid persisted Gmail app password before contacting SMTP', () => {
+    renderSection({ validationCode: 'SMTP_GOOGLE_APP_PASSWORD_INVALID' });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('platform.smtp.storedPasswordInvalid');
+  });
+
+  it('blocks verification while a newly entered Gmail app password is not 16 characters', () => {
+    renderSection({ password: 'abcd efgh ijkl mnop qr' });
+
+    const verifyButton = screen.getByRole('button', { name: 'platform.smtp.verify' });
+    expect(screen.getByRole('alert')).toHaveTextContent('platform.smtp.passwordInvalid:18');
+    expect(verifyButton).toBeDisabled();
+    fireEvent.click(verifyButton);
+    expect(verifyMock).not.toHaveBeenCalled();
   });
 });

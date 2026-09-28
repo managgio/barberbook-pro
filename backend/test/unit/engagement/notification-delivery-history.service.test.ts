@@ -59,3 +59,32 @@ test('tenant delivery history rejects retries for missing-recipient records', as
   assert.match(JSON.stringify(retryWhere.NOT), /EMAIL_RECIPIENT_MISSING/);
   assert.match(JSON.stringify(retryWhere.NOT), /PHONE_RECIPIENT_MISSING/);
 });
+
+test('manual retry preserves the critical trace marker for the same delivery incident', async () => {
+  let retryData: any = null;
+  let dispatchedId: string | null = null;
+  const service = new NotificationDeliveryHistoryService(
+    {
+      notificationDelivery: {
+        updateMany: async (params: any) => {
+          retryData = params.data;
+          return { count: 1 };
+        },
+      },
+    } as any,
+    { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
+    { getEffectiveConfig: async () => ({ notificationPrefs: { email: true } }) } as any,
+    {
+      dispatchDelivery: async (deliveryId: string) => {
+        dispatchedId = deliveryId;
+        return { status: 'failed', errorCode: 'SMTP_AUTH_FAILED' };
+      },
+    } as any,
+  );
+
+  const result = await service.retryForCurrentTenant('delivery-1');
+
+  assert.equal(result.success, true);
+  assert.equal(dispatchedId, 'delivery-1');
+  assert.equal(Object.prototype.hasOwnProperty.call(retryData, 'criticalTraceReportedAt'), false);
+});

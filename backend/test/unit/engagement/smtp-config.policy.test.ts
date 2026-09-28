@@ -56,3 +56,15 @@ test('rejects incomplete SMTP credentials before opening a connection', () => {
     /SMTP_CONFIG_INCOMPLETE/,
   );
 });
+
+test('rejects Gmail app passwords that do not normalize to exactly 16 characters', () => {
+  assert.throws(
+    () => requireCompleteSmtpConfig({
+      user: 'sender@gmail.com',
+      password: 'abcd efgh ijkl mnop qr',
+      host: 'smtp.gmail.com',
+      port: 587,
+    }),
+    /SMTP_GOOGLE_APP_PASSWORD_INVALID/,
+  );
+});

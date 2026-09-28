@@ -21,6 +21,7 @@ import { queryKeys } from '@/lib/queryKeys';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useI18n } from '@/hooks/useI18n';
+import { mergeShopScheduleAvailability } from '@/lib/shopSchedule';
 import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 import {
   Loader2,
@@ -523,10 +524,9 @@ const AdminSettings: React.FC = () => {
     setIsSavingAvailability(true);
     setIsSavingSchedule(true);
     try {
-      const [updatedSchedule, updatedSettings] = await Promise.all([
-        updateShopSchedule(shopSchedule),
-        updateSiteSettings(buildSettingsPayload(settings)),
-      ]);
+      const schedulePayload = mergeShopScheduleAvailability(shopSchedule, settings.openingHours);
+      const updatedSchedule = await updateShopSchedule(schedulePayload);
+      const updatedSettings = { ...settings, openingHours: updatedSchedule };
       setShopSchedule(updatedSchedule);
       setSettings(updatedSettings);
       setPhoneParts({

@@ -33,7 +33,7 @@ La configuración efectiva puede variar por marca/local. El transporte se cachea
 
 - `535`, `EAUTH` o “Username and Password not accepted” significan fallo de autenticación del remitente, no dirección destinataria inválida.
 - Verifica usuario SMTP, contraseña o app password, host, puerto y políticas del proveedor.
-- Las app passwords de Google se normalizan eliminando sus espacios de agrupación. Las contraseñas de otros proveedores solo eliminan espacios exteriores.
+- Las app passwords de Google se normalizan eliminando sus espacios de agrupación y deben tener exactamente 16 caracteres. Una forma inválida se rechaza antes de abrir la conexión y Platform la muestra como estado seguro sin exponer el secreto. Las contraseñas de otros proveedores solo eliminan espacios exteriores.
 - El puerto 587 exige STARTTLS y el 465 usa TLS implícito. El transporte exige TLS 1.2 como mínimo y aplica timeouts acotados.
 - Platform nunca devuelve la contraseña SMTP persistida. Solo informa `passwordConfigured` y conserva el secreto si el campo queda vacío.
 - Una modificación de usuario, contraseña, host o puerto se autentica con `verify()` antes de persistirse. Platform también ofrece una prueba manual que reutiliza de forma segura el secreto guardado.
@@ -84,4 +84,4 @@ No llames SDKs desde dominio o UI. Encapsula cada proveedor en un adapter y prue
 - Diferencia errores transitorios, configuración inválida y rechazo definitivo para permitir reintentos seguros.
 - Las vistas operativas devuelven destinatarios enmascarados y mensajes saneados. El tenant solo puede consultar el local actual y los métodos habilitados en su configuración efectiva. Solo Platform puede consultar el agregado, filtrable por método, tenant y local.
 
-Los Web Vitals con rating `poor` se conservan para análisis, pero no generan correo por sí solos. El correo queda reservado a valores que superan los umbrales críticos operativos configurables mediante `OBSERVABILITY_ALERT_WEB_VITAL_CRITICAL_*`; el cooldown predeterminado es de seis horas por métrica y tenant, sin distinguir ruta. El asunto y el inicio del cuerpo deben identificar primero el nombre de la marca. El nombre y el ID del local solo se incluyen cuando la marca tiene más de un local activo.
+Los Web Vitals con rating `poor` se conservan para análisis, pero no generan correo por sí solos. La salud visible del informe se clasifica con el P75 y los umbrales estándar de cada métrica, de modo que una muestra aislada no convierte todo el periodo en crítico. El correo queda reservado a valores que superan los umbrales críticos operativos configurables mediante `OBSERVABILITY_ALERT_WEB_VITAL_CRITICAL_*`; el cooldown predeterminado es de seis horas por métrica y tenant, sin distinguir ruta. El asunto y el inicio del cuerpo deben identificar primero el nombre de la marca. El nombre y el ID del local solo se incluyen cuando la marca tiene más de un local activo.

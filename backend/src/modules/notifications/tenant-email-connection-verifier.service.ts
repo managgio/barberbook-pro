@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   buildSmtpTransportConfig,
   requireCompleteSmtpConfig,
+  SmtpConfigValidationError,
   SmtpConfigInput,
 } from '../../contexts/engagement/domain/services/smtp-config.policy';
 import {
@@ -33,7 +34,14 @@ export class TenantEmailConnectionVerifier {
     let config;
     try {
       config = requireCompleteSmtpConfig(input);
-    } catch {
+    } catch (error) {
+      if (error instanceof SmtpConfigValidationError) {
+        return {
+          ok: false,
+          code: error.code,
+          message: error.safeMessage,
+        };
+      }
       return {
         ok: false,
         code: 'SMTP_CONFIG_INCOMPLETE',

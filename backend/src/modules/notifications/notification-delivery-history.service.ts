@@ -111,7 +111,6 @@ export class NotificationDeliveryHistoryService {
         processingStartedAt: null,
         failedAt: null,
         skippedAt: null,
-        criticalTraceReportedAt: null,
         maxAttempts: { increment: 1 },
       },
     });

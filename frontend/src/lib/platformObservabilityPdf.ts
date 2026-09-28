@@ -4,6 +4,7 @@ import type {
   PlatformCriticalTraceSummary,
 } from '@/data/types';
 import { formatCriticalTraceBreadcrumbs } from '@/lib/criticalTracePresentation';
+import { getWebVitalHealth } from '@/lib/platformObservabilityHealth';
 
 type ReportInput = {
   windowLabel: string;
@@ -22,8 +23,12 @@ const formatDate = (value: string | number) =>
 const formatVital = (name: string, value: number) =>
   name === 'CLS' ? value.toFixed(3) : `${value.toFixed(0)} ms`;
 
-const healthForVital = (poor: number, needsImprovement: number) =>
-  poor > 0 ? 'CRÍTICO' : needsImprovement > 0 ? 'VIGILAR' : 'OK';
+const healthForVital = (row: { name: 'LCP' | 'CLS' | 'INP' | 'FCP' | 'TTFB'; p75: number }) => {
+  const health = getWebVitalHealth(row);
+  if (health === 'critical') return 'CRÍTICO';
+  if (health === 'warning') return 'VIGILAR';
+  return 'OK';
+};
 
 const healthForApi = (errorRate: number, p95: number, has5xx: boolean) => {
   if (has5xx || errorRate >= 5 || p95 >= 2_000) return 'CRÍTICO';
@@ -73,9 +78,9 @@ export const generatePlatformObservabilityPdf = async ({ windowLabel, webVitals,
         'Web Vitals',
         webVitals.totalEvents,
         webVitals.byMetric.length,
-        webVitals.byMetric.filter((row) => row.ratings.poor > 0).length,
-        webVitals.byMetric.filter((row) => row.ratings.poor === 0 && row.ratings.needsImprovement > 0).length,
-        webVitals.byMetric.filter((row) => row.ratings.poor === 0 && row.ratings.needsImprovement === 0).length,
+        webVitals.byMetric.filter((row) => healthForVital(row) === 'CRÍTICO').length,
+        webVitals.byMetric.filter((row) => healthForVital(row) === 'VIGILAR').length,
+        webVitals.byMetric.filter((row) => healthForVital(row) === 'OK').length,
       ],
       [
         'API',
@@ -104,7 +109,7 @@ export const generatePlatformObservabilityPdf = async ({ windowLabel, webVitals,
     theme: 'striped',
     head: [['Estado', 'Métrica', 'Promedio', 'P75', 'P95', 'Muestras', 'Good', 'Needs improvement', 'Poor']],
     body: webVitals.byMetric.map((row) => [
-      healthForVital(row.ratings.poor, row.ratings.needsImprovement), row.name,
+      healthForVital(row), row.name,
       formatVital(row.name, row.avg), formatVital(row.name, row.p75), formatVital(row.name, row.p95),
       row.count, row.ratings.good, row.ratings.needsImprovement, row.ratings.poor,
     ]),
@@ -117,14 +122,15 @@ export const generatePlatformObservabilityPdf = async ({ windowLabel, webVitals,
   autoTable(doc, {
     startY: 18,
     theme: 'grid',
-    head: [['Estado', 'Cliente', 'Local', 'Métrica', 'Ruta', 'Media', 'P95', 'Muestras', 'Good / NI / Poor', 'Primera muestra', 'Última muestra']],
+    head: [['Estado', 'Cliente', 'Local', 'Métrica', 'Ruta', 'Media', 'P75', 'P95', 'Muestras', 'Good / NI / Poor', 'Primera muestra', 'Última muestra']],
     body: webVitals.tenantBreakdown.map((row) => [
-      healthForVital(row.ratings.poor, row.ratings.needsImprovement),
+      healthForVital(row),
       brandToClient.get(row.brandId) || row.brandId,
       row.localId,
       row.name,
       row.path,
       formatVital(row.name, row.avg),
+      formatVital(row.name, row.p75),
       formatVital(row.name, row.p95),
       row.count,
       `${row.ratings.good} / ${row.ratings.needsImprovement} / ${row.ratings.poor}`,
@@ -133,7 +139,7 @@ export const generatePlatformObservabilityPdf = async ({ windowLabel, webVitals,
     ]),
     styles: { fontSize: 6.2, cellPadding: 1.4, overflow: 'linebreak' },
     headStyles: { fillColor: [35, 70, 120] },
-    columnStyles: { 4: { cellWidth: 46 }, 9: { cellWidth: 27 }, 10: { cellWidth: 27 } },
+    columnStyles: { 4: { cellWidth: 40 }, 10: { cellWidth: 25 }, 11: { cellWidth: 25 } },
     didDrawPage: () => title('Web Vitals · detalle por cliente, local y ruta', 14),
   });
 

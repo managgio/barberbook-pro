@@ -2183,6 +2183,8 @@
   "platform.smtp.password": "Contraseña de aplicación",
   "platform.smtp.passwordConfigured": "Configurada - escribe una nueva para cambiarla",
   "platform.smtp.passwordPlaceholder": "Contraseña de aplicación",
+  "platform.smtp.passwordInvalid": "La contraseña de Google debe tener 16 caracteres sin contar espacios. Ahora tiene {count}.",
+  "platform.smtp.storedPasswordInvalid": "La contraseña guardada no tiene el formato válido de 16 caracteres de Google. Sustitúyela antes de enviar correos.",
   "platform.smtp.host": "Host",
   "platform.smtp.port": "Puerto",
   "platform.smtp.fromName": "Nombre del remitente",

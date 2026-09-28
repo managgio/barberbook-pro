@@ -12,6 +12,8 @@ El motor `booking/domain/services/availability-engine.ts` combina:
 
 Los casos de uso single y batch comparten el mismo motor. La creación y edición de citas vuelven a comprobar disponibilidad en la operación protegida, por lo que la regla se aplica a clientes, invitados, admins y cualquier canal futuro.
 
+La edición conjunta de horario y pausas del local se persiste mediante una sola escritura del agregado `ShopSchedule`. El adapter sincroniza después `SiteSettings.openingHours`; la UI no debe lanzar en paralelo ambos endpoints contra los mismos registros.
+
 `BookingClosure` usa intervalos `[startDateTime, endDateTime)`, puede ser general (`barberId = null`) o de un profesional y siempre está tenant-scoped. Los cierres se consultan por solapamiento e índice de local/fechas.
 
 ## Festivos
@@ -52,6 +54,8 @@ Una cita puede solicitar aviso si aparece un hueco anterior. La preferencia est�
 
 Los casos de uso consumen puertos de engagement; los adapters resuelven configuración efectiva por tenant. Los fallos de proveedor no deben corromper el estado de la cita.
 
+Los conflictos HTTP 400 esperados al volver a validar una reserva, como un hueco ocupado o un profesional incompatible con el servicio, se muestran al usuario y permanecen en las métricas API. No se registran como trazas críticas de frontend. Los fallos inesperados sí conservan el recorrido crítico completo.
+
 Las notificaciones usan una outbox multicanal tenant-scoped:
 
 1. la creación, edición, cancelación o confirmación de pago guarda el correo en la misma transacción que el cambio de la cita;
@@ -62,6 +66,8 @@ Las notificaciones usan una outbox multicanal tenant-scoped:
 6. los fallos graves de configuración y los transitorios que agotan reintentos se promueven a trazas críticas.
 
 `accepted` significa que SMTP o Twilio aceptaron la solicitud. No equivale a lectura ni a entrega final si el proveedor no ofrece webhooks de eventos. El historial tenant muestra solo incidencias de métodos habilitados, destinatario enmascarado, código seguro, intentos y acción manual de reintento. Platform dispone de la vista cross-tenant paginada y filtrable por método, tenant y local, siempre protegida por `PlatformAdminGuard`.
+
+Una entrega crítica se promueve una sola vez por `NotificationDelivery`. Un reintento manual conserva la marca de promoción para no duplicar la misma incidencia en el informe.
 
 Los recordatorios y comunicados de SMS/WhatsApp pasan por la misma outbox. Marcar un recordatorio como procesado significa que quedó persistido de forma durable; sus reintentos posteriores son responsabilidad del worker. La retención anonimiza datos personales una vez dejan de ser operativamente útiles.
 

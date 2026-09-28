@@ -2183,6 +2183,8 @@
   "platform.smtp.password": "App password",
   "platform.smtp.passwordConfigured": "Configured - enter a new one to replace it",
   "platform.smtp.passwordPlaceholder": "App password",
+  "platform.smtp.passwordInvalid": "The Google app password must contain 16 characters excluding spaces. It currently has {count}.",
+  "platform.smtp.storedPasswordInvalid": "The saved password does not have Google's valid 16-character format. Replace it before sending email.",
   "platform.smtp.host": "Host",
   "platform.smtp.port": "Port",
   "platform.smtp.fromName": "Sender name",

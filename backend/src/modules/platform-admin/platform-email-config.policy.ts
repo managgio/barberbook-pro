@@ -1,4 +1,5 @@
 import {
+  getSmtpConfigValidationIssue,
   normalizeSmtpConfig,
   SmtpConfigInput,
 } from '../../contexts/engagement/domain/services/smtp-config.policy';
@@ -15,7 +16,12 @@ export const redactPlatformEmailSecret = (configValue: unknown): JsonRecord => {
   const email = asRecord(config.email);
   if (Object.keys(email).length === 0) return { ...config };
   const passwordConfigured = Boolean(readPassword(email.password));
-  const publicEmail: JsonRecord = { ...email, passwordConfigured };
+  const validationIssue = getSmtpConfigValidationIssue(email);
+  const publicEmail: JsonRecord = {
+    ...email,
+    passwordConfigured,
+    validationCode: validationIssue?.code || null,
+  };
   delete publicEmail.password;
   return { ...config, email: publicEmail };
 };

@@ -29,9 +29,15 @@ import { createHash } from 'crypto';
 import { describeEmailDeliveryError, describeTwilioDeliveryError } from '../notification-delivery-diagnostic';
 import {
   buildSmtpTransportConfig,
-  normalizeSmtpConfig,
+  getSmtpConfigValidationIssue,
+  requireCompleteSmtpConfig,
   resolveDefaultSmtpHost,
 } from '../../../contexts/engagement/domain/services/smtp-config.policy';
+
+type EmailTransportFailure = Extract<EngagementNotificationDeliveryResult, { status: 'failed' }>;
+type EmailTransportResolution =
+  | { transporter: EngagementEmailTransportPort; failure?: never }
+  | { transporter?: never; failure: EmailTransportFailure };
 
 type TwilioTenantConfig = {
   client: EngagementTwilioClientPort;
@@ -95,25 +101,35 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     private readonly tenantContextPort: TenantContextPort,
   ) {}
 
-  private async getTransporter() {
+  private async getTransporter(emailInput: Parameters<typeof getSmtpConfigValidationIssue>[0]): Promise<EmailTransportResolution> {
     const brandId = this.getBrandId();
     const localId = this.getLocalId();
     const scopeKey = `${brandId}:${localId}`;
-    const config = await this.tenantConfig.getEffectiveConfig();
-    const emailConfig = normalizeSmtpConfig(config.email);
-    if (!emailConfig?.user || !emailConfig?.password) {
-      this.logger.warn(`Email credentials missing, email notifications disabled brandId=${brandId} localId=${localId}`);
+    const validationIssue = getSmtpConfigValidationIssue(emailInput);
+    if (validationIssue) {
+      this.logger.error(
+        `${validationIssue.code} brandId=${brandId} localId=${localId} ${validationIssue.message}`,
+      );
       this.transporterCache.delete(scopeKey);
-      return null;
+      return {
+        failure: {
+          status: 'failed',
+          code: validationIssue.code,
+          message: validationIssue.message,
+          retryable: false,
+          critical: true,
+        },
+      };
     }
 
-    const host = emailConfig.host || resolveDefaultSmtpHost(emailConfig.user);
-    const port = emailConfig.port || 587;
+    const emailConfig = requireCompleteSmtpConfig(emailInput);
+    const host = emailConfig.host;
+    const port = emailConfig.port;
     const fingerprint = createHash('sha256')
       .update(`${host}\u0000${port}\u0000${emailConfig.user}\u0000${emailConfig.password}`)
       .digest('hex');
     const cached = this.transporterCache.get(scopeKey);
-    if (cached?.fingerprint === fingerprint) return cached.transporter;
+    if (cached?.fingerprint === fingerprint) return { transporter: cached.transporter };
 
     const transporter = this.emailTransportFactory.createTransport(buildSmtpTransportConfig({
       host,
@@ -122,7 +138,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       password: emailConfig.password,
     }));
     this.transporterCache.set(scopeKey, { fingerprint, transporter });
-    return transporter;
+    return { transporter };
   }
 
   private async getTwilio() {
@@ -160,16 +176,9 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     if (!contact.email) {
       return { status: 'skipped', code: 'EMAIL_RECIPIENT_MISSING', message: 'No recipient email is available.' };
     }
-    const transporter = await this.getTransporter();
-    if (!transporter) {
-      return {
-        status: 'failed',
-        code: 'SMTP_NOT_CONFIGURED',
-        message: 'Tenant SMTP credentials are not configured.',
-        retryable: false,
-        critical: true,
-      };
-    }
+    const transport = await this.getTransporter(config.email);
+    if (transport.failure) return transport.failure;
+    const transporter = transport.transporter;
     const settings = await this.getSettings();
     const formattedDate = this.formatAppointmentEmailDate(appointment.date);
 
@@ -325,16 +334,9 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     if (!params.contact.email) {
       return { status: 'skipped', code: 'EMAIL_RECIPIENT_MISSING', message: 'No recipient email is available.' };
     }
-    const transporter = await this.getTransporter();
-    if (!transporter) {
-      return {
-        status: 'failed',
-        code: 'SMTP_NOT_CONFIGURED',
-        message: 'Tenant SMTP credentials are not configured.',
-        retryable: false,
-        critical: true,
-      };
-    }
+    const transport = await this.getTransporter(config.email);
+    if (transport.failure) return transport.failure;
+    const transporter = transport.transporter;
     const settings = await this.getSettings();
     const brandName =
       settings.branding.shortName ||
@@ -439,20 +441,13 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     if (config.notificationPrefs?.email === false) {
       return { status: 'skipped', code: 'EMAIL_DISABLED', message: 'Email notifications are disabled for this tenant.' };
     }
-    const transporter = await this.getTransporter();
     const to = params.contact.email?.trim();
     if (!to) {
       return { status: 'skipped', code: 'EMAIL_RECIPIENT_MISSING', message: 'No recipient email is available.' };
     }
-    if (!transporter) {
-      return {
-        status: 'failed',
-        code: 'SMTP_NOT_CONFIGURED',
-        message: 'Tenant SMTP credentials are not configured.',
-        retryable: false,
-        critical: true,
-      };
-    }
+    const transport = await this.getTransporter(config.email);
+    if (transport.failure) return transport.failure;
+    const transporter = transport.transporter;
     const settings = await this.getSettings();
     const brandName =
       settings.branding.shortName ||

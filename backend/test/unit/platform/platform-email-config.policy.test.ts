@@ -23,7 +23,23 @@ test('platform config responses disclose only whether an SMTP password exists', 
 
   assert.equal((result.email as any).password, undefined);
   assert.equal((result.email as any).passwordConfigured, true);
+  assert.equal((result.email as any).validationCode, null);
   assert.doesNotMatch(JSON.stringify(result), /abcd|mnop/);
+});
+
+test('platform config responses expose an invalid Gmail password shape without exposing the secret', () => {
+  const result = redactPlatformEmailSecret({
+    email: {
+      user: 'sender@gmail.com',
+      password: 'abcd efgh ijkl mnop qr',
+      host: 'smtp.gmail.com',
+      port: 587,
+    },
+  });
+
+  assert.equal((result.email as any).password, undefined);
+  assert.equal((result.email as any).passwordConfigured, true);
+  assert.equal((result.email as any).validationCode, 'SMTP_GOOGLE_APP_PASSWORD_INVALID');
 });
 
 test('an unrelated platform save preserves and normalizes the stored Gmail app password', () => {
