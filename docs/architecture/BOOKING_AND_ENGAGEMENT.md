@@ -2,6 +2,8 @@
 
 ## Disponibilidad y reservas
 
+En la vista de cliente, la acción de añadir una cita al calendario adapta el destino al dispositivo: Android usa el enlace de evento de Google Calendar y Apple/macOS recibe un archivo iCalendar compatible con Calendar. El evento conserva inicio y fin en UTC, ubicación, servicio y profesional sin depender de la zona horaria del navegador para serializarlo.
+
 El motor `booking/domain/services/availability-engine.ts` combina:
 
 - horario del local y del profesional;

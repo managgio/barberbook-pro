@@ -24,6 +24,7 @@ import { queryKeys } from '@/lib/queryKeys';
 import { getStoredLocalId } from '@/lib/tenant';
 import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
+import { openCalendarForDevice } from '@/lib/calendarIntegration';
 
 const EMPTY_APPOINTMENTS: Appointment[] = [];
 const EMPTY_BARBERS: Barber[] = [];
@@ -119,7 +120,7 @@ const AppointmentsPage: React.FC = () => {
     return startDate.getTime() - Date.now() > cutoffMs;
   };
 
-  const generateCalendarLink = (appointment: Appointment) => {
+  const addAppointmentToDeviceCalendar = (appointment: Appointment) => {
     const service = servicesById.get(appointment.serviceId);
     const barber = barbersById.get(appointment.barberId);
     const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? t('appointments.fallback.service');
@@ -128,17 +129,14 @@ const AppointmentsPage: React.FC = () => {
     const durationMinutes = service?.duration ?? 30;
     const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
     
-    const formatDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-    
-    const params = new URLSearchParams({
-      action: 'TEMPLATE',
-      text: `${serviceName} - ${settings.branding.name}`,
-      dates: `${formatDate(startDate)}/${formatDate(endDate)}`,
-      details: t('appointments.calendar.details', { barberName }),
+    openCalendarForDevice({
+      id: appointment.id,
+      title: `${serviceName} - ${settings.branding.name}`,
+      start: startDate,
+      end: endDate,
+      description: t('appointments.calendar.details', { barberName }),
       location: settings.location.label,
     });
-    
-    return `https://calendar.google.com/calendar/render?${params.toString()}`;
   };
 
   const AppointmentCard: React.FC<{ appointment: Appointment; isPast?: boolean }> = ({ 
@@ -218,13 +216,12 @@ const AppointmentsPage: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                asChild
                 className="h-10 min-w-0 flex-1 text-xs sm:h-10 sm:flex-none sm:px-4 sm:text-sm"
+                title={t('appointments.addToCalendar')}
+                onClick={() => addAppointmentToDeviceCalendar(appointment)}
               >
-                <a href={generateCalendarLink(appointment)} target="_blank" rel="noopener noreferrer" title={t('appointments.addToCalendar')}>
-                  <CalendarPlus className="mr-1 h-4 w-4 shrink-0" />
-                  <span className="truncate">{t('appointments.addToCalendar')}</span>
-                </a>
+                <CalendarPlus className="mr-1 h-4 w-4 shrink-0" />
+                <span className="truncate">{t('appointments.addToCalendar')}</span>
               </Button>
               <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <Button

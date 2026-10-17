@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
+import AppointmentInvoiceActions from '@/components/admin/AppointmentInvoiceActions';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -875,6 +876,7 @@ const AdminCalendar: React.FC = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
+                <AppointmentInvoiceActions appointmentId={selectedAppointment.id} />
                 <Button variant="outline" onClick={() => setSelectedAppointment(null)}>
                   {t('admin.common.close')}
                 </Button>

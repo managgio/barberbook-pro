@@ -21,6 +21,7 @@ const TENANT_LOCAL_SCOPED_MODELS = new Set([
   'Barber',
   'Service',
   'Appointment',
+  'Invoice',
   'Alert',
   'GeneralHoliday',
   'BarberHoliday',

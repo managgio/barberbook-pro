@@ -218,67 +218,69 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const safeContactPhone = escapeEmailHtml(contactPhone);
 
     const html = `
-      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:#f8fafc;">
+      <meta name="color-scheme" content="${emailBranding.mode}" />
+      <meta name="supported-color-schemes" content="${emailBranding.mode}" />
+      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:${emailBranding.textColor}; color-scheme:${emailBranding.mode};">
         <table role="presentation" style="width:100%; max-width:640px; margin:0 auto; background:${emailBranding.cardBackground}; border-radius:16px; overflow:hidden; border:1px solid ${emailBranding.borderColor};">
           <tr style="background:${emailBranding.headerBackground}; border-top:4px solid ${emailBranding.primary}; border-bottom:1px solid ${emailBranding.borderColor};">
             <td style="padding:22px 26px;">
               ${logoSrc ? `<img src="${escapeEmailHtml(logoSrc)}" alt="${safeBrandName}" width="56" style="display:inline-block; width:56px; height:auto; max-height:56px; border:0; vertical-align:middle; margin-right:16px;" />` : ''}
               <div style="display:inline-block; vertical-align:middle; text-align:left;">
-                <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
-                <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">${action === 'cancelada' ? 'Cita cancelada' : 'Cita ' + action}</div>
+                <div style="font-weight:700; font-size:18px; color:${emailBranding.textColor};">${safeBrandName}</div>
+                <div style="font-size:12px; color:${emailBranding.mutedTextColor}; text-transform:uppercase; letter-spacing:0.08em;">${action === 'cancelada' ? 'Cita cancelada' : 'Cita ' + action}</div>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:24px;">
               <p style="margin:0 0 12px; font-size:16px;">Hola ${safeContactName},</p>
-              <p style="margin:0 0 16px; color:rgba(248,250,252,0.8); line-height:1.6;">
+              <p style="margin:0 0 16px; color:${emailBranding.mutedTextColor}; line-height:1.6;">
                 ${action === 'cancelada'
                   ? 'Tu cita ha sido cancelada.'
                   : `Tu cita ha sido ${action}.`}
               </p>
-              <div style="border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; background:rgba(255,255,255,0.02); margin-bottom:16px;">
-                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85); margin-bottom:10px;">
+              <div style="border:1px solid ${emailBranding.borderColor}; border-radius:12px; padding:16px; background:${emailBranding.panelBackground}; margin-bottom:16px;">
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:${emailBranding.mutedTextColor}; margin-bottom:10px;">
                   <div>Fecha y hora:&nbsp;</div>
                   <div style="text-align:right; color:${brandColor}; font-weight:700;">${safeFormattedDate}</div>
                 </div>
                 ${
                   appointment.serviceName
-                    ? `<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85); margin-bottom:10px;">
+                    ? `<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:${emailBranding.mutedTextColor}; margin-bottom:10px;">
                         <div>Servicio:&nbsp;</div>
-                        <div style="text-align:right; color:#fff; font-weight:700;">${safeServiceName}</div>
+                        <div style="text-align:right; color:${emailBranding.textColor}; font-weight:700;">${safeServiceName}</div>
                       </div>`
                     : ''
                 }
                 ${
                   appointment.barberName
-                    ? `<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85); margin-bottom:10px;">
-                        <div>Barbero:&nbsp;</div>
-                        <div style="text-align:right; color:#fff; font-weight:700;">${safeBarberName}</div>
+                    ? `<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:${emailBranding.mutedTextColor}; margin-bottom:10px;">
+                        <div>Profesional:&nbsp;</div>
+                        <div style="text-align:right; color:${emailBranding.textColor}; font-weight:700;">${safeBarberName}</div>
                       </div>`
                     : ''
                 }
-                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:rgba(248,250,252,0.85);">
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; color:${emailBranding.mutedTextColor};">
                   <div>Ubicación:&nbsp;</div>
-                  <div style="text-align:right; color:#fff; font-weight:700;">${safeLocation}</div>
+                  <div style="text-align:right; color:${emailBranding.textColor}; font-weight:700;">${safeLocation}</div>
                 </div>
               </div>
-              <p style="margin:0 0 12px; color:rgba(248,250,252,0.75);">
+              <p style="margin:0 0 12px; color:${emailBranding.mutedTextColor};">
                 ${action === 'cancelada'
                   ? 'Si quieres reprogramar, contáctanos y te ayudamos.'
                   : 'Si necesitas ajustar algo de tu cita, estamos disponibles para ayudarte.'}
               </p>
-              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:${emailBranding.panelBackground}; color:#fff; border:1px solid ${emailBranding.borderColor};">
+              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:${emailBranding.panelBackground}; color:${emailBranding.textColor}; border:1px solid ${emailBranding.borderColor};">
                 <div style="font-weight:600; margin-bottom:4px;">Contacto</div>
-                <div style="font-size:14px; color:rgba(248,250,252,0.8);">
-                  <a href="mailto:${safeContactEmail}" style="color:#fff; text-decoration:none;">${safeContactEmail}</a>
-                  ${contactPhone ? `<br/><a href="https://wa.me/${contactPhone.replace(/\\D/g, '')}" style="color:#fff; text-decoration:none;">${safeContactPhone}</a>` : ''}
+                <div style="font-size:14px; color:${emailBranding.mutedTextColor};">
+                  <a href="mailto:${safeContactEmail}" style="color:${emailBranding.accentText}; text-decoration:none;">${safeContactEmail}</a>
+                  ${contactPhone ? `<br/><a href="https://wa.me/${contactPhone.replace(/\\D/g, '')}" style="color:${emailBranding.accentText}; text-decoration:none;">${safeContactPhone}</a>` : ''}
                 </div>
               </div>
             </td>
           </tr>
           <tr>
-            <td style="padding:16px 24px; background:#0d0d10; color:rgba(248,250,252,0.6); font-size:12px; text-align:center;">
+            <td style="padding:16px 24px; background:${emailBranding.footerBackground}; color:${emailBranding.mutedTextColor}; border-top:1px solid ${emailBranding.borderColor}; font-size:12px; text-align:center;">
               © ${new Date().getFullYear()} ${safeBrandName}. Cuidamos tu look con detalle.
             </td>
           </tr>
@@ -347,21 +349,23 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     const safeContactEmail = escapeEmailHtml(contactEmail);
 
     const html = `
-      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:#f8fafc;">
+      <meta name="color-scheme" content="${emailBranding.mode}" />
+      <meta name="supported-color-schemes" content="${emailBranding.mode}" />
+      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; background:${brandDark}; padding:24px; color:${emailBranding.textColor}; color-scheme:${emailBranding.mode};">
         <table role="presentation" style="width:100%; max-width:640px; margin:0 auto; background:${emailBranding.cardBackground}; border-radius:16px; overflow:hidden; border:1px solid ${emailBranding.borderColor};">
           <tr style="background:${emailBranding.headerBackground}; border-top:4px solid ${emailBranding.primary}; border-bottom:1px solid ${emailBranding.borderColor};">
             <td style="padding:22px 26px;">
               ${logoSrc ? `<img src="${escapeEmailHtml(logoSrc)}" alt="${safeBrandName}" width="56" style="display:inline-block; width:56px; height:auto; max-height:56px; border:0; vertical-align:middle; margin-right:16px;" />` : ''}
               <div style="display:inline-block; vertical-align:middle; text-align:left;">
-                <div style="font-weight:700; font-size:18px; color:#fff;">${safeBrandName}</div>
-                <div style="font-size:12px; color:rgba(255,255,255,0.75); text-transform:uppercase; letter-spacing:0.08em;">Programa de referidos</div>
+                <div style="font-weight:700; font-size:18px; color:${emailBranding.textColor};">${safeBrandName}</div>
+                <div style="font-size:12px; color:${emailBranding.mutedTextColor}; text-transform:uppercase; letter-spacing:0.08em;">Programa de referidos</div>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:24px;">
               <p style="margin:0 0 12px; font-size:16px;">Hola ${safeContactName},</p>
-              <p style="margin:0 0 16px; color:rgba(248,250,252,0.8); line-height:1.6;">
+              <p style="margin:0 0 16px; color:${emailBranding.mutedTextColor}; line-height:1.6;">
                 ${safeMessage}
               </p>
               ${
@@ -373,16 +377,16 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
                     </div>`
                   : ''
               }
-              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:${emailBranding.panelBackground}; color:#fff; border:1px solid ${emailBranding.borderColor};">
+              <div style="margin-top:20px; padding:14px 16px; border-radius:12px; background:${emailBranding.panelBackground}; color:${emailBranding.textColor}; border:1px solid ${emailBranding.borderColor};">
                 <div style="font-weight:600; margin-bottom:4px;">Contacto</div>
-                <div style="font-size:14px; color:rgba(248,250,252,0.8);">
-                  <a href="mailto:${safeContactEmail}" style="color:#fff; text-decoration:none;">${safeContactEmail}</a>
+                <div style="font-size:14px; color:${emailBranding.mutedTextColor};">
+                  <a href="mailto:${safeContactEmail}" style="color:${emailBranding.accentText}; text-decoration:none;">${safeContactEmail}</a>
                 </div>
               </div>
             </td>
           </tr>
           <tr>
-            <td style="padding:16px 24px; background:#0d0d10; color:rgba(248,250,252,0.6); font-size:12px; text-align:center;">
+            <td style="padding:16px 24px; background:${emailBranding.footerBackground}; color:${emailBranding.mutedTextColor}; border-top:1px solid ${emailBranding.borderColor}; font-size:12px; text-align:center;">
               © ${new Date().getFullYear()} ${safeBrandName}. Gracias por confiar en nosotros.
             </td>
           </tr>
@@ -441,7 +445,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
       branding: emailBranding,
       brandName,
       eyebrow: 'Comunicado',
-      bodyHtml: `<div style="color:#dfdfe4; line-height:1.65;">${safeMessage}</div>`,
+      bodyHtml: `<div style="color:${emailBranding.textColor}; font-size:15px; line-height:1.65;">${safeMessage}</div>`,
       footerText: `© ${new Date().getFullYear()} ${brandName}.`,
     });
 

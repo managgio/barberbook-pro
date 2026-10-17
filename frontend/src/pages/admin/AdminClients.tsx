@@ -30,6 +30,7 @@ import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
+import AppointmentInvoiceActions from '@/components/admin/AppointmentInvoiceActions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
@@ -931,6 +932,7 @@ const AdminClients: React.FC = () => {
                                 <span className="text-xs font-semibold text-primary">€</span>
                                 {savingPrice[apt.id] && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
                               </div>
+                              <AppointmentInvoiceActions appointmentId={apt.id} compact />
                               <Button
                                 size="icon"
                                 variant="ghost"

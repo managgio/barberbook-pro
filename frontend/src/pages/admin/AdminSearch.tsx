@@ -15,6 +15,7 @@ import { ListSkeleton } from '@/components/common/Skeleton';
 import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog';
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
+import AppointmentInvoiceActions from '@/components/admin/AppointmentInvoiceActions';
 import ContactLinkText from '@/components/common/ContactLinkText';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -589,6 +590,7 @@ const AdminSearch: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-2">
+                          <AppointmentInvoiceActions appointmentId={apt.id} compact />
                           <Button
                             size="icon"
                             variant="ghost"

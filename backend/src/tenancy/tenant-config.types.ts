@@ -79,6 +79,13 @@ export type TenantFeaturesConfig = {
   communicationsEnabled?: boolean;
 };
 
+export type TenantInvoicingConfig = {
+  enabled?: boolean;
+  taxRate?: number;
+  currency?: string;
+  seriesPrefix?: string;
+};
+
 export type TenantLanguageCode = string;
 
 export type TenantI18nAutoTranslateConfig = {
@@ -181,6 +188,7 @@ export type BrandConfigData = {
   landing?: TenantLandingConfig;
   notificationPrefs?: TenantNotificationPrefs;
   features?: TenantFeaturesConfig;
+  invoicing?: TenantInvoicingConfig;
   i18n?: TenantI18nConfig;
   business?: TenantBusinessConfig;
   branding?: TenantBrandingConfig;

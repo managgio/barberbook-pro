@@ -168,6 +168,12 @@ interface PlatformConfig {
     barberServiceAssignmentEnabled?: boolean;
     communicationsEnabled?: boolean;
   };
+  invoicing?: {
+    enabled?: boolean;
+    taxRate?: number;
+    currency?: string;
+    seriesPrefix?: string;
+  };
   i18n?: {
     defaultLanguage?: string;
     supportedLanguages?: string[];
@@ -1644,6 +1650,10 @@ const PlatformBrands: React.FC = () => {
     sms: locationNotificationPrefsSource?.sms !== false,
   };
   const brandBarberAssignmentEnabled = brandConfig?.features?.barberServiceAssignmentEnabled !== false;
+  const brandInvoicingEnabled = brandConfig?.invoicing?.enabled === true;
+  const brandInvoiceTaxRate = Number(brandConfig?.invoicing?.taxRate ?? 21);
+  const brandInvoiceCurrency = brandConfig?.invoicing?.currency || 'EUR';
+  const brandInvoiceSeriesPrefix = brandConfig?.invoicing?.seriesPrefix || 'FACT';
   const isLocationBarberAssignmentOverride =
     typeof locationConfig?.features?.barberServiceAssignmentEnabled === 'boolean';
   const locationBarberAssignmentEnabled = isLocationBarberAssignmentOverride
@@ -4089,6 +4099,77 @@ const PlatformBrands: React.FC = () => {
                               }
                             />
                           </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Facturación</p>
+                        <div className="space-y-3 rounded-xl border border-border/60 p-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Generar facturas de citas</div>
+                              <p className="text-xs text-muted-foreground">
+                                Muestra la acción de factura a los administradores de todos los locales de la marca.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={brandInvoicingEnabled}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) => updateNestedValue(prev, ['invoicing', 'enabled'], checked))
+                              }
+                            />
+                          </div>
+                          <div className={`grid gap-3 md:grid-cols-3 ${brandInvoicingEnabled ? '' : 'opacity-60'}`}>
+                            <div className="space-y-2">
+                              <Label>IVA incluido (%)</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                value={brandInvoiceTaxRate}
+                                disabled={!brandInvoicingEnabled}
+                                onChange={(event) =>
+                                  setBrandConfig((prev) =>
+                                    updateNestedValue(prev, ['invoicing', 'taxRate'], Number(event.target.value)),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Moneda</Label>
+                              <Select
+                                value={brandInvoiceCurrency}
+                                disabled={!brandInvoicingEnabled}
+                                onValueChange={(value) =>
+                                  setBrandConfig((prev) => updateNestedValue(prev, ['invoicing', 'currency'], value))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="EUR">EUR</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Serie</Label>
+                              <Input
+                                value={brandInvoiceSeriesPrefix}
+                                maxLength={12}
+                                disabled={!brandInvoicingEnabled}
+                                onChange={(event) =>
+                                  setBrandConfig((prev) =>
+                                    updateNestedValue(prev, ['invoicing', 'seriesPrefix'], event.target.value.toUpperCase()),
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Usa los datos de la pestaña Legal y emite una única factura numerada por cita.
+                          </p>
                         </div>
                       </div>
 

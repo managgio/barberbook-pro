@@ -26,6 +26,13 @@ Las columnas de tiempo se guardan en UTC. Las fechas civiles y horarios se inter
 - `BookingClosure` bloquea intervalos y enlaza su `CommunicationCampaign` de origen.
 - Campañas, ejecuciones y resultados de destinatario conservan trazabilidad de comunicaciones.
 - `NotificationDelivery` y `NotificationDeliveryAttempt` forman la outbox multicanal e historial técnico tenant-scoped de correo, SMS y WhatsApp.
+- `Invoice` conserva una instantánea de empresa, cliente, servicio, importes y branding al emitir una factura de cita. `InvoiceSequence` asigna una numeración anual por marca dentro de una transacción serializable.
+
+## Facturación de citas
+
+Platform activa la capacidad en `BrandConfig.invoicing`. La emisión exige nombre legal, NIF/CIF y dirección en `BrandLegalSettings`, y solo está disponible en rutas administrativas tenant-scoped. Una cita genera como máximo una factura: las repeticiones devuelven el mismo documento y número.
+
+El precio de la cita se trata como total con IVA incluido. La factura persiste base imponible, tipo, cuota y total redondeados a dos decimales, además de la identidad y el logo efectivos en el momento de emisión. El PDF se compone en el cliente desde esta instantánea y puede descargarse o compartirse mediante la API nativa del dispositivo.
 
 ## Correo SMTP
 
@@ -38,7 +45,8 @@ La configuración efectiva puede variar por marca/local. El transporte se cachea
 - Platform nunca devuelve la contraseña SMTP persistida. Solo informa `passwordConfigured` y conserva el secreto si el campo queda vacío.
 - Una modificación de usuario, contraseña, host o puerto se autentica con `verify()` antes de persistirse. Platform también ofrece una prueba manual que reutiliza de forma segura el secreto guardado.
 - El `From` técnico usa la cuenta autenticada; el contacto comercial se muestra en contenido.
-- Las plantillas HTML resuelven el color desde `theme.primary` y el logo desde el `branding` efectivo del tenant. Si falta el color se usa el tono neutro de Managgio, nunca el branding de otro tenant. En correos de fondo oscuro se prioriza `logoDarkUrl`, con fallback a `logoUrl` y `logoLightUrl`.
+- Las plantillas HTML resuelven el color y el modo desde `theme`, y el logo desde el `branding` efectivo del tenant. Si falta el color se usa el tono neutro de Managgio, nunca el branding de otro tenant. En modo oscuro se prioriza `logoDarkUrl`; en modo claro, `logoLightUrl`, ambos con fallback seguro.
+- La paleta de correo declara el `color-scheme` efectivo y mantiene fondos, texto, paneles, bordes y enlaces con contraste propio para modo claro u oscuro.
 - Los logos HTTPS del endpoint ImageKit configurado se transforman a un PNG acotado y se adjuntan con CID para que los clientes de correo no dependan de la carga de imágenes remotas. Un logo HTTPS externo se referencia como imagen remota y nunca se descarga desde el backend; URLs no HTTPS se omiten.
 - Los logs usan `SMTP_AUTH_FAILED`, tenant y usuario enmascarado; no incluyen contraseña ni destinatario.
 - Un `sendMail` sin excepción no basta: si el proveedor devuelve destinatarios rechazados, la entrega se clasifica como `EMAIL_RECIPIENT_REJECTED`.

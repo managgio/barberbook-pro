@@ -36,6 +36,12 @@ export const buildBrandConfigFromEnv = (): BrandConfigData => ({
   features: {
     communicationsEnabled: false,
   },
+  invoicing: {
+    enabled: false,
+    taxRate: 21,
+    currency: 'EUR',
+    seriesPrefix: 'FACT',
+  },
   imagekit: {
     publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
     privateKey: process.env.IMAGEKIT_PRIVATE_KEY,

@@ -227,6 +227,7 @@ export class TenantConfigService {
       brandConfig.features || {},
       locationConfig.features || {},
     );
+    const invoicing = mergeConfig(brandConfig.invoicing || {}, {});
     const business = mergeConfig(brandConfig.business || {}, {});
     return {
       branding: Object.keys(branding).length ? branding : null,
@@ -236,6 +237,7 @@ export class TenantConfigService {
       landing: Object.keys(landing).length ? landing : null,
       i18n: i18n || null,
       features: Object.keys(features).length ? features : null,
+      invoicing: Object.keys(invoicing).length ? invoicing : null,
       business: Object.keys(business).length ? business : null,
     };
   }

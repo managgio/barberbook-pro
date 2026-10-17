@@ -5,4 +5,10 @@ import { buildBrandConfigFromEnv } from '@/tenancy/tenant-config.defaults';
 test('tenant brand defaults keep communications feature disabled by default', () => {
   const config = buildBrandConfigFromEnv();
   assert.equal(config.features?.communicationsEnabled, false);
+  assert.deepEqual(config.invoicing, {
+    enabled: false,
+    taxRate: 21,
+    currency: 'EUR',
+    seriesPrefix: 'FACT',
+  });
 });

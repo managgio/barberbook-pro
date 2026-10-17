@@ -37,6 +37,7 @@ import { ObservabilityModule } from './modules/observability/observability.modul
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { LocalizationModule } from './modules/localization/localization.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
+import { InvoicesModule } from './modules/invoices/invoices.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { CommunicationsModule } from './modules/communications/communications.mo
     SubscriptionsModule,
     LocalizationModule,
     CommunicationsModule,
+    InvoicesModule,
   ],
   providers: [
     { provide: TENANT_CONTEXT_PORT, useClass: AlsTenantContextAdapter },

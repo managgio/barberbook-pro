@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   getTenantEmailLogoAttachments,
+  renderBrandedEmail,
   resolveTenantEmailBranding,
 } from '@/modules/notifications/email-branding';
 
@@ -50,4 +51,37 @@ test('tenant email branding uses the neutral Managgio color when no tenant color
   const branding = resolveTenantEmailBranding({});
 
   assert.equal(branding.primary, '#fcbc23');
+});
+
+test('tenant email branding follows light mode and selects the light-mode logo', () => {
+  const branding = resolveTenantEmailBranding({
+    branding: {
+      logoLightUrl: 'https://cdn.example.com/logo-light.png',
+      logoDarkUrl: 'https://cdn.example.com/logo-dark.png',
+    },
+    theme: { mode: 'light', primary: '#c03d68' },
+  });
+
+  assert.equal(branding.mode, 'light');
+  assert.equal(branding.background, '#f2f4f7');
+  assert.equal(branding.cardBackground, '#ffffff');
+  assert.equal(branding.logo?.src, 'https://cdn.example.com/logo-light.png');
+
+  const html = renderBrandedEmail({
+    branding,
+    brandName: 'Tenant',
+    eyebrow: 'Cita creada',
+    bodyHtml: '<p>Contenido</p>',
+    footerText: 'Footer',
+  });
+  assert.match(html, /name="color-scheme" content="light"/);
+  assert.match(html, /background:#f2f4f7/);
+  assert.match(html, /color:#18212b/);
+});
+
+test('tenant email branding keeps dark mode as the safe default', () => {
+  const branding = resolveTenantEmailBranding({ theme: { primary: '#d4af37' } });
+  assert.equal(branding.mode, 'dark');
+  assert.equal(branding.background, '#0f0f12');
+  assert.equal(branding.textColor, '#f8fafc');
 });

@@ -42,6 +42,7 @@ Al cambiar de local se refresca el perfil tenant-scoped y se aíslan las queries
 - No introduzcas texto visible inline si existe infraestructura i18n.
 - Actualiza al menos `es.json` y `en.json`, y ejecuta `npm run i18n:check`.
 - Consulta [FRONTEND_I18N_COPY_CHECKLIST.md](../FRONTEND_I18N_COPY_CHECKLIST.md).
+- Las acciones de factura de calendario, clientes y búsqueda reutilizan un único componente. La generación PDF se carga de forma diferida y compartir usa Web Share con descarga como fallback.
 
 ## Rendimiento
 
