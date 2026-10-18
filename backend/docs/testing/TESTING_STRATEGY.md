@@ -39,6 +39,10 @@ Asegurar calidad funcional, estabilidad de migración DDD+Hexagonal y velocidad 
 - Coverage gate:
   - Script: `backend/scripts/tests/coverage-gate.mjs`
   - Umbrales: `backend/test/coverage-thresholds.json`.
+  - Node mide los archivos cargados durante la suite. Una importación de `AppModule` puede ampliar el denominador con módulos que el test no ejercita.
+  - Los contratos de ensamblado compilan cada módulo consumidor con sus dependencias reales y los proveedores globales necesarios, sin importar toda la aplicación como atajo. Así también detectan dependencias que otro módulo podría ocultar.
+  - El arranque completo se valida en los smoke de runtime. Las regresiones del orden de carga del entorno también se ejecutan en la suite, en procesos aislados: estos vacían `NODE_V8_COVERAGE` para no mezclar las importaciones de toda la aplicación mediante `transpile-only` con la cobertura funcional del proceso padre. Una regresión comprueba que no escriban en su directorio de cobertura.
+  - Se mantienen los umbrales y el patrón `src/**/*.ts` del gate, sin exclusiones de archivos productivos.
 
 - E2E smoke runtime (opt-in):
   - Script: `backend/scripts/tests/run-optional-e2e-smoke.mjs`

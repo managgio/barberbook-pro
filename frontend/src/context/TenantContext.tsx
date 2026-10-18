@@ -27,6 +27,8 @@ type TenantError = {
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 const DEFAULT_FAVICON = managgioLogo;
+const MANAGGIO_BROWSER_ICON = '/icons/managgio-app-192.png?v=2';
+const MANAGGIO_TOUCH_ICON = '/apple-touch-icon.png?v=2';
 const PLATFORM_TITLE = 'Managgio | Plataforma';
 const PLATFORM_DESCRIPTION = 'Panel de plataforma para gestionar marcas, locales y credenciales en Managgio.';
 
@@ -72,7 +74,7 @@ const upsertMeta = (attr: 'name' | 'property', key: string, content: string) => 
   element.setAttribute('content', content);
 };
 
-const upsertLink = (rel: string, href: string, type?: string) => {
+const upsertLink = (rel: string, href: string, type?: string, sizes?: string) => {
   if (typeof document === 'undefined') return;
   const selector = `link[rel="${rel}"]`;
   let element = document.head.querySelector(selector) as HTMLLinkElement | null;
@@ -84,6 +86,8 @@ const upsertLink = (rel: string, href: string, type?: string) => {
   element.setAttribute('href', href);
   if (type) element.setAttribute('type', type);
   else element.removeAttribute('type');
+  if (sizes) element.setAttribute('sizes', sizes);
+  else element.removeAttribute('sizes');
 };
 
 const removeMeta = (attr: 'name' | 'property', key: string) => {
@@ -144,6 +148,7 @@ const applyMeta = (payload: {
 }) => {
   if (typeof document === 'undefined') return;
   const resolvedImage = resolveImageUrl(payload.imageUrl);
+  const usesManaggioLogo = payload.imageUrl === managgioLogo;
   const iconType = resolveIconType(resolvedImage);
   document.title = payload.title;
   upsertMeta('name', 'description', payload.description);
@@ -158,8 +163,11 @@ const applyMeta = (payload: {
   upsertMeta('name', 'twitter:card', 'summary_large_image');
   if (payload.twitterSite) upsertMeta('name', 'twitter:site', payload.twitterSite);
   else removeMeta('name', 'twitter:site');
-  upsertLink('icon', resolvedImage, iconType);
-  upsertLink('apple-touch-icon', resolvedImage);
+  // Home-screen icons need their own opaque canvas and padding, separate from the social logo.
+  upsertLink('icon', usesManaggioLogo ? resolveImageUrl(MANAGGIO_BROWSER_ICON) : resolvedImage,
+    usesManaggioLogo ? 'image/png' : iconType, usesManaggioLogo ? '192x192' : undefined);
+  upsertLink('apple-touch-icon', usesManaggioLogo ? resolveImageUrl(MANAGGIO_TOUCH_ICON) : resolvedImage,
+    usesManaggioLogo ? 'image/png' : iconType, usesManaggioLogo ? '180x180' : undefined);
 };
 
 const buildTenantMeta = (bootstrap: TenantBootstrap, settings?: SiteSettings | null) => {

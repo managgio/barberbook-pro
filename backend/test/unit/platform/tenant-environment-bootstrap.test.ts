@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
@@ -62,7 +62,14 @@ const runBootstrap = (overrides: NodeJS.ProcessEnv = {}) => {
       `,
     ], {
       cwd: directory,
-      env: { ...env, ...overrides, TS_NODE_PROJECT: resolve(backendRoot, 'tsconfig.json') },
+      env: {
+        ...env,
+        ...overrides,
+        TS_NODE_PROJECT: resolve(backendRoot, 'tsconfig.json'),
+        // This smoke checks startup/configuration, not business method execution.
+        // Do not merge its transpile-only, full-app imports into the parent unit/contract coverage.
+        NODE_V8_COVERAGE: '',
+      },
       encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(result.status, 0, result.stderr);
@@ -94,4 +101,16 @@ test('app bootstrap preserves deployed environment values ahead of the local env
   assert.equal(result.platform.context.isPlatform, true);
   assert.equal(result.salon.context.brandId, 'salon-brand');
   assert.equal(result.missing.status, 404);
+});
+
+test('isolated app bootstrap does not write instrumentation into the parent coverage directory', () => {
+  const coverageDirectory = mkdtempSync(resolve(tmpdir(), 'managgio-bootstrap-coverage-'));
+  try {
+    const result = runBootstrap({ NODE_V8_COVERAGE: coverageDirectory });
+    assert.equal(result.platform.context.isPlatform, true);
+    assert.equal(result.salon.context.brandId, 'salon-brand');
+    assert.deepEqual(readdirSync(coverageDirectory), []);
+  } finally {
+    rmSync(coverageDirectory, { recursive: true, force: true });
+  }
 });
