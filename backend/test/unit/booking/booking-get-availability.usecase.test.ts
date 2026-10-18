@@ -195,3 +195,24 @@ test('respects custom slot interval from query', async () => {
   assert.equal(result.includes('09:30'), true);
   assert.equal(result.includes('09:15'), false);
 });
+
+test('requires a continuous slot for the summed duration of multiple services', async () => {
+  const useCase = buildUseCase();
+  const result = await useCase.execute({
+    context: {
+      tenantId: 'b1',
+      brandId: 'b1',
+      localId: 'l1',
+      actorUserId: null,
+      timezone: 'Europe/Madrid',
+      correlationId: 'corr-multi-service',
+    },
+    barberId: 'barber1',
+    date: '2026-03-04',
+    serviceIds: ['service1', 'service2'],
+    slotIntervalMinutes: 15,
+  });
+
+  assert.equal(result.includes('11:00'), true);
+  assert.equal(result.includes('11:15'), false);
+});

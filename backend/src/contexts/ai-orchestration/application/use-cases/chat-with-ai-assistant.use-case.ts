@@ -37,6 +37,8 @@ export interface ChatWithAiAssistantInput {
   sessionId?: string | null;
   localId: string;
   timeZone: string;
+  inputSource?: 'typed' | 'voice' | 'template';
+  templateKey?: string | null;
 }
 
 export interface ChatWithAiAssistantResult {
@@ -73,6 +75,8 @@ export class ChatWithAiAssistantUseCase {
       sessionId: session.id,
       role: 'user',
       content: input.message.trim(),
+      inputSource: input.inputSource ?? 'typed',
+      templateKey: input.inputSource === 'template' ? input.templateKey ?? null : null,
     });
 
     const summary = await this.memoryPort.getSummary(session.id);

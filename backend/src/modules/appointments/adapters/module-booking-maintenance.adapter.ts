@@ -54,6 +54,7 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
       status: AppointmentStatus;
       startDateTime: Date;
       earlierSlotRequested?: boolean;
+      totalDurationMinutes?: number | null;
       service?: { duration?: number | null } | null;
     }>,
   ) {
@@ -71,7 +72,9 @@ export class ModuleBookingMaintenanceAdapter implements BookingMaintenancePort {
         return;
       }
 
-      const duration = appointment.service?.duration ?? DEFAULT_SERVICE_DURATION;
+      const duration = appointment.totalDurationMinutes
+        ?? appointment.service?.duration
+        ?? DEFAULT_SERVICE_DURATION;
       const endTime = new Date(appointment.startDateTime.getTime() + duration * 60 * 1000);
       const confirmationThreshold = new Date(endTime.getTime() + CONFIRMATION_GRACE_MS);
       const nextStatus = now >= confirmationThreshold ? 'completed' : 'scheduled';

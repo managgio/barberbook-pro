@@ -16,6 +16,7 @@ import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import AppointmentInvoiceActions from '@/components/admin/AppointmentInvoiceActions';
+import AppointmentServiceSummary from '@/components/admin/AppointmentServiceSummary';
 import ContactLinkText from '@/components/common/ContactLinkText';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -492,14 +493,21 @@ const AdminSearch: React.FC = () => {
                         </p>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2 text-foreground">
-                          <span>{getService(apt.serviceId)?.name}</span>
+                        <div className="min-w-[210px] space-y-1.5">
+                          <AppointmentServiceSummary
+                            appointment={apt}
+                            fallbackService={getService(apt.serviceId)}
+                            showPrices
+                            compact
+                          />
+                          <div className="flex items-center gap-2">
                           {apt.subscriptionApplied && (
                             <Badge variant="secondary" className="h-5 px-2 text-[10px]">
                               {t('admin.common.subscription')}
                             </Badge>
                           )}
                           <AppointmentNoteIndicator note={apt.notes} variant="icon" />
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
@@ -519,7 +527,7 @@ const AdminSearch: React.FC = () => {
                       <td className="py-3 px-4">
                         <AppointmentStatusPicker
                           appointment={apt}
-                          serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
+                          serviceDurationMinutes={apt.totalDurationMinutes ?? getService(apt.serviceId)?.duration ?? 30}
                           onStatusUpdated={applyAppointmentUpdate}
                         />
                       </td>
@@ -550,7 +558,10 @@ const AdminSearch: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <div className="flex justify-end">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-[11px] font-medium text-muted-foreground">
+                            {t('admin.appointmentServices.appointmentTotal')}
+                          </span>
                           <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1.5">
                             <input
                               type="text"
@@ -590,7 +601,7 @@ const AdminSearch: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <AppointmentInvoiceActions appointmentId={apt.id} compact />
+                          <AppointmentInvoiceActions appointmentId={apt.id} status={apt.status} compact />
                           <Button
                             size="icon"
                             variant="ghost"

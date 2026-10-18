@@ -5,15 +5,6 @@ export type TenantImageKitConfig = {
   folder?: string;
 };
 
-export type TenantTwilioConfig = {
-  accountSid?: string;
-  authToken?: string;
-  messagingServiceSid?: string;
-  smsSenderId?: string;
-  whatsappFrom?: string;
-  whatsappTemplateSid?: string;
-};
-
 export type TenantEmailConfig = {
   user?: string;
   password?: string;
@@ -77,6 +68,7 @@ export type TenantNotificationPrefs = {
 export type TenantFeaturesConfig = {
   barberServiceAssignmentEnabled?: boolean;
   communicationsEnabled?: boolean;
+  multiServiceBookingEnabled?: boolean;
 };
 
 export type TenantInvoicingConfig = {
@@ -179,7 +171,6 @@ export type TenantBrandingConfig = {
 export type BrandConfigData = {
   superAdminEmail?: string;
   imagekit?: TenantImageKitConfig;
-  twilio?: TenantTwilioConfig;
   email?: TenantEmailConfig;
   firebaseAdmin?: TenantFirebaseAdminConfig;
   ai?: TenantAiConfig;

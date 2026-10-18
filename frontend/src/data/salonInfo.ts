@@ -77,6 +77,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   appointments: {
     cancellationCutoffHours: 0,
     slotIntervalMinutes: 15,
+    multiServiceEnabled: false,
   },
   services: {
     categoriesEnabled: false,

@@ -4,6 +4,7 @@ import { APP_TIMEZONE, formatDateInTimeZone, formatTimeInTimeZone, endOfDayInTim
 import { isOfferActiveNow } from '../../services/services.pricing';
 import { computeProductPricing } from '../../products/products.pricing';
 import { SettingsService } from '../../settings/settings.service';
+import { TenantConfigService } from '../../../tenancy/tenant-config.service';
 import { SchedulesService } from '../../schedules/schedules.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { BarbersService } from '../../barbers/barbers.service';
@@ -49,9 +50,14 @@ import {
 } from '../../../contexts/engagement/ports/outbound/referral-attribution.port';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { NotifyEarlierSlotOpportunityUseCase } from '../../../contexts/booking/application/use-cases/notify-earlier-slot-opportunity.use-case';
+import {
+  AppointmentReminderChannel,
+  normalizeAppointmentReminderChannels,
+} from '../../../shared/domain/appointment-reminder-channel';
+import { normalizeSmsRecipient } from '../../../contexts/engagement/domain/services/sms-recipient.policy';
 
 type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
-  include: { user: true; barber: true; service: true; products: { include: { product: true } } };
+  include: { user: true; barber: true; service: true; serviceItems: true; products: { include: { product: true } } };
 }>;
 
 const DEFAULT_SERVICE_DURATION = 30;
@@ -69,6 +75,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     private readonly runAppointmentStatusSideEffectsUseCase: RunAppointmentStatusSideEffectsUseCase,
     private readonly notifyEarlierSlotOpportunityUseCase: NotifyEarlierSlotOpportunityUseCase,
     private readonly settingsService: SettingsService,
+    private readonly tenantConfigService: TenantConfigService,
     private readonly schedulesService: SchedulesService,
     private readonly notificationsService: NotificationsService,
     private readonly barbersService: BarbersService,
@@ -97,6 +104,57 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       select: { duration: true },
     });
     return service?.duration ?? DEFAULT_SERVICE_DURATION;
+  }
+
+  private normalizeServiceIds(primaryServiceId: string, serviceIds?: string[]) {
+    const normalized = Array.from(new Set(
+      [primaryServiceId, ...(serviceIds || [])]
+        .map((serviceId) => serviceId?.trim())
+        .filter((serviceId): serviceId is string => Boolean(serviceId)),
+    ));
+    if (normalized.length > 6) {
+      throw new BadRequestException('Puedes combinar un máximo de 6 servicios.');
+    }
+    return normalized;
+  }
+
+  private async assertMultiServiceBookingEnabled(serviceIds: string[], settings: Awaited<ReturnType<SettingsService['getSettings']>>) {
+    if (serviceIds.length <= 1) return;
+    const brandConfig = await this.tenantConfigService.getBrandConfig();
+    if (
+      brandConfig.features?.multiServiceBookingEnabled !== true
+      || settings.appointments?.multiServiceEnabled !== true
+    ) {
+      throw new BadRequestException('La reserva de varios servicios no está habilitada.');
+    }
+  }
+
+  private async resolveServiceBundle(localId: string, serviceIds: string[], referenceDate: Date) {
+    const services = await this.prisma.service.findMany({
+      where: { id: { in: serviceIds }, localId, isArchived: false },
+      select: { id: true, name: true, duration: true },
+    });
+    if (services.length !== serviceIds.length) {
+      throw new NotFoundException('Uno o varios servicios no existen en este local.');
+    }
+    const serviceById = new Map(services.map((service) => [service.id, service]));
+    const items = await Promise.all(serviceIds.map(async (serviceId, position) => {
+      const service = serviceById.get(serviceId)!;
+      const pricing = await this.calculateAppointmentPrice(localId, serviceId, referenceDate);
+      return {
+        serviceId,
+        position,
+        name: pricing.serviceName || service.name,
+        durationMinutes: service.duration,
+        price: pricing.price,
+      };
+    }));
+    return {
+      items,
+      durationMinutes: items.reduce((total, item) => total + item.durationMinutes, 0),
+      price: items.reduce((total, item) => total + item.price, 0),
+      name: items.map((item) => item.name).join(' + '),
+    };
   }
 
   private async assertNoOverlappingAppointment(
@@ -130,7 +188,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const newEnd = new Date(newStart.getTime() + (params.duration + buffer) * 60 * 1000);
 
     const overlaps = appointments.some((appointment) => {
-      const existingDuration = appointment.service?.duration ?? DEFAULT_SERVICE_DURATION;
+      const existingDuration = appointment.totalDurationMinutes ?? appointment.service?.duration ?? DEFAULT_SERVICE_DURATION;
       const existingEnd = new Date(
         appointment.startDateTime.getTime() + (existingDuration + buffer) * 60 * 1000,
       );
@@ -146,6 +204,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     context: CreateAppointmentCommand['context'] | UpdateAppointmentCommand['context'];
     barberId: string;
     serviceId?: string;
+    serviceIds?: string[];
     startDateTime: string;
     appointmentIdToIgnore?: string;
     slotIntervalMinutes?: number;
@@ -162,6 +221,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       barberId: params.barberId,
       date: dateOnly,
       serviceId: params.serviceId,
+      serviceIds: params.serviceIds,
       appointmentIdToIgnore: params.appointmentIdToIgnore,
       slotIntervalMinutes: params.slotIntervalMinutes,
     });
@@ -177,6 +237,45 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
 
   private resolveSlotIntervalMinutes(value: number | null | undefined) {
     return value === 30 ? 30 : DEFAULT_SLOT_INTERVAL_MINUTES;
+  }
+
+  private isValidReminderPhone(value?: string | null) {
+    return normalizeSmsRecipient(value) !== null;
+  }
+
+  private async resolveGuestReminderConsent(params: {
+    userId?: string | null;
+    phone?: string | null;
+    requestedChannels?: AppointmentReminderChannel[];
+  }) {
+    const requestedChannels = normalizeAppointmentReminderChannels(params.requestedChannels);
+    if (requestedChannels.length === 0) {
+      return { sms: false, whatsapp: false };
+    }
+    if (params.userId) {
+      throw new BadRequestException(
+        'Los recordatorios de usuarios registrados se gestionan desde sus preferencias.',
+      );
+    }
+    if (!this.isValidReminderPhone(params.phone)) {
+      throw new BadRequestException(
+        'Necesitamos un teléfono válido para activar recordatorios.',
+      );
+    }
+
+    const config = await this.tenantConfigService.getPublicConfig();
+    for (const channel of requestedChannels) {
+      if (config.notificationCapabilities?.[channel] !== true) {
+        throw new BadRequestException(
+          `El canal de recordatorio ${channel} no está disponible en este local.`,
+        );
+      }
+    }
+
+    return {
+      sms: requestedChannels.includes('sms'),
+      whatsapp: requestedChannels.includes('whatsapp'),
+    };
   }
 
   private async getProductOffers(localId: string, referenceDate: Date) {
@@ -275,6 +374,12 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     await this.barbersService.assertBarberCanProvideService(barberId, serviceId);
   }
 
+  private async assertBarberServicesCompatibility(localId: string, barberId: string, serviceIds: string[]) {
+    await Promise.all(serviceIds.map((serviceId) =>
+      this.assertBarberServiceCompatibility(localId, barberId, serviceId),
+    ));
+  }
+
   private async runStatusSideEffects(localId: string, appointmentId: string, nextStatus: AppointmentStatus) {
     const result = await this.runAppointmentStatusSideEffectsUseCase.execute({
       localId,
@@ -354,6 +459,11 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const data = command.input;
     const structuredGuestContact = parseGuestContact(data);
     const legacyGuestContact = data.guestContact?.trim() || buildLegacyGuestContact(structuredGuestContact);
+    const guestReminderConsent = await this.resolveGuestReminderConsent({
+      userId: data.userId,
+      phone: structuredGuestContact.phone,
+      requestedChannels: data.reminderChannels,
+    });
     const requireConsent = command.execution?.requireConsent !== false;
     let consentRequired = requireConsent;
     if (requireConsent && data.userId) {
@@ -384,21 +494,26 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       }
     }
 
-    await this.assertBarberServiceCompatibility(localId, data.barberId, data.serviceId);
+    const serviceIds = this.normalizeServiceIds(data.serviceId, data.serviceIds);
+    await this.assertMultiServiceBookingEnabled(serviceIds, settings);
+    await this.assertBarberServicesCompatibility(localId, data.barberId, serviceIds);
     await this.assertSlotAvailable({
       context: command.context,
       barberId: data.barberId,
       serviceId: data.serviceId,
+      serviceIds,
       startDateTime: data.startDateTime,
       slotIntervalMinutes,
     });
 
     const shopSchedule = await this.schedulesService.getShopSchedule();
     const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
-    const targetDuration = await this.getServiceDuration(localId, data.serviceId);
-    const pricing = await this.calculateAppointmentPrice(localId, data.serviceId, startDateTime);
-    const serviceName = pricing.serviceName;
-    let servicePrice = pricing.price;
+    const serviceBundle = await this.resolveServiceBundle(localId, serviceIds, startDateTime);
+    const targetDuration = serviceBundle.durationMinutes;
+    const serviceName = serviceBundle.name;
+    const primaryServicePrice = serviceBundle.items[0]?.price ?? 0;
+    const additionalServicesPrice = Math.max(0, serviceBundle.price - primaryServicePrice);
+    let primaryServicePayable = primaryServicePrice;
     const barberNameSnapshot = await this.getBarberNameSnapshot(localId, data.barberId);
     const activeSubscription = await this.commerceSubscriptionPolicyPort.resolveActiveSubscriptionForAppointment(
       data.userId,
@@ -415,8 +530,9 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       loyaltyRewardApplied = loyaltyDecision?.isFreeNext ?? false;
     }
     if (loyaltyRewardApplied || subscriptionApplied) {
-      servicePrice = 0;
+      primaryServicePayable = 0;
     }
+    let servicePrice = primaryServicePayable + additionalServicesPrice;
     const referralAttribution = subscriptionApplied
       ? null
       : await this.engagementReferralAttributionPort.resolveAttributionForBooking({
@@ -447,10 +563,11 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
       couponDiscount = this.commerceWalletLedgerPort.calculateCouponDiscount({
         couponType: coupon.discountType,
         couponValue: coupon.discountValue,
-        baseServicePrice: servicePrice,
+        baseServicePrice: primaryServicePayable,
       });
       appliedCouponId = coupon.id;
-      servicePrice = Math.max(0, servicePrice - couponDiscount);
+      primaryServicePayable = Math.max(0, primaryServicePayable - couponDiscount);
+      servicePrice = primaryServicePayable + additionalServicesPrice;
     }
 
     const totalBeforeWallet = servicePrice + productSelection.total;
@@ -504,6 +621,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               serviceId: data.serviceId,
               barberNameSnapshot,
               serviceNameSnapshot: serviceName,
+              totalDurationMinutes: targetDuration,
               loyaltyProgramId,
               loyaltyRewardApplied,
               subscriptionApplied,
@@ -527,8 +645,22 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               guestContact: legacyGuestContact,
               guestEmail: structuredGuestContact.email,
               guestPhone: structuredGuestContact.phone,
+              reminderSmsRequested: guestReminderConsent.sms,
+              reminderWhatsappRequested: guestReminderConsent.whatsapp,
               earlierSlotRequested: data.notifyIfEarlierSlot === true,
               reminderSent: false,
+              serviceItems: {
+                create: serviceBundle.items.map((item) => ({
+                  localId,
+                  serviceId: item.serviceId,
+                  position: item.position,
+                  nameSnapshot: item.name,
+                  durationMinutes: item.durationMinutes,
+                  unitPrice: new Prisma.Decimal(
+                    item.position === 0 ? primaryServicePayable : item.price,
+                  ),
+                })),
+              },
               products: productSelection.items.length > 0
                 ? {
                     create: productSelection.items.map((item) => ({
@@ -539,7 +671,13 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
                   }
                 : undefined,
             },
-            include: { user: true, barber: true, service: true, products: { include: { product: true } } },
+            include: {
+              user: true,
+              barber: true,
+              service: true,
+              serviceItems: { orderBy: { position: 'asc' } },
+              products: { include: { product: true } },
+            },
           });
 
           if (shouldHoldStock && referralAttribution) {
@@ -591,7 +729,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
                 contact,
                 {
                   date: created.startDateTime,
-                  serviceName: created.service?.name,
+                  serviceName: created.serviceNameSnapshot || created.service?.name,
                   barberName: created.barber?.name,
                 },
                 'creada',
@@ -650,7 +788,10 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const data = command.input;
     const current = await this.prisma.appointment.findFirst({
       where: { id: command.appointmentId, localId },
-      include: { products: { include: { product: true } } },
+      include: {
+        serviceItems: { orderBy: { position: 'asc' } },
+        products: { include: { product: true } },
+      },
     });
     if (!current) throw new NotFoundException('Appointment not found');
 
@@ -663,11 +804,17 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     }
 
     const nextServiceId = data.serviceId ?? current.serviceId;
+    const currentServiceIds = current.serviceItems.length > 0
+      ? current.serviceItems.map((item) => item.serviceId)
+      : [current.serviceId];
+    const nextServiceIds = data.serviceId !== undefined ? [nextServiceId] : currentServiceIds;
     const nextBarberId = data.barberId ?? current.barberId;
     const nextUserId = data.userId === undefined ? current.userId : data.userId;
     const nextStartDateTime = data.startDateTime ? new Date(data.startDateTime) : current.startDateTime;
     if (data.status === 'completed') {
-      const duration = await this.getServiceDuration(localId, nextServiceId);
+      const duration = data.serviceId !== undefined
+        ? await this.getServiceDuration(localId, nextServiceId)
+        : current.totalDurationMinutes;
       const completionTimingError = getCompletionTimingViolationMessage({
         nextStatus: data.status as BookingStatus,
         now: new Date(),
@@ -700,13 +847,15 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     const slotIntervalMinutes = this.resolveSlotIntervalMinutes(
       settings.appointments?.slotIntervalMinutes,
     );
+    const nextServiceBundle = await this.resolveServiceBundle(localId, nextServiceIds, nextStartDateTime);
 
     if (startChanged || serviceChanged || barberChanged) {
-      await this.assertBarberServiceCompatibility(localId, nextBarberId, nextServiceId);
+      await this.assertBarberServicesCompatibility(localId, nextBarberId, nextServiceIds);
       await this.assertSlotAvailable({
         context: command.context,
         barberId: data.barberId || current.barberId,
         serviceId: data.serviceId || current.serviceId,
+        serviceIds: nextServiceIds,
         startDateTime: data.startDateTime || current.startDateTime.toISOString(),
         appointmentIdToIgnore: current.id,
         slotIntervalMinutes,
@@ -818,9 +967,11 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
     let resolvedServiceName: string | null = null;
     let resolvedServicePrice: number | null = null;
     if (shouldRecalculatePricingSignals) {
-      const pricing = await this.calculateAppointmentPrice(localId, nextServiceId, nextStartDateTime);
-      resolvedServiceName = pricing.serviceName;
-      resolvedServicePrice = subscriptionApplied || loyaltyRewardApplied ? 0 : pricing.price;
+      resolvedServiceName = nextServiceBundle.name;
+      const primaryPrice = nextServiceBundle.items[0]?.price ?? 0;
+      resolvedServicePrice = subscriptionApplied || loyaltyRewardApplied
+        ? Math.max(0, nextServiceBundle.price - primaryPrice)
+        : nextServiceBundle.price;
     }
 
     if (data.price !== undefined) {
@@ -848,7 +999,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
         if (!service) throw new NotFoundException('Service not found');
         resolvedServiceName = service.name;
       }
-      snapshotUpdates.serviceNameSnapshot = resolvedServiceName;
+      snapshotUpdates.serviceNameSnapshot = resolvedServiceName || nextServiceBundle.name;
     }
     if (barberChanged || !current.barberNameSnapshot) {
       snapshotUpdates.barberNameSnapshot = await this.getBarberNameSnapshot(localId, nextBarberId);
@@ -903,7 +1054,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
 
     const shopSchedule = await this.schedulesService.getShopSchedule();
     const bufferMinutes = shopSchedule.bufferMinutes ?? 0;
-    const nextDuration = await this.getServiceDuration(localId, nextServiceId);
+    const nextDuration = nextServiceBundle.durationMinutes;
 
     const shouldNotify = serviceChanged || barberChanged || startChanged || isCancelled;
     const notificationAction = isCancelled ? 'cancelada' : 'actualizada';
@@ -944,6 +1095,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               barberId: data.barberId,
               serviceId: data.serviceId,
               ...snapshotUpdates,
+              totalDurationMinutes: nextDuration,
               loyaltyProgramId,
               loyaltyRewardApplied,
               subscriptionApplied,
@@ -979,6 +1131,19 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
               earlierSlotNotifiedAt: startChanged ? null : undefined,
               earlierSlotCandidateAt: startChanged ? null : undefined,
               reminderSent,
+              serviceItems: serviceChanged || current.serviceItems.length === 0
+                ? {
+                    deleteMany: {},
+                    create: nextServiceBundle.items.map((item) => ({
+                      localId,
+                      serviceId: item.serviceId,
+                      position: item.position,
+                      nameSnapshot: item.name,
+                      durationMinutes: item.durationMinutes,
+                      unitPrice: new Prisma.Decimal(item.price),
+                    })),
+                  }
+                : undefined,
               products: productsInputProvided
                 ? {
                     deleteMany: {},
@@ -990,7 +1155,13 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
                   }
                 : undefined,
             },
-            include: { user: true, barber: true, service: true, products: { include: { product: true } } },
+            include: {
+              user: true,
+              barber: true,
+              service: true,
+              serviceItems: { orderBy: { position: 'asc' } },
+              products: { include: { product: true } },
+            },
           });
 
           if (shouldNotify) {
@@ -1007,7 +1178,7 @@ export class ModuleBookingCommandAdapter implements BookingCommandPort {
                 contact,
                 {
                   date: persisted.startDateTime,
-                  serviceName: persisted.service?.name,
+                  serviceName: persisted.serviceNameSnapshot || persisted.service?.name,
                   barberName: persisted.barber?.name,
                 },
                 notificationAction,

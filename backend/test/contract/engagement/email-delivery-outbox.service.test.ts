@@ -17,6 +17,7 @@ const requestContext = {
 const buildHarness = (sendResult: any) => {
   let delivery: any = null;
   const attempts: any[] = [];
+  const smsDeliveryContexts: any[] = [];
   const criticalTraces: any[] = [];
   const notificationDelivery = {
     upsert: async (params: any) => {
@@ -73,16 +74,22 @@ const buildHarness = (sendResult: any) => {
       sendAppointmentEmail: async () => sendResult,
       sendReferralRewardEmail: async () => sendResult,
       sendBroadcastEmail: async () => sendResult,
-      sendBroadcastSms: async () => sendResult,
+      sendBroadcastSms: async (_params: any, context: any) => {
+        smsDeliveryContexts.push(context);
+        return sendResult;
+      },
       sendBroadcastWhatsapp: async () => sendResult,
-      sendReminderSms: async () => sendResult,
+      sendReminderSms: async (_contact: any, _appointment: any, context: any) => {
+        smsDeliveryContexts.push(context);
+        return sendResult;
+      },
       sendReminderWhatsapp: async () => sendResult,
     } as any,
     { getRequestContext: () => requestContext } as any,
     new NotificationDeliveryAttemptRecorder(prisma),
     new NotificationDeliveryCriticalReporter(prisma, observability),
   );
-  return { service, getDelivery: () => delivery, attempts, criticalTraces };
+  return { service, getDelivery: () => delivery, attempts, smsDeliveryContexts, criticalTraces };
 };
 
 test('email outbox is idempotent and records SMTP acceptance', async () => {
@@ -149,4 +156,34 @@ test('notification outbox dispatches SMS through the same durable circuit', asyn
   assert.equal(result?.status, NotificationDeliveryStatus.accepted);
   assert.equal(harness.getDelivery().channel, NotificationDeliveryChannel.sms);
   assert.equal(harness.getDelivery().recipientAddress, '+34123456789');
+  assert.equal(harness.smsDeliveryContexts.length, 1);
+  assert.equal(
+    harness.smsDeliveryContexts[0].deliveryAttemptReference,
+    harness.getDelivery().activeAttemptReference,
+  );
+  assert.notEqual(harness.smsDeliveryContexts[0].deliveryAttemptReference, queued.id);
+});
+
+test('notification outbox rotates the opaque SMS callback reference for every retry attempt', async () => {
+  const harness = buildHarness({ status: 'accepted', providerMessageId: 'sms-1' });
+  const queued = await harness.service.enqueueBroadcastNotification(
+    NotificationDeliveryChannel.sms,
+    { contact: { phone: '+34123456789' }, message: 'Aviso' },
+    { idempotencyKey: 'communication:retry-reference:client:sms' },
+  );
+
+  await harness.service.dispatchDelivery(queued.id);
+  const firstReference = harness.getDelivery().activeAttemptReference;
+  harness.getDelivery().status = NotificationDeliveryStatus.retrying;
+  harness.getDelivery().nextAttemptAt = new Date(0);
+  await harness.service.dispatchDelivery(queued.id);
+  const secondReference = harness.getDelivery().activeAttemptReference;
+
+  assert.equal(typeof firstReference, 'string');
+  assert.equal(typeof secondReference, 'string');
+  assert.notEqual(firstReference, secondReference);
+  assert.deepEqual(
+    harness.smsDeliveryContexts.map((context) => context.deliveryAttemptReference),
+    [firstReference, secondReference],
+  );
 });

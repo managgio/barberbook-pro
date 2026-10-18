@@ -3,6 +3,7 @@ export const ACTIVE_LOCATION_ITERATOR_PORT = Symbol('ACTIVE_LOCATION_ITERATOR_PO
 export type ActiveLocationContext = {
   brandId: string;
   localId: string;
+  timezone: string;
 };
 
 export interface ActiveLocationIteratorPort {

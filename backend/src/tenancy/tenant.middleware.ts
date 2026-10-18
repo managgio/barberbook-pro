@@ -83,7 +83,10 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantService: TenantService) {}
 
   async use(req: Request, _res: Response, next: () => void) {
-    if (req.originalUrl?.startsWith('/api/payments/stripe/webhook')) {
+    if (
+      req.originalUrl?.startsWith('/api/payments/stripe/webhook')
+      || req.originalUrl?.startsWith('/api/notifications/webhooks/twilio/sms-status')
+    ) {
       runWithTenantContext(
         {
           brandId: DEFAULT_BRAND_ID,
@@ -189,6 +192,7 @@ export class TenantMiddleware implements NestMiddleware {
         {
           brandId: resolution.brandId,
           localId: resolution.localId,
+          timezone: resolution.timezone,
           host: host,
           subdomain: resolution.subdomain,
           requestedLanguage,

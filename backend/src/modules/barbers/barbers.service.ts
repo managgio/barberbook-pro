@@ -33,6 +33,7 @@ import { mapBarber } from './barbers.mapper';
 
 type FindAllBarbersOptions = {
   includeInactive?: boolean;
+  serviceIds?: string[];
 };
 
 @Injectable()
@@ -72,12 +73,30 @@ export class BarbersService {
 
   async findAll(serviceId?: string, options?: FindAllBarbersOptions) {
     const context = this.tenantContextPort.getRequestContext();
+    const serviceIds = Array.from(new Set(
+      [serviceId, ...(options?.serviceIds || [])].filter((id): id is string => Boolean(id)),
+    ));
     const barbers = await this.listBarbersUseCase.execute({
       context,
-      serviceId,
+      serviceId: serviceIds[0],
       includeInactive: options?.includeInactive === true,
     });
-    const mapped = barbers.map(mapBarber);
+    const eligibleIds = serviceIds.length > 1
+      ? await Promise.all(serviceIds.map((candidateServiceId) =>
+          this.barberEligibilityReadPort.getEligibleBarberIdsForService({
+            localId: context.localId,
+            serviceId: candidateServiceId,
+            barberIds: barbers.map((barber) => barber.id),
+          }),
+        )).then((groups) => new Set(
+          barbers
+            .map((barber) => barber.id)
+            .filter((barberId) => groups.every((group) => group.includes(barberId))),
+        ))
+      : null;
+    const mapped = barbers
+      .filter((barber) => !eligibleIds || eligibleIds.has(barber.id))
+      .map(mapBarber);
     const { items } = await this.localizationService.localizeCollection({
       context,
       entityType: 'barber',

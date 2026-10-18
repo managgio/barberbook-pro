@@ -1,18 +1,11 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { AdminEndpoint } from '../../auth/admin.decorator';
 import { NotificationsService } from './notifications.service';
-import { TestSmsDto } from './dto/test-sms.dto';
 import { TestWhatsappDto } from './dto/test-whatsapp.dto';
 
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
-
-  @Post('test-sms')
-  @AdminEndpoint()
-  sendTestSms(@Body() data: TestSmsDto) {
-    return this.notificationsService.sendTestSms(data.phone, data.message || null);
-  }
 
   @Post('test-whatsapp')
   @AdminEndpoint()
@@ -34,6 +27,7 @@ export class NotificationsController {
     @Query('status') status?: string,
     @Query('kind') kind?: string,
     @Query('channel') channel?: string,
+    @Query('includeResolved') includeResolved?: string,
   ) {
     return this.notificationsService.listNotificationDeliveries({
       page: Number(page) || 1,
@@ -41,6 +35,7 @@ export class NotificationsController {
       status,
       kind,
       channel,
+      includeResolved: includeResolved === 'true',
     });
   }
 
@@ -57,6 +52,7 @@ export class NotificationsController {
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
     @Query('kind') kind?: string,
+    @Query('includeResolved') includeResolved?: string,
   ) {
     return this.notificationsService.listNotificationDeliveries({
       page: Number(page) || 1,
@@ -64,6 +60,7 @@ export class NotificationsController {
       status,
       kind,
       channel: 'email',
+      includeResolved: includeResolved === 'true',
     });
   }
 

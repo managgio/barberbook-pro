@@ -156,6 +156,12 @@ enum AiChatRole {
   tool
 }
 
+enum AiChatInputSource {
+  typed
+  voice
+  template
+}
+
 enum ProviderUsageType {
   openai
   twilio
@@ -259,6 +265,9 @@ enum NotificationDeliveryStatus {
   pending
   processing
   accepted
+  sent
+  delivered
+  undelivered
   retrying
   failed
   skipped
@@ -342,6 +351,7 @@ model Location {
   defaultForBrand                Brand?                          @relation("BrandDefaultLocation")
   name                           String
   slug                           String?
+  timezone                       String                          @default("Europe/Madrid") @db.VarChar(64)
   isActive                       Boolean                         @default(true)
   adminRoles                     AdminRole[]
   staffRoles                     LocationStaff[]
@@ -350,6 +360,7 @@ model Location {
   products                       Product[]
   services                       Service[]
   appointments                   Appointment[]
+  appointmentServiceItems        AppointmentServiceItem[]
   cashMovements                  CashMovement[]
   alerts                         Alert[]
   generalHolidays                GeneralHoliday[]
@@ -567,6 +578,7 @@ model Service {
   categoryId                String?
   category                  ServiceCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   appointments              Appointment[]
+  appointmentItems          AppointmentServiceItem[]
   offers                    Offer[]                   @relation("ServiceOffers")
   loyaltyPrograms           LoyaltyProgram[]
   referralReferrerConfigs   ReferralProgramConfig[]   @relation("ReferralReferrerService")
@@ -623,7 +635,9 @@ model Appointment {
   barberNameSnapshot            String?
   serviceId                     String
   service                       Service                        @relation(fields: [serviceId], references: [id])
-  serviceNameSnapshot           String?
+  serviceNameSnapshot           String?                        @db.Text
+  totalDurationMinutes          Int                            @default(30)
+  serviceItems                  AppointmentServiceItem[]
   loyaltyProgramId              String?
   loyaltyProgram                LoyaltyProgram?                @relation(fields: [loyaltyProgramId], references: [id])
   loyaltyRewardApplied          Boolean                        @default(false)
@@ -654,6 +668,8 @@ model Appointment {
   guestContact                  String?
   guestEmail                    String?                        @db.VarChar(254)
   guestPhone                    String?                        @db.VarChar(40)
+  reminderSmsRequested          Boolean                        @default(false)
+  reminderWhatsappRequested     Boolean                        @default(false)
   earlierSlotRequested          Boolean                        @default(false)
   earlierSlotNotifiedAt         DateTime?
   earlierSlotCandidateAt        DateTime?
@@ -677,6 +693,25 @@ model Appointment {
   @@index([referralAttributionId])
   @@index([subscriptionPlanId])
   @@index([subscriptionId])
+}
+
+model AppointmentServiceItem {
+  id              String      @id @default(cuid())
+  appointmentId   String
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  localId         String
+  local           Location    @relation(fields: [localId], references: [id], onDelete: Cascade)
+  serviceId       String
+  service         Service     @relation(fields: [serviceId], references: [id])
+  position        Int         @default(0)
+  nameSnapshot    String
+  durationMinutes Int
+  unitPrice       Decimal     @db.Decimal(10, 2)
+  createdAt       DateTime    @default(now())
+
+  @@unique([appointmentId, serviceId])
+  @@index([localId, appointmentId])
+  @@index([localId, serviceId])
 }
 
 model InvoiceSequence {
@@ -714,7 +749,7 @@ model Invoice {
   customerName        String
   customerEmail       String?  @db.VarChar(254)
   customerPhone       String?  @db.VarChar(40)
-  serviceName         String
+  serviceName         String   @db.Text
   serviceDate         DateTime
   locationName        String
   professionalName    String?
@@ -1439,12 +1474,15 @@ model AiChatMessage {
   session     AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   role        AiChatRole
   content     String        @db.Text
+  inputSource AiChatInputSource? @map("input_source")
+  templateKey String?       @map("template_key") @db.VarChar(64)
   toolName    String?       @map("tool_name")
   toolPayload Json?         @map("tool_payload")
   createdAt   DateTime      @default(now()) @map("created_at")
 
   @@index([sessionId, createdAt])
   @@index([localId])
+  @@index([localId, inputSource, createdAt])
   @@map("ai_chat_messages")
 }
 
@@ -1580,10 +1618,15 @@ model NotificationDelivery {
   maxAttempts             Int                         @default(5)
   nextAttemptAt           DateTime?                    @db.DateTime(3)
   processingStartedAt     DateTime?                    @db.DateTime(3)
+  activeAttemptReference  String?                     @unique(map: "nd_active_attempt_reference_key") @db.VarChar(64)
   providerMessageId       String?                     @db.VarChar(191)
   lastErrorCode           String?                     @db.VarChar(100)
   lastErrorMessage        String?                     @db.VarChar(500)
   acceptedAt              DateTime?                    @db.DateTime(3)
+  sentAt                  DateTime?                    @db.DateTime(3)
+  deliveredAt             DateTime?                    @db.DateTime(3)
+  undeliveredAt           DateTime?                    @db.DateTime(3)
+  deliveryStatusUpdatedAt DateTime?                    @db.DateTime(3)
   failedAt                DateTime?                    @db.DateTime(3)
   skippedAt               DateTime?                    @db.DateTime(3)
   criticalTraceReportedAt DateTime?                    @db.DateTime(3)
@@ -1596,6 +1639,7 @@ model NotificationDelivery {
   @@index([brandId, status, channel, createdAt], map: "nd_brand_status_channel_created_idx")
   @@index([status, redactedAt, createdAt], map: "nd_status_redacted_created_idx")
   @@index([appointmentId, createdAt], map: "nd_appointment_created_idx")
+  @@index([channel, providerMessageId], map: "nd_channel_provider_message_idx")
   @@index([createdAt], map: "nd_created_idx")
   @@map("notification_deliveries")
 }

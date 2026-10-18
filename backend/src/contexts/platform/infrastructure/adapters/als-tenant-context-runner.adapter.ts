@@ -4,6 +4,8 @@ import {
   TenantContextRunnerPort,
   TenantExecutionContext,
 } from '../../ports/outbound/tenant-context-runner.port';
+import { APP_TIMEZONE } from '../../../../utils/timezone';
+import { resolveLocationTimeZone } from '../../domain/services/location-timezone.policy';
 
 @Injectable()
 export class AlsTenantContextRunnerAdapter implements TenantContextRunnerPort {
@@ -12,6 +14,7 @@ export class AlsTenantContextRunnerAdapter implements TenantContextRunnerPort {
       {
         brandId: context.brandId,
         localId: context.localId,
+        timezone: resolveLocationTimeZone(context.timezone, APP_TIMEZONE),
         isPlatform: context.isPlatform,
         subdomain: context.subdomain ?? undefined,
       },

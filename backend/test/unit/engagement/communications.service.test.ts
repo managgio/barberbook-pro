@@ -276,6 +276,31 @@ test('communications service stores selected channel preference when saving a dr
   assert.equal((result as any).status, CommunicationStatus.draft);
 });
 
+test('communications service rejects SMS campaigns above the global segment ceiling', async () => {
+  const { service } = buildService();
+
+  await assert.rejects(
+    () => service.create(
+      {
+        actionType: 'solo_comunicar',
+        scopeType: 'all_day',
+        scopeCriteria: { date: '2026-04-10' },
+        templateKey: 'general_announcement',
+        channel: 'sms',
+        title: 'Aviso general',
+        message: 'á'.repeat(202),
+        saveAsDraft: true,
+      } as any,
+      'admin-1',
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof BadRequestException);
+      assert.match((error as Error).message, /3 segmentos/);
+      return true;
+    },
+  );
+});
+
 test('communications service applies morning appointment scope using local morning shift', async () => {
   const { service, calls } = buildServiceForScopeFiltering({
     monday: {

@@ -11,6 +11,7 @@ export type EngagementNotificationAppointmentInfo = {
   serviceName?: string;
   barberName?: string;
   location?: string;
+  managementUrl?: string;
 };
 
 export type EngagementNotificationAppointmentAction = 'creada' | 'actualizada' | 'cancelada';
@@ -34,6 +35,10 @@ export type EngagementTestWhatsappInput = {
   time?: string;
 };
 
+export type EngagementNotificationDeliveryContext = {
+  deliveryAttemptReference?: string;
+};
+
 export interface EngagementNotificationManagementPort {
   sendAppointmentEmail(
     contact: EngagementNotificationContactInfo,
@@ -55,7 +60,7 @@ export interface EngagementNotificationManagementPort {
   sendBroadcastSms(params: {
     contact: EngagementNotificationContactInfo;
     message: string;
-  }): Promise<EngagementNotificationDeliveryResult>;
+  }, context?: EngagementNotificationDeliveryContext): Promise<EngagementNotificationDeliveryResult>;
   sendBroadcastWhatsapp(params: {
     contact: EngagementNotificationContactInfo;
     message: string;
@@ -65,8 +70,8 @@ export interface EngagementNotificationManagementPort {
   sendReminderSms(
     contact: EngagementNotificationContactInfo,
     appointment: EngagementNotificationAppointmentInfo,
+    context?: EngagementNotificationDeliveryContext,
   ): Promise<EngagementNotificationDeliveryResult>;
-  sendTestSms(phone: string, message?: string | null): Promise<{ success: boolean; sid: string }>;
   sendReminderWhatsapp(
     contact: EngagementNotificationContactInfo,
     appointment: EngagementNotificationAppointmentInfo,

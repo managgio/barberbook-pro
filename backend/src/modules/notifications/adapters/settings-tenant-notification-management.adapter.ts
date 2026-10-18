@@ -5,14 +5,20 @@ import {
   EngagementEmailTransportPort,
 } from '../../../contexts/engagement/ports/outbound/email-transport-factory.port';
 import {
-  ENGAGEMENT_TWILIO_CLIENT_FACTORY_PORT,
-  EngagementTwilioClientFactoryPort,
-  EngagementTwilioClientPort,
-} from '../../../contexts/engagement/ports/outbound/twilio-client-factory.port';
+  ENGAGEMENT_SMS_GATEWAY_PORT,
+  EngagementSmsGatewayPort,
+  EngagementSmsGatewayResult,
+} from '../../../contexts/engagement/ports/outbound/sms-gateway.port';
+import {
+  ENGAGEMENT_WHATSAPP_GATEWAY_PORT,
+  EngagementWhatsappGatewayPort,
+  EngagementWhatsappGatewayResult,
+} from '../../../contexts/engagement/ports/outbound/whatsapp-gateway.port';
 import {
   EngagementNotificationAppointmentAction,
   EngagementNotificationAppointmentInfo,
   EngagementNotificationContactInfo,
+  EngagementNotificationDeliveryContext,
   EngagementNotificationDeliveryResult,
   EngagementNotificationManagementPort,
   EngagementTestWhatsappInput,
@@ -24,7 +30,7 @@ import { SiteSettings } from '../../settings/settings.types';
 import { UsageMetricsService } from '../../usage-metrics/usage-metrics.service';
 import { APP_TIMEZONE } from '../../../utils/timezone';
 import { createHash } from 'crypto';
-import { describeEmailDeliveryError, describeTwilioDeliveryError } from '../notification-delivery-diagnostic';
+import { describeEmailDeliveryError } from '../notification-delivery-diagnostic';
 import {
   buildSmtpTransportConfig,
   getSmtpConfigValidationIssue,
@@ -37,19 +43,18 @@ import {
   renderBrandedEmail,
   resolveTenantEmailBranding,
 } from '../email-branding';
+import { canSendRoutineSms } from '../../../contexts/engagement/domain/services/sms-delivery-runtime.policy';
+import { normalizeSmsRecipient } from '../../../contexts/engagement/domain/services/sms-recipient.policy';
+import { buildSmsReminderMessage } from '../../../contexts/engagement/domain/services/sms-reminder-message.policy';
+import {
+  analyzeSmsSegmentation,
+  SMS_MAX_STANDARD_SEGMENTS,
+} from '../../../contexts/engagement/domain/services/sms-segmentation.policy';
 
 type EmailTransportFailure = Extract<EngagementNotificationDeliveryResult, { status: 'failed' }>;
 type EmailTransportResolution =
   | { transporter: EngagementEmailTransportPort; failure?: never }
   | { transporter?: never; failure: EmailTransportFailure };
-
-type TwilioTenantConfig = {
-  client: EngagementTwilioClientPort;
-  messagingServiceSid?: string | null;
-  smsSenderId?: string | null;
-  whatsappFrom?: string | null;
-  whatsappTemplateSid?: string | null;
-};
 
 const readProviderMessageId = (result: unknown) => {
   if (!result || typeof result !== 'object') return null;
@@ -82,7 +87,6 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     string,
     { fingerprint: string; transporter: EngagementEmailTransportPort }
   >();
-  private readonly twilioCache = new Map<string, TwilioTenantConfig | null>();
   private settingsCache: Record<string, SiteSettings> = {};
 
   constructor(
@@ -91,8 +95,10 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     private readonly usageMetrics: UsageMetricsService,
     @Inject(ENGAGEMENT_EMAIL_TRANSPORT_FACTORY_PORT)
     private readonly emailTransportFactory: EngagementEmailTransportFactoryPort,
-    @Inject(ENGAGEMENT_TWILIO_CLIENT_FACTORY_PORT)
-    private readonly twilioClientFactory: EngagementTwilioClientFactoryPort,
+    @Inject(ENGAGEMENT_SMS_GATEWAY_PORT)
+    private readonly smsGateway: EngagementSmsGatewayPort,
+    @Inject(ENGAGEMENT_WHATSAPP_GATEWAY_PORT)
+    private readonly whatsappGateway: EngagementWhatsappGatewayPort,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
   ) {}
@@ -135,29 +141,6 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     }));
     this.transporterCache.set(scopeKey, { fingerprint, transporter });
     return { transporter };
-  }
-
-  private async getTwilio() {
-    const brandId = this.getBrandId();
-    if (this.twilioCache.has(brandId)) {
-      return this.twilioCache.get(brandId) || null;
-    }
-    const config = await this.tenantConfig.getEffectiveConfig();
-    const twilioConfig = config.twilio;
-    if (!twilioConfig?.accountSid || !twilioConfig.authToken) {
-      this.logger.warn('Twilio credentials missing, SMS reminders disabled');
-      this.twilioCache.set(brandId, null);
-      return null;
-    }
-    const payload: TwilioTenantConfig = {
-      client: this.twilioClientFactory.createClient(twilioConfig.accountSid, twilioConfig.authToken),
-      messagingServiceSid: twilioConfig.messagingServiceSid || null,
-      smsSenderId: twilioConfig.smsSenderId || null,
-      whatsappFrom: twilioConfig.whatsappFrom || null,
-      whatsappTemplateSid: twilioConfig.whatsappTemplateSid || null,
-    };
-    this.twilioCache.set(brandId, payload);
-    return payload;
   }
 
   async sendAppointmentEmail(
@@ -471,29 +454,27 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     }
   }
 
-  async sendReminderSms(contact: EngagementNotificationContactInfo, appointment: EngagementNotificationAppointmentInfo) {
+  async sendReminderSms(
+    contact: EngagementNotificationContactInfo,
+    appointment: EngagementNotificationAppointmentInfo,
+    context?: EngagementNotificationDeliveryContext,
+  ) {
+    const brandName = await this.resolveBrandName();
     const formattedDate = this.formatReminderSmsDate(appointment.date);
-    const message = `Recordatorio: cita ${formattedDate}${appointment.serviceName ? ' - ' + appointment.serviceName : ''}. Si no puedes asistir, avísanos.`;
-    return this.sendSmsMessage(contact, message);
+    const message = buildSmsReminderMessage({
+      brandName,
+      formattedDate,
+      serviceName: appointment.serviceName,
+      managementUrl: appointment.managementUrl,
+    });
+    return this.sendSmsMessage(contact, message.body, context);
   }
 
   sendBroadcastSms(params: {
     contact: EngagementNotificationContactInfo;
     message: string;
-  }) {
-    return this.sendSmsMessage(params.contact, params.message);
-  }
-
-  async sendTestSms(phone: string, message?: string | null) {
-    const settings = await this.getSettings();
-    const fallbackMessage = `SMS de prueba de ${settings.branding.shortName || settings.branding.name || 'Managgio'}.`;
-    const body = (message || fallbackMessage).trim();
-    if (!body) {
-      throw new BadRequestException('El mensaje no puede estar vacío.');
-    }
-    const result = await this.sendSmsMessage({ phone }, body);
-    if (result.status !== 'accepted') throw new BadRequestException(result.message);
-    return { success: true, sid: result.providerMessageId || '' };
+  }, context?: EngagementNotificationDeliveryContext) {
+    return this.sendSmsMessage(params.contact, params.message, context);
   }
 
   async sendReminderWhatsapp(
@@ -550,15 +531,23 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
   private async sendSmsMessage(
     contact: EngagementNotificationContactInfo,
     body: string,
+    context?: EngagementNotificationDeliveryContext,
   ): Promise<EngagementNotificationDeliveryResult> {
     const config = await this.tenantConfig.getEffectiveConfig();
     if (config.notificationPrefs?.sms === false) {
       return { status: 'skipped', code: 'SMS_DISABLED', message: 'SMS notifications are disabled for this tenant.' };
     }
+    if (!canSendRoutineSms(process.env.NODE_ENV)) {
+      return {
+        status: 'skipped',
+        code: 'SMS_ROUTINE_DELIVERY_DISABLED',
+        message: 'Routine SMS delivery is disabled outside production.',
+      };
+    }
     if (!contact.phone) {
       return { status: 'skipped', code: 'PHONE_RECIPIENT_MISSING', message: 'No recipient phone is available.' };
     }
-    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
+    const normalizedPhone = normalizeSmsRecipient(contact.phone);
     if (!normalizedPhone) {
       return {
         status: 'failed',
@@ -568,39 +557,30 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
         critical: false,
       };
     }
-    const twilioConfig = await this.getTwilio();
-    if (!twilioConfig) {
+    const segmentation = analyzeSmsSegmentation(body);
+    if (segmentation.segments > SMS_MAX_STANDARD_SEGMENTS) {
       return {
         status: 'failed',
-        code: 'TWILIO_NOT_CONFIGURED',
-        message: 'Twilio credentials are not configured for this tenant.',
+        code: 'SMS_MESSAGE_TOO_LONG',
+        message: `SMS messages are limited to ${SMS_MAX_STANDARD_SEGMENTS} segments.`,
         retryable: false,
-        critical: true,
+        critical: false,
       };
     }
-    const senderId = await this.resolveSmsSenderId(twilioConfig.smsSenderId || null);
-    if (!twilioConfig.messagingServiceSid && !senderId) {
-      return {
-        status: 'failed',
-        code: 'SMS_SENDER_MISSING',
-        message: 'No valid SMS sender is configured for this tenant.',
-        retryable: false,
-        critical: true,
-      };
+    const result = await this.smsGateway.send({
+      to: normalizedPhone,
+      body,
+      purpose: 'routine',
+      deliveryReference: context?.deliveryAttemptReference,
+    });
+    if (result.status === 'accepted') {
+      this.recordSmsUsage(result);
+      return { status: 'accepted', providerMessageId: result.providerMessageId };
     }
-    try {
-      const result = await twilioConfig.client.messages.create({
-        ...(twilioConfig.messagingServiceSid
-          ? { messagingServiceSid: twilioConfig.messagingServiceSid }
-          : { from: senderId! }),
-        to: normalizedPhone,
-        body,
-      });
-      this.recordTwilioUsage(result);
-      return { status: 'accepted', providerMessageId: result.sid };
-    } catch (error) {
-      return this.toTwilioFailure(error, 'sms');
-    }
+    this.logger.error(
+      `${result.code} brandId=${this.getBrandId()} localId=${this.getLocalId()} ${result.message}`,
+    );
+    return result;
   }
 
   private async sendWhatsappMessage(
@@ -615,7 +595,7 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     if (!contact.phone) {
       return { status: 'skipped', code: 'PHONE_RECIPIENT_MISSING', message: 'No recipient phone is available.' };
     }
-    const normalizedPhone = this.normalizePhoneNumber(contact.phone);
+    const normalizedPhone = normalizeSmsRecipient(contact.phone);
     if (!normalizedPhone) {
       return {
         status: 'failed',
@@ -625,71 +605,41 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
         critical: false,
       };
     }
-    const twilioConfig = await this.getTwilio();
-    if (!twilioConfig) {
-      return {
-        status: 'failed',
-        code: 'TWILIO_NOT_CONFIGURED',
-        message: 'Twilio credentials are not configured for this tenant.',
-        retryable: false,
-        critical: true,
-      };
+    const result = await this.whatsappGateway.send({
+      to: normalizedPhone,
+      body,
+      templateData,
+    });
+    if (result.status === 'accepted') {
+      this.recordWhatsappUsage(result);
+      return { status: 'accepted', providerMessageId: result.providerMessageId };
     }
-    const whatsappFrom = this.normalizePhoneNumber(twilioConfig.whatsappFrom || '');
-    if (!whatsappFrom) {
-      return {
-        status: 'failed',
-        code: 'WHATSAPP_SENDER_MISSING',
-        message: 'No valid WhatsApp sender is configured for this tenant.',
-        retryable: false,
-        critical: true,
-      };
-    }
-    try {
-      const basePayload = {
-        from: `whatsapp:${whatsappFrom}`,
-        to: `whatsapp:${normalizedPhone}`,
-      };
-      const result = await twilioConfig.client.messages.create(
-        twilioConfig.whatsappTemplateSid
-          ? {
-              ...basePayload,
-              contentSid: twilioConfig.whatsappTemplateSid,
-              contentVariables: this.buildWhatsappTemplateVariables(templateData),
-            }
-          : { ...basePayload, body },
-      );
-      this.recordTwilioUsage(result);
-      return { status: 'accepted', providerMessageId: result.sid };
-    } catch (error) {
-      return this.toTwilioFailure(error, 'whatsapp');
-    }
-  }
-
-  private recordTwilioUsage(result: { price: string | null; priceUnit: string | null }) {
-    const rawPrice = result.price ? Math.abs(Number(result.price)) : null;
-    const priceUnit = result.priceUnit?.toUpperCase();
-    const fallbackCost = this.getTwilioSmsCostUsd();
-    const costUsd = priceUnit && priceUnit !== 'USD'
-      ? fallbackCost
-      : (Number.isFinite(rawPrice) ? rawPrice : fallbackCost);
-    void this.usageMetrics.recordTwilioUsage(
-      costUsd !== null || fallbackCost !== null ? { costUsd, messages: 1 } : { messages: 1 },
-    );
-  }
-
-  private toTwilioFailure(error: unknown, channel: 'sms' | 'whatsapp'): EngagementNotificationDeliveryResult {
-    const diagnostic = describeTwilioDeliveryError(error, channel);
     this.logger.error(
-      `${diagnostic.code} brandId=${this.getBrandId()} localId=${this.getLocalId()} ${diagnostic.safeMessage}`,
+      `${result.code} brandId=${this.getBrandId()} localId=${this.getLocalId()} ${result.message}`,
     );
-    return {
-      status: 'failed',
-      code: diagnostic.code,
-      message: diagnostic.safeMessage,
-      retryable: diagnostic.retryable,
-      critical: diagnostic.critical,
-    };
+    return result;
+  }
+
+  private recordSmsUsage(result: Extract<EngagementSmsGatewayResult, { status: 'accepted' }>) {
+    const costUsd = result.cost?.currency === 'USD' ? result.cost.amount : null;
+    void this.usageMetrics.recordSmsUsage(
+      costUsd === null ? { messages: 1 } : { costUsd, messages: 1 },
+    ).catch(() => {
+      this.logger.warn(
+        `MESSAGING_USAGE_RECORD_FAILED brandId=${this.getBrandId()} localId=${this.getLocalId()} channel=sms`,
+      );
+    });
+  }
+
+  private recordWhatsappUsage(result: Extract<EngagementWhatsappGatewayResult, { status: 'accepted' }>) {
+    const costUsd = result.cost?.currency === 'USD' ? result.cost.amount : null;
+    void this.usageMetrics.recordWhatsappUsage(
+      costUsd === null ? { messages: 1 } : { costUsd, messages: 1 },
+    ).catch(() => {
+      this.logger.warn(
+        `MESSAGING_USAGE_RECORD_FAILED brandId=${this.getBrandId()} localId=${this.getLocalId()} channel=whatsapp`,
+      );
+    });
   }
 
   private async getSettings(): Promise<SiteSettings> {
@@ -722,52 +672,15 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     return diagnostic;
   }
 
-  private getTwilioSmsCostUsd() {
-    const raw = process.env.TWILIO_SMS_COST_USD || '';
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  private async resolveSmsSenderId(explicit?: string | null) {
-    const candidate = explicit?.trim() || '';
-    if (candidate) {
-      return this.sanitizeSmsSenderId(candidate);
-    }
-    const settings = await this.getSettings();
-    const config = await this.tenantConfig.getEffectiveConfig();
-    const brandName =
-      settings.branding.shortName ||
-      settings.branding.name ||
-      config.branding?.shortName ||
-      config.branding?.name ||
-      '';
-    return this.sanitizeSmsSenderId(brandName);
-  }
-
-  private sanitizeSmsSenderId(value: string) {
-    const cleaned = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 11);
-    if (cleaned.length < 3) return null;
-    return cleaned;
-  }
-
-  private buildWhatsappTemplateVariables(data: { name: string; brand: string; date: string; time: string }) {
-    return JSON.stringify({
-      1: data.name,
-      2: data.brand,
-      3: data.date,
-      4: data.time,
-    });
-  }
-
   private formatDateTime(value: Date) {
     const dateValue = value.toLocaleDateString('es-ES', {
-      timeZone: APP_TIMEZONE,
+      timeZone: this.getTimezone(),
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     });
     const timeValue = value.toLocaleTimeString('es-ES', {
-      timeZone: APP_TIMEZONE,
+      timeZone: this.getTimezone(),
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -787,34 +700,9 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
     );
   }
 
-  private normalizePhoneNumber(value?: string | null) {
-    const raw = value?.trim();
-    if (!raw) return null;
-    if (raw.startsWith('+')) {
-      const digits = raw.replace(/\D/g, '');
-      return digits ? `+${digits}` : null;
-    }
-    const digits = raw.replace(/\D/g, '');
-    if (!digits) return null;
-    if (digits.startsWith('00')) {
-      const rest = digits.slice(2);
-      return rest ? `+${rest}` : null;
-    }
-    if (digits.startsWith('34') && digits.length >= 11) {
-      return `+${digits}`;
-    }
-    if (digits.length === 10 && digits.startsWith('0')) {
-      return `+34${digits.slice(1)}`;
-    }
-    if (digits.length === 9) {
-      return `+34${digits}`;
-    }
-    return null;
-  }
-
   private formatAppointmentEmailDate(value: Date) {
     return value.toLocaleString('es-ES', {
-      timeZone: APP_TIMEZONE,
+      timeZone: this.getTimezone(),
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -826,14 +714,28 @@ export class SettingsTenantNotificationManagementAdapter implements EngagementNo
   }
 
   private formatReminderSmsDate(value: Date) {
-    return value.toLocaleString('es-ES', {
-      timeZone: APP_TIMEZONE,
-      weekday: 'short',
+    const date = value.toLocaleDateString('es-ES', {
+      timeZone: this.getTimezone(),
       day: '2-digit',
       month: '2-digit',
+    });
+    const time = value.toLocaleTimeString('es-ES', {
+      timeZone: this.getTimezone(),
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
     });
+    return `${date} a las ${time}`;
+  }
+
+  private getTimezone() {
+    const timezone = this.tenantContextPort.getRequestContext().timezone?.trim();
+    if (!timezone) return APP_TIMEZONE;
+    try {
+      new Intl.DateTimeFormat('es-ES', { timeZone: timezone }).format();
+      return timezone;
+    } catch {
+      return APP_TIMEZONE;
+    }
   }
 }

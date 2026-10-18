@@ -5,6 +5,8 @@ export type AiAssistantStoredMessage = {
   role: string;
   content: string;
   createdAt: Date;
+  inputSource?: 'typed' | 'voice' | 'template' | null;
+  templateKey?: string | null;
 };
 
 export type AiAssistantSessionRecord = {
@@ -21,6 +23,8 @@ export interface AiAssistantMemoryPort {
     content: string;
     toolName?: string | null;
     toolPayload?: unknown | null;
+    inputSource?: 'typed' | 'voice' | 'template' | null;
+    templateKey?: string | null;
   }): Promise<unknown>;
   getSummary(sessionId: string): Promise<string>;
   getFacts(limit: number): Promise<Array<{ key: string; value: string }>>;

@@ -21,6 +21,12 @@ import { OutboxNotificationDeliveryQueueAdapter } from './adapters/outbox-notifi
 import { NotificationDeliveryAttemptRecorder } from './notification-delivery-attempt-recorder.service';
 import { NotificationDeliveryCriticalReporter } from './notification-delivery-critical-reporter.service';
 import { TenantEmailConnectionVerifier } from './tenant-email-connection-verifier.service';
+import { TwilioSmsStatusController } from './twilio-sms-status.controller';
+import { TwilioSmsStatusWebhookAdapter } from '../../contexts/engagement/infrastructure/adapters/twilio-sms-status-webhook.adapter';
+import { PrismaSmsDeliveryStatusAdapter } from '../../contexts/engagement/infrastructure/prisma/prisma-sms-delivery-status.adapter';
+import { ENGAGEMENT_SMS_DELIVERY_STATUS_PORT } from '../../contexts/engagement/ports/outbound/sms-delivery-status.port';
+import { PlatformSmsTestService } from './platform-sms-test.service';
+import { GuestAppointmentAccessModule } from '../guest-appointment-access/guest-appointment-access.module';
 
 @Module({
   imports: [
@@ -30,8 +36,9 @@ import { TenantEmailConnectionVerifier } from './tenant-email-connection-verifie
     UsageMetricsModule,
     EngagementNotificationGatewayModule,
     ObservabilityModule,
+    GuestAppointmentAccessModule,
   ],
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, TwilioSmsStatusController],
   providers: [
     NotificationsService,
     SettingsTenantNotificationManagementAdapter,
@@ -44,6 +51,9 @@ import { TenantEmailConnectionVerifier } from './tenant-email-connection-verifie
     NotificationDeliveryAttemptRecorder,
     NotificationDeliveryCriticalReporter,
     TenantEmailConnectionVerifier,
+    TwilioSmsStatusWebhookAdapter,
+    PrismaSmsDeliveryStatusAdapter,
+    PlatformSmsTestService,
     {
       provide: ENGAGEMENT_NOTIFICATION_MANAGEMENT_PORT,
       useExisting: SettingsTenantNotificationManagementAdapter,
@@ -56,8 +66,17 @@ import { TenantEmailConnectionVerifier } from './tenant-email-connection-verifie
       provide: ENGAGEMENT_NOTIFICATION_DELIVERY_QUEUE_PORT,
       useExisting: OutboxNotificationDeliveryQueueAdapter,
     },
+    {
+      provide: ENGAGEMENT_SMS_DELIVERY_STATUS_PORT,
+      useExisting: PrismaSmsDeliveryStatusAdapter,
+    },
     RemindersService,
   ],
-  exports: [NotificationsService, NotificationDeliveryOutboxService, TenantEmailConnectionVerifier],
+  exports: [
+    NotificationsService,
+    NotificationDeliveryOutboxService,
+    TenantEmailConnectionVerifier,
+    PlatformSmsTestService,
+  ],
 })
 export class NotificationsModule {}

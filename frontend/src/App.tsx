@@ -19,6 +19,7 @@ const AuthPage = lazy(() => import("./pages/AuthPage"));
 const HoursLocationPage = lazy(() => import("./pages/HoursLocationPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const GuestBookingPage = lazy(() => import("./pages/GuestBookingPage"));
+const GuestAppointmentManagePage = lazy(() => import("./pages/GuestAppointmentManagePage"));
 const TenantError = lazy(() => import("./pages/TenantError"));
 const PrivacyPolicyPage = lazy(() => import("./pages/legal/PrivacyPolicyPage"));
 const CookiePolicyPage = lazy(() => import("./pages/legal/CookiePolicyPage"));
@@ -56,6 +57,7 @@ const PlatformLayout = lazy(() => import("./components/layout/PlatformLayout"));
 const PlatformDashboard = lazy(() => import("./pages/platform/PlatformDashboard"));
 const PlatformBrands = lazy(() => import("./pages/platform/PlatformBrands"));
 const PlatformObservability = lazy(() => import("./pages/platform/PlatformObservability"));
+const PlatformAiConversations = lazy(() => import("./pages/platform/PlatformAiConversations"));
 const ProtectedRoute = lazy(() => import("./components/auth/ProtectedRoute"));
 const RequiredPhoneModal = lazy(() => import("./components/client/RequiredPhoneModal"));
 
@@ -126,6 +128,7 @@ const AppRoutes: React.FC = () => {
           <Route index element={withSuspense(<PlatformDashboard />)} />
           <Route path="brands" element={withSuspense(<PlatformBrands />)} />
           <Route path="observability" element={withSuspense(<PlatformObservability />)} />
+          <Route path="ai-conversations" element={withSuspense(<PlatformAiConversations />)} />
         </Route>
         <Route path="*" element={withSuspense(<NotFound />)} />
       </Routes>
@@ -138,6 +141,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/" element={withSuspense(<HomeRoute />)} />
       <Route path="/auth" element={withSuspense(<AuthPage />)} />
       <Route path="/book" element={withSuspense(<GuestBookingPage />)} />
+      <Route path="/cita/:token" element={withSuspense(<GuestAppointmentManagePage />)} />
       <Route path="/ref/:code" element={withSuspense(<ReferralLandingPage />)} />
       <Route path="/payment/stripe/:status" element={withSuspense(<StripePaymentResultPage />)} />
       <Route path="/account/referrals" element={<Navigate to="/app/referrals" replace />} />
@@ -206,6 +210,7 @@ const AppRoutes: React.FC = () => {
         <Route index element={withSuspense(<PlatformDashboard />)} />
         <Route path="brands" element={withSuspense(<PlatformBrands />)} />
         <Route path="observability" element={withSuspense(<PlatformObservability />)} />
+        <Route path="ai-conversations" element={withSuspense(<PlatformAiConversations />)} />
       </Route>
 
       {/* Catch-all */}

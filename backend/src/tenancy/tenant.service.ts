@@ -9,10 +9,13 @@ import {
   TENANT_BASE_DOMAIN,
   TENANT_REQUIRE_SUBDOMAIN,
 } from './tenant.constants';
+import { APP_TIMEZONE } from '../utils/timezone';
+import { resolveLocationTimeZone } from '../contexts/platform/domain/services/location-timezone.policy';
 
 type TenantResolution = {
   brandId: string;
   localId: string;
+  timezone: string;
   subdomain?: string | null;
   isPlatform?: boolean;
 };
@@ -122,18 +125,18 @@ export class TenantService {
       (preferredLocalId
         ? await this.prisma.location.findFirst({
             where: { id: preferredLocalId, brandId },
-            select: { id: true },
+            select: { id: true, timezone: true },
           })
         : null) ||
       (await this.prisma.location.findFirst({
         where: { brandId, isActive: true },
         orderBy: { createdAt: 'asc' },
-        select: { id: true },
+        select: { id: true, timezone: true },
       })) ||
       (await this.prisma.location.findFirst({
         where: { brandId },
         orderBy: { createdAt: 'asc' },
-        select: { id: true },
+        select: { id: true, timezone: true },
       }));
 
     if (!location) {
@@ -143,6 +146,7 @@ export class TenantService {
     return {
       brandId,
       localId: location.id,
+      timezone: resolveLocationTimeZone(location.timezone, APP_TIMEZONE),
       subdomain,
       isPlatform,
     };

@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TenantService } from '@/tenancy/tenant.service';
+import { APP_TIMEZONE } from '@/utils/timezone';
 
 const makePrisma = () => {
   let shouldFailOnce = false;
@@ -37,7 +38,7 @@ const makePrisma = () => {
       findUnique: async () => null,
     },
     location: {
-      findFirst: async () => ({ id: 'local-1' }),
+      findFirst: async () => ({ id: 'local-1', timezone: 'Atlantic/Canary' }),
     },
     __state: state,
     __setFailOnce: () => {
@@ -60,9 +61,20 @@ test('tenant service retries once after recoverable prisma disconnect', async ()
 
   assert.equal(result.brandId, 'brand-1');
   assert.equal(result.localId, 'local-1');
+  assert.equal(result.timezone, 'Atlantic/Canary');
   assert.equal(prisma.__state.disconnectCalls, 1);
   assert.equal(prisma.__state.connectCalls, 1);
   assert.equal(prisma.__state.brandFindFirstCalls, 2);
+});
+
+test('tenant service falls back safely when a stored timezone is invalid', async () => {
+  const prisma = makePrisma();
+  prisma.location.findFirst = async () => ({ id: 'local-1', timezone: 'invalid/timezone' });
+  const service = new TenantService(prisma);
+
+  const result = await service.resolveTenant({ host: 'leblond.managgio.com' });
+
+  assert.equal(result.timezone, APP_TIMEZONE);
 });
 
 test('tenant service does not retry on non recoverable prisma error', async () => {

@@ -18,6 +18,7 @@ const initialFilters: DeliveryTableFilters = {
   channel: 'all',
   brandId: 'all',
   localId: 'all',
+  includeResolved: false,
 };
 
 const AdminNotificationDeliveries = () => {
@@ -41,6 +42,7 @@ const AdminNotificationDeliveries = () => {
       status: filters.status === 'all' ? undefined : filters.status,
       kind: filters.kind === 'all' ? undefined : filters.kind,
       channel: filters.channel === 'all' ? undefined : filters.channel,
+      includeResolved: filters.includeResolved,
     }),
     staleTime: 15_000,
   });

@@ -28,6 +28,7 @@ export class PrismaBookingAppointmentQueryAdapter implements BookingAppointmentQ
         include: {
           barber: { select: { name: true } },
           service: true,
+          serviceItems: { orderBy: { position: 'asc' } },
           products: { include: { product: true } },
         },
         skip: (params.page - 1) * params.pageSize,
@@ -59,6 +60,7 @@ export class PrismaBookingAppointmentQueryAdapter implements BookingAppointmentQ
         include: {
           barber: { select: { name: true } },
           service: true,
+          serviceItems: { orderBy: { position: 'asc' } },
           products: { include: { product: true } },
           user: {
             select: {
@@ -96,6 +98,7 @@ export class PrismaBookingAppointmentQueryAdapter implements BookingAppointmentQ
       include: {
         barber: { select: { name: true } },
         service: true,
+        serviceItems: { orderBy: { position: 'asc' } },
         products: { include: { product: true } },
         user: {
           select: {
@@ -121,6 +124,7 @@ export class PrismaBookingAppointmentQueryAdapter implements BookingAppointmentQ
       include: {
         barber: { select: { name: true } },
         service: true,
+        serviceItems: { orderBy: { position: 'asc' } },
         products: { include: { product: true } },
       },
     });

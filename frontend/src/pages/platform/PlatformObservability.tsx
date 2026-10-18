@@ -68,6 +68,7 @@ const initialDeliveryFilters: DeliveryTableFilters = {
   channel: 'all',
   brandId: 'all',
   localId: 'all',
+  includeResolved: false,
 };
 
 const formatMs = (value: number) => `${value.toFixed(0)} ms`;
@@ -598,6 +599,7 @@ const PlatformObservability: React.FC = () => {
       channel: deliveryFilters.channel === 'all' ? undefined : deliveryFilters.channel,
       brandId: deliveryFilters.brandId === 'all' ? undefined : deliveryFilters.brandId,
       localId: deliveryFilters.localId === 'all' ? undefined : deliveryFilters.localId,
+      includeResolved: deliveryFilters.includeResolved,
     }),
     staleTime: 15_000,
     placeholderData: (previous) => previous,

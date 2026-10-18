@@ -1,0 +1,3 @@
+@config "../../tailwind.guest-appointment.config.ts";
+
+@tailwind utilities;

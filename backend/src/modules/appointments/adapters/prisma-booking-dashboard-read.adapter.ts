@@ -34,12 +34,17 @@ export class PrismaBookingDashboardReadAdapter implements BookingDashboardReadPo
           startDateTime: true,
           status: true,
           price: true,
+          totalDurationMinutes: true,
           guestName: true,
           serviceNameSnapshot: true,
           barberNameSnapshot: true,
           user: { select: { name: true } },
           service: { select: { name: true } },
           barber: { select: { name: true } },
+          serviceItems: {
+            orderBy: { position: 'asc' },
+            select: { nameSnapshot: true, durationMinutes: true, position: true },
+          },
         },
       }),
     ]);
@@ -57,6 +62,8 @@ export class PrismaBookingDashboardReadAdapter implements BookingDashboardReadPo
         userName: appointment.user?.name ?? null,
         serviceName: appointment.service?.name ?? null,
         barberName: appointment.barber?.name ?? null,
+        totalDurationMinutes: appointment.totalDurationMinutes,
+        serviceItems: appointment.serviceItems,
       })),
     };
   }

@@ -60,11 +60,16 @@ test('dashboard summary use case computes today stats and weekly losses', async 
           status: 'completed',
           price: 20,
           guestName: null,
-          serviceNameSnapshot: null,
+          serviceNameSnapshot: 'Corte + Color',
           barberNameSnapshot: null,
           userName: 'Cliente 1',
           serviceName: 'Corte',
           barberName: 'Ana',
+          totalDurationMinutes: 75,
+          serviceItems: [
+            { nameSnapshot: 'Corte', durationMinutes: 30, position: 0 },
+            { nameSnapshot: 'Color', durationMinutes: 45, position: 1 },
+          ],
         },
         {
           id: 'a-scheduled-today',
@@ -127,6 +132,11 @@ test('dashboard summary use case computes today stats and weekly losses', async 
   assert.equal(result.stats.weekCancelled, 1);
   assert.equal(result.stats.weekNoShow, 1);
   assert.equal(result.todayAppointments.length, 2);
+  assert.equal(result.todayAppointments[0]?.serviceName, 'Corte + Color');
+  assert.equal(result.todayAppointments[0]?.serviceCount, 2);
+  assert.equal(result.todayAppointments[0]?.totalDurationMinutes, 75);
+  assert.equal(result.todayAppointments[0]?.price, 20);
   assert.equal(result.serviceMix[0]?.name, 'Corte');
+  assert.equal(result.serviceMix[1]?.name, 'Color');
   assert.equal(result.occupancy.max >= 1, true);
 });

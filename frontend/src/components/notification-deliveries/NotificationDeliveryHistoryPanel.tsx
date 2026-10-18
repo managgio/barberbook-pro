@@ -3,6 +3,7 @@ import { Loader2, RefreshCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import type {
   NotificationDeliveryChannel,
   NotificationDeliveryHistory,
@@ -32,9 +33,11 @@ export type NotificationDeliveryHistoryPanelProps = {
   onRetry?: (deliveryId: string) => void;
 };
 
-const statusOptions: DeliveryFilterOption[] = [
-  { value: 'all', label: 'Todas las incidencias' },
-  ...(['failed', 'retrying', 'pending', 'processing', 'skipped'] as NotificationDeliveryStatus[])
+const getStatusOptions = (includeResolved: boolean): DeliveryFilterOption[] => [
+  { value: 'all', label: includeResolved ? 'Todos los estados' : 'Todas las incidencias' },
+  ...((includeResolved
+    ? ['pending', 'processing', 'accepted', 'sent', 'delivered', 'undelivered', 'retrying', 'failed', 'skipped']
+    : ['undelivered', 'failed', 'retrying', 'pending', 'processing', 'skipped']) as NotificationDeliveryStatus[])
     .map((value) => ({ value, label: STATUS_META[value].label })),
 ];
 const kindOptions: DeliveryFilterOption[] = [
@@ -69,6 +72,13 @@ export const NotificationDeliveryHistoryPanel = ({
     onPageChange(1);
     onFilterChange(key, value);
   };
+  const toggleResolved = (checked: boolean) => {
+    onPageChange(1);
+    onFilterChange('includeResolved', checked);
+    if (!checked && ['accepted', 'sent', 'delivered'].includes(filters.status)) {
+      onFilterChange('status', 'all');
+    }
+  };
 
   return (
     <Card className="min-w-0">
@@ -78,10 +88,20 @@ export const NotificationDeliveryHistoryPanel = ({
             <CardTitle>{title}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">{description}</p>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
-            <RefreshCcw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Actualizar
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 rounded-full border border-border/70 px-3 py-1.5 text-xs font-medium">
+              <Switch
+                checked={filters.includeResolved}
+                onCheckedChange={toggleResolved}
+                aria-label="Incluir entregas resueltas"
+              />
+              Incluir resueltos
+            </label>
+            <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
+              <RefreshCcw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+              Actualizar
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 lg:hidden">
@@ -102,7 +122,7 @@ export const NotificationDeliveryHistoryPanel = ({
             <DeliveryColumnFilter
               label="Estado"
               value={filters.status}
-              options={statusOptions}
+              options={getStatusOptions(filters.includeResolved)}
               onChange={(value) => resetPageAndFilter('status', value as NotificationDeliveryStatus | 'all')}
             />
           </span>
@@ -141,7 +161,11 @@ export const NotificationDeliveryHistoryPanel = ({
 
         {data && (
           <div className="flex flex-wrap gap-2 text-xs">
-            <Badge variant="outline">Incidencias: {data.total}</Badge>
+            <Badge variant="outline">{filters.includeResolved ? 'Entregas' : 'Incidencias'}: {data.total}</Badge>
+            {filters.includeResolved && <Badge variant="outline" className={STATUS_META.delivered.className}>Entregados: {data.counts.delivered || 0}</Badge>}
+            {filters.includeResolved && <Badge variant="outline" className={STATUS_META.sent.className}>Enviados: {data.counts.sent || 0}</Badge>}
+            {filters.includeResolved && <Badge variant="outline" className={STATUS_META.accepted.className}>Aceptados: {data.counts.accepted || 0}</Badge>}
+            <Badge variant="outline" className={STATUS_META.undelivered.className}>No entregados: {data.counts.undelivered || 0}</Badge>
             <Badge variant="outline" className={STATUS_META.failed.className}>Fallidos: {data.counts.failed || 0}</Badge>
             <Badge variant="outline" className={STATUS_META.retrying.className}>Reintentando: {data.counts.retrying || 0}</Badge>
             <Badge variant="outline" className={STATUS_META.pending.className}>Pendientes: {data.counts.pending || 0}</Badge>
@@ -150,7 +174,9 @@ export const NotificationDeliveryHistoryPanel = ({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          Los envíos aceptados se conservan temporalmente para diagnóstico, pero esta vista prioriza únicamente incidencias. Una aceptación del proveedor no confirma la lectura del mensaje.
+          {filters.includeResolved
+            ? 'Histórico completo: distingue solicitudes aceptadas, SMS enviados, entregas confirmadas e incidencias.'
+            : 'Esta vista distingue entre solicitudes aceptadas, SMS enviados, entregas confirmadas e incidencias. Activa "Incluir resueltos" para mostrar también los estados correctos.'}
         </p>
         {error ? (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
@@ -172,7 +198,9 @@ export const NotificationDeliveryHistoryPanel = ({
             onRetry={onRetry}
           />
         ) : (
-          <p className="py-8 text-center text-sm text-muted-foreground">No hay incidencias con estos filtros.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {filters.includeResolved ? 'No hay entregas con estos filtros.' : 'No hay incidencias con estos filtros.'}
+          </p>
         )}
         {data && data.totalPages > 1 && (
           <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">

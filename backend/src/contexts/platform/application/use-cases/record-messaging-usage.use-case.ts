@@ -1,11 +1,11 @@
 import { PlatformUsageMetricsPort } from '../../ports/outbound/platform-usage-metrics.port';
-import { RecordTwilioUsageCommand } from '../commands/record-messaging-usage.command';
+import { RecordMessagingUsageCommand } from '../commands/record-messaging-usage.command';
 
-export class RecordTwilioUsageUseCase {
+export class RecordMessagingUsageUseCase {
   constructor(private readonly usageMetricsPort: PlatformUsageMetricsPort) {}
 
-  execute(command: RecordTwilioUsageCommand) {
-    return this.usageMetricsPort.recordTwilioUsage({
+  execute(command: RecordMessagingUsageCommand) {
+    return this.usageMetricsPort.recordMessagingUsage({
       messages: command.messages,
       costUsd: command.costUsd,
       brandId: command.brandId ?? command.context.brandId,

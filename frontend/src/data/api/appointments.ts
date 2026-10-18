@@ -165,13 +165,14 @@ export const anonymizeAppointment = async (id: string): Promise<Appointment> =>
 export const getAvailableSlots = async (
   barberId: string,
   date: string,
-  options?: { serviceId?: string; appointmentIdToIgnore?: string },
+  options?: { serviceId?: string; serviceIds?: string[]; appointmentIdToIgnore?: string },
 ): Promise<string[]> =>
   apiRequest('/appointments/availability', {
     query: {
       barberId,
       date,
       serviceId: options?.serviceId,
+      serviceIds: options?.serviceIds?.length ? options.serviceIds.join(',') : undefined,
       appointmentIdToIgnore: options?.appointmentIdToIgnore,
     },
   });
@@ -179,7 +180,7 @@ export const getAvailableSlots = async (
 export const getAvailableSlotsBatch = async (
   date: string,
   barberIds: string[],
-  options?: { serviceId?: string; appointmentIdToIgnore?: string },
+  options?: { serviceId?: string; serviceIds?: string[]; appointmentIdToIgnore?: string },
 ): Promise<Record<string, string[]>> => {
   const normalizedBarberIds = Array.from(new Set(barberIds)).filter(Boolean);
   if (normalizedBarberIds.length === 0) return {};
@@ -188,6 +189,7 @@ export const getAvailableSlotsBatch = async (
       date,
       barberIds: normalizedBarberIds.join(','),
       serviceId: options?.serviceId,
+      serviceIds: options?.serviceIds?.length ? options.serviceIds.join(',') : undefined,
       appointmentIdToIgnore: options?.appointmentIdToIgnore,
     },
   });

@@ -1,4 +1,5 @@
 import { RequestContext } from '../../../../shared/application/request-context';
+import { AppointmentReminderChannel } from '../../../../shared/domain/appointment-reminder-channel';
 
 export type CreateAppointmentProductInput = {
   productId: string;
@@ -28,6 +29,7 @@ export type CreateAppointmentInput = {
   userId?: string | null;
   barberId: string;
   serviceId: string;
+  serviceIds?: string[];
   startDateTime: string;
   status?: string;
   notes?: string;
@@ -35,6 +37,7 @@ export type CreateAppointmentInput = {
   guestContact?: string;
   guestEmail?: string;
   guestPhone?: string;
+  reminderChannels?: AppointmentReminderChannel[];
   notifyIfEarlierSlot?: boolean;
   privacyConsentGiven?: boolean;
   referralAttributionId?: string;

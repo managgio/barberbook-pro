@@ -57,6 +57,10 @@ export const buildBookingDashboardSummary = (params: {
     id: string;
     startDateTime: string;
     serviceName: string;
+    services: Array<{ name: string; durationMinutes: number }>;
+    serviceCount: number;
+    totalDurationMinutes: number;
+    price: number;
     barberName: string;
     clientName: string;
   }> = [];
@@ -80,7 +84,11 @@ export const buildBookingDashboardSummary = (params: {
     const isActive = status !== 'cancelled' && status !== 'no_show';
     const isRevenue = status === 'completed';
     const weekdayIndex = WEEKDAY_INDEX[getWeekdayKey(dateOnly, APP_TIMEZONE)];
-    const serviceName = appointment.serviceName || appointment.serviceNameSnapshot || 'Servicio eliminado';
+    const services = (appointment.serviceItems || [])
+      .slice()
+      .sort((left, right) => left.position - right.position)
+      .map((item) => ({ name: item.nameSnapshot, durationMinutes: item.durationMinutes }));
+    const serviceName = appointment.serviceNameSnapshot || appointment.serviceName || 'Servicio eliminado';
     const barberName = appointment.barberName || appointment.barberNameSnapshot || 'Profesional eliminado';
     const clientName = appointment.guestName?.trim() || appointment.userName?.trim() || 'Sin nombre';
     const price = Number(appointment.price || 0);
@@ -90,6 +98,15 @@ export const buildBookingDashboardSummary = (params: {
         id: appointment.id,
         startDateTime: appointment.startDateTime.toISOString(),
         serviceName,
+        services: services.length > 0
+          ? services
+          : [{ name: serviceName, durationMinutes: appointment.totalDurationMinutes ?? 30 }],
+        serviceCount: Math.max(services.length, 1),
+        totalDurationMinutes: appointment.totalDurationMinutes
+          ?? (services.length > 0
+            ? services.reduce((total, item) => total + item.durationMinutes, 0)
+            : 30),
+        price,
         barberName,
         clientName,
       });
@@ -111,7 +128,10 @@ export const buildBookingDashboardSummary = (params: {
     }
 
     if (isRevenue && isDateWithinRange(dateOnly, lossRangeStart, todayDate)) {
-      serviceMixByName.set(serviceName, (serviceMixByName.get(serviceName) || 0) + 1);
+      const serviceNames = services.length > 0 ? services.map((item) => item.name) : [serviceName];
+      serviceNames.forEach((name) => {
+        serviceMixByName.set(name, (serviceMixByName.get(name) || 0) + 1);
+      });
     }
 
     if (isRevenue && isDateWithinRange(dateOnly, ticketRangeStart, todayDate)) {

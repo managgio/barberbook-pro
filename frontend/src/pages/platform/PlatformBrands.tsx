@@ -62,6 +62,12 @@ import {
 import PlatformSmtpConfigSection, {
   type PlatformEmailConfig,
 } from '@/components/platform/PlatformSmtpConfigSection';
+import LocationTimezoneField from '@/components/platform/LocationTimezoneField';
+import {
+  DEFAULT_LOCATION_TIMEZONE,
+  isValidIanaTimeZone,
+} from '@/lib/locationTimezone';
+import { resolveEffectivePlatformNotificationPrefs } from './platformNotificationPrefs';
 
 const PLATFORM_BRAND_STORAGE_KEY = 'platform:brands:selected';
 const PLATFORM_TAB_STORAGE_KEY = 'platform:brands:tab';
@@ -81,6 +87,7 @@ interface PlatformLocation {
   id: string;
   name: string;
   slug?: string | null;
+  timezone: string;
   isActive?: boolean;
   admins?: PlatformAdmin[];
 }
@@ -142,6 +149,7 @@ interface PlatformPresentationSection {
 
 interface PlatformConfig {
   [key: string]: unknown;
+  superAdminEmail?: string;
   theme?: {
     [key: string]: unknown;
     primary?: string;
@@ -167,6 +175,7 @@ interface PlatformConfig {
   features?: {
     barberServiceAssignmentEnabled?: boolean;
     communicationsEnabled?: boolean;
+    multiServiceBookingEnabled?: boolean;
   };
   invoicing?: {
     enabled?: boolean;
@@ -211,9 +220,6 @@ interface PlatformConfig {
       chargesEnabled?: boolean;
       detailsSubmitted?: boolean;
     };
-  };
-  twilio?: {
-    smsSenderId?: string;
   };
   email?: JsonRecord;
 }
@@ -410,6 +416,11 @@ const stripEmptyTheme = <T extends { theme?: JsonRecord }>(config: T): T => {
     next.theme = nextTheme;
   }
   return next;
+};
+
+const stripLegacyTenantMessagingConfig = (config: PlatformConfig): PlatformConfig => {
+  const { twilio: _legacyTwilio, ...rest } = config;
+  return rest;
 };
 
 const normalizeForComparison = (value: unknown): unknown => {
@@ -735,19 +746,17 @@ const reorderLandingItems = (
 const getAdminSidebarHiddenSections = (config: PlatformConfig): AdminSectionKey[] => {
   const hidden = config?.adminSidebar?.hiddenSections;
   if (!Array.isArray(hidden)) return [];
-  return hidden.filter((section): section is AdminSectionKey => {
-    const key = section as AdminSectionKey;
-    return ADMIN_SECTION_SET.has(key) && !ADMIN_REQUIRED_SECTIONS.includes(key);
-  });
+  return hidden
+    .map((section) => section as AdminSectionKey)
+    .filter((key) => ADMIN_SECTION_SET.has(key) && !ADMIN_REQUIRED_SECTIONS.includes(key));
 };
 
 const getAdminSidebarVisibleSections = (config: PlatformConfig): AdminSectionKey[] => {
   const visible = config?.adminSidebar?.visibleSections;
   if (!Array.isArray(visible)) return [];
-  return visible.filter((section): section is AdminSectionKey => {
-    const key = section as AdminSectionKey;
-    return ADMIN_SECTION_SET.has(key) && !ADMIN_REQUIRED_SECTIONS.includes(key);
-  });
+  return visible
+    .map((section) => section as AdminSectionKey)
+    .filter((key) => ADMIN_SECTION_SET.has(key) && !ADMIN_REQUIRED_SECTIONS.includes(key));
 };
 
 const isAdminSectionRequired = (section: AdminSectionKey) => ADMIN_REQUIRED_SECTIONS.includes(section);
@@ -870,8 +879,18 @@ const PlatformBrands: React.FC = () => {
   const [editLocationOpen, setEditLocationOpen] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [newBrandForm, setNewBrandForm] = useState({ name: '', subdomain: '', customDomain: '', isActive: true });
-  const [newLocationForm, setNewLocationForm] = useState({ name: '', slug: '', isActive: true });
-  const [editLocationForm, setEditLocationForm] = useState({ name: '', slug: '', isActive: true });
+  const [newLocationForm, setNewLocationForm] = useState({
+    name: '',
+    slug: '',
+    timezone: DEFAULT_LOCATION_TIMEZONE,
+    isActive: true,
+  });
+  const [editLocationForm, setEditLocationForm] = useState({
+    name: '',
+    slug: '',
+    timezone: DEFAULT_LOCATION_TIMEZONE,
+    isActive: true,
+  });
   const [draggingLandingKey, setDraggingLandingKey] = useState<LandingSectionKey | null>(null);
   const [dragOverLandingIndex, setDragOverLandingIndex] = useState<number | null>(null);
   const [draggingLandingScope, setDraggingLandingScope] = useState<'brand' | 'location' | null>(null);
@@ -1036,7 +1055,7 @@ const PlatformBrands: React.FC = () => {
   useEffect(() => {
     if (typeof brandConfigQuery.data === 'undefined') return;
     const config = brandConfigQuery.data || {};
-    const normalizedBrandConfig = stripEmptyTheme(config);
+    const normalizedBrandConfig = stripLegacyTenantMessagingConfig(stripEmptyTheme(config));
     const subdomain = brandDataQuery.data?.subdomain || null;
     if (normalizedBrandConfig.imagekit?.folder) {
       normalizedBrandConfig.imagekit = {
@@ -1102,7 +1121,7 @@ const PlatformBrands: React.FC = () => {
     }
     if (typeof locationConfigQuery.data === 'undefined') return;
     const config = locationConfigQuery.data || {};
-    const normalizedConfig = stripEmptyTheme(config);
+    const normalizedConfig = stripLegacyTenantMessagingConfig(stripEmptyTheme(config));
     const subdomain = brandDataQuery.data?.subdomain || selectedBrand?.subdomain || null;
     if (normalizedConfig.imagekit?.folder) {
       normalizedConfig.imagekit = {
@@ -1222,18 +1241,9 @@ const PlatformBrands: React.FC = () => {
 
       const previousPrimary = normalizeHexInput(persistedBrandConfig?.theme?.primary || '');
       const nextPrimary = normalizeHexInput(brandConfig.theme?.primary || '');
-      const sanitizedBrandConfig = stripEmptyTheme(brandConfig);
-      const sanitizedTwilioSender = typeof sanitizedBrandConfig.twilio?.smsSenderId === 'string'
-        ? sanitizedBrandConfig.twilio.smsSenderId.trim()
-        : '';
-      const cleanedBrandConfig: PlatformConfig = { ...sanitizedBrandConfig };
-      if (sanitizedTwilioSender) {
-        cleanedBrandConfig.twilio = { smsSenderId: sanitizedTwilioSender };
-      } else {
-        delete cleanedBrandConfig.twilio;
-      }
-      const sanitizedLocationConfig = stripEmptyTheme(locationConfig);
-      const sanitizedPersistedLocationConfig = stripEmptyTheme(persistedLocationConfig);
+      const cleanedBrandConfig = stripLegacyTenantMessagingConfig(stripEmptyTheme(brandConfig));
+      const sanitizedLocationConfig = stripLegacyTenantMessagingConfig(stripEmptyTheme(locationConfig));
+      const sanitizedPersistedLocationConfig = stripLegacyTenantMessagingConfig(stripEmptyTheme(persistedLocationConfig));
       const hasLocationConfigChanges =
         Boolean(selectedLocationId) && !areConfigsEqual(sanitizedLocationConfig, sanitizedPersistedLocationConfig);
       await updatePlatformBrand(selectedBrand.id, {
@@ -1263,7 +1273,7 @@ const PlatformBrands: React.FC = () => {
       } else if (shouldSyncBrandTheme && selectedBrand.locations?.length) {
         await Promise.all(
           selectedBrand.locations.map(async (location) => {
-            const existing = await fetchPlatformLocationConfigCached(location.id, { force: true });
+            const existing = await fetchPlatformLocationConfigCached(location.id, { force: true }) as PlatformConfig;
             const existingPrimary = normalizeHexInput(existing?.theme?.primary || '');
             if (!existingPrimary || existingPrimary !== previousPrimary) return;
             const next: PlatformConfig = { ...(existing || {}) };
@@ -1279,7 +1289,7 @@ const PlatformBrands: React.FC = () => {
         );
       }
       const currentFileIds = BRAND_FILE_ID_FIELDS.reduce((acc, field) => {
-        acc[field] = (sanitizedBrandConfig?.branding?.[field] as string | undefined) || null;
+        acc[field] = (cleanedBrandConfig?.branding?.[field] as string | undefined) || null;
         return acc;
       }, {} as Record<BrandFileIdField, string | null>);
 
@@ -1330,8 +1340,8 @@ const PlatformBrands: React.FC = () => {
         );
         setPersistedLocationFileIds(currentLocationFileIds);
       }
-      setPersistedBrandConfig(JSON.parse(JSON.stringify(sanitizedBrandConfig)));
-      setBrandConfig(sanitizedBrandConfig);
+      setPersistedBrandConfig(JSON.parse(JSON.stringify(cleanedBrandConfig)));
+      setBrandConfig(cleanedBrandConfig);
       setLocationConfig(sanitizedLocationConfig);
       setPersistedLocationConfig(JSON.parse(JSON.stringify(sanitizedLocationConfig)));
       await refetchBrands();
@@ -1426,12 +1436,18 @@ const PlatformBrands: React.FC = () => {
       return createPlatformLocation(selectedBrand.id, {
         name: newLocationForm.name,
         slug: newLocationForm.slug || null,
+        timezone: newLocationForm.timezone.trim(),
         isActive: newLocationForm.isActive,
       });
     },
     onSuccess: async (location) => {
       setCreateLocationOpen(false);
-      setNewLocationForm({ name: '', slug: '', isActive: true });
+      setNewLocationForm({
+        name: '',
+        slug: '',
+        timezone: DEFAULT_LOCATION_TIMEZONE,
+        isActive: true,
+      });
       await refetchBrands();
       setSelectedLocationId(location.id);
       await refetchSelectedBrandCore();
@@ -1442,7 +1458,10 @@ const PlatformBrands: React.FC = () => {
   });
 
   const updateLocationMutation = useMutation({
-    mutationFn: async (payload: { localId: string; data: { name?: string; slug?: string | null; isActive?: boolean } }) => {
+    mutationFn: async (payload: {
+      localId: string;
+      data: { name?: string; slug?: string | null; timezone?: string; isActive?: boolean };
+    }) => {
       if (!user?.id) throw new Error('missing-context');
       await updatePlatformLocation(payload.localId, payload.data);
     },
@@ -1537,11 +1556,7 @@ const PlatformBrands: React.FC = () => {
     [locationConfig, brandConfig, isLocationLandingOverride, locationStockVisible],
   );
   const isLocationNotificationOverride = Boolean(locationConfig?.notificationPrefs);
-  const brandNotificationPrefs = {
-    email: brandConfig?.notificationPrefs?.email !== false,
-    whatsapp: brandConfig?.notificationPrefs?.whatsapp !== false,
-    sms: brandConfig?.notificationPrefs?.sms !== false,
-  };
+  const brandNotificationPrefs = resolveEffectivePlatformNotificationPrefs(brandConfig);
   const supportedLanguageOptions = LANGUAGE_OPTIONS;
   const normalizedDefaultLanguage = (brandConfig?.i18n?.defaultLanguage || 'es').toLowerCase();
   const brandSupportedLanguages = Array.from(
@@ -1641,15 +1656,12 @@ const PlatformBrands: React.FC = () => {
       ? locationConfig?.branding?.heroNoImageAlign
       : brandConfig?.branding?.heroNoImageAlign,
   );
-  const locationNotificationPrefsSource = isLocationNotificationOverride
-    ? locationConfig.notificationPrefs
-    : brandConfig.notificationPrefs;
-  const locationNotificationPrefs = {
-    email: locationNotificationPrefsSource?.email !== false,
-    whatsapp: locationNotificationPrefsSource?.whatsapp !== false,
-    sms: locationNotificationPrefsSource?.sms !== false,
-  };
+  const locationNotificationPrefs = resolveEffectivePlatformNotificationPrefs(
+    brandConfig,
+    locationConfig,
+  );
   const brandBarberAssignmentEnabled = brandConfig?.features?.barberServiceAssignmentEnabled !== false;
+  const brandMultiServiceBookingEnabled = brandConfig?.features?.multiServiceBookingEnabled === true;
   const brandInvoicingEnabled = brandConfig?.invoicing?.enabled === true;
   const brandInvoiceTaxRate = Number(brandConfig?.invoicing?.taxRate ?? 21);
   const brandInvoiceCurrency = brandConfig?.invoicing?.currency || 'EUR';
@@ -2196,7 +2208,7 @@ const PlatformBrands: React.FC = () => {
                   <Label>Posición de la imagen</Label>
                   <Select
                     value={section.imagePosition}
-                    onValueChange={(value) => updateSection(index, { imagePosition: value })}
+                    onValueChange={(value) => updateSection(index, { imagePosition: value as PresentationImagePosition })}
                     disabled={fieldsDisabled}
                   >
                     <SelectTrigger>
@@ -2629,10 +2641,21 @@ const PlatformBrands: React.FC = () => {
 
   const handleCreateLocation = async () => {
     if (!user?.id || !selectedBrand) return;
+    if (!isValidIanaTimeZone(newLocationForm.timezone)) {
+      toast({
+        title: 'Zona horaria inválida',
+        description: 'Usa un identificador IANA válido, por ejemplo Europe/Madrid.',
+        variant: 'destructive',
+      });
+      return;
+    }
     await createLocationMutation.mutateAsync();
   };
 
-  const handleUpdateLocation = async (localId: string, payload: { name?: string; slug?: string | null; isActive?: boolean }) => {
+  const handleUpdateLocation = async (
+    localId: string,
+    payload: { name?: string; slug?: string | null; timezone?: string; isActive?: boolean },
+  ) => {
     if (!user?.id) return;
     await updateLocationMutation.mutateAsync({ localId, data: payload });
   };
@@ -3115,6 +3138,9 @@ const PlatformBrands: React.FC = () => {
                         <div>
                           <div className="text-sm font-semibold">{location.name}</div>
                           <div className="text-xs text-muted-foreground">{location.slug || 'sin slug'}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {location.timezone || DEFAULT_LOCATION_TIMEZONE}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <span
@@ -3136,6 +3162,7 @@ const PlatformBrands: React.FC = () => {
                               setEditLocationForm({
                                 name: location.name,
                                 slug: location.slug || '',
+                                timezone: location.timezone || DEFAULT_LOCATION_TIMEZONE,
                                 isActive: location.isActive,
                               });
                               setEditLocationOpen(true);
@@ -4039,7 +4066,7 @@ const PlatformBrands: React.FC = () => {
                       </div>
 
                       <div className="space-y-3">
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Notificaciones (perfil)</p>
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Canales de notificación</p>
                         <div className="space-y-3">
                           <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                             <div>
@@ -4068,7 +4095,9 @@ const PlatformBrands: React.FC = () => {
                           <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                             <div>
                               <div className="text-sm font-semibold text-foreground">SMS</div>
-                              <p className="text-xs text-muted-foreground">Mostrar opción de SMS en el perfil.</p>
+                              <p className="text-xs text-muted-foreground">
+                                Habilita recordatorios SMS para esta marca. Remitente global: MANAGGIO.
+                              </p>
                             </div>
                             <Switch
                               checked={brandNotificationPrefs.sms}
@@ -4095,6 +4124,22 @@ const PlatformBrands: React.FC = () => {
                               onCheckedChange={(checked) =>
                                 setBrandConfig((prev) =>
                                   updateNestedValue(prev, ['features', 'barberServiceAssignmentEnabled'], checked),
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 p-3">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">Reserva de varios servicios</div>
+                              <p className="text-xs text-muted-foreground">
+                                Permite que cada tenant decida si sus clientes pueden combinar servicios consecutivos en una cita.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={brandMultiServiceBookingEnabled}
+                              onCheckedChange={(checked) =>
+                                setBrandConfig((prev) =>
+                                  updateNestedValue(prev, ['features', 'multiServiceBookingEnabled'], checked),
                                 )
                               }
                             />
@@ -4298,23 +4343,6 @@ const PlatformBrands: React.FC = () => {
                         />
                       )}
 
-                      <div className="space-y-3">
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Twilio</p>
-                        <div className="space-y-2">
-                          <Label>Alphanumeric sender ID</Label>
-                          <Input
-                            placeholder="LEBLOND"
-                            value={brandConfig.twilio?.smsSenderId || ''}
-                            onChange={(e) =>
-                              setBrandConfig((prev) => updateNestedValue(prev, ['twilio', 'smsSenderId'], e.target.value))
-                            }
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Define el remitente por marca.
-                          </p>
-                        </div>
-                      </div>
-
                     </CardContent>
                   </Card>
 
@@ -4388,7 +4416,9 @@ const PlatformBrands: React.FC = () => {
                             <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                               <div>
                                 <div className="text-sm font-semibold text-foreground">SMS</div>
-                                <p className="text-xs text-muted-foreground">Visible para clientes.</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Recordatorios con remitente global MANAGGIO.
+                                </p>
                               </div>
                               <Switch
                                 checked={locationNotificationPrefs.sms}
@@ -5322,6 +5352,11 @@ const PlatformBrands: React.FC = () => {
               <Label>Slug</Label>
               <Input value={newLocationForm.slug} onChange={(e) => setNewLocationForm((prev) => ({ ...prev, slug: e.target.value }))} />
             </div>
+            <LocationTimezoneField
+              id="new-location-timezone"
+              value={newLocationForm.timezone}
+              onChange={(timezone) => setNewLocationForm((prev) => ({ ...prev, timezone }))}
+            />
             <div className="flex items-center gap-3">
               <Switch
                 checked={newLocationForm.isActive}
@@ -5359,6 +5394,11 @@ const PlatformBrands: React.FC = () => {
                 onChange={(e) => setEditLocationForm((prev) => ({ ...prev, slug: e.target.value }))}
               />
             </div>
+            <LocationTimezoneField
+              id="edit-location-timezone"
+              value={editLocationForm.timezone}
+              onChange={(timezone) => setEditLocationForm((prev) => ({ ...prev, timezone }))}
+            />
             <div className="flex items-center gap-3">
               <Switch
                 checked={editLocationForm.isActive}
@@ -5375,7 +5415,12 @@ const PlatformBrands: React.FC = () => {
                 const existingLocation = selectedBrand?.locations?.find((location) => location.id === editingLocationId);
                 if (!existingLocation) return;
 
-                const payload: { name?: string; slug?: string | null; isActive?: boolean } = {};
+                const payload: {
+                  name?: string;
+                  slug?: string | null;
+                  timezone?: string;
+                  isActive?: boolean;
+                } = {};
                 const nextName = editLocationForm.name.trim();
                 const currentName = (existingLocation.name || '').trim();
                 if (nextName && nextName !== currentName) {
@@ -5395,6 +5440,20 @@ const PlatformBrands: React.FC = () => {
                     return;
                   }
                   payload.slug = nextSlug;
+                }
+
+                const nextTimezone = editLocationForm.timezone.trim();
+                const currentTimezone = existingLocation.timezone || DEFAULT_LOCATION_TIMEZONE;
+                if (!isValidIanaTimeZone(nextTimezone)) {
+                  toast({
+                    title: 'Zona horaria inválida',
+                    description: 'Usa un identificador IANA válido, por ejemplo Europe/Madrid.',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
+                if (nextTimezone !== currentTimezone) {
+                  payload.timezone = nextTimezone;
                 }
 
                 if (editLocationForm.isActive !== existingLocation.isActive) {

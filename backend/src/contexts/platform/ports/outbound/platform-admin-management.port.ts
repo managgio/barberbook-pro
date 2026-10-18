@@ -21,12 +21,14 @@ export type PlatformCreateLocationInput = {
   name: string;
   slug?: string | null;
   isActive?: boolean;
+  timezone?: string;
 };
 
 export type PlatformUpdateLocationInput = {
   name?: string;
   slug?: string | null;
   isActive?: boolean;
+  timezone?: string;
 };
 
 export type PlatformAssignBrandAdminInput = {

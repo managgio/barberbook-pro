@@ -123,10 +123,10 @@ const AppointmentsPage: React.FC = () => {
   const addAppointmentToDeviceCalendar = (appointment: Appointment) => {
     const service = servicesById.get(appointment.serviceId);
     const barber = barbersById.get(appointment.barberId);
-    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? t('appointments.fallback.service');
+    const serviceName = appointment.serviceNameSnapshot ?? service?.name ?? t('appointments.fallback.service');
     const barberName = barber?.name ?? appointment.barberNameSnapshot ?? copy.staff.singular;
     const startDate = parseISO(appointment.startDateTime);
-    const durationMinutes = service?.duration ?? 30;
+    const durationMinutes = appointment.totalDurationMinutes ?? service?.duration ?? 30;
     const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
     
     openCalendarForDevice({
@@ -149,7 +149,7 @@ const AppointmentsPage: React.FC = () => {
       barber?.name ??
       appointment.barberNameSnapshot ??
       t('appointments.fallback.removedStaff', { staffSingular: copy.staff.singular });
-    const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? t('appointments.fallback.removedService');
+    const serviceName = appointment.serviceNameSnapshot ?? service?.name ?? t('appointments.fallback.removedService');
     const date = parseISO(appointment.startDateTime);
     const basePrice = service?.price ?? appointment.price;
     const paidPrice = appointment.price;

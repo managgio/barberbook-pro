@@ -31,6 +31,7 @@ import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import AppointmentInvoiceActions from '@/components/admin/AppointmentInvoiceActions';
+import AppointmentServiceSummary from '@/components/admin/AppointmentServiceSummary';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
@@ -853,9 +854,14 @@ const AdminClients: React.FC = () => {
                             key={apt.id}
                             className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
                           >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-foreground">{getService(apt.serviceId)?.name}</p>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start gap-2">
+                                <AppointmentServiceSummary
+                                  appointment={apt}
+                                  fallbackService={getService(apt.serviceId)}
+                                  showPrices
+                                  compact
+                                />
                                 {apt.subscriptionApplied && (
                                   <Badge variant="secondary" className="h-5 px-2 text-[10px]">
                                     {t('admin.common.subscription')}
@@ -870,7 +876,7 @@ const AdminClients: React.FC = () => {
                             <div className="flex flex-wrap items-center justify-end gap-2">
                               <AppointmentStatusPicker
                                 appointment={apt}
-                                serviceDurationMinutes={getService(apt.serviceId)?.duration ?? 30}
+                                serviceDurationMinutes={apt.totalDurationMinutes ?? getService(apt.serviceId)?.duration ?? 30}
                                 onStatusUpdated={applyAppointmentUpdate}
                               />
                               <Select
@@ -897,42 +903,47 @@ const AdminClients: React.FC = () => {
                               {savingPayment[apt.id] && (
                                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                               )}
-                              <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1.5">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={priceDrafts[apt.id] ?? formatPriceInput(apt.price ?? 0)}
-                                  onFocus={(event) => {
-                                    setEditingPriceId(apt.id);
-                                    event.currentTarget.select();
-                                  }}
-                                  onBlur={() => {
-                                    setEditingPriceId(null);
-                                    void commitPrice(apt);
-                                  }}
-                                  onChange={(event) =>
-                                    setPriceDrafts((prev) => ({ ...prev, [apt.id]: event.target.value }))
-                                  }
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') {
-                                      event.currentTarget.blur();
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="text-[11px] font-medium text-muted-foreground">
+                                  {t('admin.appointmentServices.appointmentTotal')}
+                                </span>
+                                <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1.5">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={priceDrafts[apt.id] ?? formatPriceInput(apt.price ?? 0)}
+                                    onFocus={(event) => {
+                                      setEditingPriceId(apt.id);
+                                      event.currentTarget.select();
+                                    }}
+                                    onBlur={() => {
+                                      setEditingPriceId(null);
+                                      void commitPrice(apt);
+                                    }}
+                                    onChange={(event) =>
+                                      setPriceDrafts((prev) => ({ ...prev, [apt.id]: event.target.value }))
                                     }
-                                    if (event.key === 'Escape') {
-                                      setPriceDrafts((prev) => ({
-                                        ...prev,
-                                        [apt.id]: formatPriceInput(apt.price ?? 0),
-                                      }));
-                                      event.currentTarget.blur();
-                                    }
-                                  }}
-                                  className="w-[60px] bg-transparent text-center text-base font-semibold text-primary outline-none"
-                                  aria-label={t('admin.common.table.finalPrice')}
-                                  disabled={Boolean(savingPrice[apt.id])}
-                                />
-                                <span className="text-xs font-semibold text-primary">€</span>
-                                {savingPrice[apt.id] && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.currentTarget.blur();
+                                      }
+                                      if (event.key === 'Escape') {
+                                        setPriceDrafts((prev) => ({
+                                          ...prev,
+                                          [apt.id]: formatPriceInput(apt.price ?? 0),
+                                        }));
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    className="w-[60px] bg-transparent text-center text-base font-semibold text-primary outline-none"
+                                    aria-label={t('admin.common.table.finalPrice')}
+                                    disabled={Boolean(savingPrice[apt.id])}
+                                  />
+                                  <span className="text-xs font-semibold text-primary">€</span>
+                                  {savingPrice[apt.id] && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                                </div>
                               </div>
-                              <AppointmentInvoiceActions appointmentId={apt.id} compact />
+                              <AppointmentInvoiceActions appointmentId={apt.id} status={apt.status} compact />
                               <Button
                                 size="icon"
                                 variant="ghost"

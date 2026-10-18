@@ -5,6 +5,7 @@ export type GetAvailabilityBatchQuery = {
   date: string;
   barberIds: string[];
   serviceId?: string;
+  serviceIds?: string[];
   appointmentIdToIgnore?: string;
   slotIntervalMinutes?: number;
 };

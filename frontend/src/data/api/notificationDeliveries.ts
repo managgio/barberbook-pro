@@ -6,6 +6,9 @@ export type NotificationDeliveryStatus =
   | 'pending'
   | 'processing'
   | 'accepted'
+  | 'sent'
+  | 'delivered'
+  | 'undelivered'
   | 'retrying'
   | 'failed'
   | 'skipped';
@@ -39,6 +42,7 @@ export type NotificationDeliveryItem = {
   channel: NotificationDeliveryChannel;
   kind: NotificationDeliveryKind;
   status: NotificationDeliveryStatus;
+  canRetry: boolean;
   recipient: string | null;
   recipientName: string | null;
   title: string;
@@ -49,6 +53,10 @@ export type NotificationDeliveryItem = {
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
   acceptedAt: string | null;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  undeliveredAt: string | null;
+  deliveryStatusUpdatedAt: string | null;
   failedAt: string | null;
   skippedAt: string | null;
   createdAt: string;
@@ -73,6 +81,7 @@ export type NotificationDeliveryFilters = {
   channel?: NotificationDeliveryChannel;
   brandId?: string;
   localId?: string;
+  includeResolved?: boolean;
 };
 
 export type NotificationDeliveryTenantOption = {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { LegalService } from './legal.service';
 import { LegalController } from './legal.controller';
 import { LegalPlatformController } from './legal-platform.controller';
+import { LegalAdminController } from './legal-admin.controller';
 import { PLATFORM_LEGAL_MANAGEMENT_PORT } from '../../contexts/platform/ports/outbound/platform-legal-management.port';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { PlatformAdminGuard } from '../platform-admin/platform-admin.guard';
@@ -20,7 +21,7 @@ import {
     LegalService,
     PlatformAdminGuard,
   ],
-  controllers: [LegalController, LegalPlatformController],
+  controllers: [LegalController, LegalPlatformController, LegalAdminController],
   exports: [LegalService, PLATFORM_LEGAL_MANAGEMENT_PORT],
 })
 export class LegalModule {}

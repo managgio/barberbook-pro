@@ -4,10 +4,16 @@ import { apiRequest } from './request';
 
 type GetBarbersOptions = {
   serviceId?: string;
+  serviceIds?: string[];
 };
 
 export const getBarbers = async (options?: GetBarbersOptions): Promise<Barber[]> =>
-  apiRequest('/barbers', { query: { serviceId: options?.serviceId } });
+  apiRequest('/barbers', {
+    query: {
+      serviceId: options?.serviceId,
+      serviceIds: options?.serviceIds?.length ? options.serviceIds.join(',') : undefined,
+    },
+  });
 
 export const getAdminBarbers = async (options?: GetBarbersOptions): Promise<Barber[]> =>
   apiRequest('/barbers/admin', { query: { serviceId: options?.serviceId } });

@@ -10,7 +10,14 @@ export const NOTIFICATION_DELIVERY_RETENTION = {
 
 export const resolvedStatuses = [
   NotificationDeliveryStatus.accepted,
+  NotificationDeliveryStatus.sent,
+  NotificationDeliveryStatus.delivered,
   NotificationDeliveryStatus.skipped,
+] as const;
+
+export const failedStatuses = [
+  NotificationDeliveryStatus.failed,
+  NotificationDeliveryStatus.undelivered,
 ] as const;
 
 export const subtractDays = (now: Date, days: number) =>

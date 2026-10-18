@@ -10,6 +10,9 @@ import {
   PlatformLocationConfigRecord,
   PlatformLocationSummary,
   PlatformUsageMetrics,
+  PlatformAiConversationDetail,
+  PlatformAiConversationListResponse,
+  PlatformAiConversationSource,
   StripeOnboardingResponse,
 } from '@/data/types';
 
@@ -25,6 +28,36 @@ export const refreshPlatformMetrics = async (windowDays = 7): Promise<PlatformUs
   apiRequest(`/platform/metrics/refresh?window=${windowDays}`, {
     method: 'POST',
   });
+
+export const sendPlatformTestSms = async (data: {
+  phone: string;
+  message?: string;
+}): Promise<{
+  success: true;
+  providerMessageId: string;
+  actualSender?: string;
+  senderMatchesExpected?: boolean;
+}> =>
+  apiRequest('/platform/notifications/test-sms', {
+    method: 'POST',
+    body: data,
+  });
+
+export const getPlatformAiConversations = async (params: {
+  page?: number;
+  pageSize?: number;
+  days?: number;
+  brandId?: string;
+  localId?: string;
+  source?: PlatformAiConversationSource;
+  search?: string;
+}): Promise<PlatformAiConversationListResponse> =>
+  apiRequest('/platform/ai-conversations', { query: params });
+
+export const getPlatformAiConversation = async (
+  sessionId: string,
+): Promise<PlatformAiConversationDetail> =>
+  apiRequest(`/platform/ai-conversations/${sessionId}`);
 
 export const getPlatformBrand = async (brandId: string): Promise<PlatformBrandSummary> =>
   apiRequest(`/platform/brands/${brandId}`);
@@ -56,7 +89,7 @@ export const getPlatformLocations = async (brandId: string): Promise<PlatformLoc
 
 export const createPlatformLocation = async (
   brandId: string,
-  data: { name: string; slug?: string | null; isActive?: boolean },
+  data: { name: string; slug?: string | null; timezone?: string; isActive?: boolean },
 ): Promise<PlatformLocationSummary> =>
   apiRequest(`/platform/brands/${brandId}/locations`, {
     method: 'POST',
@@ -65,7 +98,7 @@ export const createPlatformLocation = async (
 
 export const updatePlatformLocation = async (
   localId: string,
-  data: Partial<{ name: string; slug?: string | null; isActive?: boolean }>,
+  data: Partial<{ name: string; slug?: string | null; timezone: string; isActive?: boolean }>,
 ): Promise<PlatformLocationSummary> =>
   apiRequest(`/platform/locations/${localId}`, {
     method: 'PATCH',

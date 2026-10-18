@@ -95,14 +95,17 @@ Scripts sencillos en `scripts/` para exportar o importar datos:
 - Prisma ORM (MySQL) con seed inicial (usuarios, barberos, servicios, citas, festivos y horarios)
 - ImageKit (firma de subidas desde `/api/imagekit/sign`)
 - Superadmin configurable por email (env `SUPER_ADMIN_EMAIL` en backend)
-- Notificaciones: correo al crear/editar citas y recordatorio SMS 24h antes (Twilio)
+- Notificaciones: correo al crear/editar citas y recordatorios multicanal mediante gateways desacoplados
 
 ### Variables de entorno clave (backend)
 
 - `DATABASE_URL` (MySQL)
 - `SUPER_ADMIN_EMAIL`
 - ImageKit: `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`
-- Twilio (SMS): `TWILIO_AUTH_SID` (o `TWILIO_ACCOUNT_SID`), `TWILIO_ACCOUNT_TOKEN` (auth token), `TWILIO_MESSAGING_SERVICE_SID`
+- SMS global `MANAGGIO`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID` y `SMS_STATUS_CALLBACK_URL` (se mantienen `TWILIO_AUTH_SID` y `TWILIO_ACCOUNT_TOKEN` como alias legacy). El Sender Pool del Messaging Service debe contener el emisor alfanumérico `MANAGGIO`; el adapter lo fuerza en `From` y falla sin reintentar si no está asociado
+- Presupuesto global de mensajería: `MESSAGING_DAILY_BUDGET_USD` (`TWILIO_DAILY_BUDGET_USD` se conserva solo como fallback legacy)
+- Enlaces de gestión para invitados: `GUEST_APPOINTMENT_LINK_SECRET` global de al menos 32 bytes
+- Runtime: `NODE_ENV=production` es obligatorio para activar SMS rutinarios; fuera de producción quedan bloqueados. La prueba manual solo se expone a Platform desde localhost, aplica cooldown y debe confirmar que el proveedor devuelve `MANAGGIO` como remitente real
 - Email (avisos): `EMAIL`, `PASSWORD` y opcional `EMAIL_HOST` (default `smtp.gmail.com`), `EMAIL_PORT` (default `587`)
 - Asistente IA: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_MAX_TOKENS`, `AI_TEMPERATURE`
 

@@ -43,6 +43,11 @@ Al cambiar de local se refresca el perfil tenant-scoped y se aíslan las queries
 - Actualiza al menos `es.json` y `en.json`, y ejecuta `npm run i18n:check`.
 - Consulta [FRONTEND_I18N_COPY_CHECKLIST.md](../FRONTEND_I18N_COPY_CHECKLIST.md).
 - Las acciones de factura de calendario, clientes y búsqueda reutilizan un único componente. La generación PDF se carga de forma diferida y compartir usa Web Share con descarga como fallback.
+- La configuración fiscal del tenant solo se monta si Platform habilitó facturación. El selector de varios servicios sigue la misma jerarquía: capacidad de Platform y preferencia del tenant antes de cambiar el flujo público.
+- La reserva de invitado ofrece recordatorios solo a partir de `notificationCapabilities` efectivas del bootstrap. Un único canal se presenta como consentimiento simple y varios como selección combinable; no existe alta implícita y cualquier selección exige teléfono. La prueba manual de SMS vive únicamente en Platform, se renderiza solo para administradores de plataforma en desarrollo local, usa el remitente global `MANAGGIO` y bloquea mensajes de más de tres segmentos tras calcular GSM-7 o UCS-2.
+- El enlace firmado de una cita invitada abre la ruta pública lazy `/cita/:token`. La vista consume únicamente el resumen mínimo del backend, no muestra PII, trata token inválido y expirado como un mismo estado y solo ofrece cancelación cuando `canCancel` es verdadero, siempre con confirmación.
+- Calendario, búsqueda, clientes y edición reutilizan la presentación de citas de `appointmentPresentation` y `AppointmentServiceSummary`: una cita múltiple se identifica como un único bloque, pero conserva desglose, orden, duración e importes por servicio. `Appointment.price` siempre se rotula como total de la cita para no confundirlo con el precio de una línea.
+- La vista Platform del asistente IA es una ruta lazy y paginada. Sus filtros de periodo, origen y tenant se resuelven en servidor; el detalle diferencia visualmente texto, voz y plantilla sin descargar el historial completo en el listado.
 
 ## Rendimiento
 

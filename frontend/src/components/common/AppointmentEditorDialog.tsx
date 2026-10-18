@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Clock, Layers3 } from 'lucide-react';
 import { getAvailableSlots, updateAppointment, anonymizeAppointment } from '@/data/api/appointments';
 import { Appointment, AppointmentStatus, Barber, Product, ProductCategory, Service, ServiceCategory } from '@/data/types';
 import { useToast } from '@/hooks/use-toast';
@@ -25,6 +25,12 @@ import {
   fetchServicesCached,
 } from '@/lib/catalogQuery';
 import { useI18n } from '@/hooks/useI18n';
+import AppointmentServiceSummary from '@/components/admin/AppointmentServiceSummary';
+import {
+  getAppointmentDurationMinutes,
+  getAppointmentServices,
+  isMultiServiceAppointment,
+} from '@/lib/appointmentPresentation';
 
 interface AppointmentEditorDialogProps {
   open: boolean;
@@ -61,6 +67,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<Array<{ productId: string; quantity: number }>>([]);
   const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
+  const [serviceSelectionChanged, setServiceSelectionChanged] = useState(false);
   const isAdminContext = context === 'admin';
   const isNoShowLocked = appointment?.status === 'no_show' || appointment?.status === 'cancelled';
 
@@ -108,6 +115,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
         notes: appointment.notes || '',
         status: appointment.status,
       });
+      setServiceSelectionChanged(false);
       setSelectedProducts(
         appointment.products?.map((item) => ({ productId: item.productId, quantity: item.quantity })) ?? [],
       );
@@ -138,8 +146,12 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     }
     setSlotsLoading(true);
     try {
+      const preservedServiceIds = appointment && !serviceSelectionChanged && isMultiServiceAppointment(appointment)
+        ? getAppointmentServices(appointment).map((item) => item.serviceId)
+        : undefined;
       const slots = await getAvailableSlots(barberId, date, {
         serviceId,
+        serviceIds: preservedServiceIds,
         appointmentIdToIgnore: appointment?.id,
       });
       setAvailableSlots(slots);
@@ -239,13 +251,23 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     [form.serviceId, selectableServices],
   );
 
+  const selectedServicesForEligibility = useMemo(() => {
+    if (!appointment || serviceSelectionChanged || !isMultiServiceAppointment(appointment)) {
+      return selectedService ? [selectedService] : [];
+    }
+    const preservedIds = new Set(getAppointmentServices(appointment).map((item) => item.serviceId));
+    return selectableServices.filter((service) => preservedIds.has(service.id));
+  }, [appointment, selectableServices, selectedService, serviceSelectionChanged]);
+
   const filteredBarbers = useMemo(() => {
     const baseBarbers =
       context === 'admin' ? barbers : barbers.filter((barber) => barber.isActive !== false);
-    if (!selectedService) return baseBarbers;
+    if (selectedServicesForEligibility.length === 0) return baseBarbers;
 
     const eligible = baseBarbers.filter((barber) =>
-      isBarberEligibleForService(barber, selectedService, barberServiceAssignmentEnabled),
+      selectedServicesForEligibility.every((service) =>
+        isBarberEligibleForService(barber, service, barberServiceAssignmentEnabled),
+      ),
     );
 
     if (form.barberId && !eligible.some((barber) => barber.id === form.barberId)) {
@@ -258,7 +280,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   }, [
     barbers,
     context,
-    selectedService,
+    selectedServicesForEligibility,
     barberServiceAssignmentEnabled,
     form.barberId,
   ]);
@@ -274,6 +296,7 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
   const canShowProducts = productsEnabled && (isAdminContext || clientPurchaseEnabled);
 
   const handleServiceChange = (value: string) => {
+    setServiceSelectionChanged(true);
     setForm((prev) => ({ ...prev, serviceId: value, time: '' }));
   };
 
@@ -289,11 +312,12 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
     setIsSaving(true);
     try {
       const dateTime = new Date(`${form.date}T${form.time}:00`).toISOString();
+      const startDateTimeChanged = new Date(dateTime).getTime() !== new Date(appointment.startDateTime).getTime();
       const productsPayload = canShowProducts ? selectedProducts : undefined;
       const updated = await updateAppointment(appointment.id, {
-        serviceId: form.serviceId,
+        ...(serviceSelectionChanged ? { serviceId: form.serviceId } : {}),
         barberId: form.barberId,
-        startDateTime: dateTime,
+        ...(startDateTimeChanged ? { startDateTime: dateTime } : {}),
         ...(isAdminContext ? {} : { notes: form.notes.trim() }),
         ...(isAdminContext ? { status: form.status } : {}),
         ...(productsPayload ? { products: productsPayload } : {}),
@@ -370,6 +394,25 @@ const AppointmentEditorDialog: React.FC<AppointmentEditorDialogProps> = ({
             </div>
           ) : (
             <div className="space-y-5">
+            {isMultiServiceAppointment(appointment) && !serviceSelectionChanged && (
+              <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
+                <div className="mb-3 flex items-start gap-3">
+                  <Layers3 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {t('appointmentEditor.multiServiceCurrent', {
+                        count: appointment.services?.length ?? 0,
+                        minutes: getAppointmentDurationMinutes(appointment),
+                      })}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t('appointmentEditor.multiServiceReplaceHint')}
+                    </p>
+                  </div>
+                </div>
+                <AppointmentServiceSummary appointment={appointment} showPrices compact />
+              </div>
+            )}
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t('appointmentEditor.service')}</Label>

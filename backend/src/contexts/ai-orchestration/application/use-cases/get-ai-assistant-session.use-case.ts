@@ -19,6 +19,8 @@ export interface GetAiAssistantSessionResult {
     role: string;
     content: string;
     createdAt: Date;
+    inputSource?: 'typed' | 'voice' | 'template' | null;
+    templateKey?: string | null;
   }>;
 }
 
@@ -44,6 +46,8 @@ export class GetAiAssistantSessionUseCase {
         role: message.role,
         content: message.content,
         createdAt: message.createdAt,
+        inputSource: message.inputSource,
+        templateKey: message.templateKey,
       })),
     };
   }

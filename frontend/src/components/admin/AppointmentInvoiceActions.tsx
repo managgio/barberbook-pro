@@ -17,15 +17,18 @@ import {
   shareInvoicePdf,
 } from '@/lib/invoicePdf';
 import { cn } from '@/lib/utils';
+import { AppointmentStatus } from '@/data/types';
 
 type AppointmentInvoiceActionsProps = {
   appointmentId: string;
+  status: AppointmentStatus;
   compact?: boolean;
   className?: string;
 };
 
 const AppointmentInvoiceActions: React.FC<AppointmentInvoiceActionsProps> = ({
   appointmentId,
+  status,
   compact = false,
   className,
 }) => {
@@ -34,7 +37,10 @@ const AppointmentInvoiceActions: React.FC<AppointmentInvoiceActionsProps> = ({
   const { t, language } = useI18n();
   const [isBusy, setIsBusy] = useState(false);
 
-  if (tenant?.config?.invoicing?.enabled !== true) return null;
+  if (
+    tenant?.config?.invoicing?.enabled !== true
+    || (status !== 'scheduled' && status !== 'completed')
+  ) return null;
 
   const preparePdf = async () => {
     const invoice = await issueAppointmentInvoice(appointmentId);

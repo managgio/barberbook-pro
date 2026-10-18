@@ -8,6 +8,8 @@ import {
   TENANT_CONTEXT_RUNNER_PORT,
   TenantContextRunnerPort,
 } from '../../ports/outbound/tenant-context-runner.port';
+import { APP_TIMEZONE } from '../../../../utils/timezone';
+import { resolveLocationTimeZone } from '../../domain/services/location-timezone.policy';
 
 @Injectable()
 export class PrismaActiveLocationIteratorAdapter implements ActiveLocationIteratorPort {
@@ -18,19 +20,20 @@ export class PrismaActiveLocationIteratorAdapter implements ActiveLocationIterat
   ) {}
 
   async forEachActiveLocation(
-    callback: (context: { brandId: string; localId: string }) => Promise<void>,
+    callback: (context: { brandId: string; localId: string; timezone: string }) => Promise<void>,
   ): Promise<void> {
     const locations = await this.prisma.location.findMany({
       where: { isActive: true },
-      select: { id: true, brandId: true },
+      select: { id: true, brandId: true, timezone: true },
       orderBy: { createdAt: 'asc' },
     });
 
     for (const location of locations) {
+      const timezone = resolveLocationTimeZone(location.timezone, APP_TIMEZONE);
       await this.tenantContextRunnerPort.runWithContext(
-        { brandId: location.brandId, localId: location.id },
+        { brandId: location.brandId, localId: location.id, timezone },
         async () => {
-          await callback({ brandId: location.brandId, localId: location.id });
+          await callback({ brandId: location.brandId, localId: location.id, timezone });
         },
       );
     }

@@ -4,13 +4,10 @@ import {
   AI_ASSISTANT_MEMORY_MAINTENANCE_PORT,
   AiAssistantMemoryMaintenancePort,
 } from '../../contexts/ai-orchestration/ports/outbound/ai-assistant-memory-maintenance.port';
-import {
-  ACTIVE_LOCATION_ITERATOR_PORT,
-  ActiveLocationIteratorPort,
-} from '../../contexts/platform/ports/outbound/active-location-iterator.port';
 import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
-import { runTenantScopedJob } from '../../shared/application/tenant-job-execution';
-import { AI_TIME_ZONE, getDateStringInTimeZone, getDayBoundsInTimeZone } from './ai-assistant.utils';
+import { AI_TIME_ZONE } from './ai-assistant.utils';
+
+const AI_CONVERSATION_RETENTION_DAYS = 90;
 
 @Injectable()
 export class AiMemoryCleanupService implements OnModuleInit, OnModuleDestroy {
@@ -20,8 +17,6 @@ export class AiMemoryCleanupService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(DISTRIBUTED_LOCK_PORT)
     private readonly distributedLockPort: DistributedLockPort,
-    @Inject(ACTIVE_LOCATION_ITERATOR_PORT)
-    private readonly activeLocationIteratorPort: ActiveLocationIteratorPort,
     @Inject(AI_ASSISTANT_MEMORY_MAINTENANCE_PORT)
     private readonly aiAssistantMemoryMaintenancePort: AiAssistantMemoryMaintenancePort,
   ) {}
@@ -56,19 +51,14 @@ export class AiMemoryCleanupService implements OnModuleInit, OnModuleDestroy {
 
   private async runCleanup() {
     const now = new Date();
-    const dayKey = getDateStringInTimeZone(now, AI_TIME_ZONE);
-    const { start } = getDayBoundsInTimeZone(dayKey, AI_TIME_ZONE);
-    await runTenantScopedJob({
-      jobName: 'ai-memory-cleanup',
-      logger: this.logger,
-      iterator: this.activeLocationIteratorPort,
-      alertPolicy: {
-        failureRateWarnThreshold: 0.05,
-        failedLocationsWarnThreshold: 1,
-      },
-      executeForLocation: async ({ localId }) => {
-        return this.aiAssistantMemoryMaintenancePort.cleanupForLocalBeforeDate(localId, start);
-      },
-    });
+    const retentionCutoff = new Date(
+      now.getTime() - AI_CONVERSATION_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const result = await this.aiAssistantMemoryMaintenancePort.cleanupBeforeDate(retentionCutoff);
+    if (result.aiMessagesDeleted > 0 || result.aiSessionsDeleted > 0) {
+      this.logger.log(
+        `AI retention cleanup removed ${result.aiSessionsDeleted} sessions and ${result.aiMessagesDeleted} messages`,
+      );
+    }
   }
 }

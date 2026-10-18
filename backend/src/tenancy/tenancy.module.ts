@@ -14,9 +14,10 @@ import { TenantConfigService } from './tenant-config.service';
 import { TenantController } from './tenant.controller';
 import { TenantPrismaService } from './tenant-prisma.service';
 import { TenantConfigReadAdapter } from './adapters/tenant-config-read.adapter';
+import { EngagementNotificationGatewayModule } from '../contexts/engagement/infrastructure/modules/engagement-notification-gateway.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, EngagementNotificationGatewayModule],
   providers: [
     { provide: TENANT_CONTEXT_PORT, useClass: AlsTenantContextAdapter },
     { provide: TENANT_CONTEXT_RUNNER_PORT, useClass: AlsTenantContextRunnerAdapter },

@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaAppointmentInvoiceAdapter } from '@/contexts/commerce/infrastructure/prisma/prisma-appointment-invoice.adapter';
 
@@ -128,6 +128,46 @@ test('invoice adapter does not issue an invoice for an appointment outside the r
       local: { select: { name: true, brandId: true } },
     },
   });
+});
+
+test('invoice adapter rejects cancelled and no-show appointments before reading fiscal data', async () => {
+  for (const status of ['cancelled', 'no_show'] as const) {
+    const transactionClient = {
+      invoice: { findFirst: async () => null },
+      appointment: {
+        findFirst: async () => ({
+          id: `appointment-${status}`,
+          status,
+          local: { name: 'Centro', brandId: 'brand-1' },
+        }),
+      },
+      brandLegalSettings: {
+        findUnique: async () => {
+          throw new Error('fiscal data should not be read');
+        },
+      },
+    };
+    const prisma = {
+      invoice: { findFirst: async () => null },
+      $transaction: async (operation: (tx: typeof transactionClient) => Promise<unknown>) =>
+        operation(transactionClient),
+    };
+    const tenantConfig = {
+      getEffectiveConfig: async () => ({ invoicing: { enabled: true } }),
+    };
+    const adapter = new PrismaAppointmentInvoiceAdapter(prisma as never, tenantConfig as never);
+
+    await assert.rejects(
+      () => adapter.issueForAppointment({
+        brandId: 'brand-1',
+        localId: 'local-1',
+        timezone: 'Europe/Madrid',
+        appointmentId: `appointment-${status}`,
+        actorUserId: 'admin-1',
+      }),
+      BadRequestException,
+    );
+  }
 });
 
 test('invoice adapter retries a sequence collision caused by concurrent first invoices', async () => {

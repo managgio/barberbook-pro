@@ -9,3 +9,4 @@
 - [ADR-0007 Aggregate Boundaries](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0007-aggregate-boundaries.md)
 - [ADR-0008 Prisma Tenant Guard](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0008-prisma-tenant-guard.md)
 - [ADR-0009 Post-Migration Boundary Enforcement](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0009-post-migration-boundary-enforcement.md)
+- [ADR-0010 Gateway SMS global con remitente único](/Users/carlos/Projects/managgio/app/backend/docs/adr/ADR-0010-global-sms-gateway.md)

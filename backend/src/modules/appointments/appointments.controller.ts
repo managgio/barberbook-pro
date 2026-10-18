@@ -57,6 +57,14 @@ export class AppointmentsController {
     return [...new Set(values)];
   }
 
+  private parseServiceIds(raw?: string) {
+    const ids = this.parseBoundedIds(raw, 'serviceIds');
+    if (ids && ids.length > 6) {
+      throw new BadRequestException('Puedes combinar un máximo de 6 servicios.');
+    }
+    return ids;
+  }
+
   private parseIsoDateOnly(value: string, fieldName: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       throw new BadRequestException(`Formato inválido en ${fieldName}; usa YYYY-MM-DD.`);
@@ -88,9 +96,16 @@ export class AppointmentsController {
     @Query('barberId') barberId: string,
     @Query('date') date: string,
     @Query('serviceId') serviceId?: string,
+    @Query('serviceIds') serviceIds?: string,
     @Query('appointmentIdToIgnore') appointmentIdToIgnore?: string,
   ) {
-    return this.appointmentsFacade.getAvailability(barberId, date, serviceId, appointmentIdToIgnore);
+    return this.appointmentsFacade.getAvailability(
+      barberId,
+      date,
+      serviceId,
+      appointmentIdToIgnore,
+      this.parseServiceIds(serviceIds),
+    );
   }
 
   @Get('availability-batch')
@@ -98,11 +113,13 @@ export class AppointmentsController {
     @Query('date') date?: string,
     @Query('barberIds') barberIds?: string,
     @Query('serviceId') serviceId?: string,
+    @Query('serviceIds') serviceIds?: string,
     @Query('appointmentIdToIgnore') appointmentIdToIgnore?: string,
   ) {
     const normalizedBarberIds = this.parseBoundedIds(barberIds, 'barberIds');
     return this.appointmentsFacade.getAvailabilityBatch(date, normalizedBarberIds, {
       serviceId,
+      serviceIds: this.parseServiceIds(serviceIds),
       appointmentIdToIgnore,
     });
   }

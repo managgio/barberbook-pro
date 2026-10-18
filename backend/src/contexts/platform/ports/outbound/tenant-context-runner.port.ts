@@ -3,6 +3,7 @@ export const TENANT_CONTEXT_RUNNER_PORT = Symbol('TENANT_CONTEXT_RUNNER_PORT');
 export type TenantExecutionContext = {
   brandId: string;
   localId: string;
+  timezone?: string;
   subdomain?: string | null;
   isPlatform?: boolean;
 };

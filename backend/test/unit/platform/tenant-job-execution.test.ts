@@ -21,9 +21,9 @@ const buildLogger = () => {
 test('runTenantScopedJob aggregates metrics across locations', async () => {
   const { logger, logs, warns, errors } = buildLogger();
   const iterator = {
-    forEachActiveLocation: async (callback: (context: { brandId: string; localId: string }) => Promise<void>) => {
-      await callback({ brandId: 'brand-1', localId: 'local-1' });
-      await callback({ brandId: 'brand-2', localId: 'local-2' });
+    forEachActiveLocation: async (callback: (context: { brandId: string; localId: string; timezone: string }) => Promise<void>) => {
+      await callback({ brandId: 'brand-1', localId: 'local-1', timezone: 'Europe/Madrid' });
+      await callback({ brandId: 'brand-2', localId: 'local-2', timezone: 'Atlantic/Canary' });
     },
   };
 
@@ -51,9 +51,9 @@ test('runTenantScopedJob aggregates metrics across locations', async () => {
 test('runTenantScopedJob continues after local failure and logs structured error', async () => {
   const { logger, warns, errors } = buildLogger();
   const iterator = {
-    forEachActiveLocation: async (callback: (context: { brandId: string; localId: string }) => Promise<void>) => {
-      await callback({ brandId: 'brand-1', localId: 'local-1' });
-      await callback({ brandId: 'brand-2', localId: 'local-2' });
+    forEachActiveLocation: async (callback: (context: { brandId: string; localId: string; timezone: string }) => Promise<void>) => {
+      await callback({ brandId: 'brand-1', localId: 'local-1', timezone: 'Europe/Madrid' });
+      await callback({ brandId: 'brand-2', localId: 'local-2', timezone: 'Atlantic/Canary' });
     },
   };
 
@@ -84,9 +84,9 @@ test('runTenantScopedJob continues after local failure and logs structured error
 test('runTenantScopedJob emits warn when thresholds are exceeded', async () => {
   const { logger, warns } = buildLogger();
   const iterator = {
-    forEachActiveLocation: async (callback: (context: { brandId: string; localId: string }) => Promise<void>) => {
-      await callback({ brandId: 'brand-1', localId: 'local-1' });
-      await callback({ brandId: 'brand-2', localId: 'local-2' });
+    forEachActiveLocation: async (callback: (context: { brandId: string; localId: string; timezone: string }) => Promise<void>) => {
+      await callback({ brandId: 'brand-1', localId: 'local-1', timezone: 'Europe/Madrid' });
+      await callback({ brandId: 'brand-2', localId: 'local-2', timezone: 'Atlantic/Canary' });
     },
   };
 

@@ -51,6 +51,7 @@ export type SiteSettings = {
   appointments: {
     cancellationCutoffHours: number;
     slotIntervalMinutes?: number;
+    multiServiceEnabled: boolean;
   };
   services: {
     categoriesEnabled: boolean;
@@ -113,6 +114,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   appointments: {
     cancellationCutoffHours: 0,
     slotIntervalMinutes: 15,
+    multiServiceEnabled: false,
   },
   services: {
     categoriesEnabled: false,

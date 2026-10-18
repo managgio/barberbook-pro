@@ -1,6 +1,10 @@
-import { IsBoolean, IsDateString, IsEmail, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AppointmentProductDto } from '../../appointments/dto/appointment-product.dto';
+import {
+  APPOINTMENT_REMINDER_CHANNELS,
+  AppointmentReminderChannel,
+} from '../../../shared/domain/appointment-reminder-channel';
 
 export class CreateStripeCheckoutDto {
   @IsOptional()
@@ -12,6 +16,13 @@ export class CreateStripeCheckoutDto {
 
   @IsString()
   serviceId!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @ArrayUnique()
+  @IsString({ each: true })
+  serviceIds?: string[];
 
   @IsDateString()
   startDateTime!: string;
@@ -40,6 +51,13 @@ export class CreateStripeCheckoutDto {
   @IsString()
   @MaxLength(40)
   guestPhone?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(APPOINTMENT_REMINDER_CHANNELS.length)
+  @ArrayUnique()
+  @IsIn(APPOINTMENT_REMINDER_CHANNELS, { each: true })
+  reminderChannels?: AppointmentReminderChannel[];
 
   @IsOptional()
   @IsBoolean()

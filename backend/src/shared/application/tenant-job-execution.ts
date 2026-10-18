@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 export type TenantJobLocationContext = {
   brandId: string;
   localId: string;
+  timezone: string;
 };
 
 export type TenantJobMetrics = Record<string, number>;

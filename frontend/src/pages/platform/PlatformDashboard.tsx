@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { es } from 'date-fns/locale';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { cn } from '@/lib/utils';
+import { isLocalDevelopmentHostname } from '@/components/platform/platformSmsTest';
 import {
   Bar,
   BarChart,
@@ -114,6 +115,9 @@ type PlatformBrandSummary = {
 };
 const EMPTY_BRANDS: PlatformBrandSummary[] = [];
 const EMPTY_USAGE_SERIES: PlatformUsageSeriesPoint[] = [];
+const PlatformSmsTestPanel = import.meta.env.DEV
+  ? lazy(() => import('@/components/platform/PlatformSmsTestPanel'))
+  : null;
 
 const PlatformDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -123,6 +127,10 @@ const PlatformDashboard: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const queryClient = useQueryClient();
   const showCrmShortcut = import.meta.env.PROD && isProductionManaggioHost();
+  const showLocalSmsTest = import.meta.env.DEV
+    && user?.isPlatformAdmin === true
+    && typeof window !== 'undefined'
+    && isLocalDevelopmentHostname(window.location.hostname);
 
   const brandsQuery = useQuery<PlatformBrandSummary[]>({
     queryKey: queryKeys.platformBrands(),
@@ -244,9 +252,9 @@ const PlatformDashboard: React.FC = () => {
     () => usageMetrics?.openai.series ?? EMPTY_USAGE_SERIES,
     [usageMetrics?.openai.series],
   );
-  const twilioSeries = useMemo(
-    () => usageMetrics?.twilio.series ?? EMPTY_USAGE_SERIES,
-    [usageMetrics?.twilio.series],
+  const messagingSeries = useMemo(
+    () => usageMetrics?.messaging.series ?? EMPTY_USAGE_SERIES,
+    [usageMetrics?.messaging.series],
   );
   const imagekitSeries = useMemo(
     () => usageMetrics?.imagekit.series ?? EMPTY_USAGE_SERIES,
@@ -254,29 +262,33 @@ const PlatformDashboard: React.FC = () => {
   );
   const thresholds = usageMetrics?.thresholds;
   const openaiThreshold = thresholds?.openaiDailyCostUsd ? toDisplayCurrency(thresholds.openaiDailyCostUsd) : null;
-  const twilioThreshold = thresholds?.twilioDailyCostUsd ? toDisplayCurrency(thresholds.twilioDailyCostUsd) : null;
+  const messagingThreshold = thresholds?.messagingDailyCostUsd
+    ? toDisplayCurrency(thresholds.messagingDailyCostUsd)
+    : null;
   const openaiSeriesDisplay = useMemo(
     () => openaiSeries.map((entry) => ({ ...entry, costUsd: toDisplayCurrency(entry.costUsd) })),
     [openaiSeries],
   );
-  const twilioSeriesDisplay = useMemo(
-    () => twilioSeries.map((entry) => ({ ...entry, costUsd: toDisplayCurrency(entry.costUsd) })),
-    [twilioSeries],
+  const messagingSeriesDisplay = useMemo(
+    () => messagingSeries.map((entry) => ({ ...entry, costUsd: toDisplayCurrency(entry.costUsd) })),
+    [messagingSeries],
   );
 
   const openaiSummary = useMemo(
     () => summarizeSeries(openaiSeriesDisplay, 'costUsd', openaiThreshold),
     [openaiSeriesDisplay, openaiThreshold],
   );
-  const twilioSummary = useMemo(
-    () => summarizeSeries(twilioSeriesDisplay, 'costUsd', twilioThreshold),
-    [twilioSeriesDisplay, twilioThreshold],
+  const messagingSummary = useMemo(
+    () => summarizeSeries(messagingSeriesDisplay, 'costUsd', messagingThreshold),
+    [messagingSeriesDisplay, messagingThreshold],
   );
-  const twilioMessagesTotal = useMemo(
-    () => twilioSeriesDisplay.reduce((acc, entry) => acc + (entry.messagesCount || 0), 0),
-    [twilioSeriesDisplay],
+  const messagingMessagesTotal = useMemo(
+    () => messagingSeriesDisplay.reduce((acc, entry) => acc + (entry.messagesCount || 0), 0),
+    [messagingSeriesDisplay],
   );
-  const twilioCostPerMessage = twilioMessagesTotal > 0 ? twilioSummary.total / twilioMessagesTotal : 0;
+  const messagingCostPerMessage = messagingMessagesTotal > 0
+    ? messagingSummary.total / messagingMessagesTotal
+    : 0;
 
   const imagekitLatest = imagekitSeries[imagekitSeries.length - 1] || {
     storageUsedBytes: 0,
@@ -300,15 +312,15 @@ const PlatformDashboard: React.FC = () => {
     [openaiSeriesDisplay],
   );
 
-  const twilioChartData = useMemo(
+  const messagingChartData = useMemo(
     () =>
-      twilioSeriesDisplay.map((entry) => ({
+      messagingSeriesDisplay.map((entry) => ({
         dateKey: entry.dateKey,
         label: formatDateLabel(entry.dateKey),
         costUsd: entry.costUsd,
         messagesCount: entry.messagesCount,
       })),
-    [twilioSeriesDisplay],
+    [messagingSeriesDisplay],
   );
 
   return (
@@ -365,6 +377,12 @@ const PlatformDashboard: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {showLocalSmsTest && PlatformSmsTestPanel && (
+        <Suspense fallback={null}>
+          <PlatformSmsTestPanel />
+        </Suspense>
+      )}
 
       <div className="space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -478,43 +496,46 @@ const PlatformDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <PhoneCall className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-base">Twilio · SMS</CardTitle>
+                  <CardTitle className="text-base">SMS</CardTitle>
+                  <Badge variant="outline" className="font-mono text-[10px] tracking-wide">MANAGGIO</Badge>
                 </div>
-                {twilioThreshold ? (
-                  <Badge variant={twilioSummary.peakValue >= twilioThreshold ? 'destructive' : 'secondary'}>
-                    Límite diario {formatMoney(twilioThreshold)}
+                {messagingThreshold ? (
+                  <Badge variant={messagingSummary.peakValue >= messagingThreshold ? 'destructive' : 'secondary'}>
+                    Límite diario {formatMoney(messagingThreshold)}
                   </Badge>
                 ) : null}
               </div>
-              <p className="text-xs text-muted-foreground">Gasto y volumen de mensajes enviados.</p>
+              <p className="text-xs text-muted-foreground">
+                Gasto y volumen de mensajes enviados con el remitente global de la plataforma.
+              </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Gasto total</p>
-                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : formatMoney(twilioSummary.total)}</p>
+                  <p className="text-lg font-semibold">{isUsageLoading ? '...' : formatMoney(messagingSummary.total)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Mensajes</p>
-                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : formatNumber(twilioMessagesTotal)}</p>
+                  <p className="text-lg font-semibold">{isUsageLoading ? '...' : formatNumber(messagingMessagesTotal)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Coste/mensaje</p>
                   <p className="text-lg font-semibold">
-                    {isUsageLoading || twilioMessagesTotal === 0 ? '—' : formatMoney(twilioCostPerMessage, 4)}
+                    {isUsageLoading || messagingMessagesTotal === 0 ? '...' : formatMoney(messagingCostPerMessage, 4)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Pico diario</p>
                   <p className="text-sm font-semibold text-foreground">
-                    {isUsageLoading || !twilioSummary.peakDate
+                    {isUsageLoading || !messagingSummary.peakDate
                       ? '—'
-                      : `${formatMoney(twilioSummary.peakValue)} · ${formatDateLabel(twilioSummary.peakDate)}`}
+                      : `${formatMoney(messagingSummary.peakValue)} · ${formatDateLabel(messagingSummary.peakDate)}`}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Anomalías</p>
-                  <p className="text-lg font-semibold">{isUsageLoading ? '—' : twilioSummary.anomalies}</p>
+                  <p className="text-lg font-semibold">{isUsageLoading ? '...' : messagingSummary.anomalies}</p>
                 </div>
               </div>
               <div className="h-64">
@@ -522,7 +543,7 @@ const PlatformDashboard: React.FC = () => {
                   <div className="text-sm text-muted-foreground">Cargando métricas...</div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={twilioChartData} margin={{ top: 16, right: 24, left: 0, bottom: 0 }}>
+                    <LineChart data={messagingChartData} margin={{ top: 16, right: 24, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="label" />
                       <YAxis yAxisId="cost" tickFormatter={(value) => formatCompact(Number(value))} />
@@ -550,10 +571,10 @@ const PlatformDashboard: React.FC = () => {
                         strokeWidth={2}
                         dot={false}
                       />
-                      {twilioThreshold ? (
+                      {messagingThreshold ? (
                         <ReferenceLine
                           yAxisId="cost"
-                          y={twilioThreshold}
+                          y={messagingThreshold}
                           stroke="#ef4444"
                           strokeDasharray="4 4"
                         />

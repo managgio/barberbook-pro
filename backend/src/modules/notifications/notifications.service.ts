@@ -136,10 +136,6 @@ export class NotificationsService {
     return this.deliveryHistory.retryForCurrentTenant(deliveryId);
   }
 
-  sendTestSms(phone: string, message?: string | null) {
-    return this.notificationManagementPort.sendTestSms(phone, message);
-  }
-
   sendTestWhatsapp(phone: string, options?: EngagementTestWhatsappInput) {
     return this.notificationManagementPort.sendTestWhatsapp(phone, options);
   }

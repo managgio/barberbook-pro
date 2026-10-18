@@ -96,3 +96,16 @@ test('an explicitly empty email section removes the stored SMTP configuration', 
 
   assert.equal(result.email, undefined);
 });
+
+test('platform config ignores and never echoes provider-owned messaging fields', () => {
+  const prepared = preparePlatformConfigUpdate(
+    { branding: { name: 'Ronin' }, twilio: { authToken: 'stored-secret' } },
+    { branding: { name: 'Ronin 2' }, twilio: { smsSenderId: 'RONIN' } },
+  );
+
+  assert.deepEqual(prepared, { branding: { name: 'Ronin 2' } });
+  assert.deepEqual(redactPlatformEmailSecret({
+    branding: { name: 'Ronin' },
+    twilio: { authToken: 'must-not-leak' },
+  }), { branding: { name: 'Ronin' } });
+});

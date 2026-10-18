@@ -6,9 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
-import { AdminStripeConfig, BreakRange, DayKey, ShopSchedule, SiteSettings } from '@/data/types';
+import { AdminStripeConfig, BreakRange, DayKey, InvoiceLegalSettings, ShopSchedule, SiteSettings } from '@/data/types';
 import { getShopSchedule, updateShopSchedule } from '@/data/api/schedules';
 import { updateSiteSettings } from '@/data/api/settings';
+import { getAdminInvoiceLegalSettings, updateAdminInvoiceLegalSettings } from '@/data/api/legal';
 import { createAdminStripeConnect, getAdminStripeConfig, updateAdminStripeConfig } from '@/data/api/payments';
 import { useToast } from '@/hooks/use-toast';
 import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
@@ -44,6 +45,7 @@ import {
   Boxes,
   CreditCard,
   UserCircle,
+  FileText,
 } from 'lucide-react';
 
 const DAY_KEYS: DayKey[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -76,6 +78,8 @@ const AdminSettings: React.FC = () => {
   const copy = useBusinessCopy();
   const { t, language } = useI18n();
   const productsModuleEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('stock');
+  const invoicingEnabled = tenant?.config?.invoicing?.enabled === true;
+  const multiServiceCapabilityEnabled = tenant?.config?.features?.multiServiceBookingEnabled === true;
   const [settings, setSettings] = useState<SiteSettings>(() => cloneSettings(DEFAULT_SITE_SETTINGS));
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
@@ -83,6 +87,15 @@ const AdminSettings: React.FC = () => {
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
   const [isStripeSaving, setIsStripeSaving] = useState(false);
   const [isStripeConnecting, setIsStripeConnecting] = useState(false);
+  const [isSavingInvoiceLegal, setIsSavingInvoiceLegal] = useState(false);
+  const [invoiceLegal, setInvoiceLegal] = useState<InvoiceLegalSettings>({
+    legalOwnerName: '',
+    legalOwnerTaxId: '',
+    legalOwnerAddress: '',
+    legalContactEmail: '',
+    legalContactPhone: '',
+    country: 'ES',
+  });
   const [newOverflowDate, setNewOverflowDate] = useState('');
   const [newBreakDate, setNewBreakDate] = useState('');
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
@@ -109,6 +122,11 @@ const AdminSettings: React.FC = () => {
     enabled: Boolean(currentLocationId),
     queryFn: getAdminStripeConfig,
   });
+  const invoiceLegalQuery = useQuery<InvoiceLegalSettings>({
+    queryKey: queryKeys.adminInvoiceLegalSettings(tenant?.brand?.id),
+    enabled: Boolean(currentLocationId && invoicingEnabled),
+    queryFn: getAdminInvoiceLegalSettings,
+  });
   const isLoading = settingsQuery.isLoading;
   const isScheduleLoading = scheduleQuery.isLoading;
   const isStripeLoading = stripeConfigQuery.isLoading;
@@ -127,6 +145,11 @@ const AdminSettings: React.FC = () => {
     if (!scheduleQuery.data) return;
     setShopSchedule(scheduleQuery.data);
   }, [scheduleQuery.data]);
+
+  useEffect(() => {
+    if (!invoiceLegalQuery.data) return;
+    setInvoiceLegal(invoiceLegalQuery.data);
+  }, [invoiceLegalQuery.data]);
 
   useEffect(() => {
     if (!settingsQuery.error) return;
@@ -276,6 +299,47 @@ const AdminSettings: React.FC = () => {
       });
     } finally {
       setIsStripeConnecting(false);
+    }
+  };
+
+  const handleSaveInvoiceLegal = async () => {
+    if (isSavingInvoiceLegal) return;
+    if (
+      !invoiceLegal.legalOwnerName.trim()
+      || !invoiceLegal.legalOwnerTaxId?.trim()
+      || !invoiceLegal.legalOwnerAddress?.trim()
+    ) {
+      toast({
+        title: t('admin.settings.invoicing.validationTitle'),
+        description: t('admin.settings.invoicing.validationDescription'),
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsSavingInvoiceLegal(true);
+    try {
+      const updated = await updateAdminInvoiceLegalSettings({
+        legalOwnerName: invoiceLegal.legalOwnerName.trim(),
+        legalOwnerTaxId: invoiceLegal.legalOwnerTaxId.trim(),
+        legalOwnerAddress: invoiceLegal.legalOwnerAddress.trim(),
+        legalContactEmail: invoiceLegal.legalContactEmail?.trim() || null,
+        legalContactPhone: invoiceLegal.legalContactPhone?.trim() || null,
+        country: invoiceLegal.country.trim().toUpperCase() || 'ES',
+      });
+      setInvoiceLegal(updated);
+      await invoiceLegalQuery.refetch();
+      toast({
+        title: t('admin.settings.invoicing.savedTitle'),
+        description: t('admin.settings.invoicing.savedDescription'),
+      });
+    } catch (error) {
+      toast({
+        title: t('admin.settings.toast.saveErrorTitle'),
+        description: error instanceof Error ? error.message : t('admin.settings.toast.genericSaveError'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingInvoiceLegal(false);
     }
   };
 
@@ -722,6 +786,121 @@ const AdminSettings: React.FC = () => {
         </div>
 
         <TabsContent value="identity" className="mt-0 space-y-6">
+      {invoicingEnabled && (
+        <Card variant="elevated" className="border-primary/20">
+          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                {t('admin.settings.invoicing.title')}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {t('admin.settings.invoicing.description')}
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void handleSaveInvoiceLegal()}
+              disabled={invoiceLegalQuery.isLoading || isSavingInvoiceLegal}
+              className="md:shrink-0"
+            >
+              {isSavingInvoiceLegal && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('admin.settings.invoicing.save')}
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {invoiceLegalQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('admin.settings.invoicing.loading')}
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice-legal-name">{t('admin.settings.invoicing.legalName')}</Label>
+                    <Input
+                      id="invoice-legal-name"
+                      value={invoiceLegal.legalOwnerName}
+                      onChange={(event) => setInvoiceLegal((current) => ({
+                        ...current,
+                        legalOwnerName: event.target.value,
+                      }))}
+                      maxLength={160}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice-tax-id">{t('admin.settings.invoicing.taxId')}</Label>
+                    <Input
+                      id="invoice-tax-id"
+                      value={invoiceLegal.legalOwnerTaxId || ''}
+                      onChange={(event) => setInvoiceLegal((current) => ({
+                        ...current,
+                        legalOwnerTaxId: event.target.value,
+                      }))}
+                      maxLength={80}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-address">{t('admin.settings.invoicing.address')}</Label>
+                  <Input
+                    id="invoice-address"
+                    value={invoiceLegal.legalOwnerAddress || ''}
+                    onChange={(event) => setInvoiceLegal((current) => ({
+                      ...current,
+                      legalOwnerAddress: event.target.value,
+                    }))}
+                    maxLength={200}
+                  />
+                </div>
+                <div className="grid gap-4 md:grid-cols-[1fr_1fr_100px]">
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice-email">{t('admin.settings.invoicing.email')}</Label>
+                    <Input
+                      id="invoice-email"
+                      type="email"
+                      value={invoiceLegal.legalContactEmail || ''}
+                      onChange={(event) => setInvoiceLegal((current) => ({
+                        ...current,
+                        legalContactEmail: event.target.value,
+                      }))}
+                      maxLength={120}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice-phone">{t('admin.settings.invoicing.phone')}</Label>
+                    <Input
+                      id="invoice-phone"
+                      value={invoiceLegal.legalContactPhone || ''}
+                      onChange={(event) => setInvoiceLegal((current) => ({
+                        ...current,
+                        legalContactPhone: event.target.value,
+                      }))}
+                      maxLength={40}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invoice-country">{t('admin.settings.invoicing.country')}</Label>
+                    <Input
+                      id="invoice-country"
+                      value={invoiceLegal.country || 'ES'}
+                      onChange={(event) => setInvoiceLegal((current) => ({
+                        ...current,
+                        country: event.target.value.toUpperCase().slice(0, 2),
+                      }))}
+                      maxLength={2}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('admin.settings.invoicing.requiredHint')}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
       {/* Branding & Location */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card variant="elevated">
@@ -1078,6 +1257,45 @@ const AdminSettings: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="operations" className="mt-0 space-y-6">
+
+      {multiServiceCapabilityEnabled && (
+        <Card variant="elevated" className="border-primary/20">
+          <CardHeader className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              <CardTitle>{t('admin.settings.multiService.title')}</CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t('admin.settings.multiService.description')}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/30 px-4 py-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {t('admin.settings.multiService.toggleTitle')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('admin.settings.multiService.toggleDescription')}
+                </p>
+              </div>
+              <Switch
+                checked={settings.appointments.multiServiceEnabled === true}
+                onCheckedChange={(checked) =>
+                  setSettings((current) => ({
+                    ...current,
+                    appointments: {
+                      ...current.appointments,
+                      multiServiceEnabled: checked,
+                    },
+                  }))
+                }
+                disabled={isLoading}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Payments */}
       {stripeConfig && stripeVisible && (

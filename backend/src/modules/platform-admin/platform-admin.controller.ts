@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { PlatformAdminService } from './platform-admin.service';
 import { CreateBrandDto } from './dto/create-brand.dto';
@@ -14,6 +15,8 @@ import { PauseTenantI18nDto } from './dto/pause-tenant-i18n.dto';
 import { UpdateCriticalTraceObservabilityDto } from './dto/update-critical-trace-observability.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { VerifyBrandEmailConfigDto } from './dto/verify-brand-email-config.dto';
+import { PlatformSmsTestService } from '../notifications/platform-sms-test.service';
+import { TestSmsDto } from '../notifications/dto/test-sms.dto';
 
 @Controller('platform')
 @UseGuards(PlatformAdminGuard)
@@ -23,6 +26,7 @@ export class PlatformAdminController {
     private readonly observability: ObservabilityService,
     private readonly i18nObservability: PlatformI18nObservabilityService,
     private readonly notifications: NotificationsService,
+    private readonly platformSmsTest: PlatformSmsTestService,
   ) {}
 
   private parseWindowMinutes(raw?: string) {
@@ -51,6 +55,16 @@ export class PlatformAdminController {
   @Post('metrics/refresh')
   refreshUsageMetrics(@Query('window') window?: string) {
     return this.platformService.refreshUsageMetrics(this.parseMetricsWindowDays(window));
+  }
+
+  @Post('notifications/test-sms')
+  sendTestSms(@Body() data: TestSmsDto, @Req() request: Request) {
+    return this.platformSmsTest.send(
+      data.phone,
+      data.message || null,
+      request.hostname,
+      request.ip || request.socket.remoteAddress,
+    );
   }
 
   @Get('observability/web-vitals')
@@ -90,6 +104,7 @@ export class PlatformAdminController {
     @Query('brandId') brandId?: string,
     @Query('localId') localId?: string,
     @Query('channel') channel?: string,
+    @Query('includeResolved') includeResolved?: string,
   ) {
     return this.notifications.listPlatformNotificationDeliveries({
       page: Math.max(1, Math.floor(Number(page) || 1)),
@@ -99,6 +114,7 @@ export class PlatformAdminController {
       brandId,
       localId,
       channel,
+      includeResolved: includeResolved === 'true',
     });
   }
 

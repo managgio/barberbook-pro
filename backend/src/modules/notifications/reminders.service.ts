@@ -16,6 +16,15 @@ import {
 import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
 import { TENANT_CONFIG_READ_PORT, TenantConfigReadPort } from '../../shared/application/tenant-config-read.port';
 import { runTenantScopedJob } from '../../shared/application/tenant-job-execution';
+import { canSendRoutineSms } from '../../contexts/engagement/domain/services/sms-delivery-runtime.policy';
+import {
+  ENGAGEMENT_SMS_GATEWAY_PORT,
+  EngagementSmsGatewayPort,
+} from '../../contexts/engagement/ports/outbound/sms-gateway.port';
+import {
+  ENGAGEMENT_WHATSAPP_GATEWAY_PORT,
+  EngagementWhatsappGatewayPort,
+} from '../../contexts/engagement/ports/outbound/whatsapp-gateway.port';
 
 const REMINDER_OFFSET_MS = 24 * 60 * 60 * 1000; // 24h
 const REMINDER_WINDOW_MS = 10 * 60 * 1000; // 10 minutes window to avoid repeats if job runs often
@@ -37,6 +46,10 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     private readonly reminderPort: EngagementNotificationReminderPort,
     @Inject(ENGAGEMENT_NOTIFICATION_DELIVERY_QUEUE_PORT)
     private readonly deliveryQueuePort: EngagementNotificationDeliveryQueuePort,
+    @Inject(ENGAGEMENT_SMS_GATEWAY_PORT)
+    private readonly smsGateway: EngagementSmsGatewayPort,
+    @Inject(ENGAGEMENT_WHATSAPP_GATEWAY_PORT)
+    private readonly whatsappGateway: EngagementWhatsappGatewayPort,
   ) {
     this.runNotificationRemindersUseCase = new RunNotificationRemindersUseCase(
       this.reminderPort,
@@ -85,8 +98,11 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
 
   private async handleRemindersForLocal() {
     const config = await this.tenantConfigReadPort.getEffectiveConfig();
-    const smsEnabled = config.notificationPrefs?.sms !== false;
-    const whatsappEnabled = config.notificationPrefs?.whatsapp !== false;
+    const smsEnabled = config.notificationPrefs?.sms !== false
+      && canSendRoutineSms(process.env.NODE_ENV)
+      && this.smsGateway.isReadyForRoutineDelivery();
+    const whatsappEnabled = config.notificationPrefs?.whatsapp !== false
+      && this.whatsappGateway.isReadyForRoutineDelivery();
     if (!smsEnabled && !whatsappEnabled) {
       return 0;
     }

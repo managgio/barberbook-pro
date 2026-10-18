@@ -1,12 +1,27 @@
-import { Body, Controller, Get, Headers, Param, Post, Req, RawBodyRequest, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  Param,
+  Post,
+  RawBodyRequest,
+  Req,
+} from '@nestjs/common';
 import { Request } from 'express';
+import { AuthService } from '../../auth/auth.service';
 import { PaymentsService } from './payments.service';
 import { CreateStripeCheckoutDto } from './dto/create-stripe-checkout.dto';
 import { buildBaseUrl } from './payments.utils';
 
 @Controller('payments/stripe')
 export class PaymentsPublicController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get('availability')
   getAvailability() {
@@ -14,9 +29,25 @@ export class PaymentsPublicController {
   }
 
   @Post('checkout')
-  createCheckout(@Body() data: CreateStripeCheckoutDto, @Req() req: Request) {
+  async createCheckout(@Body() data: CreateStripeCheckoutDto, @Req() req: Request) {
+    const user = await this.authService.resolveUserFromRequest(req);
+    const payload: CreateStripeCheckoutDto = { ...data };
+    if (user) {
+      if (payload.userId && payload.userId !== user.id) {
+        throw new ForbiddenException('No puedes crear pagos para otro cliente.');
+      }
+      payload.userId = user.id;
+      payload.guestName = undefined;
+      payload.guestContact = undefined;
+      payload.guestEmail = undefined;
+      payload.guestPhone = undefined;
+      payload.reminderChannels = undefined;
+    } else if (payload.userId) {
+      throw new BadRequestException('No puedes asignar userId en un pago como invitado.');
+    }
+
     const baseUrl = buildBaseUrl(req);
-    return this.paymentsService.createStripeCheckoutSession(data, baseUrl, {
+    return this.paymentsService.createStripeCheckoutSession(payload, baseUrl, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });

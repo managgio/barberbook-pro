@@ -208,6 +208,34 @@ test('maintenance adapter expires an earlier-slot request when its appointment s
   assert.equal(updates[0].data.earlierSlotRequested, false);
 });
 
+test('maintenance adapter uses the full multi-service duration before completing an appointment', async () => {
+  const updates: any[] = [];
+  const adapter = new ModuleBookingMaintenanceAdapter(
+    {
+      appointment: {
+        findMany: async () => [{
+          id: 'appt-multi',
+          status: 'scheduled',
+          startDateTime: new Date(Date.now() - 45 * 60_000),
+          totalDurationMinutes: 60,
+          service: { duration: 30 },
+        }],
+        update: async (params: any) => {
+          updates.push(params);
+          return params;
+        },
+      },
+    } as any,
+    { log: async () => undefined } as any,
+    { sendAppointmentEmail: async () => undefined } as any,
+    { execute: async () => ({ failures: [] }) } as any,
+    { getRequestContext: () => requestContext } as any,
+  );
+
+  assert.equal(await adapter.syncStatusesForAllAppointments(), 0);
+  assert.equal(updates.length, 0);
+});
+
 test('maintenance adapter sends payment confirmation email when appointment exists', async () => {
   const emailCalls: any[] = [];
   const adapter = new ModuleBookingMaintenanceAdapter(

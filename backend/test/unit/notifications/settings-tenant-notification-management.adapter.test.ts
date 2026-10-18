@@ -4,7 +4,6 @@ import { SettingsTenantNotificationManagementAdapter } from '@/modules/notificat
 import { DEFAULT_SITE_SETTINGS } from '@/modules/settings/settings.types';
 import {
   describeEmailDeliveryError,
-  describeTwilioDeliveryError,
   maskEmailIdentity,
 } from '@/modules/notifications/notification-delivery-diagnostic';
 
@@ -30,7 +29,7 @@ test('appointment email uses app timezone when formatting date/time', async () =
     }),
   } as any;
   const usageMetrics = {
-    recordTwilioUsage: async () => undefined,
+    recordSmsUsage: async () => undefined,
   } as any;
   const emailTransportFactory = {
     createTransport: () => ({
@@ -63,6 +62,7 @@ test('appointment email uses app timezone when formatting date/time', async () =
     usageMetrics,
     emailTransportFactory,
     twilioClientFactory,
+    {} as any,
     tenantContextPort,
   );
 
@@ -120,7 +120,7 @@ test('all HTML email templates use the effective tenant color and embedded tenan
   const adapter = new SettingsTenantNotificationManagementAdapter(
     settingsService,
     tenantConfig,
-    { recordTwilioUsage: async () => undefined } as any,
+    { recordSmsUsage: async () => undefined } as any,
     {
       createTransport: () => ({
         sendMail: async (payload: typeof sentMails[number]) => {
@@ -128,6 +128,7 @@ test('all HTML email templates use the effective tenant color and embedded tenan
         },
       }),
     } as any,
+    {} as any,
     {} as any,
     {
       getRequestContext: () => ({ brandId: 'brand-ronin', localId: 'local-ronin' }),
@@ -183,6 +184,7 @@ test('appointment email keeps a defensive missing-recipient result before SMTP',
       },
     } as any,
     {} as any,
+    {} as any,
     { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
   );
 
@@ -197,26 +199,6 @@ test('appointment email keeps a defensive missing-recipient result before SMTP',
     assert.equal(result.code, 'EMAIL_RECIPIENT_MISSING');
   }
   assert.equal(transportCreations, 0);
-});
-
-test('Twilio authentication failures are critical and never expose provider messages', () => {
-  const diagnostic = describeTwilioDeliveryError(
-    { code: 20003, status: 401, message: 'Authenticate with secret token abc123' },
-    'sms',
-  );
-
-  assert.equal(diagnostic.code, 'TWILIO_AUTH_FAILED');
-  assert.equal(diagnostic.retryable, false);
-  assert.equal(diagnostic.critical, true);
-  assert.doesNotMatch(diagnostic.safeMessage, /abc123/);
-});
-
-test('Twilio opted-out recipients fail without retry or critical promotion', () => {
-  const diagnostic = describeTwilioDeliveryError({ code: 21610 }, 'whatsapp');
-
-  assert.equal(diagnostic.code, 'RECIPIENT_OPTED_OUT');
-  assert.equal(diagnostic.retryable, false);
-  assert.equal(diagnostic.critical, false);
 });
 
 test('email transporter cache is isolated by local and refreshed when SMTP credentials change', async () => {
@@ -237,6 +219,7 @@ test('email transporter cache is isolated by local and refreshed when SMTP crede
         return { sendMail: async () => undefined };
       },
     } as any,
+    {} as any,
     {} as any,
     {
       getRequestContext: () => ({ brandId: 'brand-1', localId }),
@@ -290,6 +273,7 @@ test('SMTP rejected recipients are not reported as accepted deliveries', async (
       }),
     } as any,
     {} as any,
+    {} as any,
     { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
   );
 
@@ -330,6 +314,7 @@ test('invalid Gmail app password configuration fails without contacting SMTP', a
       },
     } as any,
     {} as any,
+    {} as any,
     { getRequestContext: () => ({ brandId: 'brand-ronin', localId: 'local-ronin' }) } as any,
   );
 
@@ -346,4 +331,175 @@ test('invalid Gmail app password configuration fails without contacting SMTP', a
     assert.equal(result.critical, true);
   }
   assert.equal(transportCreations, 0);
+});
+
+test('routine SMS is skipped locally without invoking the provider gateway', async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  let gatewayCalls = 0;
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    { getSettings: async () => DEFAULT_SITE_SETTINGS } as any,
+    { getEffectiveConfig: async () => ({ notificationPrefs: { sms: true } }) } as any,
+    { recordSmsUsage: async () => undefined } as any,
+    {} as any,
+    { send: async () => {
+      gatewayCalls += 1;
+      return { status: 'accepted', providerMessageId: 'SM_FORBIDDEN' };
+    } } as any,
+    {} as any,
+    { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
+  );
+
+  try {
+    const result = await adapter.sendBroadcastSms({
+      contact: { phone: '+34600111222' },
+      message: 'No debe enviarse',
+    });
+
+    assert.equal(result.status, 'skipped');
+    if (result.status === 'skipped') assert.equal(result.code, 'SMS_ROUTINE_DELIVERY_DISABLED');
+    assert.equal(gatewayCalls, 0);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
+test('production SMS uses the provider-neutral gateway and preserves the outbox delivery reference', async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  const gatewayCalls: Array<Record<string, unknown>> = [];
+  const usageCalls: Array<Record<string, unknown>> = [];
+  const settings = {
+    ...DEFAULT_SITE_SETTINGS,
+    branding: { ...DEFAULT_SITE_SETTINGS.branding, name: 'Ronin Blade & Brush', shortName: 'Ronin' },
+  };
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    { getSettings: async () => settings } as any,
+    {
+      getEffectiveConfig: async () => ({
+        notificationPrefs: { sms: true },
+        branding: { name: 'Ronin Blade & Brush', shortName: 'Ronin' },
+        twilio: { smsSenderId: 'TENANT-SENDER-IS-IGNORED' },
+      }),
+    } as any,
+    { recordSmsUsage: async (value: Record<string, unknown>) => usageCalls.push(value) } as any,
+    {} as any,
+    {
+      send: async (command: Record<string, unknown>) => {
+        gatewayCalls.push(command);
+        return {
+          status: 'accepted',
+          providerMessageId: 'SM_123',
+          cost: { amount: 0.08, currency: 'USD' },
+        };
+      },
+    } as any,
+    {} as any,
+    {
+      getRequestContext: () => ({
+        brandId: 'brand-ronin',
+        localId: 'local-ronin',
+        timezone: 'America/New_York',
+      }),
+    } as any,
+  );
+
+  try {
+    const result = await adapter.sendReminderSms(
+      { phone: '600 111 222', name: 'Cliente' },
+      { date: new Date('2026-10-18T08:00:00.000Z'), serviceName: 'Corte + Barba' },
+      { deliveryAttemptReference: 'attempt-reference-123' },
+    );
+
+    assert.equal(result.status, 'accepted');
+    assert.deepEqual(gatewayCalls, [{
+      to: '+34600111222',
+      body: gatewayCalls[0].body,
+      purpose: 'routine',
+      deliveryReference: 'attempt-reference-123',
+    }]);
+    assert.match(String(gatewayCalls[0].body), /^Ronin: recuerda tu cita/);
+    assert.match(String(gatewayCalls[0].body), /18\/10 a las 04:00/);
+    assert.match(String(gatewayCalls[0].body), /Corte \+ Barba/);
+    assert.deepEqual(usageCalls, [{ costUsd: 0.08, messages: 1 }]);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
+test('WhatsApp delivery also crosses a provider-neutral gateway', async () => {
+  const commands: Array<Record<string, any>> = [];
+  const usageCalls: Array<Record<string, unknown>> = [];
+  const settings = {
+    ...DEFAULT_SITE_SETTINGS,
+    branding: { ...DEFAULT_SITE_SETTINGS.branding, name: 'Ronin Blade & Brush', shortName: 'Ronin' },
+  };
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    { getSettings: async () => settings } as any,
+    { getEffectiveConfig: async () => ({ notificationPrefs: { whatsapp: true } }) } as any,
+    { recordWhatsappUsage: async (value: Record<string, unknown>) => usageCalls.push(value) } as any,
+    {} as any,
+    {} as any,
+    {
+      send: async (command: Record<string, any>) => {
+        commands.push(command);
+        return {
+          status: 'accepted',
+          providerMessageId: 'WA_123',
+          cost: { amount: 0.04, currency: 'USD' },
+        };
+      },
+    } as any,
+    { getRequestContext: () => ({ brandId: 'brand-ronin', localId: 'local-ronin' }) } as any,
+  );
+
+  const result = await adapter.sendReminderWhatsapp(
+    { phone: '600 111 222', name: 'Cliente' },
+    { date: new Date('2026-10-18T08:00:00.000Z'), serviceName: 'Corte + Barba' },
+  );
+
+  assert.equal(result.status, 'accepted');
+  assert.equal(commands[0].to, '+34600111222');
+  assert.equal(commands[0].templateData.brand, 'Ronin');
+  assert.equal(commands[0].templateData.name, 'Cliente');
+  assert.deepEqual(usageCalls, [{ costUsd: 0.04, messages: 1 }]);
+});
+
+test('production broadcast SMS rejects more than three segments before invoking the gateway', async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  let gatewayCalls = 0;
+  const adapter = new SettingsTenantNotificationManagementAdapter(
+    {} as any,
+    { getEffectiveConfig: async () => ({ notificationPrefs: { sms: true } }) } as any,
+    {} as any,
+    {} as any,
+    {
+      send: async () => {
+        gatewayCalls += 1;
+        return { status: 'accepted', providerMessageId: 'SM_NEVER' };
+      },
+    } as any,
+    {} as any,
+    { getRequestContext: () => ({ brandId: 'brand-1', localId: 'local-1' }) } as any,
+  );
+
+  try {
+    const result = await adapter.sendBroadcastSms({
+      contact: { phone: '+34600111222' },
+      message: 'á'.repeat(202),
+    });
+    assert.equal(result.status, 'failed');
+    if (result.status === 'failed') {
+      assert.equal(result.code, 'SMS_MESSAGE_TOO_LONG');
+      assert.equal(result.retryable, false);
+      assert.equal(result.critical, false);
+    }
+    assert.equal(gatewayCalls, 0);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
 });

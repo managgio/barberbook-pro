@@ -5,6 +5,7 @@ import {
   NotificationDeliveryStatus,
   Prisma,
 } from '@prisma/client';
+import { canManuallyRetryNotificationDelivery } from '../../contexts/engagement/domain/services/notification-delivery-manual-retry.policy';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
@@ -18,17 +19,16 @@ const INCIDENT_STATUSES = [
   NotificationDeliveryStatus.processing,
   NotificationDeliveryStatus.retrying,
   NotificationDeliveryStatus.failed,
+  NotificationDeliveryStatus.undelivered,
 ];
 const DISABLED_CODES = [
   'EMAIL_DISABLED',
   'SMS_DISABLED',
   'WHATSAPP_DISABLED',
+  'SMS_LOCAL_DELIVERY_BLOCKED',
+  'SMS_DISABLED_IN_LOCAL',
+  'SMS_ROUTINE_DELIVERY_DISABLED',
 ];
-const MISSING_RECIPIENT_CODES = [
-  'EMAIL_RECIPIENT_MISSING',
-  'PHONE_RECIPIENT_MISSING',
-];
-
 const maskRecipient = (channel: NotificationDeliveryChannel, address?: string | null) => {
   const normalized = (address || '').trim();
   if (!normalized) return null;
@@ -93,24 +93,49 @@ export class NotificationDeliveryHistoryService {
   async retryForCurrentTenant(deliveryId: string) {
     const localId = this.tenantContextPort.getRequestContext().localId;
     const enabledChannels = await this.getEnabledChannels();
-    const updated = await this.prisma.notificationDelivery.updateMany({
+    const candidate = await this.prisma.notificationDelivery.findFirst({
       where: {
         id: deliveryId,
         localId,
         redactedAt: null,
         channel: { in: enabledChannels },
-        status: { in: [NotificationDeliveryStatus.failed, NotificationDeliveryStatus.skipped] },
-        NOT: {
-          status: NotificationDeliveryStatus.skipped,
-          lastErrorCode: { in: MISSING_RECIPIENT_CODES },
-        },
+      },
+      select: {
+        channel: true,
+        status: true,
+        lastErrorCode: true,
+        activeAttemptReference: true,
+        attemptCount: true,
+      },
+    });
+    if (!candidate || !canManuallyRetryNotificationDelivery(candidate)) return { success: false };
+
+    const updated = await this.prisma.notificationDelivery.updateMany({
+      where: {
+        id: deliveryId,
+        localId,
+        redactedAt: null,
+        channel: candidate.channel,
+        status: candidate.status,
+        lastErrorCode: candidate.lastErrorCode,
+        activeAttemptReference: candidate.activeAttemptReference,
+        attemptCount: candidate.attemptCount,
       },
       data: {
         status: NotificationDeliveryStatus.pending,
         nextAttemptAt: new Date(),
         processingStartedAt: null,
+        activeAttemptReference: null,
+        providerMessageId: null,
+        acceptedAt: null,
+        sentAt: null,
+        deliveredAt: null,
+        undeliveredAt: null,
+        deliveryStatusUpdatedAt: null,
         failedAt: null,
         skippedAt: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
         maxAttempts: { increment: 1 },
       },
     });
@@ -195,6 +220,7 @@ export class NotificationDeliveryHistoryService {
         channel: item.channel,
         kind: item.kind,
         status: item.status,
+        canRetry: canManuallyRetryNotificationDelivery(item),
         recipient: maskRecipient(item.channel, item.recipientAddress),
         recipientName: item.recipientName,
         title: item.title,
@@ -205,6 +231,10 @@ export class NotificationDeliveryHistoryService {
         lastErrorCode: item.lastErrorCode,
         lastErrorMessage: item.lastErrorMessage,
         acceptedAt: item.acceptedAt?.toISOString() || null,
+        sentAt: item.sentAt?.toISOString() || null,
+        deliveredAt: item.deliveredAt?.toISOString() || null,
+        undeliveredAt: item.undeliveredAt?.toISOString() || null,
+        deliveryStatusUpdatedAt: item.deliveryStatusUpdatedAt?.toISOString() || null,
         failedAt: item.failedAt?.toISOString() || null,
         skippedAt: item.skippedAt?.toISOString() || null,
         createdAt: item.createdAt.toISOString(),

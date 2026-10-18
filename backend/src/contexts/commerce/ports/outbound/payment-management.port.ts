@@ -1,3 +1,5 @@
+import { AppointmentReminderChannel } from '../../../../shared/domain/appointment-reminder-channel';
+
 export const COMMERCE_PAYMENT_MANAGEMENT_PORT = Symbol('COMMERCE_PAYMENT_MANAGEMENT_PORT');
 
 export type CommerceOnlinePaymentScope = 'brand' | 'location';
@@ -11,12 +13,14 @@ export type CommerceCreateOnlinePaymentCheckoutInput = {
   userId?: string | null;
   barberId: string;
   serviceId: string;
+  serviceIds?: string[];
   startDateTime: string;
   notes?: string;
   guestName?: string;
   guestContact?: string;
   guestEmail?: string;
   guestPhone?: string;
+  reminderChannels?: AppointmentReminderChannel[];
   notifyIfEarlierSlot?: boolean;
   privacyConsentGiven?: boolean;
   referralAttributionId?: string;

@@ -47,6 +47,10 @@ import { HolidayClosureActionDto } from './dto/holiday-closure-action.dto';
 import { buildHolidayClosureCommunication } from './holiday-closure-communication.factory';
 import { CommunicationBookingClosureService } from './communication-booking-closure.service';
 import { parseGuestContact } from '../../shared/domain/guest-contact';
+import {
+  analyzeSmsSegmentation,
+  SMS_MAX_STANDARD_SEGMENTS,
+} from '../../contexts/engagement/domain/services/sms-segmentation.policy';
 
 type AppointmentScopeRecord = {
   id: string;
@@ -1386,6 +1390,14 @@ export class CommunicationsService {
   }
 
   private validatePayloadRules(payload: CommunicationPayloadDto, allowDraft: boolean) {
+    if (
+      payload.channel === CommunicationChannel.sms
+      && analyzeSmsSegmentation(payload.message.trim()).segments > SMS_MAX_STANDARD_SEGMENTS
+    ) {
+      throw new BadRequestException(
+        `Los SMS no pueden superar ${SMS_MAX_STANDARD_SEGMENTS} segmentos.`,
+      );
+    }
     if (payload.actionType === 'comunicar_y_cancelar' && payload.scopeType === 'all_clients') {
       throw new BadRequestException('No se permite cancelar citas con alcance "todos los clientes".');
     }

@@ -22,17 +22,22 @@ export class GetAvailabilityUseCase {
   async execute(query: GetAvailabilityQuery): Promise<string[]> {
     const dateOnly = query.date.split('T')[0];
     const localId = query.context.localId;
+    const serviceIds = Array.from(new Set(
+      [query.serviceId, ...(query.serviceIds || [])].filter((id): id is string => Boolean(id)),
+    ));
 
     const barber = await this.barberEligibilityReadPort.getBarber({ localId, barberId: query.barberId });
     if (!barber || barber.isActive === false) return [];
 
-    if (query.serviceId) {
-      const canProvideService = await this.barberEligibilityReadPort.isBarberAllowedForService({
-        localId,
-        barberId: query.barberId,
-        serviceId: query.serviceId,
-      });
-      if (!canProvideService) return [];
+    if (serviceIds.length > 0) {
+      const compatibility = await Promise.all(
+        serviceIds.map((serviceId) => this.barberEligibilityReadPort.isBarberAllowedForService({
+          localId,
+          barberId: query.barberId,
+          serviceId,
+        })),
+      );
+      if (compatibility.some((allowed) => !allowed)) return [];
     }
 
     const startDate = barber.startDate ? barber.startDate.toISOString().split('T')[0] : null;
@@ -46,7 +51,11 @@ export class GetAvailabilityUseCase {
         this.schedulePolicyReadPort.getShopSchedule({ localId }),
         this.holidayReadPort.getGeneralHolidays({ localId }),
         this.holidayReadPort.getBarberHolidays({ localId, barberId: query.barberId }),
-        this.serviceCatalogReadPort.getServiceDuration({ localId, serviceId: query.serviceId }),
+        serviceIds.length > 0
+          ? Promise.all(serviceIds.map((serviceId) =>
+              this.serviceCatalogReadPort.getServiceDuration({ localId, serviceId }),
+            )).then((durations) => durations.reduce((total, duration) => total + duration, 0))
+          : this.serviceCatalogReadPort.getServiceDuration({ localId }),
         this.availabilityReadPort.listAppointmentsForBarberDay({
           localId,
           barberId: query.barberId,

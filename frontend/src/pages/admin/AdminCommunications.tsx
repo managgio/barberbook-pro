@@ -49,6 +49,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import {
+  getAppointmentDurationMinutes,
+  getAppointmentServiceLabel,
+  isMultiServiceAppointment,
+} from '@/lib/appointmentPresentation';
+import { analyzeSmsSegmentation, SMS_MAX_STANDARD_SEGMENTS } from '@/lib/smsSegmentation';
 
 const DEFAULT_SCOPE: CommunicationScopeType = 'all_day';
 const SCOPES_REQUIRING_DATE: CommunicationScopeType[] = [
@@ -196,6 +202,17 @@ const AdminCommunications: React.FC = () => {
     setForm((prev) => ({ ...prev, channel: channelPreferenceQuery.data.channel }));
   }, [channelPreferenceQuery.data?.channel]);
 
+  const smsAvailable = tenant?.config?.notificationCapabilities?.sms === true;
+  const whatsappAvailable = tenant?.config?.notificationCapabilities?.whatsapp === true;
+
+  useEffect(() => {
+    if (form.channel === 'sms' && !smsAvailable) {
+      setForm((prev) => ({ ...prev, channel: whatsappAvailable ? 'whatsapp' : 'email' }));
+    } else if (form.channel === 'whatsapp' && !whatsappAvailable) {
+      setForm((prev) => ({ ...prev, channel: smsAvailable ? 'sms' : 'email' }));
+    }
+  }, [form.channel, smsAvailable, whatsappAvailable]);
+
   useEffect(() => {
     if (!templatesQuery.data?.length) return;
     if (form.title || form.message || form.subject) return;
@@ -327,6 +344,12 @@ const AdminCommunications: React.FC = () => {
   const templates = templatesQuery.data || [];
   const history = historyQuery.data;
   const historyItems = history?.items || [];
+  const smsSegmentation = useMemo(
+    () => analyzeSmsSegmentation(form.message),
+    [form.message],
+  );
+  const smsMessageTooLong = form.channel === 'sms'
+    && smsSegmentation.segments > SMS_MAX_STANDARD_SEGMENTS;
 
   const manualSelectableAppointments = useMemo(
     () => appointmentsForSelectionQuery.data?.items || [],
@@ -768,9 +791,22 @@ const AdminCommunications: React.FC = () => {
                           minute: '2-digit',
                         });
                         return (
-                          <label key={appointment.id} className="flex items-center justify-between rounded-lg border border-border/50 px-2 py-1.5">
-                            <span className="text-sm">
-                              {time} · {appointment.guestName || appointment.serviceNameSnapshot || appointment.serviceId}
+                          <label key={appointment.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2">
+                            <span className="min-w-0 text-sm">
+                              <span className="block font-medium text-foreground">
+                                {time} · {appointment.guestName || t('admin.common.client')}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {getAppointmentServiceLabel(appointment) || appointment.serviceId}
+                                {' · '}
+                                {isMultiServiceAppointment(appointment)
+                                  ? t('admin.appointmentServices.continuousBlock', {
+                                      minutes: getAppointmentDurationMinutes(appointment),
+                                    })
+                                  : t('admin.appointmentServices.duration', {
+                                      minutes: getAppointmentDurationMinutes(appointment),
+                                    })}
+                              </span>
                             </span>
                             <Switch
                               checked={selected}
@@ -829,8 +865,12 @@ const AdminCommunications: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="email">{t('admin.communications.channel.email')}</SelectItem>
-                    <SelectItem value="sms">{t('admin.communications.channel.sms')}</SelectItem>
-                    <SelectItem value="whatsapp">{t('admin.communications.channel.whatsapp')}</SelectItem>
+                    <SelectItem value="sms" disabled={!smsAvailable}>
+                      {t('admin.communications.channel.sms')}
+                    </SelectItem>
+                    <SelectItem value="whatsapp" disabled={!whatsappAvailable}>
+                      {t('admin.communications.channel.whatsapp')}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -862,6 +902,23 @@ const AdminCommunications: React.FC = () => {
                   setPreviewFresh(false);
                 }}
               />
+              {form.channel === 'sms' && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                  <span className="text-xs text-muted-foreground">
+                    {t('admin.communications.form.smsSegments', {
+                      encoding: smsSegmentation.encoding,
+                      segments: smsSegmentation.segments,
+                      max: SMS_MAX_STANDARD_SEGMENTS,
+                      units: smsSegmentation.units,
+                    })}
+                  </span>
+                  <Badge variant={smsMessageTooLong ? 'destructive' : 'secondary'}>
+                    {smsMessageTooLong
+                      ? t('admin.communications.form.smsTooLong')
+                      : t('admin.communications.form.smsWithinLimit')}
+                  </Badge>
+                </div>
+              )}
               <Label>{t('admin.communications.form.internalNote')}</Label>
               <Textarea
                 rows={2}
@@ -1076,7 +1133,7 @@ const AdminCommunications: React.FC = () => {
             <Button
               variant="outline"
               onClick={triggerPreview}
-              disabled={previewMutation.isPending || !canPreviewImpact}
+              disabled={previewMutation.isPending || !canPreviewImpact || smsMessageTooLong}
             >
               {previewMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Eye className="mr-2 h-4 w-4" />
@@ -1085,7 +1142,7 @@ const AdminCommunications: React.FC = () => {
             <Button
               variant="outline"
               onClick={handleSaveDraft}
-              disabled={createMutation.isPending || !canCreateDraft}
+              disabled={createMutation.isPending || !canCreateDraft || smsMessageTooLong}
             >
               <Clock3 className="mr-2 h-4 w-4" />
               {t('admin.communications.actions.saveDraft')}
@@ -1098,7 +1155,8 @@ const AdminCommunications: React.FC = () => {
                 form.actionType === 'comunicar_y_cancelar' ||
                 !form.scheduleAt ||
                 !canCreateDraft ||
-                !canSchedule
+                !canSchedule ||
+                smsMessageTooLong
               }
             >
               <CalendarClock className="mr-2 h-4 w-4" />
@@ -1106,7 +1164,7 @@ const AdminCommunications: React.FC = () => {
             </Button>
             <Button
               onClick={openExecuteConfirmation}
-              disabled={createMutation.isPending || !canCreateDraft || !canExecute}
+              disabled={createMutation.isPending || !canCreateDraft || !canExecute || smsMessageTooLong}
             >
               <Send className="mr-2 h-4 w-4" />
               {t('admin.communications.actions.executeNow')}
@@ -1138,7 +1196,7 @@ const AdminCommunications: React.FC = () => {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>{t('appointmentEditor.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleExecuteNow}>
+            <AlertDialogAction onClick={handleExecuteNow} disabled={smsMessageTooLong}>
               {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('admin.communications.actions.executeConfirm')}
             </AlertDialogAction>

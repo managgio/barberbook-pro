@@ -65,7 +65,12 @@ export class NotificationDeliveryWorkerService implements OnModuleInit, OnModule
           { status: NotificationDeliveryStatus.processing, processingStartedAt: { lte: staleBefore } },
         ],
       },
-      select: { id: true, brandId: true, localId: true },
+      select: {
+        id: true,
+        brandId: true,
+        localId: true,
+        local: { select: { timezone: true } },
+      },
       orderBy: [{ nextAttemptAt: 'asc' }, { createdAt: 'asc' }],
       take: BATCH_SIZE,
     });
@@ -74,7 +79,11 @@ export class NotificationDeliveryWorkerService implements OnModuleInit, OnModule
     for (const delivery of due) {
       try {
         await this.tenantContextRunnerPort.runWithContext(
-          { brandId: delivery.brandId, localId: delivery.localId },
+          {
+            brandId: delivery.brandId,
+            localId: delivery.localId,
+            timezone: delivery.local.timezone,
+          },
           () => this.outbox.dispatchDelivery(delivery.id),
         );
       } catch (error) {

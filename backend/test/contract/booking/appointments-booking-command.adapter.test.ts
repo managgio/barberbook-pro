@@ -20,6 +20,8 @@ const createdAppointment = {
   barberNameSnapshot: 'Barbero',
   serviceId: 'service-1',
   serviceNameSnapshot: 'Corte',
+  totalDurationMinutes: 30,
+  serviceItems: [],
   loyaltyProgramId: null,
   loyaltyRewardApplied: false,
   referralAttributionId: null,
@@ -58,6 +60,7 @@ const buildAdapter = (overrides?: {
   sideEffects?: any;
   earlierSlotOpportunity?: any;
   settingsService?: any;
+  tenantConfigService?: any;
   schedulesService?: any;
   notificationsService?: any;
   barbersService?: any;
@@ -78,6 +81,11 @@ const buildAdapter = (overrides?: {
         },
         service: {
           findFirst: async () => ({ id: 'service-1', duration: 30, name: 'Corte' }),
+          findMany: async (args: any) => (args.where.id.in as string[]).map((id) => ({
+            id,
+            duration: 30,
+            name: id === 'service-2' ? 'Color' : 'Corte',
+          })),
         },
         barber: {
           findFirst: async () => ({ id: 'barber-1', name: 'Barbero' }),
@@ -94,7 +102,12 @@ const buildAdapter = (overrides?: {
               findMany: async () => [],
               create: async (params: any) => {
                 overrides?.onCreate?.(params.data);
-                return { ...createdAppointment, ...params.data };
+                return {
+                  ...createdAppointment,
+                  ...params.data,
+                  serviceItems: params.data.serviceItems?.create ?? [],
+                  products: [],
+                };
               },
               update: async () => createdAppointment,
               delete: async () => undefined,
@@ -114,6 +127,7 @@ const buildAdapter = (overrides?: {
           appointments: { cancellationCutoffHours: 0 },
         }),
       } as any),
+    overrides?.tenantConfigService ?? ({ getBrandConfig: async () => ({ features: {} }) } as any),
     overrides?.schedulesService ?? ({ getShopSchedule: async () => ({ bufferMinutes: 0 }) } as any),
     overrides?.notificationsService ?? ({ sendAppointmentEmail: async () => undefined } as any),
     overrides?.barbersService ?? ({ assertBarberCanProvideService: async () => undefined } as any),
@@ -222,6 +236,51 @@ test('create appointment command adapter persists the earlier-slot opt-in', asyn
   assert.equal(persistedData?.earlierSlotRequested, true);
 });
 
+test('create appointment persists a multi-service block with summed duration', async () => {
+  let persistedData: any = null;
+  const adapter = buildAdapter({
+    onCreate: (data) => {
+      persistedData = data;
+    },
+    settingsService: {
+      getSettings: async () => ({
+        products: { enabled: true, clientPurchaseEnabled: true },
+        appointments: { cancellationCutoffHours: 0, multiServiceEnabled: true },
+      }),
+    },
+    tenantConfigService: {
+      getBrandConfig: async () => ({ features: { multiServiceBookingEnabled: true } }),
+    },
+    servicePricing: {
+      calculateServicePrice: async ({ serviceId }: { serviceId: string }) => ({
+        serviceName: serviceId === 'service-2' ? 'Color' : 'Corte',
+        finalPrice: serviceId === 'service-2' ? 35 : 20,
+      }),
+    },
+  });
+
+  await adapter.createAppointment({
+    context: commandContext,
+    input: {
+      userId: 'user-1',
+      barberId: 'barber-1',
+      serviceId: 'service-1',
+      serviceIds: ['service-1', 'service-2'],
+      startDateTime: '2026-01-10T10:00:00.000Z',
+      privacyConsentGiven: true,
+    },
+    execution: { requireConsent: true },
+  } as any);
+
+  assert.equal(persistedData.totalDurationMinutes, 60);
+  assert.equal(Number(persistedData.price), 55);
+  assert.equal(persistedData.serviceNameSnapshot, 'Corte + Color');
+  assert.deepEqual(
+    persistedData.serviceItems.create.map((item: any) => item.serviceId),
+    ['service-1', 'service-2'],
+  );
+});
+
 test('guest booking persists structured contact and queues confirmation inside the transaction', async () => {
   let persistedData: any = null;
   const queued: any[] = [];
@@ -261,10 +320,102 @@ test('guest booking persists structured contact and queues confirmation inside t
   assert.equal(persistedData.guestEmail, 'invitada@example.com');
   assert.equal(persistedData.guestPhone, '+34 600 000 000');
   assert.equal(persistedData.guestContact, 'invitada@example.com · +34 600 000 000');
+  assert.equal(persistedData.reminderSmsRequested, false);
+  assert.equal(persistedData.reminderWhatsappRequested, false);
   assert.equal(queued.length, 1);
   assert.equal(queued[0][0].email, 'invitada@example.com');
   assert.equal(queued[0][3].idempotencyKey, 'appointment:appt-1:created');
   assert.deepEqual(dispatched, ['delivery-1']);
+});
+
+test('guest booking persists only explicitly selected reminder channels', async () => {
+  let persistedData: any = null;
+  const adapter = buildAdapter({
+    onCreate: (data) => {
+      persistedData = data;
+    },
+    tenantConfigService: {
+      getBrandConfig: async () => ({ features: {} }),
+      getPublicConfig: async () => ({
+        notificationCapabilities: { sms: true, whatsapp: true },
+      }),
+    },
+  });
+
+  await adapter.createAppointment({
+    context: commandContext,
+    input: {
+      barberId: 'barber-1',
+      serviceId: 'service-1',
+      startDateTime: '2026-01-10T10:00:00.000Z',
+      guestName: 'Invitada',
+      guestEmail: 'invitada@example.com',
+      guestPhone: '+34 600 000 000',
+      reminderChannels: ['sms'],
+      privacyConsentGiven: true,
+    },
+    execution: { requireConsent: true },
+  } as any);
+
+  assert.equal(persistedData.reminderSmsRequested, true);
+  assert.equal(persistedData.reminderWhatsappRequested, false);
+});
+
+test('guest booking rejects a reminder channel disabled for the tenant', async () => {
+  const adapter = buildAdapter({
+    tenantConfigService: {
+      getBrandConfig: async () => ({ features: {} }),
+      getPublicConfig: async () => ({
+        notificationCapabilities: { sms: true, whatsapp: false },
+      }),
+    },
+  });
+
+  await assert.rejects(
+    adapter.createAppointment({
+      context: commandContext,
+      input: {
+        barberId: 'barber-1',
+        serviceId: 'service-1',
+        startDateTime: '2026-01-10T10:00:00.000Z',
+        guestName: 'Invitada',
+        guestEmail: 'invitada@example.com',
+        guestPhone: '+34 600 000 000',
+        reminderChannels: ['whatsapp'],
+        privacyConsentGiven: true,
+      },
+      execution: { requireConsent: true },
+    } as any),
+    /no está disponible en este local/,
+  );
+});
+
+test('guest booking rejects reminder opt-in without a valid phone', async () => {
+  const adapter = buildAdapter({
+    tenantConfigService: {
+      getBrandConfig: async () => ({ features: {} }),
+      getPublicConfig: async () => ({
+        notificationCapabilities: { sms: true, whatsapp: true },
+      }),
+    },
+  });
+
+  await assert.rejects(
+    adapter.createAppointment({
+      context: commandContext,
+      input: {
+        barberId: 'barber-1',
+        serviceId: 'service-1',
+        startDateTime: '2026-01-10T10:00:00.000Z',
+        guestName: 'Invitada',
+        guestEmail: 'invitada@example.com',
+        reminderChannels: ['sms'],
+        privacyConsentGiven: true,
+      },
+      execution: { requireConsent: true },
+    } as any),
+    /teléfono válido/,
+  );
 });
 
 test('booking response does not wait for the SMTP delivery attempt', async () => {
@@ -451,11 +602,14 @@ test('update appointment command adapter updates via prisma path', async () => {
           notes: 'nota vieja',
           serviceNameSnapshot: 'Corte',
           barberNameSnapshot: 'Barbero',
+          serviceItems: [],
+          totalDurationMinutes: 30,
           products: [],
         }),
       },
       service: {
         findFirst: async () => ({ duration: 30, name: 'Corte', id: 'service-1' }),
+        findMany: async () => [{ duration: 30, name: 'Corte', id: 'service-1' }],
       },
       offer: {
         findMany: async () => [],
@@ -492,4 +646,61 @@ test('update appointment command adapter updates via prisma path', async () => {
   assert.equal(transactionCalled, true);
   assert.equal((result as any).id, 'appt-1');
   assert.equal((result as any).notes, 'nota nueva');
+});
+
+test('update appointment preserves a multi-service bundle when service selection is omitted', async () => {
+  const current = {
+    ...createdAppointment,
+    serviceNameSnapshot: 'Corte + Color',
+    totalDurationMinutes: 60,
+    price: new Prisma.Decimal(55),
+    serviceItems: [
+      {
+        id: 'item-1', serviceId: 'service-1', nameSnapshot: 'Corte', durationMinutes: 30,
+        unitPrice: new Prisma.Decimal(20), position: 0,
+      },
+      {
+        id: 'item-2', serviceId: 'service-2', nameSnapshot: 'Color', durationMinutes: 30,
+        unitPrice: new Prisma.Decimal(35), position: 1,
+      },
+    ],
+    products: [],
+  } as any;
+  let persistedData: any;
+  const adapter = buildAdapter({
+    prisma: {
+      appointment: { findFirst: async () => current },
+      service: {
+        findFirst: async () => ({ duration: 30, name: 'Corte', id: 'service-1' }),
+        findMany: async () => [
+          { duration: 30, name: 'Corte', id: 'service-1' },
+          { duration: 30, name: 'Color', id: 'service-2' },
+        ],
+      },
+      offer: { findMany: async () => [] },
+      product: { findMany: async () => [] },
+      $transaction: async (callback: any) => callback({
+        appointment: {
+          findMany: async () => [],
+          update: async (params: any) => {
+            persistedData = params.data;
+            return current;
+          },
+        },
+        product: { update: async () => undefined },
+      }),
+    } as any,
+  });
+
+  await adapter.updateAppointment({
+    context: commandContext,
+    appointmentId: current.id,
+    input: { notes: 'Conservar el bloque' },
+    execution: { actorUserId: 'admin-1' },
+  } as any);
+
+  assert.equal(persistedData.serviceId, undefined);
+  assert.equal(persistedData.serviceItems, undefined);
+  assert.equal(persistedData.totalDurationMinutes, 60);
+  assert.equal(persistedData.price, undefined);
 });

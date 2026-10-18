@@ -21,6 +21,10 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
 import { useSiteSettings } from '@/hooks/useSiteSettings';
+import {
+  normalizeProfileNotificationPreferences,
+  resolveProfileNotificationAvailability,
+} from './profileNotificationChannels';
 
 const ProfilePage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
@@ -50,9 +54,13 @@ const ProfilePage: React.FC = () => {
   const [activeBarberCount, setActiveBarberCount] = useState<number | null>(null);
 
   const notificationConfig = tenant?.config?.notificationPrefs;
-  const allowEmail = notificationConfig?.email !== false;
-  const allowWhatsapp = notificationConfig?.whatsapp !== false;
-  const allowSms = notificationConfig?.sms !== false;
+  const notificationAvailability = resolveProfileNotificationAvailability({
+    preferences: notificationConfig,
+    capabilities: tenant?.config?.notificationCapabilities,
+  });
+  const allowEmail = notificationAvailability.email;
+  const allowWhatsapp = notificationAvailability.whatsapp;
+  const allowSms = notificationAvailability.sms;
 
   useEffect(() => {
     if (!user) return;
@@ -132,11 +140,11 @@ const ProfilePage: React.FC = () => {
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      const normalizedPrefs = {
-        email: allowEmail ? notificationPrefs.email : false,
-        whatsapp: allowWhatsapp ? notificationPrefs.whatsapp : false,
-        sms: allowSms ? notificationPrefs.sms : false,
-      };
+      const normalizedPrefs = normalizeProfileNotificationPreferences({
+        preferences: notificationPrefs,
+        availability: notificationAvailability,
+        persistedPreferences: user?.notificationPrefs,
+      });
 
       await updateProfile({
         name: formData.name,

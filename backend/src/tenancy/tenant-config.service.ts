@@ -5,6 +5,16 @@ import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from './tenant-co
 import { BrandConfigData, EffectiveTenantConfig, LocationConfigData, TenantI18nConfig, TenantThemeConfig } from './tenant-config.types';
 import { DEFAULT_BRAND_ID } from './tenant.constants';
 import { normalizeSmtpConfig } from '../contexts/engagement/domain/services/smtp-config.policy';
+import { resolveNotificationCapabilities } from '../contexts/engagement/domain/services/notification-capabilities.policy';
+import { stripProviderOwnedMessagingConfig } from '../contexts/platform/domain/services/tenant-config-sanitization.policy';
+import {
+  ENGAGEMENT_SMS_GATEWAY_PORT,
+  EngagementSmsGatewayPort,
+} from '../contexts/engagement/ports/outbound/sms-gateway.port';
+import {
+  ENGAGEMENT_WHATSAPP_GATEWAY_PORT,
+  EngagementWhatsappGatewayPort,
+} from '../contexts/engagement/ports/outbound/whatsapp-gateway.port';
 
 const mergeConfig = <T extends Record<string, any>>(base: T, override?: Partial<T>) => {
   if (!override) return { ...base };
@@ -114,6 +124,10 @@ export class TenantConfigService {
     private readonly prisma: PrismaService,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
+    @Inject(ENGAGEMENT_SMS_GATEWAY_PORT)
+    private readonly smsGateway: EngagementSmsGatewayPort,
+    @Inject(ENGAGEMENT_WHATSAPP_GATEWAY_PORT)
+    private readonly whatsappGateway: EngagementWhatsappGatewayPort,
   ) {}
 
   private getBrandId() {
@@ -136,15 +150,11 @@ export class TenantConfigService {
         email: normalizeSmtpConfig(fallback.email),
       };
     }
-    const merged = mergeConfig(fallback, config.data as BrandConfigData);
-    const smsSenderId = (config.data as BrandConfigData)?.twilio?.smsSenderId?.trim() || undefined;
+    const stored = stripProviderOwnedMessagingConfig(config.data) as BrandConfigData;
+    const merged = mergeConfig(fallback, stored);
     return {
       ...merged,
       email: normalizeSmtpConfig(merged.email),
-      twilio: {
-        ...fallback.twilio,
-        ...(smsSenderId ? { smsSenderId } : {}),
-      },
     };
   }
 
@@ -171,7 +181,10 @@ export class TenantConfigService {
       select: { data: true },
     });
     if (!config?.data) return fallback;
-    return mergeConfig(fallback, config.data as LocationConfigData);
+    return mergeConfig(
+      fallback,
+      stripProviderOwnedMessagingConfig(config.data) as LocationConfigData,
+    );
   }
 
   async getEffectiveConfig(): Promise<EffectiveTenantConfig> {
@@ -229,11 +242,18 @@ export class TenantConfigService {
     );
     const invoicing = mergeConfig(brandConfig.invoicing || {}, {});
     const business = mergeConfig(brandConfig.business || {}, {});
+    const notificationCapabilities = resolveNotificationCapabilities({
+      notificationPrefs,
+      runtimeEnvironment: process.env.NODE_ENV,
+      smsGatewayConfigured: this.smsGateway.isReadyForRoutineDelivery(),
+      whatsappGatewayConfigured: this.whatsappGateway.isReadyForRoutineDelivery(),
+    });
     return {
       branding: Object.keys(branding).length ? branding : null,
       theme: Object.keys(theme).length ? theme : null,
       adminSidebar: Object.keys(adminSidebar).length ? adminSidebar : null,
       notificationPrefs: Object.keys(notificationPrefs).length ? notificationPrefs : null,
+      notificationCapabilities,
       landing: Object.keys(landing).length ? landing : null,
       i18n: i18n || null,
       features: Object.keys(features).length ? features : null,

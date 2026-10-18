@@ -283,12 +283,14 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
       userId?: string | null;
       barberId: string;
       serviceId: string;
+      serviceIds?: string[];
       startDateTime: string;
       notes?: string;
       guestName?: string;
       guestContact?: string;
       guestEmail?: string;
       guestPhone?: string;
+      reminderChannels?: Array<'sms' | 'whatsapp'>;
       notifyIfEarlierSlot?: boolean;
       privacyConsentGiven?: boolean;
       referralAttributionId?: string;
@@ -333,12 +335,14 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
         userId: params.data.userId ?? null,
         barberId: params.data.barberId,
         serviceId: params.data.serviceId,
+        serviceIds: params.data.serviceIds,
         startDateTime: params.data.startDateTime,
         notes: params.data.notes,
         guestName: params.data.guestName,
         guestContact: params.data.guestContact,
         guestEmail: params.data.guestEmail,
         guestPhone: params.data.guestPhone,
+        reminderChannels: params.data.reminderChannels,
         notifyIfEarlierSlot: params.data.notifyIfEarlierSlot,
         privacyConsentGiven: params.data.privacyConsentGiven,
         referralAttributionId: params.data.referralAttributionId,

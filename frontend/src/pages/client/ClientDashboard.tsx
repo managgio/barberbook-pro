@@ -283,7 +283,7 @@ const ClientDashboard: React.FC = () => {
                   barber?.name ??
                   appointment.barberNameSnapshot ??
                   t('clientDashboard.fallback.removedStaff', { staffSingular: copy.staff.singular });
-                const serviceName = service?.name ?? appointment.serviceNameSnapshot ?? t('clientDashboard.fallback.removedService');
+                const serviceName = appointment.serviceNameSnapshot ?? service?.name ?? t('clientDashboard.fallback.removedService');
                 const date = parseISO(appointment.startDateTime);
                 
                 return (

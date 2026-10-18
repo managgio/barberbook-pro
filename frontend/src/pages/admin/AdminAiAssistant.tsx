@@ -81,6 +81,8 @@ const AdminAiAssistant: React.FC = () => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [draftSource, setDraftSource] = useState<'typed' | 'voice' | 'template'>('typed');
+  const [draftTemplateKey, setDraftTemplateKey] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -355,7 +357,11 @@ const AdminAiAssistant: React.FC = () => {
     }
   };
 
-  const sendMessage = async (prompt: string) => {
+  const sendMessage = async (
+    prompt: string,
+    inputSource: 'typed' | 'voice' | 'template' = draftSource,
+    templateKey: string | null = draftTemplateKey,
+  ) => {
     const trimmed = prompt.trim();
     if (!trimmed || !user) return;
     const hasAdminAccess = hasTenantAdminAccess(user);
@@ -374,11 +380,15 @@ const AdminAiAssistant: React.FC = () => {
       { id: `user-${Date.now()}`, role: 'user', content: trimmed },
     ]);
     setInput('');
+    setDraftSource('typed');
+    setDraftTemplateKey(null);
 
     try {
       const response = await postAiAssistantChat({
         message: trimmed,
         sessionId,
+        inputSource,
+        templateKey: inputSource === 'template' ? templateKey || undefined : undefined,
       });
       handleResponse(response);
     } catch (error) {
@@ -502,10 +512,12 @@ const AdminAiAssistant: React.FC = () => {
         return;
       }
       if (wantsAutoSend) {
-        await sendMessage(payload);
+        await sendMessage(payload, 'voice');
         return;
       }
       setInput((prev) => (prev.trim() ? `${prev}\n${payload}` : payload));
+      setDraftSource('voice');
+      setDraftTemplateKey(null);
       inputRef.current?.focus();
     } catch (error) {
       toast({
@@ -567,8 +579,10 @@ const AdminAiAssistant: React.FC = () => {
     sendMessage(input);
   };
 
-  const applyTemplate = (template: string) => {
+  const applyTemplate = (template: string, templateKey: string) => {
     setInput(template);
+    setDraftSource('template');
+    setDraftTemplateKey(templateKey);
     inputRef.current?.focus();
   };
 
@@ -827,7 +841,7 @@ const AdminAiAssistant: React.FC = () => {
                 size="sm"
                 className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                 onClick={() =>
-                  applyTemplate(t('admin.aiAssistant.templates.appointment', { staffSingularLabel }))
+                  applyTemplate(t('admin.aiAssistant.templates.appointment', { staffSingularLabel }), 'appointment')
                 }
                 disabled={isSending || isTranscribing || isRecording}
               >
@@ -838,7 +852,7 @@ const AdminAiAssistant: React.FC = () => {
                 size="sm"
                 className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                 onClick={() =>
-                  applyTemplate(t('admin.aiAssistant.templates.holiday', { staffHolidayPlaceholder }))
+                  applyTemplate(t('admin.aiAssistant.templates.holiday', { staffHolidayPlaceholder }), 'holiday')
                 }
                 disabled={isSending || isTranscribing || isRecording}
               >
@@ -850,7 +864,7 @@ const AdminAiAssistant: React.FC = () => {
                   size="sm"
                   className="rounded-full text-xs sm:text-sm whitespace-nowrap !w-auto"
                   onClick={() =>
-                    applyTemplate(t('admin.aiAssistant.templates.alert'))
+                    applyTemplate(t('admin.aiAssistant.templates.alert'), 'alert')
                   }
                   disabled={isSending || isTranscribing || isRecording}
                 >

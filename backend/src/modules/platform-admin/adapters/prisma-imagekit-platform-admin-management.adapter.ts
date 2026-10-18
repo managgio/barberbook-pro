@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ImageKitService } from '../../imagekit/imagekit.service';
@@ -13,6 +13,20 @@ import {
   PlatformUpdateLocationInput,
 } from '../../../contexts/platform/ports/outbound/platform-admin-management.port';
 import { getSmtpConfigValidationIssue } from '../../../contexts/engagement/domain/services/smtp-config.policy';
+import {
+  canSendRoutineSms,
+  GLOBAL_SMS_SENDER_ID,
+} from '../../../contexts/engagement/domain/services/sms-delivery-runtime.policy';
+import { stripProviderOwnedMessagingConfig } from '../../../contexts/platform/domain/services/tenant-config-sanitization.policy';
+import {
+  ENGAGEMENT_SMS_GATEWAY_PORT,
+  EngagementSmsGatewayPort,
+} from '../../../contexts/engagement/ports/outbound/sms-gateway.port';
+import {
+  ENGAGEMENT_WHATSAPP_GATEWAY_PORT,
+  EngagementWhatsappGatewayPort,
+} from '../../../contexts/engagement/ports/outbound/whatsapp-gateway.port';
+import { resolvePlatformMessagingHealth } from '../platform-messaging-health.policy';
 
 const mergeRecords = <T extends Record<string, any>>(base: T, override?: Partial<T>): T => {
   if (!override) return { ...base };
@@ -164,7 +178,7 @@ const BRANDING_FILE_ID_FIELDS = [
 ] as const;
 
 type HealthStatus = 'ok' | 'warning' | 'error' | 'disabled';
-type IntegrationKey = 'email' | 'twilio' | 'stripe' | 'imagekit' | 'ai';
+type IntegrationKey = 'email' | 'messaging' | 'stripe' | 'imagekit' | 'ai';
 
 type IntegrationHealth = {
   key: IntegrationKey;
@@ -205,6 +219,10 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
     private readonly prisma: PrismaService,
     private readonly imageKit: ImageKitService,
     private readonly usageMetrics: UsageMetricsService,
+    @Inject(ENGAGEMENT_SMS_GATEWAY_PORT)
+    private readonly smsGateway: EngagementSmsGatewayPort,
+    @Inject(ENGAGEMENT_WHATSAPP_GATEWAY_PORT)
+    private readonly whatsappGateway: EngagementWhatsappGatewayPort,
   ) {}
 
   private readonly logger = new Logger(PrismaImageKitPlatformAdminManagementAdapter.name);
@@ -246,37 +264,17 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
     };
   }
 
-  private getTwilioHealth(config: Record<string, any>, notifications: Record<string, any>): IntegrationHealth {
-    const smsEnabled = notifications?.sms !== false;
+  private getMessagingHealth(notifications: Record<string, any>): IntegrationHealth {
+    const smsEnabled = notifications?.sms === true;
     const whatsappEnabled = notifications?.whatsapp !== false;
-    if (!smsEnabled && !whatsappEnabled) {
-      return { key: 'twilio', status: 'disabled', summary: 'SMS/WhatsApp desactivados', details: [] };
-    }
-    const twilio = config?.twilio || {};
-    const missing: string[] = [];
-    if (!twilio.accountSid) missing.push('accountSid');
-    if (!twilio.authToken) missing.push('authToken');
-    if (missing.length > 0) {
-      return {
-        key: 'twilio',
-        status: 'error',
-        summary: 'Twilio incompleto',
-        details: [`Faltan credenciales: ${missing.join(', ')}`],
-      };
-    }
-    const details: string[] = [];
-    if (smsEnabled && !twilio.messagingServiceSid && !twilio.smsSenderId) {
-      details.push('SMS sin sender explícito (messagingServiceSid/smsSenderId)');
-    }
-    if (whatsappEnabled && !twilio.whatsappFrom) {
-      details.push('WhatsApp sin remitente (whatsappFrom)');
-    }
-    return {
-      key: 'twilio',
-      status: details.some((detail) => detail.includes('sin remitente')) ? 'error' : details.length > 0 ? 'warning' : 'ok',
-      summary: 'Twilio configurado',
-      details,
-    };
+    return resolvePlatformMessagingHealth({
+      smsEnabled,
+      whatsappEnabled,
+      smsRoutineAllowed: canSendRoutineSms(process.env.NODE_ENV),
+      smsGatewayReady: this.smsGateway.isReadyForRoutineDelivery(),
+      whatsappGatewayReady: this.whatsappGateway.isReadyForRoutineDelivery(),
+      smsSenderId: GLOBAL_SMS_SENDER_ID,
+    });
   }
 
   private getStripeHealth(
@@ -404,16 +402,22 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
   }
 
   async listBrands() {
-    return this.prisma.brand.findMany({
+    const brands = await this.prisma.brand.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         locations: {
           orderBy: { createdAt: 'asc' },
-          select: { id: true, name: true, slug: true, isActive: true },
+          select: { id: true, name: true, slug: true, timezone: true, isActive: true },
         },
         config: { select: { data: true } },
       },
     });
+    return brands.map((brand) => ({
+      ...brand,
+      config: brand.config
+        ? { ...brand.config, data: stripProviderOwnedMessagingConfig(brand.config.data) }
+        : null,
+    }));
   }
 
   async getBrand(id: string) {
@@ -422,13 +426,18 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
       include: {
         locations: {
           orderBy: { createdAt: 'asc' },
-          select: { id: true, name: true, slug: true, isActive: true },
+          select: { id: true, name: true, slug: true, timezone: true, isActive: true },
         },
         config: { select: { data: true } },
       },
     });
     if (!brand) throw new NotFoundException('Brand not found');
-    return brand;
+    return {
+      ...brand,
+      config: brand.config
+        ? { ...brand.config, data: stripProviderOwnedMessagingConfig(brand.config.data) }
+        : null,
+    };
   }
 
   async createBrand(data: PlatformCreateBrandInput) {
@@ -586,6 +595,7 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
         brandId,
         name: data.name,
         slug: data.slug ?? null,
+        timezone: data.timezone,
         isActive: data.isActive ?? true,
       },
     });
@@ -612,14 +622,14 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
       where: { brandId },
       select: { data: true },
     });
-    return config?.data || {};
+    return stripProviderOwnedMessagingConfig(config?.data);
   }
 
   async listBrandAdmins(brandId: string) {
     const locations = await this.prisma.location.findMany({
       where: { brandId },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, slug: true, isActive: true },
+      select: { id: true, name: true, slug: true, timezone: true, isActive: true },
     });
 
     const locationIds = locations.map((location) => location.id);
@@ -805,7 +815,7 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
   }
 
   async updateBrandConfig(brandId: string, data: Record<string, unknown>) {
-    const payload = sanitizeThemeConfig(data) as Prisma.InputJsonValue;
+    const payload = sanitizeThemeConfig(stripProviderOwnedMessagingConfig(data)) as Prisma.InputJsonValue;
     return this.prisma.brandConfig.upsert({
       where: { brandId },
       update: { data: payload },
@@ -818,11 +828,11 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
       where: { localId },
       select: { data: true },
     });
-    return config?.data || {};
+    return stripProviderOwnedMessagingConfig(config?.data);
   }
 
   async updateLocationConfig(localId: string, data: Record<string, unknown>) {
-    const payload = sanitizeThemeConfig(data) as Prisma.InputJsonValue;
+    const payload = sanitizeThemeConfig(stripProviderOwnedMessagingConfig(data)) as Prisma.InputJsonValue;
     return this.prisma.locationConfig.upsert({
       where: { localId },
       update: { data: payload },
@@ -881,7 +891,7 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
       const notifications = mergeRecords(brandData.notificationPrefs || {}, localData.notificationPrefs || {});
       const integrations: IntegrationHealth[] = [
         this.getEmailHealth(effectiveConfig, notifications),
-        this.getTwilioHealth(effectiveConfig, notifications),
+        this.getMessagingHealth(notifications),
         this.getStripeHealth(brandData, localData),
         this.getImageKitHealth(effectiveConfig),
         this.getAiHealth(effectiveConfig),

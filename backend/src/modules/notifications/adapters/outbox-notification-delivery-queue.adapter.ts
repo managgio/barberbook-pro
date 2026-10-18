@@ -15,7 +15,14 @@ export class OutboxNotificationDeliveryQueueAdapter implements EngagementNotific
       params.appointment,
       {
         appointmentId: params.appointmentId,
-        idempotencyKey: `appointment:${params.appointmentId}:reminder:${params.channel}`,
+        idempotencyKey: [
+          'appointment',
+          params.appointmentId,
+          'reminder',
+          params.channel,
+          params.appointment.date.toISOString(),
+          params.reminderRevision,
+        ].join(':'),
       },
     );
     try {

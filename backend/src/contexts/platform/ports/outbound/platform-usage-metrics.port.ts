@@ -10,7 +10,7 @@ export type PlatformOpenAiUsageInput = {
   brandId: string;
 };
 
-export type PlatformTwilioUsageInput = {
+export type PlatformMessagingUsageInput = {
   messages?: number;
   costUsd?: number | null;
   brandId: string;
@@ -24,7 +24,7 @@ export type PlatformImageKitUsageInput = {
 
 export interface PlatformUsageMetricsPort {
   recordOpenAiUsage(input: PlatformOpenAiUsageInput): Promise<void>;
-  recordTwilioUsage(input: PlatformTwilioUsageInput): Promise<void>;
+  recordMessagingUsage(input: PlatformMessagingUsageInput): Promise<void>;
   recordImageKitUsage(input: PlatformImageKitUsageInput): Promise<void>;
   refreshImageKitUsage(): Promise<void>;
   getPlatformMetrics(
@@ -32,4 +32,3 @@ export interface PlatformUsageMetricsPort {
     options?: { forceOpenAi?: boolean },
   ): Promise<PlatformUsageMetrics>;
 }
-

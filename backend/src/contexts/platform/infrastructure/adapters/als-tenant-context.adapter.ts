@@ -5,6 +5,7 @@ import { DEFAULT_BRAND_ID, DEFAULT_LOCAL_ID } from '../../../../tenancy/tenant.c
 import { APP_TIMEZONE } from '../../../../utils/timezone';
 import { getTenantContext } from '../../../../tenancy/tenant.context';
 import { TenantContextPort } from '../../ports/outbound/tenant-context.port';
+import { resolveLocationTimeZone } from '../../domain/services/location-timezone.policy';
 
 @Injectable()
 export class AlsTenantContextAdapter implements TenantContextPort {
@@ -18,7 +19,7 @@ export class AlsTenantContextAdapter implements TenantContextPort {
       isPlatform: Boolean(currentContext.isPlatform),
       requestedLanguage: currentContext.requestedLanguage || null,
       actorUserId: params?.actorUserId ?? null,
-      timezone: APP_TIMEZONE,
+      timezone: resolveLocationTimeZone(currentContext.timezone, APP_TIMEZONE),
       correlationId: params?.correlationId || randomUUID(),
       subdomain: currentContext.subdomain || null,
     };

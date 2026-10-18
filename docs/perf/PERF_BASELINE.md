@@ -1,14 +1,14 @@
 # PERF_BASELINE
 
-Generated at: 2026-08-05T12:23:21.473Z
+Generated at: 2026-10-17T17:59:27.013Z
 
 ## Build Summary
 
-- Entry JS: assets/index-CJGc7Tit.js (56152 B raw, 18685 B gzip)
-- Entry CSS: assets/index-x4ipRik4.css (113381 B raw, 19181 B gzip)
+- Entry JS: assets/index-BGzvUXJl.js (59227 B raw, 19669 B gzip)
+- Entry CSS: assets/index-V8HcEthQ.css (110026 B raw, 18813 B gzip)
 - Total image bytes in dist/assets: 174740 B
 - Largest image in dist/assets: fondo-managgio-1440-O-XZe9xr.webp (60748 B)
-- Sourcemap chunks analyzed: 115
+- Sourcemap chunks analyzed: 124
 
 ## Top Node Modules By Source Bytes
 
@@ -34,34 +34,34 @@ Generated at: 2026-08-05T12:23:21.473Z
 
 | File | Bytes |
 |---|---:|
-| pages/platform/PlatformBrands.tsx | 255728 |
-| pages/client/BookingWizard.tsx | 101875 |
-| pages/admin/AdminSettings.tsx | 73965 |
+| pages/platform/PlatformBrands.tsx | 259372 |
+| pages/client/BookingWizard.tsx | 112550 |
+| pages/admin/AdminSettings.tsx | 84521 |
 | pages/admin/AdminBarbers.tsx | 66584 |
 | pages/admin/AdminStock.tsx | 64330 |
-| pages/admin/AdminCommunications.tsx | 53536 |
+| pages/admin/AdminCommunications.tsx | 57078 |
 | pages/admin/AdminSubscriptions.tsx | 52566 |
-| pages/admin/AdminServices.tsx | 51797 |
-| pages/admin/AdminCashRegister.tsx | 51504 |
-| pages/admin/AdminClients.tsx | 50339 |
-| pages/LandingPage.tsx | 47785 |
-| pages/admin/AdminDashboard.tsx | 43328 |
-| pages/platform/PlatformObservability.tsx | 42949 |
-| pages/admin/AdminCalendar.tsx | 41052 |
-| pages/admin/AdminAiAssistant.tsx | 36617 |
+| pages/admin/AdminCashRegister.tsx | 51479 |
+| pages/admin/AdminClients.tsx | 51280 |
+| pages/admin/AdminServices.tsx | 51237 |
+| pages/LandingPage.tsx | 48329 |
+| pages/platform/PlatformObservability.tsx | 46996 |
+| pages/admin/AdminDashboard.tsx | 44693 |
+| pages/admin/AdminCalendar.tsx | 42509 |
+| pages/admin/AdminAiAssistant.tsx | 37254 |
 
 ## Top Source Areas By Source Bytes
 
 | Area | Bytes |
 |---|---:|
-| pages | 1407462 |
-| components | 246563 |
-| lib | 78820 |
-| data | 62814 |
-| context | 38554 |
+| pages | 1502694 |
+| components | 336519 |
+| lib | 109173 |
+| data | 71361 |
+| context | 38562 |
 | assets | 12645 |
-| App.tsx | 11035 |
-| hooks | 8202 |
+| App.tsx | 11770 |
+| hooks | 10805 |
 | main.tsx | 537 |
 | i18n | 281 |
 
@@ -69,10 +69,10 @@ Generated at: 2026-08-05T12:23:21.473Z
 
 | Metric | Actual (bytes) | Max (bytes) | Pass |
 |---|---:|---:|:---:|
-| entryJsRawMaxBytes | 56152 | 330000 | yes |
-| entryJsGzipMaxBytes | 18685 | 80000 | yes |
-| entryCssRawMaxBytes | 113381 | 115000 | yes |
-| entryCssGzipMaxBytes | 19181 | 20000 | yes |
+| entryJsRawMaxBytes | 59227 | 330000 | yes |
+| entryJsGzipMaxBytes | 19669 | 80000 | yes |
+| entryCssRawMaxBytes | 110026 | 115000 | yes |
+| entryCssGzipMaxBytes | 18813 | 20000 | yes |
 | totalImageBytesMaxBytes | 174740 | 9000000 | yes |
 | largestImageBytesMaxBytes | 60748 | 6500000 | yes |
 

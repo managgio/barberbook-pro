@@ -4,7 +4,7 @@ import { PlatformUsageMetrics, ProviderDailySeriesPoint } from '../../../context
 import {
   PlatformImageKitUsageInput,
   PlatformOpenAiUsageInput,
-  PlatformTwilioUsageInput,
+  PlatformMessagingUsageInput,
   PlatformUsageMetricsPort,
 } from '../../../contexts/platform/ports/outbound/platform-usage-metrics.port';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -58,6 +58,7 @@ const toNumber = (value?: Prisma.Decimal | number | null) => {
 };
 
 const OPENAI_ORG_CACHE_TTL_MS = 5 * 60 * 1000;
+const LEGACY_MESSAGING_USAGE_PROVIDER: ProviderUsageType = 'twilio';
 
 @Injectable()
 export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPort {
@@ -88,11 +89,11 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     });
   }
 
-  async recordTwilioUsage(params: PlatformTwilioUsageInput) {
+  async recordMessagingUsage(params: PlatformMessagingUsageInput) {
     const brandId = params.brandId;
     const dateKey = getDateStringInTimeZone(new Date(), AI_TIME_ZONE);
     await this.upsertUsage({
-      provider: 'twilio',
+      provider: LEGACY_MESSAGING_USAGE_PROVIDER,
       brandId,
       dateKey,
       costUsd: params.costUsd ?? null,
@@ -149,11 +150,11 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     const normalizedWindow = [7, 14, 30].includes(windowDays) ? windowDays : 7;
     const { dateKeys, start, end } = this.buildDateRange(normalizedWindow);
 
-    const [openaiSeries, twilioRows, imagekitRows] = await Promise.all([
+    const [openaiSeries, messagingRows, imagekitRows] = await Promise.all([
       this.getOpenAiOrganizationSeries(dateKeys, options?.forceOpenAi),
       this.prisma.providerUsageDaily.groupBy({
         by: ['dateKey'],
-        where: { provider: 'twilio', dateKey: { in: dateKeys } },
+        where: { provider: LEGACY_MESSAGING_USAGE_PROVIDER, dateKey: { in: dateKeys } },
         _sum: { costUsd: true, messagesCount: true },
       }),
       this.prisma.providerUsageDaily.groupBy({
@@ -163,8 +164,8 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
       }),
     ]);
 
-    const twilioMap = new Map(
-      twilioRows.map((row) => [
+    const messagingMap = new Map(
+      messagingRows.map((row) => [
         row.dateKey,
         {
           costUsd: toNumber(row._sum.costUsd),
@@ -186,8 +187,8 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     let lastStorageUsed = 0;
     let lastStorageLimit = 0;
 
-    const twilioSeries = dateKeys.map((dateKey) => {
-      const row = twilioMap.get(dateKey);
+    const messagingSeries = dateKeys.map((dateKey) => {
+      const row = messagingMap.get(dateKey);
       return {
         dateKey,
         costUsd: row?.costUsd ?? 0,
@@ -223,11 +224,11 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
       range: { start, end },
       thresholds: {
         openaiDailyCostUsd: this.getOpenAiDailyBudgetUsd(),
-        twilioDailyCostUsd: this.getTwilioDailyBudgetUsd(),
+        messagingDailyCostUsd: this.getMessagingDailyBudgetUsd(),
         imagekitStorageBytes: this.getImagekitStorageLimitBytes(),
       },
       openai: { series: openaiSeries },
-      twilio: { series: twilioSeries },
+      messaging: { series: messagingSeries },
       imagekit: { series: imagekitSeries },
     };
   }
@@ -476,8 +477,12 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     return parseNumber(process.env.OPENAI_DAILY_BUDGET_USD || '') ?? null;
   }
 
-  private getTwilioDailyBudgetUsd() {
-    return parseNumber(process.env.TWILIO_DAILY_BUDGET_USD || '') ?? null;
+  private getMessagingDailyBudgetUsd() {
+    return parseNumber(
+      process.env.MESSAGING_DAILY_BUDGET_USD
+      || process.env.TWILIO_DAILY_BUDGET_USD
+      || '',
+    ) ?? null;
   }
 
   private getImagekitStorageLimitBytes() {

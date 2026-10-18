@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { BarbersService } from './barbers.service';
 import { CreateBarberDto } from './dto/create-barber.dto';
 import { UpdateBarberDto } from './dto/update-barber.dto';
@@ -10,8 +10,14 @@ export class BarbersController {
   constructor(private readonly barbersService: BarbersService) {}
 
   @Get()
-  findAll(@Query('serviceId') serviceId?: string) {
-    return this.barbersService.findAll(serviceId);
+  findAll(@Query('serviceId') serviceId?: string, @Query('serviceIds') serviceIds?: string) {
+    const normalizedServiceIds = Array.from(new Set(
+      serviceIds?.split(',').map((id) => id.trim()).filter(Boolean) || [],
+    ));
+    if (new Set([serviceId, ...normalizedServiceIds].filter(Boolean)).size > 6) {
+      throw new BadRequestException('Puedes combinar un máximo de 6 servicios.');
+    }
+    return this.barbersService.findAll(serviceId, { serviceIds: normalizedServiceIds });
   }
 
   @Get('admin')

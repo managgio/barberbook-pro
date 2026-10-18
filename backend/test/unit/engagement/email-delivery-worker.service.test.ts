@@ -19,8 +19,18 @@ test('email delivery worker selects a bounded due batch and restores tenant cont
         findMany: async (params: any) => {
           query = params;
           return [
-            { id: 'delivery-1', brandId: 'brand-1', localId: 'local-1' },
-            { id: 'delivery-2', brandId: 'brand-2', localId: 'local-2' },
+            {
+              id: 'delivery-1',
+              brandId: 'brand-1',
+              localId: 'local-1',
+              local: { timezone: 'Europe/Madrid' },
+            },
+            {
+              id: 'delivery-2',
+              brandId: 'brand-2',
+              localId: 'local-2',
+              local: { timezone: 'Atlantic/Canary' },
+            },
           ];
         },
       },
@@ -36,9 +46,10 @@ test('email delivery worker selects a bounded due batch and restores tenant cont
 
   assert.equal(query.take, 100);
   assert.deepEqual(query.where.local, { isActive: true, brand: { isActive: true } });
+  assert.deepEqual(query.select.local, { select: { timezone: true } });
   assert.deepEqual(contexts, [
-    { brandId: 'brand-1', localId: 'local-1' },
-    { brandId: 'brand-2', localId: 'local-2' },
+    { brandId: 'brand-1', localId: 'local-1', timezone: 'Europe/Madrid' },
+    { brandId: 'brand-2', localId: 'local-2', timezone: 'Atlantic/Canary' },
   ]);
   assert.deepEqual(dispatched, ['delivery-1', 'delivery-2']);
 });

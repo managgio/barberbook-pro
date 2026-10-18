@@ -672,21 +672,44 @@ const AdminDashboard: React.FC = () => {
                   const time = format(parseISO(appointment.startDateTime), 'HH:mm');
                   
                   return (
-                    <div 
+                    <div
                       key={appointment.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                      className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
                     >
                       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                         <Clock className="w-5 h-5 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground truncate">{appointment.serviceName}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-foreground truncate">{appointment.serviceName}</p>
+                          {appointment.serviceCount > 1 && (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                              {t('admin.appointmentServices.count', { count: appointment.serviceCount })}
+                            </span>
+                          )}
+                        </div>
+                        {appointment.serviceCount > 1 && (
+                          <p className="truncate text-xs text-muted-foreground">
+                            {appointment.services
+                              .map((service) => `${service.name} · ${service.durationMinutes} min`)
+                              .join('  +  ')}
+                          </p>
+                        )}
                         <p className="text-sm text-muted-foreground truncate">
                           {t('admin.common.client')}: {appointment.clientName}
                         </p>
-                        <p className="text-sm text-muted-foreground">{t('admin.dashboard.withStaff', { barberName: appointment.barberName })}</p>
+                        <p className="truncate text-sm text-muted-foreground">
+                          {t('admin.dashboard.withStaff', { barberName: appointment.barberName })}
+                          {' · '}
+                          {t('admin.appointmentServices.duration', { minutes: appointment.totalDurationMinutes })}
+                        </p>
                       </div>
-                      <span className="text-lg font-semibold text-primary">{time}</span>
+                      <div className="shrink-0 text-right">
+                        <span className="block text-lg font-semibold text-primary">{time}</span>
+                        <span className="block text-xs font-medium tabular-nums text-foreground">
+                          {currencyFormatter.format(appointment.price)}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
@@ -810,7 +833,7 @@ const AdminDashboard: React.FC = () => {
                           itemStyle={{ color: 'hsl(var(--foreground))', fontSize: '12px', lineHeight: '1.4' }}
                           labelStyle={{ color: 'hsl(var(--muted-foreground))', fontSize: '12px', lineHeight: '1.4' }}
                           wrapperStyle={{ zIndex: 20 }}
-                          formatter={(value: number) => t('admin.dashboard.serviceMix.tooltipAppointments', { count: value })}
+                          formatter={(value: number) => t('admin.dashboard.serviceMix.tooltipServices', { count: value })}
                         />
                       </PieChart>
                     </ResponsiveContainer>

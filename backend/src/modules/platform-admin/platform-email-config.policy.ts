@@ -3,6 +3,7 @@ import {
   normalizeSmtpConfig,
   SmtpConfigInput,
 } from '../../contexts/engagement/domain/services/smtp-config.policy';
+import { stripProviderOwnedMessagingConfig } from '../../contexts/platform/domain/services/tenant-config-sanitization.policy';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -12,7 +13,7 @@ const asRecord = (value: unknown): JsonRecord =>
 const readPassword = (value: unknown) => typeof value === 'string' && value.trim() ? value : undefined;
 
 export const redactPlatformEmailSecret = (configValue: unknown): JsonRecord => {
-  const config = asRecord(configValue);
+  const config = stripProviderOwnedMessagingConfig(configValue);
   const email = asRecord(config.email);
   if (Object.keys(email).length === 0) return { ...config };
   const passwordConfigured = Boolean(readPassword(email.password));
@@ -30,8 +31,8 @@ export const preparePlatformConfigUpdate = (
   currentValue: unknown,
   incomingValue: unknown,
 ): JsonRecord => {
-  const current = asRecord(currentValue);
-  const incoming = asRecord(incomingValue);
+  const current = stripProviderOwnedMessagingConfig(currentValue);
+  const incoming = stripProviderOwnedMessagingConfig(incomingValue);
   if (!Object.prototype.hasOwnProperty.call(incoming, 'email')) {
     return current.email ? { ...incoming, email: current.email } : { ...incoming };
   }

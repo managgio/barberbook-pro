@@ -15,6 +15,8 @@ import { RunAppointmentStatusSideEffectsUseCase } from '../../contexts/booking/a
 import { SyncAppointmentStatusesUseCase } from '../../contexts/booking/application/use-cases/sync-appointment-statuses.use-case';
 import { UpdateAppointmentUseCase } from '../../contexts/booking/application/use-cases/update-appointment.use-case';
 import { NotifyEarlierSlotOpportunityUseCase } from '../../contexts/booking/application/use-cases/notify-earlier-slot-opportunity.use-case';
+import { GetGuestAppointmentAccessUseCase } from '../../contexts/booking/application/use-cases/get-guest-appointment-access.use-case';
+import { CancelGuestAppointmentUseCase } from '../../contexts/booking/application/use-cases/cancel-guest-appointment.use-case';
 import { AttachReferralAttributionToAppointmentUseCase } from '../../contexts/engagement/application/use-cases/attach-referral-attribution-to-appointment.use-case';
 import { HandleReferralAppointmentCancelledUseCase } from '../../contexts/engagement/application/use-cases/handle-referral-appointment-cancelled.use-case';
 import { HandleReferralAppointmentCompletedUseCase } from '../../contexts/engagement/application/use-cases/handle-referral-appointment-completed.use-case';
@@ -66,6 +68,14 @@ import {
   SERVICE_CATALOG_READ_PORT,
   ServiceCatalogReadPort,
 } from '../../contexts/booking/ports/outbound/service-read.port';
+import {
+  BOOKING_GUEST_APPOINTMENT_READ_PORT,
+  BookingGuestAppointmentReadPort,
+} from '../../contexts/booking/ports/outbound/guest-appointment-read.port';
+import {
+  BOOKING_GUEST_APPOINTMENT_ACCESS_TOKEN_PORT,
+  GuestAppointmentAccessTokenPort,
+} from '../../contexts/booking/ports/outbound/guest-appointment-access-token.port';
 import { PrismaBarberEligibilityReadAdapter } from '../../contexts/booking/infrastructure/prisma/prisma-barber-eligibility-read.adapter';
 import { PrismaBookingAvailabilityReadAdapter } from '../../contexts/booking/infrastructure/prisma/prisma-booking-availability-read.adapter';
 import { PrismaHolidayReadAdapter } from '../../contexts/booking/infrastructure/prisma/prisma-holiday-read.adapter';
@@ -132,6 +142,10 @@ import {
   EarlierSlotNotificationPort,
 } from '../../contexts/booking/ports/outbound/earlier-slot-notification.port';
 import { PrismaEarlierSlotNotificationAdapter } from './adapters/prisma-earlier-slot-notification.adapter';
+import { PrismaGuestAppointmentReadAdapter } from './adapters/prisma-guest-appointment-read.adapter';
+import { GuestAppointmentAccessController } from './guest-appointment-access.controller';
+import { GuestAppointmentAccessModule } from '../guest-appointment-access/guest-appointment-access.module';
+import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
 
 @Module({
   imports: [
@@ -147,8 +161,9 @@ import { PrismaEarlierSlotNotificationAdapter } from './adapters/prisma-earlier-
     BarbersModule,
     TenancyModule,
     SubscriptionsCommerceSubscriptionPolicyModule,
+    GuestAppointmentAccessModule,
   ],
-  controllers: [AppointmentsController],
+  controllers: [AppointmentsController, GuestAppointmentAccessController],
   providers: [
     AppointmentsFacade,
     AppointmentsStatusSyncService,
@@ -167,6 +182,8 @@ import { PrismaEarlierSlotNotificationAdapter } from './adapters/prisma-earlier-
     { provide: BOOKING_STATUS_SIDE_EFFECTS_PORT, useClass: ModuleBookingStatusSideEffectsAdapter },
     { provide: BOOKING_IDEMPOTENCY_PORT, useClass: DistributedLockBookingIdempotencyAdapter },
     { provide: EARLIER_SLOT_NOTIFICATION_PORT, useClass: PrismaEarlierSlotNotificationAdapter },
+    PrismaGuestAppointmentReadAdapter,
+    { provide: BOOKING_GUEST_APPOINTMENT_READ_PORT, useExisting: PrismaGuestAppointmentReadAdapter },
     { provide: COMMERCE_SERVICE_PRICING_PORT, useClass: PrismaServicePricingPolicyAdapter },
     { provide: COMMERCE_LOYALTY_POLICY_READ_PORT, useClass: PrismaCommerceLoyaltyPolicyReadAdapter },
     { provide: COMMERCE_LOYALTY_POLICY_PORT, useClass: PrismaCommerceLoyaltyPolicyAdapter },
@@ -327,6 +344,42 @@ import { PrismaEarlierSlotNotificationAdapter } from './adapters/prisma-earlier-
       useFactory: (bookingCommandPort: BookingCommandPort, bookingUnitOfWorkPort: BookingUnitOfWorkPort) =>
         new UpdateAppointmentUseCase(bookingCommandPort, bookingUnitOfWorkPort),
       inject: [BOOKING_COMMAND_PORT, BOOKING_UNIT_OF_WORK_PORT],
+    },
+    {
+      provide: GetGuestAppointmentAccessUseCase,
+      useFactory: (
+        tokenPort: GuestAppointmentAccessTokenPort,
+        readPort: BookingGuestAppointmentReadPort,
+        clockPort: ClockPort,
+      ) => new GetGuestAppointmentAccessUseCase(tokenPort, readPort, clockPort),
+      inject: [
+        BOOKING_GUEST_APPOINTMENT_ACCESS_TOKEN_PORT,
+        BOOKING_GUEST_APPOINTMENT_READ_PORT,
+        CLOCK_PORT,
+      ],
+    },
+    {
+      provide: CancelGuestAppointmentUseCase,
+      useFactory: (
+        tokenPort: GuestAppointmentAccessTokenPort,
+        readPort: BookingGuestAppointmentReadPort,
+        updateAppointmentUseCase: UpdateAppointmentUseCase,
+        clockPort: ClockPort,
+        distributedLockPort: DistributedLockPort,
+      ) => new CancelGuestAppointmentUseCase(
+        tokenPort,
+        readPort,
+        updateAppointmentUseCase,
+        clockPort,
+        distributedLockPort,
+      ),
+      inject: [
+        BOOKING_GUEST_APPOINTMENT_ACCESS_TOKEN_PORT,
+        BOOKING_GUEST_APPOINTMENT_READ_PORT,
+        UpdateAppointmentUseCase,
+        CLOCK_PORT,
+        DISTRIBUTED_LOCK_PORT,
+      ],
     },
     {
       provide: RemoveAppointmentUseCase,

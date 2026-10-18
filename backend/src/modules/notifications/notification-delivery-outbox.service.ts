@@ -167,6 +167,7 @@ export class NotificationDeliveryOutboxService {
     const localId = this.tenantContextPort.getRequestContext().localId;
     const now = new Date();
     const staleBefore = new Date(now.getTime() - PROCESSING_TIMEOUT_MS);
+    const attemptReference = randomUUID();
     const claimed = await this.prisma.$transaction(async (tx) => {
       const claim = await tx.notificationDelivery.updateMany({
         where: {
@@ -184,6 +185,7 @@ export class NotificationDeliveryOutboxService {
         data: {
           status: NotificationDeliveryStatus.processing,
           processingStartedAt: now,
+          activeAttemptReference: attemptReference,
           attemptCount: { increment: 1 },
         },
       });
@@ -196,7 +198,7 @@ export class NotificationDeliveryOutboxService {
     try {
       const payload = readPayload(claimed.payload);
       if (!payload) throw new Error('Delivery payload is unavailable.');
-      result = await this.sendPayload(payload);
+      result = await this.sendPayload(payload, claimed.activeAttemptReference || attemptReference);
     } catch (error) {
       this.logger.error(
         `Unexpected notification outbox failure deliveryId=${claimed.id} channel=${claimed.channel} brandId=${claimed.brandId} localId=${claimed.localId}`,
@@ -212,11 +214,24 @@ export class NotificationDeliveryOutboxService {
     }
 
     if (result.status === 'accepted') {
-      await this.attemptRecorder.accepted(claimed.id, claimed.attemptCount, result.providerMessageId || null, now);
+      await this.attemptRecorder.accepted(
+        claimed.id,
+        claimed.attemptCount,
+        attemptReference,
+        result.providerMessageId || null,
+        now,
+      );
       return { status: NotificationDeliveryStatus.accepted };
     }
     if (result.status === 'skipped') {
-      await this.attemptRecorder.skipped(claimed.id, claimed.attemptCount, result.code, result.message, now);
+      await this.attemptRecorder.skipped(
+        claimed.id,
+        claimed.attemptCount,
+        attemptReference,
+        result.code,
+        result.message,
+        now,
+      );
       return { status: NotificationDeliveryStatus.skipped, errorCode: result.code };
     }
 
@@ -227,8 +242,15 @@ export class NotificationDeliveryOutboxService {
       retryable: result.retryable,
       critical: result.critical,
     });
-    await this.attemptRecorder.failed(claimed.id, claimed.attemptCount, result, decision, now);
-    if (decision.promoteToCriticalTrace) await this.criticalReporter.report(claimed, result, now);
+    const recorded = await this.attemptRecorder.failed(
+      claimed.id,
+      claimed.attemptCount,
+      attemptReference,
+      result,
+      decision,
+      now,
+    );
+    if (recorded && decision.promoteToCriticalTrace) await this.criticalReporter.report(claimed, result, now);
     return { status: decision.status, errorCode: result.code };
   }
 
@@ -269,7 +291,7 @@ export class NotificationDeliveryOutboxService {
     });
   }
 
-  private sendPayload(payload: NotificationDeliveryPayload) {
+  private sendPayload(payload: NotificationDeliveryPayload, deliveryAttemptReference: string) {
     if (payload.template === 'appointment_email') {
       return this.notificationManagementPort.sendAppointmentEmail(
         payload.contact,
@@ -281,7 +303,7 @@ export class NotificationDeliveryOutboxService {
     if (payload.template === 'reminder') {
       const appointment = { ...payload.appointment, date: new Date(payload.appointment.date) };
       return payload.channel === NotificationDeliveryChannel.sms
-        ? this.notificationManagementPort.sendReminderSms(payload.contact, appointment)
+        ? this.notificationManagementPort.sendReminderSms(payload.contact, appointment, { deliveryAttemptReference })
         : this.notificationManagementPort.sendReminderWhatsapp(payload.contact, appointment);
     }
     if (payload.channel === NotificationDeliveryChannel.email) {
@@ -292,7 +314,10 @@ export class NotificationDeliveryOutboxService {
       });
     }
     if (payload.channel === NotificationDeliveryChannel.sms) {
-      return this.notificationManagementPort.sendBroadcastSms({ contact: payload.contact, message: payload.message });
+      return this.notificationManagementPort.sendBroadcastSms(
+        { contact: payload.contact, message: payload.message },
+        { deliveryAttemptReference },
+      );
     }
     return this.notificationManagementPort.sendBroadcastWhatsapp({
       contact: payload.contact,

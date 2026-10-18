@@ -17,7 +17,13 @@ export class AiAssistantController {
   @Post('chat')
   async chat(@Body() body: AiChatRequestDto, @Req() req: AiRequest) {
     const adminUserId = req.adminUserId || '';
-    return this.aiAssistantService.chat(adminUserId, body.message, body.sessionId);
+    return this.aiAssistantService.chat(
+      adminUserId,
+      body.message,
+      body.sessionId,
+      body.inputSource,
+      body.templateKey,
+    );
   }
 
   @Get('session')

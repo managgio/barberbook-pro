@@ -17,6 +17,10 @@ import {
   redactPlatformEmailSecret,
   resolvePlatformEmailVerificationConfig,
 } from './platform-email-config.policy';
+import {
+  canonicalizeIanaTimeZone,
+  DEFAULT_LOCATION_TIMEZONE,
+} from '../../contexts/platform/domain/services/location-timezone.policy';
 
 @Injectable()
 export class PlatformAdminService {
@@ -51,11 +55,22 @@ export class PlatformAdminService {
   }
 
   createLocation(brandId: string, data: PlatformCreateLocationInput) {
-    return this.platformAdminManagementPort.createLocation(brandId, data);
+    const timezone = canonicalizeIanaTimeZone(data.timezone ?? DEFAULT_LOCATION_TIMEZONE);
+    if (!timezone) {
+      throw new BadRequestException('Invalid location timezone');
+    }
+    return this.platformAdminManagementPort.createLocation(brandId, { ...data, timezone });
   }
 
   updateLocation(id: string, data: PlatformUpdateLocationInput) {
-    return this.platformAdminManagementPort.updateLocation(id, data);
+    if (data.timezone === undefined) {
+      return this.platformAdminManagementPort.updateLocation(id, data);
+    }
+    const timezone = canonicalizeIanaTimeZone(data.timezone);
+    if (!timezone) {
+      throw new BadRequestException('Invalid location timezone');
+    }
+    return this.platformAdminManagementPort.updateLocation(id, { ...data, timezone });
   }
 
   deleteLocation(id: string) {

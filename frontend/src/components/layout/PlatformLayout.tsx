@@ -4,6 +4,7 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import PlatformSidebar from './PlatformSidebar';
+import '@/styles/platform-routes.css';
 
 const PLATFORM_LAST_ROUTE_STORAGE_KEY = 'platform:last-route:session';
 const PLATFORM_ROUTES = new Set(['/platform', '/platform/brands', '/platform/observability']);

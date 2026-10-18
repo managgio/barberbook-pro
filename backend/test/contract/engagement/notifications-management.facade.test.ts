@@ -10,7 +10,6 @@ const basePort = (): EngagementNotificationManagementPort => ({
   sendBroadcastSms: async () => ({ status: 'accepted' }),
   sendBroadcastWhatsapp: async () => ({ status: 'accepted' }),
   sendReminderSms: async () => ({ status: 'accepted' }),
-  sendTestSms: async () => ({ success: true, sid: 'SM_BASE' }),
   sendReminderWhatsapp: async () => ({ status: 'accepted' }),
   sendTestWhatsapp: async () => ({ success: true, sid: 'WA_BASE' }),
 });
@@ -79,26 +78,4 @@ test('notifications facade does not persist appointment deliveries without an em
   assert.equal(transactionalResult, null);
   assert.equal(enqueueCalls, 0);
   assert.equal(dispatchCalls, 0);
-});
-
-test('notifications facade delegates test sms dispatch', async () => {
-  const calls: Array<{ phone: string; message: string | null | undefined }> = [];
-  const service = new NotificationsService(
-    {
-      ...basePort(),
-      sendTestSms: async (phone, message) => {
-        calls.push({ phone, message });
-        return { success: true, sid: 'SM_123' };
-      },
-    },
-    {} as any,
-    {} as any,
-  );
-
-  const result = await service.sendTestSms('+34600111222', 'hola');
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].phone, '+34600111222');
-  assert.equal(calls[0].message, 'hola');
-  assert.equal(result.sid, 'SM_123');
 });

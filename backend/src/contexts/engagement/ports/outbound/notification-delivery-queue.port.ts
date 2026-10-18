@@ -9,6 +9,7 @@ export interface EngagementNotificationDeliveryQueuePort {
   queueReminder(params: {
     channel: 'sms' | 'whatsapp';
     appointmentId: string;
+    reminderRevision: string;
     contact: EngagementNotificationContactInfo;
     appointment: EngagementNotificationAppointmentInfo;
   }): Promise<void>;

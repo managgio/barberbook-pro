@@ -42,6 +42,7 @@ test('run notification reminders sends enabled channels and marks reminder', asy
   const reminders: EngagementPendingReminder[] = [
     {
       appointmentId: 'apt-1',
+      reminderRevision: '2026-03-07T09:00:00.000Z',
       allowSms: true,
       allowWhatsapp: true,
       contact: { phone: '+34123456789', name: 'Client' },
@@ -79,6 +80,7 @@ test('run notification reminders skips reminder when contact permissions are dis
   const reminders: EngagementPendingReminder[] = [
     {
       appointmentId: 'apt-2',
+      reminderRevision: '2026-03-07T09:00:00.000Z',
       allowSms: false,
       allowWhatsapp: false,
       contact: { phone: '+34123456789', name: 'Client' },
@@ -109,5 +111,42 @@ test('run notification reminders skips reminder when contact permissions are dis
 
   assert.equal(result, 0);
   assert.deepEqual(sent, []);
+  assert.deepEqual(marked, []);
+});
+
+test('run notification reminders does not mark a reminder when its allowed channel is unavailable', async () => {
+  const reminders: EngagementPendingReminder[] = [
+    {
+      appointmentId: 'apt-sms-only',
+      reminderRevision: '2026-03-07T09:00:00.000Z',
+      allowSms: true,
+      allowWhatsapp: false,
+      contact: { phone: '+34123456789', name: 'Client' },
+      appointment: { date: new Date('2026-03-08T10:00:00.000Z') },
+    },
+  ];
+  const queued: string[] = [];
+  const marked: string[] = [];
+  const reminderPort: EngagementNotificationReminderPort = {
+    ...baseReminderPort(reminders),
+    markReminderSent: async (appointmentId) => {
+      marked.push(appointmentId);
+    },
+  };
+  const useCase = new RunNotificationRemindersUseCase(reminderPort, {
+    queueReminder: async ({ channel }) => {
+      queued.push(channel);
+    },
+  });
+
+  const result = await useCase.execute({
+    windowStart: new Date('2026-03-07T10:00:00.000Z'),
+    windowEnd: new Date('2026-03-07T10:10:00.000Z'),
+    smsEnabled: false,
+    whatsappEnabled: true,
+  });
+
+  assert.equal(result, 0);
+  assert.deepEqual(queued, []);
   assert.deepEqual(marked, []);
 });

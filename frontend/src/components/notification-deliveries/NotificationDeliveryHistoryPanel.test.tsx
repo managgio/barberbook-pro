@@ -16,6 +16,9 @@ const history: NotificationDeliveryHistory = {
     pending: 0,
     processing: 0,
     accepted: 0,
+    sent: 0,
+    delivered: 0,
+    undelivered: 0,
     retrying: 0,
     failed: 1,
     skipped: 0,
@@ -31,6 +34,7 @@ const history: NotificationDeliveryHistory = {
       channel: 'sms',
       kind: 'reminder',
       status: 'failed',
+      canRetry: true,
       recipient: '*******89',
       recipientName: 'Cliente',
       title: 'Recordatorio de cita',
@@ -41,6 +45,10 @@ const history: NotificationDeliveryHistory = {
       lastErrorCode: 'TWILIO_TEMPORARY_FAILURE',
       lastErrorMessage: 'Twilio temporarily rejected the SMS request.',
       acceptedAt: null,
+      sentAt: null,
+      deliveredAt: null,
+      undeliveredAt: null,
+      deliveryStatusUpdatedAt: null,
       failedAt: '2026-08-29T10:00:00.000Z',
       skippedAt: null,
       createdAt: '2026-08-29T09:55:00.000Z',
@@ -55,6 +63,9 @@ const skippedHistory: NotificationDeliveryHistory = {
     pending: 0,
     processing: 0,
     accepted: 0,
+    sent: 0,
+    delivered: 0,
+    undelivered: 0,
     retrying: 0,
     failed: 0,
     skipped: 1,
@@ -66,6 +77,7 @@ const skippedHistory: NotificationDeliveryHistory = {
       channel: 'email',
       kind: 'appointment_created',
       status: 'skipped',
+      canRetry: false,
       attemptCount: 1,
       maxAttempts: 5,
       lastErrorCode: 'EMAIL_RECIPIENT_MISSING',
@@ -93,7 +105,7 @@ describe('NotificationDeliveryHistoryPanel', () => {
     render(
       <NotificationDeliveryHistoryPanel
         data={history}
-        filters={{ status: 'all', kind: 'all', channel: 'all', brandId: 'all', localId: 'all' }}
+        filters={{ status: 'all', kind: 'all', channel: 'all', brandId: 'all', localId: 'all', includeResolved: false }}
         brandOptions={[{ value: 'all', label: 'Todos' }, { value: 'brand-1', label: 'Negocio Demo' }]}
         localOptions={[{ value: 'all', label: 'Todos' }, { value: 'local-1', label: 'Centro' }]}
         showTenant
@@ -108,7 +120,7 @@ describe('NotificationDeliveryHistoryPanel', () => {
     expect(screen.getAllByText('Negocio Demo').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Centro').length).toBeGreaterThan(0);
     expect(screen.getAllByText('TWILIO_TEMPORARY_FAILURE').length).toBeGreaterThan(0);
-    expect(screen.getByText(/aceptados se conservan temporalmente/i)).toBeInTheDocument();
+    expect(screen.getByText(/distingue entre solicitudes aceptadas/i)).toBeInTheDocument();
     expect(screen.getAllByText(/\*+89/).length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText('Filtrar por método').length).toBeGreaterThan(0);
 
@@ -120,7 +132,7 @@ describe('NotificationDeliveryHistoryPanel', () => {
     render(
       <NotificationDeliveryHistoryPanel
         data={skippedHistory}
-        filters={{ status: 'all', kind: 'all', channel: 'all', brandId: 'all', localId: 'all' }}
+        filters={{ status: 'all', kind: 'all', channel: 'all', brandId: 'all', localId: 'all', includeResolved: false }}
         canRetry
         onFilterChange={vi.fn()}
         onPageChange={vi.fn()}
@@ -132,5 +144,49 @@ describe('NotificationDeliveryHistoryPanel', () => {
     expect(screen.getAllByText('No requiere reintentos').length).toBeGreaterThan(0);
     expect(screen.queryByText('1 de 5')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+  });
+
+  it('does not offer a manual retry when the backend classifies an SMS failure as permanent', () => {
+    render(
+      <NotificationDeliveryHistoryPanel
+        data={{
+          ...history,
+          items: [{
+            ...history.items[0],
+            canRetry: false,
+            lastErrorCode: 'SMS_RECIPIENT_OPTED_OUT',
+            lastErrorMessage: 'The recipient has opted out of SMS messages.',
+          }],
+        }}
+        filters={{ status: 'all', kind: 'all', channel: 'all', brandId: 'all', localId: 'all', includeResolved: false }}
+        canRetry
+        onFilterChange={vi.fn()}
+        onPageChange={vi.fn()}
+        onRefresh={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('SMS_RECIPIENT_OPTED_OUT').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+  });
+
+  it('requests the complete delivery history when resolved deliveries are enabled', () => {
+    const onFilterChange = vi.fn();
+    const onPageChange = vi.fn();
+    render(
+      <NotificationDeliveryHistoryPanel
+        data={history}
+        filters={{ status: 'all', kind: 'all', channel: 'all', brandId: 'all', localId: 'all', includeResolved: false }}
+        onFilterChange={onFilterChange}
+        onPageChange={onPageChange}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Incluir entregas resueltas' }));
+
+    expect(onPageChange).toHaveBeenCalledWith(1);
+    expect(onFilterChange).toHaveBeenCalledWith('includeResolved', true);
   });
 });

@@ -22,6 +22,9 @@ export class GetAvailabilityBatchUseCase {
   async execute(query: GetAvailabilityBatchQuery): Promise<Record<string, string[]>> {
     const dateOnly = query.date.split('T')[0];
     const localId = query.context.localId;
+    const serviceIds = Array.from(new Set(
+      [query.serviceId, ...(query.serviceIds || [])].filter((id): id is string => Boolean(id)),
+    ));
     const normalizedBarberIds = Array.from(new Set((query.barberIds || []).filter(Boolean)));
     if (normalizedBarberIds.length === 0) return {};
 
@@ -40,7 +43,11 @@ export class GetAvailabilityBatchUseCase {
       closures,
       eligibleBarberIds,
     ] = await Promise.all([
-      this.serviceCatalogReadPort.getServiceDuration({ localId, serviceId: query.serviceId }),
+      serviceIds.length > 0
+        ? Promise.all(serviceIds.map((serviceId) =>
+            this.serviceCatalogReadPort.getServiceDuration({ localId, serviceId }),
+          )).then((durations) => durations.reduce((total, duration) => total + duration, 0))
+        : this.serviceCatalogReadPort.getServiceDuration({ localId }),
       this.schedulePolicyReadPort.getShopSchedule({ localId }),
       this.holidayReadPort.getGeneralHolidays({ localId }),
       this.barberEligibilityReadPort.getBarbers({ localId, barberIds: normalizedBarberIds }),
@@ -57,12 +64,16 @@ export class GetAvailabilityBatchUseCase {
         barberIds: normalizedBarberIds,
         dateOnly,
       }) ?? Promise.resolve([]),
-      query.serviceId
-        ? this.barberEligibilityReadPort.getEligibleBarberIdsForService({
-            localId,
-            serviceId: query.serviceId,
-            barberIds: normalizedBarberIds,
-          })
+      serviceIds.length > 0
+        ? Promise.all(serviceIds.map((serviceId) =>
+            this.barberEligibilityReadPort.getEligibleBarberIdsForService({
+              localId,
+              serviceId,
+              barberIds: normalizedBarberIds,
+            }),
+          )).then((eligibleGroups) => normalizedBarberIds.filter((barberId) =>
+            eligibleGroups.every((group) => group.includes(barberId)),
+          ))
         : Promise.resolve(normalizedBarberIds),
     ]);
 
@@ -92,7 +103,7 @@ export class GetAvailabilityBatchUseCase {
         return;
       }
 
-      if (query.serviceId && !eligibleSet.has(barberId)) {
+      if (serviceIds.length > 0 && !eligibleSet.has(barberId)) {
         response[barberId] = [];
         return;
       }

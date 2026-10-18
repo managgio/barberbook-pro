@@ -14,6 +14,7 @@ import { FindAppointmentByIdUseCase } from '../../contexts/booking/application/u
 import { AnonymizeAppointmentUseCase } from '../../contexts/booking/application/use-cases/anonymize-appointment.use-case';
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../contexts/platform/ports/outbound/tenant-context.port';
 import { SettingsService } from '../settings/settings.service';
+import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
@@ -36,6 +37,7 @@ export class AppointmentsFacade {
     private readonly findAppointmentByIdUseCase: FindAppointmentByIdUseCase,
     private readonly anonymizeAppointmentUseCase: AnonymizeAppointmentUseCase,
     private readonly settingsService: SettingsService,
+    private readonly tenantConfigService: TenantConfigService,
     @Inject(TENANT_CONTEXT_PORT)
     private readonly tenantContextPort: TenantContextPort,
   ) {}
@@ -50,15 +52,34 @@ export class AppointmentsFacade {
     return value === 30 ? 30 : 15;
   }
 
+  private async assertMultiServiceEnabled(serviceIds: string[], tenantOptIn: boolean) {
+    if (serviceIds.length > 6) {
+      throw new BadRequestException('Puedes combinar un máximo de 6 servicios.');
+    }
+    if (serviceIds.length <= 1) return;
+    const brandConfig = await this.tenantConfigService.getBrandConfig();
+    if (brandConfig.features?.multiServiceBookingEnabled !== true || tenantOptIn !== true) {
+      throw new BadRequestException('La reserva de varios servicios no está habilitada.');
+    }
+  }
+
   async getAvailability(
     barberId: string,
     date: string,
     serviceId?: string,
     appointmentIdToIgnore?: string,
+    serviceIds?: string[],
   ) {
     const startedAt = Date.now();
     try {
       const settings = await this.settingsService.getSettings();
+      const normalizedServiceIds = Array.from(new Set(
+        [serviceId, ...(serviceIds || [])].filter((id): id is string => Boolean(id)),
+      ));
+      await this.assertMultiServiceEnabled(
+        normalizedServiceIds,
+        settings.appointments?.multiServiceEnabled === true,
+      );
       const slotIntervalMinutes = this.resolveSlotIntervalMinutes(
         settings.appointments?.slotIntervalMinutes,
       );
@@ -67,6 +88,7 @@ export class AppointmentsFacade {
         barberId,
         date,
         serviceId,
+        serviceIds: normalizedServiceIds,
         appointmentIdToIgnore,
         slotIntervalMinutes,
       });
@@ -81,7 +103,7 @@ export class AppointmentsFacade {
   async getAvailabilityBatch(
     date?: string,
     barberIds?: string[],
-    options?: { serviceId?: string; appointmentIdToIgnore?: string },
+    options?: { serviceId?: string; serviceIds?: string[]; appointmentIdToIgnore?: string },
   ) {
     if (!date) {
       throw new BadRequestException('date es obligatorio.');
@@ -91,6 +113,14 @@ export class AppointmentsFacade {
     try {
       const normalizedBarberIds = Array.from(new Set((barberIds || []).filter(Boolean)));
       const settings = await this.settingsService.getSettings();
+      const normalizedServiceIds = Array.from(new Set(
+        [options?.serviceId, ...(options?.serviceIds || [])]
+          .filter((id): id is string => Boolean(id)),
+      ));
+      await this.assertMultiServiceEnabled(
+        normalizedServiceIds,
+        settings.appointments?.multiServiceEnabled === true,
+      );
       const slotIntervalMinutes = this.resolveSlotIntervalMinutes(
         settings.appointments?.slotIntervalMinutes,
       );
@@ -99,6 +129,7 @@ export class AppointmentsFacade {
         date,
         barberIds: normalizedBarberIds,
         serviceId: options?.serviceId,
+        serviceIds: normalizedServiceIds,
         appointmentIdToIgnore: options?.appointmentIdToIgnore,
         slotIntervalMinutes,
       });
@@ -249,6 +280,7 @@ export class AppointmentsFacade {
         userId: data.userId,
         barberId: data.barberId,
         serviceId: data.serviceId,
+        serviceIds: data.serviceIds,
         startDateTime: data.startDateTime,
         status: data.status,
         notes: data.notes,
@@ -256,6 +288,7 @@ export class AppointmentsFacade {
         guestContact: data.guestContact,
         guestEmail: data.guestEmail,
         guestPhone: data.guestPhone,
+        reminderChannels: data.reminderChannels,
         notifyIfEarlierSlot: data.notifyIfEarlierSlot,
         privacyConsentGiven: data.privacyConsentGiven,
         referralAttributionId: data.referralAttributionId,

@@ -3,11 +3,11 @@ import { test } from 'node:test';
 import { GetPlatformMetricsUseCase } from '@/contexts/platform/application/use-cases/get-platform-metrics.use-case';
 import { RecordImageKitUsageUseCase } from '@/contexts/platform/application/use-cases/record-imagekit-usage.use-case';
 import { RecordOpenAiUsageUseCase } from '@/contexts/platform/application/use-cases/record-openai-usage.use-case';
-import { RecordTwilioUsageUseCase } from '@/contexts/platform/application/use-cases/record-twilio-usage.use-case';
+import { RecordMessagingUsageUseCase } from '@/contexts/platform/application/use-cases/record-messaging-usage.use-case';
 import { RefreshImageKitUsageUseCase } from '@/contexts/platform/application/use-cases/refresh-imagekit-usage.use-case';
 import {
   PlatformOpenAiUsageInput,
-  PlatformTwilioUsageInput,
+  PlatformMessagingUsageInput,
   PlatformImageKitUsageInput,
   PlatformUsageMetricsPort,
 } from '@/contexts/platform/ports/outbound/platform-usage-metrics.port';
@@ -23,7 +23,7 @@ const context = {
 
 const basePort = (): PlatformUsageMetricsPort => ({
   recordOpenAiUsage: async () => undefined,
-  recordTwilioUsage: async () => undefined,
+  recordMessagingUsage: async () => undefined,
   recordImageKitUsage: async () => undefined,
   refreshImageKitUsage: async () => undefined,
   getPlatformMetrics: async () => ({
@@ -31,11 +31,11 @@ const basePort = (): PlatformUsageMetricsPort => ({
     range: { start: '2026-03-01', end: '2026-03-07' },
     thresholds: {
       openaiDailyCostUsd: null,
-      twilioDailyCostUsd: null,
+      messagingDailyCostUsd: null,
       imagekitStorageBytes: null,
     },
     openai: { series: [] },
-    twilio: { series: [] },
+    messaging: { series: [] },
     imagekit: { series: [] },
   }),
 });
@@ -60,11 +60,11 @@ test('record openai usage resolves brand from context when omitted', async () =>
   assert.equal(calls[0].model, 'gpt-4o-mini');
 });
 
-test('record twilio usage keeps explicit brand override', async () => {
-  const calls: PlatformTwilioUsageInput[] = [];
-  const useCase = new RecordTwilioUsageUseCase({
+test('record messaging usage keeps explicit brand override', async () => {
+  const calls: PlatformMessagingUsageInput[] = [];
+  const useCase = new RecordMessagingUsageUseCase({
     ...basePort(),
-    recordTwilioUsage: async (input) => {
+    recordMessagingUsage: async (input) => {
       calls.push(input);
     },
   });
@@ -129,4 +129,3 @@ test('get platform metrics forwards query options', async () => {
   assert.deepEqual(calls[0], { windowDays: 14, forceOpenAi: true });
   assert.equal(result.windowDays, 7);
 });
-

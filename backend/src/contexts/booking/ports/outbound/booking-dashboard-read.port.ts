@@ -16,6 +16,12 @@ export type BookingDashboardAppointmentSnapshot = {
   userName: string | null;
   serviceName: string | null;
   barberName: string | null;
+  totalDurationMinutes?: number;
+  serviceItems?: Array<{
+    nameSnapshot: string;
+    durationMinutes: number;
+    position: number;
+  }>;
 };
 
 export interface BookingDashboardReadPort {

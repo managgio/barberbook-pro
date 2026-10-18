@@ -34,7 +34,7 @@ export class PrismaBookingAvailabilityReadAdapter implements BookingAvailability
     return appointments.map((appointment) => ({
       barberId: appointment.barberId,
       startDateTime: appointment.startDateTime,
-      serviceDurationMinutes: appointment.service?.duration,
+      serviceDurationMinutes: appointment.totalDurationMinutes ?? appointment.service?.duration,
     }));
   }
 
@@ -61,7 +61,7 @@ export class PrismaBookingAvailabilityReadAdapter implements BookingAvailability
     return appointments.map((appointment) => ({
       barberId: appointment.barberId,
       startDateTime: appointment.startDateTime,
-      serviceDurationMinutes: appointment.service?.duration,
+      serviceDurationMinutes: appointment.totalDurationMinutes ?? appointment.service?.duration,
     }));
   }
 

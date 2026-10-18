@@ -1,9 +1,29 @@
 import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
 
+const deferredRouteContentExclusions = [
+  "!./src/pages/platform/**/*.{ts,tsx}",
+  "!./src/components/platform/**/*.{ts,tsx}",
+  "!./src/pages/GuestAppointmentManagePage.tsx",
+];
+
+const productionContentExclusions = process.env.NODE_ENV === "production"
+  ? [
+      "!./src/**/*.{test,spec}.{ts,tsx}",
+      "!./src/components/platform/PlatformSmsTestPanel.tsx",
+    ]
+  : [];
+
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+    ...deferredRouteContentExclusions,
+    ...productionContentExclusions,
+  ],
   prefix: "",
   theme: {
     container: {

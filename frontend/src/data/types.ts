@@ -117,9 +117,14 @@ export interface TenantBootstrap {
       whatsapp?: boolean;
       sms?: boolean;
     } | null;
+    notificationCapabilities?: {
+      sms: boolean;
+      whatsapp: boolean;
+    } | null;
     features?: {
       barberServiceAssignmentEnabled?: boolean;
       communicationsEnabled?: boolean;
+      multiServiceBookingEnabled?: boolean;
     } | null;
     invoicing?: {
       enabled?: boolean;
@@ -242,6 +247,15 @@ export interface Appointment {
   barberNameSnapshot?: string | null;
   serviceId: string;
   serviceNameSnapshot?: string | null;
+  totalDurationMinutes?: number;
+  services?: Array<{
+    id: string;
+    serviceId: string;
+    name: string;
+    durationMinutes: number;
+    unitPrice: number;
+    position: number;
+  }>;
   loyaltyProgramId?: string | null;
   loyaltyRewardApplied?: boolean;
   referralAttributionId?: string | null;
@@ -304,6 +318,16 @@ export interface AppointmentInvoice {
     logoUrl: string | null;
     primaryColor: string | null;
   };
+}
+
+export interface InvoiceLegalSettings {
+  legalOwnerName: string;
+  legalOwnerTaxId?: string | null;
+  legalOwnerAddress?: string | null;
+  legalContactEmail?: string | null;
+  legalContactPhone?: string | null;
+  country: string;
+  updatedAt?: string;
 }
 
 export interface StripeAvailability {
@@ -387,6 +411,7 @@ export interface PlatformLocationSummary {
   id: string;
   name: string;
   slug?: string | null;
+  timezone: string;
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -595,6 +620,7 @@ export interface SiteSettings {
   appointments: {
     cancellationCutoffHours: number;
     slotIntervalMinutes?: number;
+    multiServiceEnabled: boolean;
   };
   services: {
     categoriesEnabled: boolean;
@@ -1263,6 +1289,7 @@ export interface CommunicationCampaignDetail extends CommunicationCampaignSummar
 
 export interface BookingState {
   serviceId: string | null;
+  serviceIds?: string[];
   barberId: string | null;
   dateTime: string | null;
   notes?: string;
@@ -1272,6 +1299,7 @@ export interface CreateAppointmentPayload {
   userId?: string | null;
   barberId: string;
   serviceId: string;
+  serviceIds?: string[];
   startDateTime: string;
   status?: AppointmentStatus;
   notes?: string;
@@ -1279,6 +1307,7 @@ export interface CreateAppointmentPayload {
   guestContact?: string;
   guestEmail?: string;
   guestPhone?: string;
+  reminderChannels?: Array<'sms' | 'whatsapp'>;
   notifyIfEarlierSlot?: boolean;
   privacyConsentGiven?: boolean;
   referralAttributionId?: string;
@@ -1399,12 +1428,66 @@ export interface AiChatSessionMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  inputSource?: 'typed' | 'voice' | 'template' | null;
+  templateKey?: string | null;
 }
 
 export interface AiChatSessionResponse {
   sessionId: string;
   summary: string;
   messages: AiChatSessionMessage[];
+}
+
+export type PlatformAiConversationSource = 'typed' | 'voice' | 'template';
+
+export interface PlatformAiConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  inputSource?: PlatformAiConversationSource | null;
+  templateKey?: string | null;
+  createdAt: string;
+}
+
+export interface PlatformAiConversationSummaryItem {
+  id: string;
+  brand: { id: string; name: string; subdomain: string };
+  location: { id: string; name: string };
+  admin: { id: string; name: string; email: string };
+  title?: string | null;
+  summary: string;
+  createdAt: string;
+  lastMessageAt?: string | null;
+  messageCount: number;
+  preview: PlatformAiConversationMessage[];
+}
+
+export interface PlatformAiConversationListResponse {
+  retentionDays: number;
+  range: { start: string; end: string; days: number };
+  summary: {
+    sessions: number;
+    messages: number;
+    activeTenants: number;
+    sources: Record<PlatformAiConversationSource, number>;
+  };
+  tenantActivity: Array<{
+    localId: string;
+    locationName: string;
+    brandId: string;
+    brandName: string;
+    subdomain: string;
+    sessions: number;
+  }>;
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+  items: PlatformAiConversationSummaryItem[];
+}
+
+export interface PlatformAiConversationDetail extends Omit<PlatformAiConversationSummaryItem, 'messageCount' | 'preview'> {
+  messages: PlatformAiConversationMessage[];
 }
 
 export interface PlatformUsageSeriesPoint {
@@ -1423,11 +1506,11 @@ export interface PlatformUsageMetrics {
   range: { start: string; end: string };
   thresholds: {
     openaiDailyCostUsd: number | null;
-    twilioDailyCostUsd: number | null;
+    messagingDailyCostUsd: number | null;
     imagekitStorageBytes: number | null;
   };
   openai: { series: PlatformUsageSeriesPoint[] };
-  twilio: { series: PlatformUsageSeriesPoint[] };
+  messaging: { series: PlatformUsageSeriesPoint[] };
   imagekit: { series: PlatformUsageSeriesPoint[] };
 }
 
@@ -1617,6 +1700,10 @@ export interface AdminDashboardTodayAppointment {
   id: string;
   startDateTime: string;
   serviceName: string;
+  services: Array<{ name: string; durationMinutes: number }>;
+  serviceCount: number;
+  totalDurationMinutes: number;
+  price: number;
   barberName: string;
   clientName: string;
 }

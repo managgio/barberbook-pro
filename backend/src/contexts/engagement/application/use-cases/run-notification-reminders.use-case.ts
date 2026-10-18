@@ -23,25 +23,32 @@ export class RunNotificationRemindersUseCase {
         continue;
       }
 
+      let queuedAtLeastOne = false;
       if (params.smsEnabled && reminder.allowSms) {
         await this.deliveryQueuePort.queueReminder({
           channel: 'sms',
           appointmentId: reminder.appointmentId,
+          reminderRevision: reminder.reminderRevision,
           contact: reminder.contact,
           appointment: reminder.appointment,
         });
+        queuedAtLeastOne = true;
       }
       if (params.whatsappEnabled && reminder.allowWhatsapp) {
         await this.deliveryQueuePort.queueReminder({
           channel: 'whatsapp',
           appointmentId: reminder.appointmentId,
+          reminderRevision: reminder.reminderRevision,
           contact: reminder.contact,
           appointment: reminder.appointment,
         });
+        queuedAtLeastOne = true;
       }
 
-      await this.reminderPort.markReminderSent(reminder.appointmentId);
-      sentCount += 1;
+      if (queuedAtLeastOne) {
+        await this.reminderPort.markReminderSent(reminder.appointmentId);
+        sentCount += 1;
+      }
     }
     return sentCount;
   }

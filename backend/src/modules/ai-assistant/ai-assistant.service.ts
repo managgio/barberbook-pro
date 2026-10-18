@@ -48,7 +48,13 @@ export class AiAssistantService {
     private readonly tenantContextPort: TenantContextPort,
   ) {}
 
-  async chat(adminUserId: string, message: string, sessionId?: string | null): Promise<AiChatResult> {
+  async chat(
+    adminUserId: string,
+    message: string,
+    sessionId?: string | null,
+    inputSource: 'typed' | 'voice' | 'template' = 'typed',
+    templateKey?: string,
+  ): Promise<AiChatResult> {
     const localId = this.tenantContextPort.getRequestContext().localId;
     try {
       return await this.chatWithAiAssistantUseCase.execute({
@@ -57,6 +63,8 @@ export class AiAssistantService {
         sessionId,
         localId,
         timeZone: AI_TIME_ZONE,
+        inputSource,
+        templateKey,
       });
     } catch (error) {
       this.rethrowAsHttp(error);

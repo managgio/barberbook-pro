@@ -10,6 +10,7 @@ import {
 } from '../support/ai-timezone-utils';
 
 const MAX_STORED_MESSAGES = 80;
+const RETENTION_DAYS = 90;
 
 @Injectable()
 export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
@@ -30,23 +31,19 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
     const now = new Date();
     const dayKey = getDateStringInTimeZone(now, timeZone);
     if (this.lastCleanupDay === dayKey) return;
-    const { start } = getDayBoundsInTimeZone(dayKey, timeZone);
+    const retentionCutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
     const localId = this.getLocalId();
     await this.prisma.aiChatMessage.deleteMany({
-      where: { createdAt: { lt: start }, localId },
+      where: { createdAt: { lt: retentionCutoff }, localId },
     });
     await this.prisma.aiChatSession.deleteMany({
       where: {
         localId,
         OR: [
-          { lastMessageAt: { lt: start } },
-          { lastMessageAt: null, createdAt: { lt: start } },
+          { lastMessageAt: { lt: retentionCutoff } },
+          { lastMessageAt: null, createdAt: { lt: retentionCutoff } },
         ],
       },
-    });
-    await this.prisma.aiChatSession.updateMany({
-      where: { localId },
-      data: { summary: '' },
     });
     this.lastCleanupDay = dayKey;
   }
@@ -119,6 +116,8 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
     content: string;
     toolName?: string | null;
     toolPayload?: unknown | null;
+    inputSource?: 'typed' | 'voice' | 'template' | null;
+    templateKey?: string | null;
   }): Promise<unknown> {
     if (params.role === 'tool') {
       return null;
@@ -131,6 +130,8 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
         content: params.content,
         toolName: params.toolName ?? null,
         toolPayload: params.toolPayload ?? undefined,
+        inputSource: params.role === 'user' ? params.inputSource ?? 'typed' : null,
+        templateKey: params.role === 'user' ? params.templateKey ?? null : null,
       },
       select: {
         id: true,
@@ -193,6 +194,8 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
           role: true,
           content: true,
           createdAt: true,
+          inputSource: true,
+          templateKey: true,
         },
       });
       return { session: { id: session.id, summary: session.summary || '' }, messages };
@@ -241,6 +244,8 @@ export class PrismaAiAssistantMemoryAdapter implements AiAssistantMemoryPort {
           role: true,
           content: true,
           createdAt: true,
+          inputSource: true,
+          templateKey: true,
         },
       });
       return { session: { id: session.id, summary: session.summary || '' }, messages };

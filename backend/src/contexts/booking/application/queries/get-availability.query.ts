@@ -5,6 +5,7 @@ export type GetAvailabilityQuery = {
   barberId: string;
   date: string;
   serviceId?: string;
+  serviceIds?: string[];
   appointmentIdToIgnore?: string;
   slotIntervalMinutes?: number;
 };

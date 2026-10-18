@@ -22,7 +22,7 @@ import { getLoyaltyPreview } from '@/data/api/loyalty';
 import { getStripeAvailability, createStripeCheckout } from '@/data/api/payments';
 import { getRewardsWallet } from '@/data/api/referrals';
 import { getMyActiveSubscription } from '@/data/api/subscriptions';
-import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon, StripeAvailability, UserSubscription } from '@/data/types';
+import { Service, Barber, BookingState, User, ServiceCategory, AppliedOffer, Product, ProductCategory, LoyaltyPreview, RewardWalletSummary, Coupon, StripeAvailability, UserSubscription, CreateAppointmentPayload } from '@/data/types';
 import { 
   Check, 
   ChevronLeft, 
@@ -69,6 +69,13 @@ import {
 import { classifyBookingSubmitError } from '@/lib/bookingSubmitError';
 import StaffHorizontalScroller from './booking/StaffHorizontalScroller';
 import PublicServiceDescription from '@/components/services/PublicServiceDescription';
+import ReminderChannelSelector from './booking/ReminderChannelSelector';
+import {
+  isValidReminderPhone,
+  normalizeReminderChannels,
+  resolveAvailableReminderChannels,
+  type ReminderChannel,
+} from './booking/reminderChannels';
 
 
 interface BookingWizardProps {
@@ -82,6 +89,7 @@ type BookingCatalogData = {
   showServiceDescriptions: boolean;
   productsEnabled: boolean;
   clientPurchaseEnabled: boolean;
+  multiServiceEnabled: boolean;
   products: Product[];
   productCategories: ProductCategory[];
   stripeAvailability: StripeAvailability | null;
@@ -135,6 +143,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [notifyIfEarlierSlot, setNotifyIfEarlierSlot] = useState(false);
+  const [reminderChannels, setReminderChannels] = useState<ReminderChannel[]>([]);
 
   const [booking, setBooking] = useState<BookingState>({
     serviceId: null,
@@ -153,7 +162,24 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const subscriptionsEnabled = !hiddenModules.includes('subscriptions');
   const loyaltyEnabled = !hiddenModules.includes('loyalty');
   const rewardsEnabled = !hiddenModules.includes('referrals');
+  const notificationCapabilities = tenant?.config?.notificationCapabilities;
+  const availableReminderChannels = useMemo(
+    () => resolveAvailableReminderChannels(notificationCapabilities),
+    [notificationCapabilities],
+  );
+  const reminderPhoneValid = isValidReminderPhone(guestInfo.phone);
   const bookingTraceId = useRef(createCriticalTraceId()).current;
+  const selectedServiceIds = useMemo(
+    () => Array.from(new Set(
+      (booking.serviceIds?.length
+        ? booking.serviceIds
+        : booking.serviceId
+          ? [booking.serviceId]
+          : []).filter(Boolean),
+    )),
+    [booking.serviceId, booking.serviceIds],
+  );
+  const selectedServiceIdsKey = selectedServiceIds.join(',');
   const catalogQuery = useQuery<BookingCatalogData>({
     queryKey: queryKeys.bookingBootstrap(currentLocationId),
     enabled: Boolean(currentLocationId),
@@ -174,6 +200,9 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         showServiceDescriptions: settings.services.showDescriptions,
         productsEnabled: settings.products.enabled,
         clientPurchaseEnabled: settings.products.clientPurchaseEnabled,
+        multiServiceEnabled:
+          tenant?.config?.features?.multiServiceBookingEnabled === true
+          && settings.appointments.multiServiceEnabled === true,
         products,
         productCategories,
         stripeAvailability,
@@ -181,10 +210,12 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     },
   });
   const barbersQuery = useQuery<Barber[]>({
-    queryKey: queryKeys.barbers(currentLocationId, booking.serviceId ?? undefined),
+    queryKey: queryKeys.barbers(currentLocationId, selectedServiceIdsKey || undefined),
     enabled: Boolean(currentLocationId),
     staleTime: 60_000,
-    queryFn: () => getBarbers(booking.serviceId ? { serviceId: booking.serviceId } : undefined),
+    queryFn: () => getBarbers(selectedServiceIds.length > 0
+      ? { serviceId: selectedServiceIds[0], serviceIds: selectedServiceIds }
+      : undefined),
   });
   const subscriptionReferenceDate = useMemo(() => {
     if (booking.dateTime) return booking.dateTime;
@@ -253,10 +284,21 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const showServiceDescriptions = catalogQuery.data?.showServiceDescriptions ?? false;
   const productsEnabled = catalogQuery.data?.productsEnabled ?? false;
   const clientPurchaseEnabled = catalogQuery.data?.clientPurchaseEnabled ?? false;
+  const multiServiceEnabled = catalogQuery.data?.multiServiceEnabled === true;
   const products = useMemo(
     () => catalogQuery.data?.products ?? EMPTY_PRODUCTS,
     [catalogQuery.data?.products],
   );
+
+  useEffect(() => {
+    if (!catalogQuery.data || multiServiceEnabled || selectedServiceIds.length <= 1) return;
+    setBooking({
+      serviceId: booking.serviceId,
+      serviceIds: booking.serviceId ? [booking.serviceId] : [],
+      barberId: null,
+      dateTime: null,
+    });
+  }, [booking.serviceId, catalogQuery.data, multiServiceEnabled, selectedServiceIds.length, setBooking]);
   const productCategories = useMemo(
     () => catalogQuery.data?.productCategories ?? EMPTY_PRODUCT_CATEGORIES,
     [catalogQuery.data?.productCategories],
@@ -356,6 +398,17 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   }, [isGuest, privacyConsentRequired, user?.id]);
 
   useEffect(() => {
+    if (!isGuest) {
+      setReminderChannels([]);
+      return;
+    }
+    setReminderChannels((current) => {
+      const normalized = normalizeReminderChannels(current, availableReminderChannels);
+      return normalized.join(',') === current.join(',') ? current : normalized;
+    });
+  }, [availableReminderChannels, isGuest]);
+
+  useEffect(() => {
     if (preferenceInitialized) return;
     const barberParam = searchParams.get('barber');
     if (barberParam) {
@@ -425,6 +478,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () => services.find((service) => service.id === booking.serviceId) ?? null,
     [services, booking.serviceId],
   );
+  const selectedServices = useMemo(
+    () => selectedServiceIds
+      .map((serviceId) => services.find((service) => service.id === serviceId))
+      .filter((service): service is Service => Boolean(service)),
+    [selectedServiceIds, services],
+  );
+  const selectedServicesDuration = selectedServices.reduce(
+    (total, service) => total + service.duration,
+    0,
+  );
   const getService = () => selectedService;
   const getBarber = () => barbers.find(b => b.id === booking.barberId);
   const availableBarbers = useMemo(
@@ -450,13 +513,13 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     [selectedDate],
   );
   const slotsQueryEnabled =
-    Boolean(booking.serviceId) &&
+    selectedServiceIds.length > 0 &&
     currentStep === 1 &&
     (!shouldSelectBarberManually || Boolean(booking.barberId));
   const slotsQuery = useQuery<BookingSlotsData>({
     queryKey: queryKeys.bookingSlots(
       currentLocationId,
-      booking.serviceId,
+      selectedServiceIdsKey,
       selectedDateKey,
       shouldSelectBarberManually ? 'single' : 'auto',
       shouldSelectBarberManually ? booking.barberId : null,
@@ -465,7 +528,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     enabled: slotsQueryEnabled,
     staleTime: 15_000,
     queryFn: async () => {
-      if (!booking.serviceId) {
+      if (selectedServiceIds.length === 0) {
         return { availableSlots: [], slotsByBarber: {} };
       }
       try {
@@ -475,6 +538,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           }
           const slots = await getAvailableSlots(booking.barberId, selectedDateKey, {
             serviceId: booking.serviceId,
+            serviceIds: selectedServiceIds,
           });
           return { availableSlots: slots, slotsByBarber: {} };
         }
@@ -484,7 +548,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         const slotsMap = await getAvailableSlotsBatch(
           selectedDateKey,
           availableBarberIds,
-          { serviceId: booking.serviceId },
+          { serviceId: booking.serviceId, serviceIds: selectedServiceIds },
         );
         const nextMap: Record<string, string[]> = {};
         availableBarberIds.forEach((barberId) => {
@@ -520,7 +584,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const weeklyLoadQuery = useQuery<Record<string, number>>({
     queryKey: queryKeys.bookingWeeklyLoad(
       currentLocationId,
-      booking.serviceId,
+      selectedServiceIdsKey,
       weekRange.dateFrom,
       weekRange.dateTo,
       availableBarberIdsKey,
@@ -528,11 +592,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     enabled:
       currentStep === 1 &&
       !shouldSelectBarberManually &&
-      Boolean(booking.serviceId) &&
+      selectedServiceIds.length > 0 &&
       availableBarberIds.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
-      if (!booking.serviceId || availableBarberIds.length === 0) {
+      if (selectedServiceIds.length === 0 || availableBarberIds.length === 0) {
         return {};
       }
       try {
@@ -598,15 +662,36 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       level: 'info',
       outcome: 'succeeded',
     });
-    setBooking({
-      serviceId,
-      barberId: null,
-      dateTime: null,
-    });
+    if (multiServiceEnabled) {
+      const isSelected = selectedServiceIds.includes(serviceId);
+      const nextIds = isSelected
+        ? selectedServiceIds.filter((id) => id !== serviceId)
+        : [...selectedServiceIds, serviceId];
+      if (nextIds.length > 6) {
+        toast({
+          title: t('bookingWizard.multiService.limitTitle'),
+          description: t('bookingWizard.multiService.limitDescription'),
+        });
+        return;
+      }
+      setBooking({
+        serviceId: nextIds[0] || null,
+        serviceIds: nextIds,
+        barberId: null,
+        dateTime: null,
+      });
+    } else {
+      setBooking({
+        serviceId,
+        serviceIds: [serviceId],
+        barberId: null,
+        dateTime: null,
+      });
+      setCurrentStep(1);
+    }
     setSelectedCouponId(null);
     setSelectedDate(today);
     setVisibleMonth(startOfMonth(today));
-    setCurrentStep(1);
   };
 
   const renderServiceCard = (service: Service) => {
@@ -625,14 +710,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     return (
       <Card
         key={service.id}
-        variant={booking.serviceId === service.id ? 'selected' : 'interactive'}
+        variant={selectedServiceIds.includes(service.id) ? 'selected' : 'interactive'}
         className="cursor-pointer h-full shadow-sm"
         onClick={() => handleSelectService(service.id)}
       >
         <CardContent className="p-3 sm:p-4 flex flex-col gap-2 sm:gap-3">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              {selectedServiceIds.includes(service.id)
+                ? <Check className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                : <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />}
             </div>
             <div className="text-right space-y-0.5 sm:space-y-1">
               {hasOffer && (
@@ -745,6 +832,19 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     return { basePrice, finalPrice: basePrice, appliedOffer: null, amountOff: 0 };
   }, [booking.dateTime, selectedDate, selectedService]);
 
+  const additionalServicesSubtotal = useMemo(() => {
+    const referenceDate = booking.dateTime ? new Date(booking.dateTime) : selectedDate;
+    return selectedServices.slice(1).reduce((total, service) => {
+      if (!isOfferActiveOnDate(service.appliedOffer, referenceDate) || !service.appliedOffer) {
+        return total + service.price;
+      }
+      const discount = service.appliedOffer.discountType === 'percentage'
+        ? service.price * (service.appliedOffer.discountValue / 100)
+        : service.appliedOffer.discountValue;
+      return total + Math.max(0, service.price - discount);
+    }, 0);
+  }, [booking.dateTime, selectedDate, selectedServices]);
+
   const loyaltyEligible = Boolean(loyaltyPreview?.enabled && loyaltyPreview.program);
   const loyaltyFree = loyaltyEligible && Boolean(loyaltyPreview?.isFreeNext);
   const walletAvailable = Number(walletSummary?.wallet?.availableBalance ?? 0);
@@ -836,8 +936,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
   const serviceSubtotal = useMemo(() => {
     if (!selectedPricing) return 0;
     const base = loyaltyFree || subscriptionFree ? 0 : selectedPricing.finalPrice;
-    return Math.max(0, base - couponDiscount);
-  }, [selectedPricing, loyaltyFree, subscriptionFree, couponDiscount]);
+    return Math.max(0, base - couponDiscount) + additionalServicesSubtotal;
+  }, [additionalServicesSubtotal, selectedPricing, loyaltyFree, subscriptionFree, couponDiscount]);
 
   const totalBeforeWallet = useMemo(
     () => serviceSubtotal + selectedProductsTotal,
@@ -884,7 +984,11 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       case 1:
         return !!(booking.barberId && booking.dateTime);
       case 2:
-        return isGuest ? guestInfo.name.trim().length > 0 && guestInfo.email.trim().length > 0 : true;
+        return isGuest
+          ? guestInfo.name.trim().length > 0
+            && guestInfo.email.trim().length > 0
+            && (reminderChannels.length === 0 || reminderPhoneValid)
+          : true;
       default:
         return false;
     }
@@ -945,6 +1049,14 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       });
       return;
     }
+    if (isGuest && reminderChannels.length > 0 && !reminderPhoneValid) {
+      toast({
+        title: t('bookingWizard.toast.missingReminderPhoneTitle'),
+        description: t('bookingWizard.toast.missingReminderPhoneDescription'),
+        variant: 'destructive',
+      });
+      return;
+    }
     if (privacyConsentRequired && !privacyConsent) {
       toast({
         title: t('bookingWizard.toast.missingConsentTitle'),
@@ -974,9 +1086,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       const productsPayload = allowProductSelection ? selectedProducts : undefined;
       const storedReferral = getStoredReferralAttribution();
       const referralAttributionId = subscriptionFree ? undefined : storedReferral?.id;
-      const payload = {
+      const payload: CreateAppointmentPayload = {
         userId,
         serviceId: booking.serviceId,
+        serviceIds: selectedServiceIds,
         barberId: booking.barberId,
         startDateTime: booking.dateTime,
         status: 'scheduled',
@@ -985,6 +1098,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
         guestContact: isGuest ? (guestContact || undefined) : undefined,
         guestEmail: isGuest ? guestInfo.email.trim() : undefined,
         guestPhone: isGuest ? (guestInfo.phone.trim() || undefined) : undefined,
+        reminderChannels: isGuest ? reminderChannels : undefined,
         notifyIfEarlierSlot: notifyIfEarlierSlot || undefined,
         privacyConsentGiven: privacyConsentRequired ? privacyConsent : undefined,
         referralAttributionId,
@@ -1277,9 +1391,16 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 <div>
                   <h2 className="text-lg sm:text-xl font-semibold text-foreground">{t('bookingWizard.step0.title')}</h2>
                   <p className="hidden sm:block text-xs sm:text-sm text-muted-foreground">
-                    {t('bookingWizard.step0.description')}
+                    {multiServiceEnabled
+                      ? t('bookingWizard.multiService.description')
+                      : t('bookingWizard.step0.description')}
                   </p>
                 </div>
+                {multiServiceEnabled && (
+                  <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                    {t('bookingWizard.multiService.selectedCount', { count: selectedServiceIds.length })}
+                  </span>
+                )}
               </div>
               {activeOffers.length > 0 && (
                 <div className="rounded-2xl border border-primary/40 bg-primary/10 p-3 sm:p-4 space-y-2">
@@ -1353,6 +1474,25 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
               ) : (
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-2">
                   {services.map((service) => renderServiceCard(service))}
+                </div>
+              )}
+              {multiServiceEnabled && selectedServices.length > 0 && (
+                <div className="sticky bottom-2 z-10 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">
+                      {selectedServices.map((service) => service.name).join(' + ')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('bookingWizard.multiService.blockSummary', {
+                        count: selectedServices.length,
+                        minutes: selectedServicesDuration,
+                      })}
+                    </p>
+                  </div>
+                  <Button type="button" onClick={handleNext} className="shrink-0">
+                    {t('bookingWizard.multiService.findAvailability')}
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
                 </div>
               )}
             </div>
@@ -1705,10 +1845,21 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                   </div>
                   <div className="flex-1">
                     <p className="text-xs sm:text-sm text-muted-foreground">{t('bookingWizard.step2.serviceLabel')}</p>
-                    <p className="text-sm sm:text-base font-semibold text-foreground">{getService()?.name}</p>
+                    <p className="text-sm sm:text-base font-semibold text-foreground">
+                      {selectedServices.map((service) => service.name).join(' + ')}
+                    </p>
+                    {selectedServices.length > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('bookingWizard.multiService.totalDuration', { minutes: selectedServicesDuration })}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
-                    {loyaltyFree ? (
+                    {selectedServices.length > 1 ? (
+                      <span className="text-lg sm:text-xl font-bold text-primary">
+                        {serviceSubtotal.toFixed(2)}€
+                      </span>
+                    ) : loyaltyFree ? (
                       <>
                         <div className="text-xs line-through text-muted-foreground">
                           {selectedPricing?.finalPrice.toFixed(2)}€
@@ -2131,15 +2282,34 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="guest-phone">{t('bookingWizard.step2.guestPhone')}</Label>
+                      <Label htmlFor="guest-phone">
+                        {reminderChannels.length > 0
+                          ? t('bookingWizard.step2.guestPhoneRequired')
+                          : t('bookingWizard.step2.guestPhone')}
+                      </Label>
                       <Input
                         id="guest-phone"
                         type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        maxLength={40}
                         placeholder="+34 600 000 000"
                         value={guestInfo.phone}
                         onChange={(e) => setGuestInfo((prev) => ({ ...prev, phone: e.target.value }))}
+                        aria-invalid={reminderChannels.length > 0 && !reminderPhoneValid}
+                        aria-describedby={
+                          reminderChannels.length > 0 && !reminderPhoneValid
+                            ? 'guest-reminder-phone-error'
+                            : undefined
+                        }
                       />
                     </div>
+                    <ReminderChannelSelector
+                      availableChannels={availableReminderChannels}
+                      selectedChannels={reminderChannels}
+                      phoneValid={reminderPhoneValid}
+                      onChange={setReminderChannels}
+                    />
                     <p className="hidden sm:block text-xs text-muted-foreground">
                       {t('bookingWizard.step2.guestHint', { location: copy.location.definiteSingular })}
                     </p>
@@ -2194,34 +2364,40 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           </Button>
         )}
 
-        <div className={currentStep === 0 ? "ml-auto" : ""}>
-          {currentStep < steps.length - 1 ? (
-            <Button
-              onClick={handleNext}
-              disabled={!canProceed()}
-              className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
-            >
-              {t('bookingWizard.nav.next')}
-              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-1" />
-            </Button>
-          ) : (
-            <Button 
-              variant="glow" 
-              onClick={handleConfirm} 
-              className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
-              disabled={
-                isSubmitting ||
-                !privacyConsent ||
-                (isGuest && (guestInfo.name.trim().length === 0 || guestInfo.email.trim().length === 0))
-              }
-            >
-              {isSubmitting && <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 animate-spin" />}
-              {stripeAvailability?.enabled && paymentOption === 'stripe' && totalFinal > 0
-                ? t('bookingWizard.nav.payNow')
-                : t('bookingWizard.nav.confirmBooking')}
-            </Button>
-          )}
-        </div>
+        {!(currentStep === 0 && multiServiceEnabled) && (
+          <div className={currentStep === 0 ? 'ml-auto' : ''}>
+            {currentStep < steps.length - 1 ? (
+              <Button
+                onClick={handleNext}
+                disabled={!canProceed()}
+                className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
+              >
+                {t('bookingWizard.nav.next')}
+                <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-1" />
+              </Button>
+            ) : (
+              <Button
+                variant="glow"
+                onClick={handleConfirm}
+                className="h-8 sm:h-10 px-2.5 sm:px-4 text-xs sm:text-sm"
+                disabled={
+                  isSubmitting ||
+                  !privacyConsent ||
+                  (isGuest && (
+                    guestInfo.name.trim().length === 0
+                    || guestInfo.email.trim().length === 0
+                    || (reminderChannels.length > 0 && !reminderPhoneValid)
+                  ))
+                }
+              >
+                {isSubmitting && <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 animate-spin" />}
+                {stripeAvailability?.enabled && paymentOption === 'stripe' && totalFinal > 0
+                  ? t('bookingWizard.nav.payNow')
+                  : t('bookingWizard.nav.confirmBooking')}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
       <Dialog open={isProductsDialogOpen} onOpenChange={setIsProductsDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">

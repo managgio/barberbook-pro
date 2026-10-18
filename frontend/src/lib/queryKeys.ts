@@ -1,6 +1,10 @@
 export const queryKeys = {
   platformCriticalTraces: (minutes: number, page: number, pageSize: number) =>
     ['platform-observability-critical-traces', minutes, page, pageSize] as const,
+  platformAiConversations: (filters: Record<string, unknown>) =>
+    ['platform-ai-conversations', filters] as const,
+  platformAiConversation: (sessionId: string | null | undefined) =>
+    ['platform-ai-conversation', sessionId || 'none'] as const,
   siteSettings: (localId: string | null | undefined) => ["site-settings", localId || "default"] as const,
   adminDashboard: (
     localId: string | null | undefined,
@@ -9,6 +13,8 @@ export const queryKeys = {
   ) => ["admin-dashboard", localId || "default", windowDays, barberId || "all"] as const,
   bookingBootstrap: (localId: string | null | undefined) =>
     ["booking-bootstrap", localId || "default"] as const,
+  guestAppointmentAccess: (token: string | null | undefined) =>
+    ["guest-appointment-access", token || "missing"] as const,
   bookingLoyaltyPreview: (
     localId: string | null | undefined,
     userId: string | null | undefined,
@@ -129,6 +135,8 @@ export const queryKeys = {
   ) => ["cash-register", localId || "default", date, productsEnabled ? "products" : "no-products"] as const,
   adminStripeConfig: (localId: string | null | undefined) =>
     ["admin-stripe-config", localId || "default"] as const,
+  adminInvoiceLegalSettings: (brandId: string | null | undefined) =>
+    ["admin-invoice-legal-settings", brandId || "default"] as const,
   adminRoles: (localId: string | null | undefined) =>
     ["admin-roles", localId || "default"] as const,
   adminRoleUsers: (localId: string | null | undefined) =>
@@ -207,8 +215,8 @@ export const queryKeys = {
   adminNotificationDeliveries: (
     localId: string | null | undefined,
     page: number,
-    filters: { status: string; kind: string; channel: string },
-  ) => ["notification-deliveries", localId || "default", page, filters.status, filters.kind, filters.channel] as const,
+    filters: { status: string; kind: string; channel: string; includeResolved: boolean },
+  ) => ["notification-deliveries", localId || "default", page, filters.status, filters.kind, filters.channel, filters.includeResolved] as const,
   adminGeneralHolidays: (localId: string | null | undefined) =>
     ["holidays", localId || "default", "general"] as const,
   adminBarberHolidays: (localId: string | null | undefined, barberId: string | null | undefined) =>
@@ -254,7 +262,7 @@ export const queryKeys = {
     ["platform-observability-i18n", windowMinutes] as const,
   platformNotificationDeliveries: (
     page: number,
-    filters: { status: string; kind: string; channel: string; brandId: string; localId: string },
+    filters: { status: string; kind: string; channel: string; brandId: string; localId: string; includeResolved: boolean },
   ) => [
     "platform-notification-deliveries",
     page,
@@ -263,6 +271,7 @@ export const queryKeys = {
     filters.channel,
     filters.brandId,
     filters.localId,
+    filters.includeResolved,
   ] as const,
   platformNotificationDeliveryFilters: () => ["platform-notification-delivery-filters"] as const,
 };

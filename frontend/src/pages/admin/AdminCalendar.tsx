@@ -39,6 +39,8 @@ import AppointmentEditorDialog from '@/components/common/AppointmentEditorDialog
 import AppointmentNoteIndicator from '@/components/common/AppointmentNoteIndicator';
 import AppointmentStatusPicker from '@/components/common/AppointmentStatusPicker';
 import AppointmentInvoiceActions from '@/components/admin/AppointmentInvoiceActions';
+import AppointmentPriceBreakdown from '@/components/admin/AppointmentPriceBreakdown';
+import AppointmentServiceSummary from '@/components/admin/AppointmentServiceSummary';
 import { useToast } from '@/hooks/use-toast';
 import defaultAvatar from '@/assets/img/default-image.webp';
 import { dispatchAppointmentsUpdated } from '@/lib/adminEvents';
@@ -51,6 +53,11 @@ import { useTenant } from '@/context/TenantContext';
 import { resolveBarberAccentColor } from '@/lib/barberColors';
 import { useI18n } from '@/hooks/useI18n';
 import { resolveDateLocale } from '@/lib/i18n';
+import {
+  getAppointmentDurationMinutes,
+  getAppointmentServiceLabel,
+  isMultiServiceAppointment,
+} from '@/lib/appointmentPresentation';
 
 const START_HOUR = 9;
 const END_HOUR = 20;
@@ -412,8 +419,10 @@ const AdminCalendar: React.FC = () => {
 
   const getAppointmentDuration = (apt: Appointment) => {
     const service = getService(apt.serviceId);
-    return service?.duration ?? 30;
+    return getAppointmentDurationMinutes(apt, service);
   };
+  const getAppointmentServiceName = (apt: Appointment) =>
+    getAppointmentServiceLabel(apt, getService(apt.serviceId)) || t('admin.common.table.service');
   const getAppointmentCardTone = (status: Appointment['status']) => {
     switch (status) {
       case 'completed':
@@ -617,7 +626,6 @@ const AdminCalendar: React.FC = () => {
                       />
                     ))}
                     {dayEvents.map((event) => {
-                      const service = getService(event.appointment.serviceId);
                       const startLabel = format(event.start, 'HH:mm');
                       const endLabel = format(event.end, 'HH:mm');
                       const columnWidth = 100 / event.columns;
@@ -630,7 +638,7 @@ const AdminCalendar: React.FC = () => {
                         <button
                           key={event.appointment.id}
                           onClick={() => setSelectedAppointment(event.appointment)}
-                          title={`${startLabel} - ${endLabel} · ${service?.name || t('admin.common.table.service')}`}
+                          title={`${startLabel} - ${endLabel} · ${getAppointmentServiceName(event.appointment)}`}
                           className={cn(
                             'absolute overflow-hidden rounded-sm border px-2 py-1 text-left text-[11px] leading-tight text-white shadow-sm transition-all',
                             'hover:-translate-y-[1px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-1',
@@ -656,8 +664,13 @@ const AdminCalendar: React.FC = () => {
                               {!isCompact && <span className="text-white/70">- {endLabel}</span>}
                             </div>
                             <div className={cn('truncate font-medium text-white/95', isCompact && 'text-[10px]')}>
-                              {service?.name || t('admin.common.table.service')}
+                              {getAppointmentServiceName(event.appointment)}
                             </div>
+                            {!isCompact && isMultiServiceAppointment(event.appointment) && (
+                              <div className="mt-0.5 inline-flex rounded-full bg-primary/30 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                                {t('admin.appointmentServices.count', { count: event.appointment.services?.length ?? 0 })}
+                              </div>
+                            )}
                             {!isCompact && event.appointment.subscriptionApplied && (
                               <div className="mt-0.5 inline-flex rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-100">
                                 {t('admin.common.subscriptionCompact')}
@@ -705,14 +718,17 @@ const AdminCalendar: React.FC = () => {
           </DialogHeader>
           {selectedAppointment && (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
-                <Scissors className="w-5 h-5 text-primary" />
-                <div>
+              <div className="flex items-start gap-3 p-3 bg-secondary/50 rounded-lg">
+                <Scissors className="mt-0.5 w-5 h-5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
                   <p className="text-sm text-muted-foreground">{t('admin.common.table.service')}</p>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-foreground">
-                      {getService(selectedAppointment.serviceId)?.name}
-                    </p>
+                  <div className="mt-1 flex items-start gap-2">
+                    <AppointmentServiceSummary
+                      appointment={selectedAppointment}
+                      fallbackService={getService(selectedAppointment.serviceId)}
+                      showPrices
+                      className="flex-1"
+                    />
                     {selectedAppointment.subscriptionApplied && (
                       <Badge variant="secondary">{t('admin.common.subscription')}</Badge>
                     )}
@@ -748,6 +764,8 @@ const AdminCalendar: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              <AppointmentPriceBreakdown appointment={selectedAppointment} showTotal={false} />
 
               <div className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg">
                 <UserIcon className="w-5 h-5 text-primary" />
@@ -811,7 +829,7 @@ const AdminCalendar: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <AppointmentStatusPicker
                     appointment={selectedAppointment}
-                    serviceDurationMinutes={getService(selectedAppointment.serviceId)?.duration ?? 30}
+                    serviceDurationMinutes={getAppointmentDuration(selectedAppointment)}
                     onStatusUpdated={applyAppointmentUpdate}
                   />
                   <Select
@@ -837,6 +855,9 @@ const AdminCalendar: React.FC = () => {
                   </Select>
                 </div>
                 <div className="flex flex-col items-end gap-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t('admin.appointmentServices.appointmentTotal')}
+                  </p>
                   <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1.5">
                     <input
                       type="text"
@@ -876,7 +897,7 @@ const AdminCalendar: React.FC = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <AppointmentInvoiceActions appointmentId={selectedAppointment.id} />
+                <AppointmentInvoiceActions appointmentId={selectedAppointment.id} status={selectedAppointment.status} />
                 <Button variant="outline" onClick={() => setSelectedAppointment(null)}>
                   {t('admin.common.close')}
                 </Button>

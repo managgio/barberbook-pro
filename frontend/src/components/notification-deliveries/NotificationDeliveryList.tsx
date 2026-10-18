@@ -31,6 +31,7 @@ export type DeliveryTableFilters = {
   channel: NotificationDeliveryChannel | 'all';
   brandId: string;
   localId: string;
+  includeResolved: boolean;
 };
 
 type NotificationDeliveryListProps = {
@@ -46,20 +47,17 @@ type NotificationDeliveryListProps = {
   onRetry?: (deliveryId: string) => void;
 };
 
-const statusOptions: DeliveryFilterOption[] = [
-  { value: 'all', label: 'Todas las incidencias' },
-  ...(['failed', 'retrying', 'pending', 'processing', 'skipped'] as NotificationDeliveryStatus[])
+const getStatusOptions = (includeResolved: boolean): DeliveryFilterOption[] => [
+  { value: 'all', label: includeResolved ? 'Todos los estados' : 'Todas las incidencias' },
+  ...((includeResolved
+    ? ['pending', 'processing', 'accepted', 'sent', 'delivered', 'undelivered', 'retrying', 'failed', 'skipped']
+    : ['undelivered', 'failed', 'retrying', 'pending', 'processing', 'skipped']) as NotificationDeliveryStatus[])
     .map((value) => ({ value, label: STATUS_META[value].label })),
 ];
 const kindOptions: DeliveryFilterOption[] = [
   { value: 'all', label: 'Todos los tipos' },
   ...Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label })),
 ];
-const NON_RETRYABLE_SKIPPED_CODES = new Set([
-  'EMAIL_RECIPIENT_MISSING',
-  'PHONE_RECIPIENT_MISSING',
-]);
-
 const RetryButton = ({
   item,
   retryingId,
@@ -69,9 +67,7 @@ const RetryButton = ({
   retryingId?: string | null;
   onRetry?: (deliveryId: string) => void;
 }) => {
-  const retryable = item.status === 'failed'
-    || (item.status === 'skipped' && !NON_RETRYABLE_SKIPPED_CODES.has(item.lastErrorCode || ''));
-  if (!retryable || !onRetry) return null;
+  if (!item.canRetry || !onRetry) return null;
   return (
     <Button
       type="button"
@@ -94,6 +90,9 @@ const DeliveryDetails = ({ item }: { item: NotificationDeliveryItem }) => (
     <div className="mt-2 space-y-1 rounded-md border border-border/60 bg-muted/20 p-2 text-muted-foreground">
       <p>ID: <span className="font-mono text-foreground">{item.id}</span></p>
       <p>Proveedor: <span className="font-mono text-foreground">{item.providerMessageId || '-'}</span></p>
+      {item.sentAt && <p>Enviado: <span className="text-foreground">{formatDeliveryDateTime(item.sentAt)}</span></p>}
+      {item.deliveredAt && <p>Entregado: <span className="text-foreground">{formatDeliveryDateTime(item.deliveredAt)}</span></p>}
+      {item.undeliveredAt && <p>No entregado: <span className="text-foreground">{formatDeliveryDateTime(item.undeliveredAt)}</span></p>}
       {item.status === 'skipped' ? (
         <p>Reintentos: <span className="text-foreground">No requiere reintentos</span></p>
       ) : (
@@ -147,7 +146,7 @@ export const NotificationDeliveryList = ({
                 <DeliveryColumnFilter
                   label="Estado"
                   value={filters.status}
-                  options={statusOptions}
+                  options={getStatusOptions(filters.includeResolved)}
                   onChange={(value) => onFilterChange('status', value as DeliveryTableFilters['status'])}
                 />
               </span>

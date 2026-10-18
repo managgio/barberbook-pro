@@ -14,11 +14,10 @@ export type PlatformUsageMetrics = {
   range: { start: string; end: string };
   thresholds: {
     openaiDailyCostUsd: number | null;
-    twilioDailyCostUsd: number | null;
+    messagingDailyCostUsd: number | null;
     imagekitStorageBytes: number | null;
   };
   openai: { series: ProviderDailySeriesPoint[] };
-  twilio: { series: ProviderDailySeriesPoint[] };
+  messaging: { series: ProviderDailySeriesPoint[] };
   imagekit: { series: ProviderDailySeriesPoint[] };
 };
-

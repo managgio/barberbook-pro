@@ -14,10 +14,17 @@ import {
 export const postAiAssistantChat = async (payload: {
   message: string;
   sessionId?: string | null;
+  inputSource?: 'typed' | 'voice' | 'template';
+  templateKey?: string;
 }): Promise<AiChatResponse> =>
   apiRequest('/admin/ai-assistant/chat', {
     method: 'POST',
-    body: { message: payload.message, sessionId: payload.sessionId || undefined },
+    body: {
+      message: payload.message,
+      sessionId: payload.sessionId || undefined,
+      inputSource: payload.inputSource || 'typed',
+      templateKey: payload.templateKey,
+    },
   });
 
 export const getAiAssistantSession = async (payload: {

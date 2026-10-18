@@ -101,6 +101,7 @@ export class CommunicationBookingClosureService {
         select: {
           barberId: true,
           startDateTime: true,
+          totalDurationMinutes: true,
           service: { select: { duration: true } },
         },
       });
@@ -109,7 +110,8 @@ export class CommunicationBookingClosureService {
         barberId: appointment.barberId,
         startDateTime: appointment.startDateTime,
         endDateTime: new Date(
-          appointment.startDateTime.getTime() + Math.max(1, appointment.service.duration || 30) * 60_000,
+          appointment.startDateTime.getTime()
+            + Math.max(1, appointment.totalDurationMinutes || appointment.service.duration || 30) * 60_000,
         ),
       }));
     }

@@ -4,6 +4,7 @@ import { PlatformAdminService } from '@/modules/platform-admin/platform-admin.se
 import {
   PlatformAdminManagementPort,
   PlatformCreateBrandInput,
+  PlatformCreateLocationInput,
 } from '@/contexts/platform/ports/outbound/platform-admin-management.port';
 
 const basePort = (): PlatformAdminManagementPort => ({
@@ -28,11 +29,11 @@ const basePort = (): PlatformAdminManagementPort => ({
     range: { start: '2026-03-01', end: '2026-03-07' },
     thresholds: {
       openaiDailyCostUsd: null,
-      twilioDailyCostUsd: null,
+      messagingDailyCostUsd: null,
       imagekitStorageBytes: null,
     },
     openai: { series: [] },
-    twilio: { series: [] },
+    messaging: { series: [] },
     imagekit: { series: [] },
   }),
   refreshUsageMetrics: async () => ({
@@ -40,11 +41,11 @@ const basePort = (): PlatformAdminManagementPort => ({
     range: { start: '2026-03-01', end: '2026-03-07' },
     thresholds: {
       openaiDailyCostUsd: null,
-      twilioDailyCostUsd: null,
+      messagingDailyCostUsd: null,
       imagekitStorageBytes: null,
     },
     openai: { series: [] },
-    twilio: { series: [] },
+    messaging: { series: [] },
     imagekit: { series: [] },
   }),
   getBrandHealth: async () => ({}),
@@ -72,6 +73,39 @@ test('platform admin facade delegates create brand to management port', async ()
   assert.equal(calls.length, 1);
   assert.equal(calls[0].name, 'Brand');
   assert.equal((result as { id: string }).id, 'brand-1');
+});
+
+test('platform admin facade defaults and canonicalizes the location timezone', async () => {
+  const calls: PlatformCreateLocationInput[] = [];
+  const service = new PlatformAdminService({
+    ...basePort(),
+    createLocation: async (_brandId, input) => {
+      calls.push(input);
+      return input;
+    },
+  }, emailVerifier);
+
+  await service.createLocation('brand-1', { name: 'Centro' });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].timezone, 'Europe/Madrid');
+});
+
+test('platform admin facade rejects invalid location timezones outside HTTP validation', async () => {
+  let calls = 0;
+  const service = new PlatformAdminService({
+    ...basePort(),
+    updateLocation: async () => {
+      calls += 1;
+      return {};
+    },
+  }, emailVerifier);
+
+  assert.throws(
+    () => service.updateLocation('local-1', { timezone: 'invalid/timezone' }),
+    /Invalid location timezone/,
+  );
+  assert.equal(calls, 0);
 });
 
 test('platform admin facade delegates usage metrics reads', async () => {

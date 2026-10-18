@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/application/distributed-lock.port';
 import {
   NOTIFICATION_DELIVERY_RETENTION,
+  failedStatuses,
   resolvedStatuses,
   subtractDays,
 } from './notification-delivery-retention.policy';
@@ -69,7 +70,7 @@ export class NotificationDeliveryRetentionService implements OnModuleInit, OnMod
         redactedAt: null,
         OR: [
           { status: { in: [...resolvedStatuses] }, createdAt: { lte: resolvedBefore } },
-          { status: NotificationDeliveryStatus.failed, createdAt: { lte: failedBefore } },
+          { status: { in: [...failedStatuses] }, createdAt: { lte: failedBefore } },
         ],
       },
       select: { id: true },
@@ -93,6 +94,7 @@ export class NotificationDeliveryRetentionService implements OnModuleInit, OnMod
             lastErrorMessage: null,
             nextAttemptAt: null,
             processingStartedAt: null,
+            activeAttemptReference: null,
             criticalTraceReportedAt: null,
             redactedAt: now,
           },

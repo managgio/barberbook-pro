@@ -1,7 +1,8 @@
-import { Appointment, AppointmentProduct, Product } from '@prisma/client';
+import { Appointment, AppointmentProduct, AppointmentServiceItem, Product } from '@prisma/client';
 
 type AppointmentWithProducts = Appointment & {
   products?: (AppointmentProduct & { product?: Product | null })[];
+  serviceItems?: AppointmentServiceItem[];
   barber?: { name: string } | null;
   service?: { name: string } | null;
 };
@@ -13,6 +14,19 @@ export const mapAppointment = (appointment: AppointmentWithProducts) => ({
   barberNameSnapshot: appointment.barberNameSnapshot || appointment.barber?.name || null,
   serviceId: appointment.serviceId,
   serviceNameSnapshot: appointment.serviceNameSnapshot || appointment.service?.name || null,
+  totalDurationMinutes: appointment.totalDurationMinutes,
+  services: appointment.serviceItems
+    ? [...appointment.serviceItems]
+        .sort((left, right) => left.position - right.position)
+        .map((item) => ({
+          id: item.id,
+          serviceId: item.serviceId,
+          name: item.nameSnapshot,
+          durationMinutes: item.durationMinutes,
+          unitPrice: Number(item.unitPrice),
+          position: item.position,
+        }))
+    : undefined,
   loyaltyProgramId: appointment.loyaltyProgramId || null,
   loyaltyRewardApplied: appointment.loyaltyRewardApplied ?? false,
   referralAttributionId: appointment.referralAttributionId || null,
@@ -35,6 +49,10 @@ export const mapAppointment = (appointment: AppointmentWithProducts) => ({
   guestContact: appointment.guestContact || null,
   guestEmail: appointment.guestEmail || null,
   guestPhone: appointment.guestPhone || null,
+  reminderChannels: [
+    ...(appointment.reminderSmsRequested ? ['sms' as const] : []),
+    ...(appointment.reminderWhatsappRequested ? ['whatsapp' as const] : []),
+  ],
   notifyIfEarlierSlot: appointment.earlierSlotRequested === true,
   earlierSlotNotificationSentAt: appointment.earlierSlotNotifiedAt?.toISOString() || null,
   earlierSlotNotificationCandidateAt: appointment.earlierSlotCandidateAt?.toISOString() || null,

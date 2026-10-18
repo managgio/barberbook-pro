@@ -2,22 +2,22 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { PrismaActiveLocationIteratorAdapter } from '@/contexts/platform/infrastructure/adapters/prisma-active-location-iterator.adapter';
 
-test('forEachActiveLocation iterates locations in order and executes callback in tenant context', async () => {
-  const contexts: Array<{ brandId: string; localId: string }> = [];
-  const callbackCalls: Array<{ brandId: string; localId: string }> = [];
+test('forEachActiveLocation iterates locations in order and executes callback with each timezone', async () => {
+  const contexts: Array<{ brandId: string; localId: string; timezone: string }> = [];
+  const callbackCalls: Array<{ brandId: string; localId: string; timezone: string }> = [];
 
   const prisma = {
     location: {
       findMany: async () => [
-        { id: 'local-1', brandId: 'brand-1' },
-        { id: 'local-2', brandId: 'brand-2' },
+        { id: 'local-1', brandId: 'brand-1', timezone: 'Europe/Madrid' },
+        { id: 'local-2', brandId: 'brand-2', timezone: 'Atlantic/Canary' },
       ],
     },
   } as any;
 
   const runner = {
     runWithContext: async (
-      context: { brandId: string; localId: string },
+      context: { brandId: string; localId: string; timezone: string },
       callback: () => Promise<void>,
     ) => {
       contexts.push(context);
@@ -31,8 +31,8 @@ test('forEachActiveLocation iterates locations in order and executes callback in
   });
 
   assert.deepEqual(contexts, [
-    { brandId: 'brand-1', localId: 'local-1' },
-    { brandId: 'brand-2', localId: 'local-2' },
+    { brandId: 'brand-1', localId: 'local-1', timezone: 'Europe/Madrid' },
+    { brandId: 'brand-2', localId: 'local-2', timezone: 'Atlantic/Canary' },
   ]);
   assert.deepEqual(callbackCalls, contexts);
 });
@@ -40,13 +40,13 @@ test('forEachActiveLocation iterates locations in order and executes callback in
 test('forEachActiveLocation propagates callback error', async () => {
   const prisma = {
     location: {
-      findMany: async () => [{ id: 'local-1', brandId: 'brand-1' }],
+      findMany: async () => [{ id: 'local-1', brandId: 'brand-1', timezone: 'Europe/Madrid' }],
     },
   } as any;
 
   const runner = {
     runWithContext: async (
-      _context: { brandId: string; localId: string },
+      _context: { brandId: string; localId: string; timezone: string },
       callback: () => Promise<void>,
     ) => callback(),
   } as any;
