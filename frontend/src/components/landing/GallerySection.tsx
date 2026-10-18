@@ -26,10 +26,10 @@ export default function GallerySection() {
   return <section id="gallery" aria-labelledby="gallery-heading" className="border-t border-border/50 py-12 sm:py-20">
     <div className="container max-w-6xl px-4">
       <div className="mb-7 max-w-2xl space-y-3 sm:mb-10"><LandingSectionAccent /><p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('gallery.eyebrow')}</p>
-        <h2 id="gallery-heading" className="text-3xl font-bold tracking-tight sm:text-4xl">{t('gallery.landingTitle')}</h2><p className="text-sm leading-relaxed text-muted-foreground sm:text-base">{t('gallery.landingDescription')}</p></div>
+        <h2 id="gallery-heading" className="landing-heading text-3xl font-bold tracking-tight sm:text-4xl">{t('gallery.landingTitle')}</h2><p className="text-sm leading-relaxed text-muted-foreground sm:text-base">{t('gallery.landingDescription')}</p></div>
       <div className="mb-6 flex gap-2 overflow-x-auto pb-2" role="group" aria-label={t('gallery.filter')}>
         {[{ id: 'all', name: t('gallery.all') }, ...available].map((category) => <button key={category.id} type="button" aria-pressed={category.id === activeCategory}
-          onClick={() => { setCategoryId(category.id); setLimit(12); }} className={cn('shrink-0 rounded-full border px-4 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          onClick={() => { setCategoryId(category.id); setLimit(12); }} className={cn('landing-category-filter shrink-0 rounded-full border px-4 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             category.id === activeCategory ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground')}>
           {category.name}
         </button>)}
@@ -43,7 +43,7 @@ export default function GallerySection() {
             {item.beforeUrl && <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-medium text-white sm:bottom-3 sm:left-3 sm:px-3 sm:text-xs"><ChevronsLeftRight className="h-3 w-3" />{t('gallery.comparison')}</span>}
           </div>
           <div className="px-0.5 pt-3"><p className="truncate text-[11px] text-muted-foreground sm:text-xs">{categories.find((category) => category.id === item.categoryId)?.name}</p>
-            <h3 className="mt-1 line-clamp-2 break-words text-sm font-semibold leading-snug sm:text-base">{item.title}</h3></div>
+            <h3 className="landing-heading mt-1 line-clamp-2 break-words text-sm font-semibold leading-snug sm:text-base">{item.title}</h3></div>
         </button>)}
       </div>
       <p className="sr-only" role="status" aria-live="polite">{t('gallery.results', { count: filtered.length })}</p>

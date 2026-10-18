@@ -79,7 +79,7 @@ const hslToCss = (h: number, s: number, l: number) => `${h} ${s}% ${l}%`;
 
 const pickForeground = (l: number) => (l > 60 ? '0 0% 10%' : '0 0% 98%');
 
-const buildThemeTokens = (hex: string): ThemeTokens | null => {
+export const buildThemeTokens = (hex: string): ThemeTokens | null => {
   const rgb = hexToRgb(hex);
   if (!rgb) return null;
   const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);

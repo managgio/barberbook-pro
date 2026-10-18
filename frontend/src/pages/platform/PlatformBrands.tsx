@@ -59,6 +59,8 @@ import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSetting
 import MarkdownContent from '@/components/common/MarkdownContent';
 import PlatformBrandTabsNav from '@/components/platform/PlatformBrandTabsNav';
 import PlatformLandingPanel from '@/components/platform/PlatformLandingPanel';
+import BrandLandingAppearanceEditor from '@/components/platform/BrandLandingAppearanceEditor';
+import type { HeadingFont } from '@/lib/landingAppearance';
 import {
   PLATFORM_BRAND_TABS,
   type PlatformBrandTab,
@@ -158,6 +160,8 @@ interface PlatformConfig {
     [key: string]: unknown;
     primary?: string;
     mode?: string;
+    secondary?: string | null;
+    headingFont?: HeadingFont | null;
   };
   branding?: PlatformBranding;
   adminSidebar?: {
@@ -858,6 +862,7 @@ const PlatformBrands: React.FC = () => {
   });
   const [applyThemeToAll, setApplyThemeToAll] = useState(false);
   const [uploadingAsset, setUploadingAsset] = useState<BrandAssetKey | null>(null);
+  const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [uploadingPresentation, setUploadingPresentation] = useState<string | null>(null);
   const [stripeAction, setStripeAction] = useState<string | null>(null);
   const [persistedBrandFileIds, setPersistedBrandFileIds] = useState<Record<BrandFileIdField, string | null>>({
@@ -1365,7 +1370,11 @@ const PlatformBrands: React.FC = () => {
       toast({ title: 'Actualizado', description: 'Marca y configuración guardadas.' });
     },
     onError: (error) => {
-      toast({ title: 'Error', description: error instanceof ApiRequestError && error.status === 409 ? t('website.platformConflict') : 'No se pudo guardar la marca.', variant: 'destructive' });
+      const description = error instanceof ApiRequestError && error.status === 409 ? t('website.platformConflict')
+        : error instanceof Error && error.message.includes('LANDING_APPEARANCE_INVALID') ? t('platform.appearance.saveInvalid')
+        : error instanceof Error && error.message.includes('LANDING_FONT_UNAVAILABLE') ? t('platform.appearance.saveUnavailable')
+        : 'No se pudo guardar la marca.';
+      toast({ title: 'Error', description, variant: 'destructive' });
     },
   });
 
@@ -1542,7 +1551,7 @@ const PlatformBrands: React.FC = () => {
     },
   });
 
-  const isSaving = saveBrandMutation.isPending || createBrandMutation.isPending;
+  const isSaving = saveBrandMutation.isPending || createBrandMutation.isPending || appearanceBusy;
   const isLegalSaving = saveLegalMutation.isPending;
   const isAdminSaving = assignAdminMutation.isPending || removeAdminMutation.isPending;
   const isLocationSaving =
@@ -2360,7 +2369,7 @@ const PlatformBrands: React.FC = () => {
   };
 
   const handleSaveBrand = () => {
-    if (!user?.id || !selectedBrand) return;
+    if (!user?.id || !selectedBrand || appearanceBusy) return;
     saveBrandMutation.mutate();
   };
 
@@ -4025,6 +4034,13 @@ const PlatformBrands: React.FC = () => {
                             <p className="text-xs text-muted-foreground">
                               Aplica a landing, auth y panel admin de la marca.
                             </p>
+                          </div>
+                          <div className="space-y-3 md:col-span-2">
+                            <BrandLandingAppearanceEditor key={selectedBrand.id} brandId={selectedBrand.id} subdomain={selectedBrand.subdomain}
+                              value={brandConfig.theme ?? {}} primary={brandConfig.theme?.primary} mode={brandThemeMode} disabled={isSaving}
+                              onBusyChange={setAppearanceBusy} onChange={(updates) => setBrandConfig(previous => ({
+                                ...previous, theme: { ...previous.theme, ...updates },
+                              }))} />
                           </div>
                           <div className="space-y-3 md:col-span-2">
                             <p className="text-xs uppercase tracking-widest text-muted-foreground">Logo del cliente</p>

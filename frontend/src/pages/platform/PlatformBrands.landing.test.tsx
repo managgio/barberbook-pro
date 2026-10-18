@@ -330,3 +330,19 @@ it('keeps local photos when a single location brand grows to multiple locations'
   expect(within(localPanel).getByRole('img', { name: 'Imagen principal (portada)' })).toHaveAttribute('src', 'https://images.test/admin.webp');
   expect(screen.queryByRole('region', { name: 'platform.landing.title' })).not.toBeInTheDocument();
 });
+
+it('persists optional appearance through the Config form without overwriting existing theme or local photos', async () => {
+  localStorage.setItem('platform:brands:tab', 'config');
+  Object.assign(brandConfig, { theme: { primary: '#fea4bb', mode: 'dark', headingFont: { fileId: 'font-a', url: 'https://cdn.test/font.ttf', name: 'Brand font', format: 'ttf' } } });
+  mount();
+  const field = await screen.findByLabelText('platform.appearance.secondary');
+  await userEvent.type(field, '#654321');
+  await save();
+  expect(brandConfig).toMatchObject({ theme: { primary: '#fea4bb', mode: 'dark', secondary: '#654321', headingFont: { fileId: 'font-a' } } });
+  expect(apiRequest).not.toHaveBeenCalledWith('/platform/locations/local-a/config', expect.objectContaining({ method: 'PATCH' }));
+  await userEvent.click(screen.getByRole('button', { name: 'platform.appearance.resetFont' }));
+  await userEvent.click(screen.getByRole('button', { name: 'platform.appearance.resetColor' }));
+  await save();
+  await waitFor(() => expect(brandConfig).toMatchObject({ theme: { primary: '#fea4bb', mode: 'dark', secondary: null, headingFont: null } }));
+  expect(deleteFromImageKit).not.toHaveBeenCalled();
+});

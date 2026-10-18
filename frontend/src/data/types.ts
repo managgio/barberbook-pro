@@ -111,6 +111,8 @@ export interface TenantBootstrap {
     theme?: {
       primary?: string;
       mode?: 'dark' | 'light';
+      secondary?: string | null;
+      headingFont?: import('@/lib/landingAppearance').HeadingFont | null;
     } | null;
     notificationPrefs?: {
       email?: boolean;

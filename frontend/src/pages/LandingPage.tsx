@@ -43,6 +43,7 @@ import { useI18n } from '@/hooks/useI18n';
 import PublicServiceDescription from '@/components/services/PublicServiceDescription';
 import LandingPresentation from '@/components/landing/LandingPresentation';
 import LandingSectionAccent from '@/components/landing/LandingSectionAccent';
+import LandingAppearance from '@/components/landing/LandingAppearance';
 
 const GallerySection = lazy(() => import('@/components/landing/GallerySection'));
 const FaqSection = lazy(() => import('@/components/landing/FaqSection'));
@@ -336,7 +337,7 @@ const LandingPage: React.FC = () => {
       <Card
         key={product.id}
         variant="interactive"
-        className="overflow-hidden animate-slide-up h-full flex flex-col md:min-h-[300px] lg:min-h-[280px]"
+        className="landing-detail-card overflow-hidden animate-slide-up h-full flex flex-col md:min-h-[300px] lg:min-h-[280px]"
         style={{ animationDelay: `${index * 0.1}s` }}
       >
         <div className="relative aspect-[16/10] sm:aspect-[4/3] bg-secondary/40 shrink-0">
@@ -358,7 +359,7 @@ const LandingPage: React.FC = () => {
         <CardContent className="p-2 sm:p-6 md:p-5 lg:p-4 flex flex-col flex-1 gap-1.5 sm:gap-4">
           <div className="flex justify-between items-start gap-2">
             <div className="flex-1">
-              <h3 className="text-[11px] sm:text-lg md:text-base font-semibold text-foreground">{product.name}</h3>
+              <h3 className="landing-heading text-[11px] sm:text-lg md:text-base font-semibold text-foreground">{product.name}</h3>
               <p className="text-[10px] sm:text-sm text-muted-foreground line-clamp-1 sm:line-clamp-2 min-h-[1rem] sm:min-h-[2.5rem]">
                 {product.description}
               </p>
@@ -443,7 +444,7 @@ const LandingPage: React.FC = () => {
     <section className="py-10 sm:py-24 bg-card/50">
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
-          <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
+          <h2 className="landing-heading text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             {t('landing.services.title')}
           </h2>
           <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
@@ -457,7 +458,7 @@ const LandingPage: React.FC = () => {
               <div key={group.key} className="space-y-2.5 sm:space-y-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <h3 className="text-sm sm:text-xl font-semibold text-foreground">
+                    <h3 className="landing-heading text-sm sm:text-xl font-semibold text-foreground">
                       {group.category?.name ?? t('landing.services.otherServices')}
                     </h3>
                     {group.category?.description && (
@@ -490,7 +491,7 @@ const LandingPage: React.FC = () => {
                             </span>
                           </div>
                         </div>
-                        <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
+                        <h3 className="landing-heading text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
                         <PublicServiceDescription
                           className="text-[11px] sm:text-sm line-clamp-2"
                           description={service.description}
@@ -531,7 +532,7 @@ const LandingPage: React.FC = () => {
                       </span>
                     </div>
                   </div>
-                  <h3 className="text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
+                  <h3 className="landing-heading text-xs sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">{service.name}</h3>
                   <PublicServiceDescription
                     className="text-[11px] sm:text-sm line-clamp-2"
                     description={service.description}
@@ -565,7 +566,7 @@ const LandingPage: React.FC = () => {
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
           <LandingSectionAccent centered />
-          <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
+          <h2 className="landing-heading text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             {t('landing.products.title')}
           </h2>
           <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
@@ -579,7 +580,7 @@ const LandingPage: React.FC = () => {
               <div key={group.key} className="space-y-2.5 sm:space-y-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <h3 className="text-sm sm:text-xl font-semibold text-foreground">
+                    <h3 className="landing-heading text-sm sm:text-xl font-semibold text-foreground">
                       {group.category?.name ?? t('landing.products.otherProducts')}
                     </h3>
                     {group.category?.description && (
@@ -626,7 +627,7 @@ const LandingPage: React.FC = () => {
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
           <LandingSectionAccent centered />
-          <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
+          <h2 className="landing-heading text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             {t('landing.barbers.title', { staffPlural: copy.staff.plural })}
           </h2>
           <p className="text-xs sm:text-base text-muted-foreground max-w-lg mx-auto">
@@ -642,7 +643,7 @@ const LandingPage: React.FC = () => {
             >
               <Card
                 variant="interactive"
-                className="overflow-hidden animate-slide-up h-full border-primary/15"
+                className="landing-detail-card overflow-hidden animate-slide-up h-full border-primary/15"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
                 <div className="h-[150px] sm:h-auto sm:aspect-square relative overflow-hidden">
@@ -656,10 +657,10 @@ const LandingPage: React.FC = () => {
                     className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                   />
                   <div className="absolute inset-x-0 bottom-0 hidden sm:block bg-gradient-to-t from-background/90 to-transparent p-2.5 sm:p-4" />
-                  <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-primary/70" />
+                  <span aria-hidden="true" className="landing-detail-line absolute inset-x-0 bottom-0 h-0.5 bg-primary/70" />
                 </div>
                 <CardContent className="p-2.5 sm:p-4 space-y-1">
-                  <h3 className="text-[11px] sm:text-base font-semibold leading-tight text-foreground line-clamp-1">{barber.name}</h3>
+                  <h3 className="landing-heading text-[11px] sm:text-base font-semibold leading-tight text-foreground line-clamp-1">{barber.name}</h3>
                   <p className="text-[10px] sm:text-sm text-muted-foreground line-clamp-1">{barber.specialty}</p>
                 </CardContent>
               </Card>
@@ -688,7 +689,7 @@ const LandingPage: React.FC = () => {
       
       <div className="container px-4 relative z-10">
         <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-xl sm:text-3xl md:text-5xl font-bold text-foreground mb-2 sm:mb-6">
+          <h2 className="landing-heading text-xl sm:text-3xl md:text-5xl font-bold text-foreground mb-2 sm:mb-6">
             {t('landing.cta.titlePrefix')}<br />
             <span className="text-gradient">{t('landing.cta.titleEmphasis')}</span>
           </h2>
@@ -707,7 +708,7 @@ const LandingPage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <LandingAppearance appearance={tenant?.isPlatform ? null : tenant?.config?.theme} mode={tenant?.config?.theme?.mode} className="min-h-screen bg-background">
       <Navbar />
       
       {/* Hero Section */}
@@ -739,7 +740,7 @@ const LandingPage: React.FC = () => {
                 </div>
               )}
               
-              <h1 className="text-[1.9rem] sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-2.5 sm:mb-6 leading-tight">
+              <h1 className="landing-heading text-[1.9rem] sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-2.5 sm:mb-6 leading-tight">
                 <span className={heroTextStyles.title}>{settings.branding.name}</span><br />
                 <span className="text-gradient">{settings.branding.tagline}</span>
               </h1>
@@ -824,7 +825,7 @@ const LandingPage: React.FC = () => {
                   <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-1.5 sm:mb-3">
                     <stat.icon className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
                   </div>
-                  <p className="text-base sm:text-2xl font-bold text-foreground">{stat.value}</p>
+                  <p className="landing-heading text-base sm:text-2xl font-bold text-foreground">{stat.value}</p>
                   <p className={`text-[11px] sm:text-sm ${heroTextStyles.stats}`}>{stat.label}</p>
                 </div>
               ))}
@@ -967,7 +968,7 @@ const LandingPage: React.FC = () => {
           </div>
         </div>
       </footer>
-    </div>
+    </LandingAppearance>
   );
 };
 

@@ -77,6 +77,8 @@ export function replaceWebsiteImages(local: WebsiteConfig, effective: WebsiteCon
 }
 
 export function landingImageReferences(config: WebsiteConfig): WebsiteImage[] {
+  const font = (config.theme as { headingFont?: WebsiteImage } | undefined)?.headingFont;
   return [...LANDING_IMAGE_FIELDS.flatMap((key) => image(config.branding ?? {}, key)),
-    ...(config.landing?.presentation?.sections ?? []).flatMap((section) => image(section, 'image'))];
+    ...(config.landing?.presentation?.sections ?? []).flatMap((section) => image(section, 'image')),
+    ...(font?.fileId && font.url ? [{ fileId: font.fileId, url: font.url }] : [])];
 }

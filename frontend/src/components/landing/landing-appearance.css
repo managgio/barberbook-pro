@@ -1,0 +1,28 @@
+.landing-appearance[data-heading-font] .landing-heading {
+  font-family: var(--landing-heading-font, inherit);
+  overflow-wrap: anywhere;
+}
+
+/* Secondary details support the primary within each element. No overrides without opt-in. */
+.landing-appearance[data-secondary] .landing-detail-dot {
+  background-color: rgb(var(--landing-secondary-ink) / 0.8);
+}
+
+/* An inset outline preserves button size, shadows, hover and the keyboard focus ring. */
+.landing-appearance[data-secondary] .ui-button.bg-primary {
+  outline: 1px solid rgb(var(--landing-secondary) / 0.8);
+  outline-offset: -1px;
+}
+.landing-appearance[data-secondary] .landing-category-filter[aria-pressed="true"] {
+  border-color: rgb(var(--landing-secondary) / 0.8);
+}
+
+.landing-appearance[data-secondary] .landing-detail-frame {
+  border-color: rgb(var(--landing-secondary-ink) / 0.22);
+}
+.landing-appearance[data-secondary] .landing-detail-card {
+  background-image: linear-gradient(135deg, hsl(var(--primary) / 0.055), hsl(var(--primary) / 0.015) 70%, rgb(var(--landing-secondary) / 0.04));
+}
+.landing-appearance[data-secondary] .landing-detail-card[data-state="open"] {
+  background-image: linear-gradient(135deg, hsl(var(--primary) / 0.065), hsl(var(--primary) / 0.02) 70%, rgb(var(--landing-secondary) / 0.055));
+}

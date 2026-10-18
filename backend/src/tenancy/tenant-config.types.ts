@@ -1,3 +1,5 @@
+import type { LandingAppearance } from '../contexts/platform/domain/services/landing-appearance.policy';
+
 export type TenantImageKitConfig = {
   publicKey?: string;
   privateKey?: string;
@@ -28,7 +30,7 @@ export type TenantAiConfig = {
   temperature?: number;
 };
 
-export type TenantThemeConfig = {
+export type TenantThemeConfig = LandingAppearance & {
   primary?: string;
   mode?: 'dark' | 'light';
 };

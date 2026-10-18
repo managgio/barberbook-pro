@@ -59,6 +59,16 @@ Al cambiar de local se refresca el perfil tenant-scoped y se aíslan las queries
 - Los historiales operativos filtran y paginan en servidor. Las opciones ligeras de tenant/local se cargan por un endpoint específico, sin reutilizar respuestas de configuración completas.
 - Optimiza imágenes y no añadas dependencias grandes para una utilidad pequeña.
 
+## Tipografía y color secundario de la landing
+
+Platform > Marcas > Config incluye `BrandLandingAppearanceEditor`, con vista previa aislada, color secundario opcional y subida de una fuente de títulos TTF, OTF, WOFF o WOFF2 (máximo 2 MB). La selección forma parte del borrador de configuración: se publica al guardar y puede restablecerse por separado. El selector valida extensión, tamaño, firma y decodificación con `FontFace` antes de subir. Durante la subida se bloquea el guardado; cambiar de marca aborta el envío e ignora resultados tardíos.
+
+`theme.secondary` y `theme.headingFont` se heredan de marca a local en el bootstrap. Su ausencia conserva exactamente los estilos anteriores; `null` expresa una retirada explícita. Solo `LandingAppearance` aplica estas opciones, mediante variables CSS locales. La vista previa usa el mismo componente con tokens independientes y reutiliza `LandingSectionAccent`, `Card` y el botón `hero` de la landing, incluyendo el contorno secundario sin una variante visual separada. Cambiar o quitar el secundario actualiza la muestra inmediatamente; nunca cambia el tema de Platform, el admin o autenticación.
+
+Las clases `landing-heading` identifican títulos y cifras destacadas; párrafos, navegación, botones, filtros y respuestas conservan su tipografía. `useLandingFont` utiliza la CSS Font Loading API, mantiene la fuente habitual mientras carga o si falla, y retira las caras registradas al desmontar o cambiar de archivo. Las URLs versionadas de ImageKit permiten reutilizar la caché del navegador. WOFF2 es recomendable para reducir la transferencia; no se convierte el archivo automáticamente.
+
+El secundario acompaña al primario dentro de cada elemento. La raya larga de sección, las etiquetas y los brillos conservan el primario; solo el punto corto usa el secundario. Los botones primarios incorporan un contorno interior secundario de 1 px, conservando relleno, dimensiones, sombras y foco de teclado. El filtro activo de galería combina fondo primario y borde secundario. Los marcos mantienen su línea primaria junto al borde complementario; las tarjetas conservan sus bordes y combinan una base primaria tenue con un matiz secundario en una esquina. El tono de los pequeños detalles se adapta al fondo del tema para que siga siendo visible. Todas estas reglas exigen un secundario válido; al quitarlo desaparece el contorno añadido y se recuperan exactamente los estilos previos.
+
 ## Verificación mínima
 
 - Tests Vitest de las políticas/componentes cambiados.

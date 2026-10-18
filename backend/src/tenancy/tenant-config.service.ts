@@ -37,6 +37,8 @@ const normalizeTheme = (theme?: TenantThemeConfig): TenantThemeConfig | undefine
   const next: TenantThemeConfig = {};
   if (primary) next.primary = primary;
   if (mode) next.mode = mode;
+  if (theme.secondary === null || (typeof theme.secondary === 'string' && /^#[\da-f]{6}$/i.test(theme.secondary))) next.secondary = theme.secondary;
+  if (theme.headingFont === null || (theme.headingFont && typeof theme.headingFont.url === 'string' && theme.headingFont.url.startsWith('https://'))) next.headingFont = theme.headingFont;
   return Object.keys(next).length ? next : undefined;
 };
 

@@ -11,6 +11,7 @@ import { RequestContext } from '@/shared/application/request-context';
 import { DomainError } from '@/shared/domain/domain-error';
 import { PrismaStripePaymentManagementAdapter } from '@/modules/payments/adapters/prisma-stripe-payment-management.adapter';
 import { LocalizationService } from '@/modules/localization/localization.service';
+import { HeadingFont } from '@/contexts/platform/domain/services/landing-appearance.policy';
 
 const url = process.env.WEBSITE_TEST_DATABASE_URL;
 test('website MySQL synchronises Platform and local edits, fences stale writes and safely retries deletion', { skip: !url }, async () => {
@@ -35,7 +36,13 @@ test('website MySQL synchronises Platform and local edits, fences stale writes a
     const provider = { remove: async (_brand: string, fileId: string) => { if (providerFails) throw new Error('provider-offline'); deleted.push(fileId); } } as any;
     const cleanup = new WebsiteMediaCleanup(db, provider);
     // Flush explicitly so assertions can inspect each committed state before the worker runs.
-    const store = new WebsiteConfigStore(db, { flush: async () => {} } as any);
+    let resolvingFont: (() => Promise<void>) | null = null;
+    const fonts = { resolveFont: async (target: string, _local: string | null, font: HeadingFont) => {
+      assert.equal(target, brand.id);
+      if (resolvingFont) await resolvingFont();
+      return { ...font, url: `https://images.test/${font.fileId}.ttf` };
+    } };
+    const store = new WebsiteConfigStore(db, { flush: async () => {} } as any, fonts as any);
     const repository = new PrismaWebsiteMediaAdapter(db, store, {} as any);
     const original = await repository.read(a);
     assert.equal(JSON.stringify(original).includes('never-public'), false);
@@ -92,6 +99,29 @@ test('website MySQL synchronises Platform and local edits, fences stale writes a
     assert.equal(preserved.payments.stripe.enabled, true);
     assert.equal(preserved.i18n.autoTranslate.paused, true);
     assert.equal(((await db.brandConfig.findUniqueOrThrow({ where: { brandId: brand.id } })).data as any).branding.heroImageFileId, branded.fileId);
+
+    // Font publication uses the same revision fence and reference-aware retirement as photos.
+    const saveAppearance = async (theme: object) => {
+      const row = await db.brandConfig.findUniqueOrThrow({ where: { brandId: brand.id } });
+      return store.savePlatform(brand.id, null, { ...(row.data as any), _revision: configRevision(row.data), theme });
+    };
+    const font = { fileId: `${suffix}-font`, url: 'https://untrusted.test/ignored.ttf', name: 'Brand font', format: 'ttf' };
+    await saveAppearance({ primary: '#a46c42', secondary: '#533123', headingFont: font });
+    let appearance = ((await db.brandConfig.findUniqueOrThrow({ where: { brandId: brand.id } })).data as any).theme;
+    assert.equal(appearance.headingFont.url, `https://images.test/${font.fileId}.ttf`);
+    assert.equal(appearance.secondary, '#533123');
+    assert.equal(deleted.includes(font.fileId), false);
+    resolvingFont = async () => { await (payments as any).updateBrandStripeConfig(brand.id, { enabled: false }); };
+    await assert.rejects(() => saveAppearance({ ...appearance, headingFont: { ...font, fileId: `${suffix}-stale-font` } }), ConflictException);
+    resolvingFont = null;
+    appearance = ((await db.brandConfig.findUniqueOrThrow({ where: { brandId: brand.id } })).data as any).theme;
+    assert.equal(appearance.headingFont.fileId, font.fileId);
+    assert.equal(await db.websiteMediaDeletion.count({ where: { brandId: brand.id, fileId: font.fileId } }), 0);
+    await saveAppearance({ ...appearance, secondary: null, headingFont: null });
+    assert.equal((await db.websiteMediaDeletion.findUniqueOrThrow({ where: { brandId_fileId: { brandId: brand.id, fileId: font.fileId } } })).status, 'pending');
+    await cleanup.flush(brand.id);
+    assert.equal(deleted.filter(id => id === font.fileId).length, 1);
+    await assert.rejects(() => saveAppearance({ ...appearance, headingFont: font }), ConflictException);
 
     // Platform revocation is checked again inside the transaction, even with an old open editor.
     const beforeRevocation = await repository.read(a);

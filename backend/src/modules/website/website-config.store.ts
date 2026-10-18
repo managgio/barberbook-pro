@@ -1,17 +1,20 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildBrandConfigFromEnv, buildLocationConfigFromEnv } from '../../tenancy/tenant-config.defaults';
 import { landingImageReferences, mergeWebsiteConfig, WebsiteConfig, WebsiteImage } from '../../contexts/platform/domain/services/website-media.policy';
 import { WebsiteMediaCleanup } from './website-media-cleanup';
 import { configRevision } from './config-revision';
+import { ImagekitLandingFontAdapter } from './imagekit-landing-font.adapter';
+import { PrepareLandingAppearanceUseCase } from '../../contexts/platform/application/use-cases/prepare-landing-appearance.use-case';
+import { DomainError } from '../../shared/domain/domain-error';
 
 export type WebsiteConfigState = { brand: WebsiteConfig; local: WebsiteConfig; effective: WebsiteConfig; revision: string };
 
 @Injectable()
 export class WebsiteConfigStore {
   private readonly logger = new Logger(WebsiteConfigStore.name);
-  constructor(private readonly prisma: PrismaService, private readonly cleanup: WebsiteMediaCleanup) {}
+  constructor(private readonly prisma: PrismaService, private readonly cleanup: WebsiteMediaCleanup, private readonly fonts: ImagekitLandingFontAdapter) {}
 
   async read(tx: Prisma.TransactionClient, brandId: string, localId: string): Promise<WebsiteConfigState> {
     const location = await tx.location.findFirst({ where: { id: localId, brandId }, select: { id: true } });
@@ -56,13 +59,26 @@ export class WebsiteConfigStore {
   }
 
   async savePlatform(brandId: string, localId: string | null, incoming: Record<string, unknown>) {
+    // Resolve external media before acquiring the lock. The revision is checked again inside it.
+    if (localId && !await this.prisma.location.findFirst({ where: { id: localId, brandId }, select: { id: true } })) throw new NotFoundException('WEBSITE_NOT_FOUND');
+    const baseline = localId ? await this.prisma.locationConfig.findUnique({ where: { localId }, select: { data: true } })
+      : await this.prisma.brandConfig.findUnique({ where: { brandId }, select: { data: true } });
+    if (incoming._revision !== configRevision(baseline?.data ?? {})) throw new ConflictException('WEBSITE_CONFIG_CONFLICT');
+    let prepared: Record<string, unknown>;
+    try {
+      prepared = await new PrepareLandingAppearanceUseCase(this.fonts).execute(brandId, localId, incoming, (baseline?.data ?? {}) as Record<string, unknown>);
+    } catch (error) {
+      if (error instanceof DomainError && error.code === 'LANDING_APPEARANCE_INVALID') throw new BadRequestException(error.code);
+      if (error instanceof DomainError && error.code === 'LANDING_FONT_UNAVAILABLE') throw new ServiceUnavailableException(error.code);
+      throw error;
+    }
     return this.transaction(brandId, async (tx) => {
       if (localId && !await tx.location.findFirst({ where: { id: localId, brandId }, select: { id: true } })) throw new NotFoundException('WEBSITE_NOT_FOUND');
       const row = localId ? await tx.locationConfig.findUnique({ where: { localId }, select: { data: true } })
         : await tx.brandConfig.findUnique({ where: { brandId }, select: { data: true } });
       const previous = (row?.data ?? {}) as WebsiteConfig;
       if (incoming._revision !== configRevision(previous)) throw new ConflictException('WEBSITE_CONFIG_CONFLICT');
-      const next = { ...incoming }; delete next._revision;
+      const next = { ...prepared }; delete next._revision;
       await this.assertAvailable(tx, brandId, landingImageReferences(next));
       const data = next as Prisma.InputJsonValue;
       const saved = localId ? await tx.locationConfig.upsert({ where: { localId }, create: { localId, data }, update: { data } })
