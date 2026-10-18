@@ -109,8 +109,9 @@ export class PlatformAdminService {
         });
       }
     }
-    await this.platformAdminManagementPort.updateBrandConfig(brandId, prepared);
-    return redactPlatformEmailSecret(prepared);
+    const saved = await this.platformAdminManagementPort.updateBrandConfig(brandId, prepared);
+    const persisted = saved && typeof saved === 'object' && 'data' in saved ? saved.data : prepared;
+    return redactPlatformEmailSecret(persisted);
   }
 
   async verifyBrandEmailConfig(brandId: string, email: SmtpConfigInput) {

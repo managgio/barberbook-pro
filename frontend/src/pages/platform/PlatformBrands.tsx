@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { galleryImageExtension, optimizeGalleryImage } from '@/lib/galleryImages';
+import { ApiRequestError } from '@/lib/networkErrors';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   assignPlatformBrandAdmin,
   connectPlatformStripeBrand,
@@ -22,6 +24,7 @@ import {
   updatePlatformLocationConfig,
 } from '@/data/api/platform';
 import { useAuth } from '@/context/AuthContext';
+import { useI18n } from '@/hooks/useI18n';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,7 +38,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Building2, ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, ExternalLink, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, ExternalLink, GripVertical, Image as ImageIcon, Info, LayoutTemplate, Loader2, MapPin, MessageSquare, Package, Plus, RefreshCcw, Save, Scissors, Settings2, Sparkles, Trash2, UserPlus, Users } from 'lucide-react';
 import { deleteFromImageKit, uploadToImageKit } from '@/lib/imagekit';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -55,6 +58,7 @@ import {
 import { AdminSectionKey, LegalCustomSections, LegalPolicyResponse, LegalSettings, SubProcessor } from '@/data/types';
 import MarkdownContent from '@/components/common/MarkdownContent';
 import PlatformBrandTabsNav from '@/components/platform/PlatformBrandTabsNav';
+import PlatformLandingPanel from '@/components/platform/PlatformLandingPanel';
 import {
   PLATFORM_BRAND_TABS,
   type PlatformBrandTab,
@@ -176,6 +180,8 @@ interface PlatformConfig {
     barberServiceAssignmentEnabled?: boolean;
     communicationsEnabled?: boolean;
     multiServiceBookingEnabled?: boolean;
+    faqEnabled?: boolean;
+    galleryEnabled?: boolean;
   };
   invoicing?: {
     enabled?: boolean;
@@ -675,9 +681,9 @@ const normalizePresentationSections = (sections?: PlatformPresentationSection[])
 
 const ADMIN_SECTION_SET = new Set(ADMIN_SECTIONS.map((section) => section.key));
 
-type LandingSectionKey = 'presentation' | 'services' | 'products' | 'barbers' | 'cta';
+type LandingSectionKey = 'presentation' | 'services' | 'products' | 'barbers' | 'faq' | 'gallery' | 'cta';
 
-const LANDING_SECTION_ORDER: LandingSectionKey[] = ['presentation', 'services', 'products', 'barbers', 'cta'];
+const LANDING_SECTION_ORDER: LandingSectionKey[] = ['presentation', 'services', 'products', 'barbers', 'gallery', 'faq', 'cta'];
 
 const LANDING_SECTION_META: Record<LandingSectionKey, { label: string; description: string; icon: React.ElementType }> = {
   presentation: {
@@ -699,6 +705,12 @@ const LANDING_SECTION_META: Record<LandingSectionKey, { label: string; descripti
     label: 'Equipo',
     description: 'Presentación del equipo y especialistas.',
     icon: Users,
+  },
+  gallery: { label: '', description: '', icon: ImageIcon },
+  faq: {
+    label: 'FAQ',
+    description: '',
+    icon: MessageSquare,
   },
   cta: {
     label: 'CTA final',
@@ -820,12 +832,14 @@ const resolveBrandPublicUrl = (subdomain?: string | null, customDomain?: string 
 };
 
 const PlatformBrands: React.FC = () => {
+  const { t } = useI18n();
   const { user } = useAuth();
   const { toast } = useToast();
   const imagekitPrefix = import.meta.env.VITE_IMAGEKIT_FOLDER_PREFIX || 'IMAGEKIT_FOLDER';
   const [brands, setBrands] = useState<PlatformBrand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(() => readStorageValue(PLATFORM_BRAND_STORAGE_KEY));
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [defaultLocationId, setDefaultLocationId] = useState<string | null>(null);
   const [brandQuery, setBrandQuery] = useState('');
   const [brandForm, setBrandForm] = useState({ name: '', subdomain: '', customDomain: '', isActive: true });
   const [brandConfig, setBrandConfig] = useState<PlatformConfig>({});
@@ -959,11 +973,17 @@ const PlatformBrands: React.FC = () => {
     staleTime: 60_000,
   });
 
+  const dirtyConfigs = useRef({ brand: false, location: false, brandId: selectedBrandId, localId: selectedLocationId });
+  const loadedBrandDataId = useRef<string | null>(null);
+  dirtyConfigs.current = { brand: !areConfigsEqual(brandConfig, persistedBrandConfig), location: !areConfigsEqual(locationConfig, persistedLocationConfig), brandId: selectedBrandId, localId: selectedLocationId };
+  const loadedConfigs = useRef<{ brandId: string | null; localId: string | null }>({ brandId: null, localId: null });
   const brandConfigQuery = useQuery<PlatformConfig>({
     queryKey: queryKeys.platformBrandConfig(selectedBrandId),
     queryFn: () => getPlatformBrandConfig(selectedBrandId as string),
     enabled: Boolean(user?.id && selectedBrandId),
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
+    refetchInterval: 15_000,
   });
 
   const brandAdminsQuery = useQuery<PlatformAdminOverview>({
@@ -991,7 +1011,9 @@ const PlatformBrands: React.FC = () => {
     queryKey: queryKeys.platformLocationConfig(selectedLocationId),
     queryFn: () => getPlatformLocationConfig(selectedLocationId as string),
     enabled: Boolean(user?.id && selectedLocationId),
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
+    refetchInterval: 15_000,
   });
 
   const isLoading = brandsQuery.isLoading;
@@ -1030,6 +1052,7 @@ const PlatformBrands: React.FC = () => {
       isActive: brand.isActive,
     });
     const defaultLocation = brand.defaultLocationId || brand.locations?.[0]?.id || null;
+    setDefaultLocationId(defaultLocation);
     setSelectedLocationId((prev) => {
       if (prev && brand.locations?.some((location) => location.id === prev)) return prev;
       return defaultLocation;
@@ -1039,6 +1062,8 @@ const PlatformBrands: React.FC = () => {
       localId: defaultLocation || brand.locations?.[0]?.id || '',
       applyToAll: false,
     }));
+    if (loadedBrandDataId.current === brand.id) return;
+    loadedBrandDataId.current = brand.id;
     setLocationConfig({});
     setPersistedLocationConfig({});
     setPersistedLocationFileIds({
@@ -1054,6 +1079,8 @@ const PlatformBrands: React.FC = () => {
 
   useEffect(() => {
     if (typeof brandConfigQuery.data === 'undefined') return;
+    if (loadedConfigs.current.brandId === dirtyConfigs.current.brandId && dirtyConfigs.current.brand) return;
+    loadedConfigs.current.brandId = dirtyConfigs.current.brandId;
     const config = brandConfigQuery.data || {};
     const normalizedBrandConfig = stripLegacyTenantMessagingConfig(stripEmptyTheme(config));
     const subdomain = brandDataQuery.data?.subdomain || null;
@@ -1120,6 +1147,8 @@ const PlatformBrands: React.FC = () => {
       return;
     }
     if (typeof locationConfigQuery.data === 'undefined') return;
+    if (loadedConfigs.current.localId === dirtyConfigs.current.localId && dirtyConfigs.current.location) return;
+    loadedConfigs.current.localId = dirtyConfigs.current.localId;
     const config = locationConfigQuery.data || {};
     const normalizedConfig = stripLegacyTenantMessagingConfig(stripEmptyTheme(config));
     const subdomain = brandDataQuery.data?.subdomain || selectedBrand?.subdomain || null;
@@ -1151,6 +1180,7 @@ const PlatformBrands: React.FC = () => {
     setDpaContent(null);
     setAdminOverview(null);
     setSelectedLocationId(null);
+    setDefaultLocationId(null);
     setPersistedLocationConfig({});
   }, [selectedBrandId]);
 
@@ -1251,7 +1281,7 @@ const PlatformBrands: React.FC = () => {
         subdomain: brandForm.subdomain,
         customDomain: brandForm.customDomain || null,
         isActive: brandForm.isActive,
-        defaultLocationId: selectedLocationId,
+        defaultLocationId,
       });
       await updatePlatformBrandConfig(selectedBrand.id, cleanedBrandConfig);
       if (selectedLocationId && hasLocationConfigChanges) {
@@ -1294,7 +1324,7 @@ const PlatformBrands: React.FC = () => {
       }, {} as Record<BrandFileIdField, string | null>);
 
       await Promise.all(
-        BRAND_FILE_ID_FIELDS.map(async (field) => {
+        BRAND_FILE_ID_FIELDS.filter((field) => field.startsWith('logo')).map(async (field) => {
           const previous = persistedBrandFileIds[field];
           const next = currentFileIds[field];
           if (!previous || previous === next) return;
@@ -1321,23 +1351,6 @@ const PlatformBrands: React.FC = () => {
           heroImage5FileId: locationConfig?.branding?.heroImage5FileId || null,
           signImageFileId: locationConfig?.branding?.signImageFileId || null,
         };
-        await Promise.all(
-          LOCATION_LANDING_FILE_ID_FIELDS.map(async (field) => {
-            const previous = persistedLocationFileIds[field];
-            const next = currentLocationFileIds[field];
-            if (!previous || previous === next) return;
-            try {
-              await deleteFromImageKit(previous, { subdomainOverride: selectedBrand.subdomain });
-            } catch (cleanupError) {
-              console.error(cleanupError);
-              toast({
-                title: 'Aviso',
-                description: 'No se pudo borrar una imagen anterior del local.',
-                variant: 'destructive',
-              });
-            }
-          }),
-        );
         setPersistedLocationFileIds(currentLocationFileIds);
       }
       setPersistedBrandConfig(JSON.parse(JSON.stringify(cleanedBrandConfig)));
@@ -1351,8 +1364,8 @@ const PlatformBrands: React.FC = () => {
     onSuccess: () => {
       toast({ title: 'Actualizado', description: 'Marca y configuración guardadas.' });
     },
-    onError: () => {
-      toast({ title: 'Error', description: 'No se pudo guardar la marca.', variant: 'destructive' });
+    onError: (error) => {
+      toast({ title: 'Error', description: error instanceof ApiRequestError && error.status === 409 ? t('website.platformConflict') : 'No se pudo guardar la marca.', variant: 'destructive' });
     },
   });
 
@@ -1543,17 +1556,20 @@ const PlatformBrands: React.FC = () => {
   const locationSidebarConfig = isLocationSidebarOverride ? locationConfig : brandConfig;
   const brandStockVisible = isAdminSectionVisible(brandConfig, 'stock');
   const locationStockVisible = isAdminSectionVisible(locationSidebarConfig, 'stock');
+  const hasSingleLocation = selectedBrand?.locations?.length === 1;
+  const landingBranding = hasSingleLocation ? { ...brandConfig.branding, ...locationConfig.branding } : brandConfig.branding;
   const brandLandingItems = useMemo(
-    () => buildLandingItems(brandConfig).filter((item) => brandStockVisible || item.key !== 'products'),
-    [brandConfig, brandStockVisible],
+    () => buildLandingItems(hasSingleLocation ? { ...brandConfig, landing: { ...brandConfig.landing, ...locationConfig.landing } } : brandConfig)
+      .filter((item) => (hasSingleLocation ? locationStockVisible : brandStockVisible) || item.key !== 'products'),
+    [brandConfig, locationConfig.landing, hasSingleLocation, brandStockVisible, locationStockVisible],
   );
   const isLocationLandingOverride = Boolean(locationConfig?.landing);
   const locationLandingItems = useMemo(
     () =>
-      buildLandingItems(isLocationLandingOverride ? locationConfig : brandConfig).filter(
+      buildLandingItems({ ...brandConfig, ...locationConfig, landing: { ...brandConfig.landing, ...locationConfig.landing } }).filter(
         (item) => locationStockVisible || item.key !== 'products',
       ),
-    [locationConfig, brandConfig, isLocationLandingOverride, locationStockVisible],
+    [locationConfig, brandConfig, locationStockVisible],
   );
   const isLocationNotificationOverride = Boolean(locationConfig?.notificationPrefs);
   const brandNotificationPrefs = resolveEffectivePlatformNotificationPrefs(brandConfig);
@@ -1605,56 +1621,40 @@ const PlatformBrands: React.FC = () => {
   const resolveHeroNoImageAlign = (value?: string): HeroNoImageAlignOption =>
     value === 'right' || value === 'left' ? value : 'center';
   const brandThemeMode = resolveThemeMode(brandConfig?.theme?.mode);
-  const brandHeroImageEnabled = resolveHeroFlag(brandConfig?.branding?.heroImageEnabled);
-  const brandHeroBackgroundDimmed = resolveHeroFlag(brandConfig?.branding?.heroBackgroundDimmed);
-  const brandHeroBackgroundOpacity = resolveHeroBackgroundOpacity(brandConfig?.branding?.heroBackgroundOpacity);
-  const brandHeroBadgeEnabled = resolveHeroFlag(brandConfig?.branding?.heroBadgeEnabled);
-  const brandHeroTextColor = resolveHeroTextColor(brandConfig?.branding?.heroTextColor);
-  const brandHeroLocationCardEnabled = resolveHeroFlag(brandConfig?.branding?.heroLocationCardEnabled);
-  const brandHeroImagePosition = resolveHeroImagePosition(brandConfig?.branding?.heroImagePosition);
-  const brandHeroNoImageAlign = resolveHeroNoImageAlign(brandConfig?.branding?.heroNoImageAlign);
+  const brandHeroImageEnabled = resolveHeroFlag(landingBranding?.heroImageEnabled);
+  const brandHeroBackgroundDimmed = resolveHeroFlag(landingBranding?.heroBackgroundDimmed);
+  const brandHeroBackgroundOpacity = resolveHeroBackgroundOpacity(landingBranding?.heroBackgroundOpacity);
+  const brandHeroBadgeEnabled = resolveHeroFlag(landingBranding?.heroBadgeEnabled);
+  const brandHeroTextColor = resolveHeroTextColor(landingBranding?.heroTextColor);
+  const brandHeroLocationCardEnabled = resolveHeroFlag(landingBranding?.heroLocationCardEnabled);
+  const brandHeroImagePosition = resolveHeroImagePosition(landingBranding?.heroImagePosition);
+  const brandHeroNoImageAlign = resolveHeroNoImageAlign(landingBranding?.heroNoImageAlign);
   const locationThemeModeValue = locationConfig?.theme?.mode
     ? resolveThemeMode(locationConfig?.theme?.mode)
     : 'inherit';
   const locationHeroImageEnabled = resolveHeroFlag(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroImageEnabled
-      : brandConfig?.branding?.heroImageEnabled,
+    locationConfig?.branding?.heroImageEnabled ?? brandConfig?.branding?.heroImageEnabled,
   );
   const locationHeroBackgroundDimmed = resolveHeroFlag(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroBackgroundDimmed
-      : brandConfig?.branding?.heroBackgroundDimmed,
+    locationConfig?.branding?.heroBackgroundDimmed ?? brandConfig?.branding?.heroBackgroundDimmed,
   );
   const locationHeroBackgroundOpacity = resolveHeroBackgroundOpacity(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroBackgroundOpacity
-      : brandConfig?.branding?.heroBackgroundOpacity,
+    locationConfig?.branding?.heroBackgroundOpacity ?? brandConfig?.branding?.heroBackgroundOpacity,
   );
   const locationHeroBadgeEnabled = resolveHeroFlag(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroBadgeEnabled
-      : brandConfig?.branding?.heroBadgeEnabled,
+    locationConfig?.branding?.heroBadgeEnabled ?? brandConfig?.branding?.heroBadgeEnabled,
   );
   const locationHeroTextColor = resolveHeroTextColor(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroTextColor
-      : brandConfig?.branding?.heroTextColor,
+    locationConfig?.branding?.heroTextColor ?? brandConfig?.branding?.heroTextColor,
   );
   const locationHeroLocationCardEnabled = resolveHeroFlag(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroLocationCardEnabled
-      : brandConfig?.branding?.heroLocationCardEnabled,
+    locationConfig?.branding?.heroLocationCardEnabled ?? brandConfig?.branding?.heroLocationCardEnabled,
   );
   const locationHeroImagePosition = resolveHeroImagePosition(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroImagePosition
-      : brandConfig?.branding?.heroImagePosition,
+    locationConfig?.branding?.heroImagePosition ?? brandConfig?.branding?.heroImagePosition,
   );
   const locationHeroNoImageAlign = resolveHeroNoImageAlign(
-    isLocationBrandingOverride
-      ? locationConfig?.branding?.heroNoImageAlign
-      : brandConfig?.branding?.heroNoImageAlign,
+    locationConfig?.branding?.heroNoImageAlign ?? brandConfig?.branding?.heroNoImageAlign,
   );
   const locationNotificationPrefs = resolveEffectivePlatformNotificationPrefs(
     brandConfig,
@@ -1695,6 +1695,8 @@ const PlatformBrands: React.FC = () => {
     : selectedBusinessCopy.staff.definitePlural;
   const staffAllVerb = selectedBusinessCopy.staff.isCollective ? 'podrá' : 'podrán';
   const resolveLandingSectionMeta = (key: LandingSectionKey) => {
+    if (key === 'gallery') return { ...LANDING_SECTION_META.gallery, label: t('platform.gallery.sectionTitle'), description: t('platform.gallery.sectionDescription') };
+    if (key === 'faq') return { ...LANDING_SECTION_META.faq, label: t('platform.faq.sectionTitle'), description: t('platform.faq.sectionDescription') };
     const base = LANDING_SECTION_META[key];
     if (key !== 'barbers') return base;
     return {
@@ -1980,13 +1982,18 @@ const PlatformBrands: React.FC = () => {
   const updateLandingConfig = (
     setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
     items: Array<{ key: LandingSectionKey; enabled: boolean }>,
+    capability?: { key: 'faqEnabled' | 'galleryEnabled'; enabled: boolean },
   ) => {
+    if (hasSingleLocation && setConfig === setBrandConfig) {
+      setLocationConfig((prev) => updateNestedValue(prev, ['landing'], { ...prev.landing, ...buildLandingConfigValue(items) }));
+    }
     setConfig((prev) => {
       const currentLanding =
         prev?.landing && typeof prev.landing === 'object' && !Array.isArray(prev.landing)
           ? prev.landing
           : {};
-      return updateNestedValue(prev, ['landing'], { ...currentLanding, ...buildLandingConfigValue(items) });
+      const next = updateNestedValue(prev, ['landing'], { ...currentLanding, ...buildLandingConfigValue(items) });
+      return capability ? updateNestedValue(next, ['features', capability.key], capability.enabled) : next;
     });
   };
 
@@ -2038,10 +2045,15 @@ const PlatformBrands: React.FC = () => {
     items: Array<{ key: LandingSectionKey; enabled: boolean }>,
     key: LandingSectionKey,
     enabled: boolean,
+    scope: 'brand' | 'location',
   ) => {
+    const capabilityKey = scope === 'brand'
+      ? key === 'faq' ? 'faqEnabled' : key === 'gallery' ? 'galleryEnabled' : undefined
+      : undefined;
     updateLandingConfig(
       setConfig,
       items.map((item) => (item.key === key ? { ...item, enabled } : item)),
+      capabilityKey ? { key: capabilityKey, enabled } : undefined,
     );
   };
 
@@ -2053,6 +2065,11 @@ const PlatformBrands: React.FC = () => {
 
   const getPresentationSections = (config: PlatformConfig) =>
     normalizePresentationSections(config?.landing?.presentation?.sections);
+
+  const presentationConfigForScope = (scope: 'brand' | 'location'): PlatformConfig => scope === 'brand' ? brandConfig : {
+    ...brandConfig, ...locationConfig,
+    landing: { ...brandConfig.landing, ...locationConfig.landing, presentation: locationConfig.landing?.presentation ?? brandConfig.landing?.presentation },
+  };
 
   const updatePresentationSections = (
     setConfig: React.Dispatch<React.SetStateAction<PlatformConfig>>,
@@ -2072,14 +2089,13 @@ const PlatformBrands: React.FC = () => {
     setUploadingPresentation(uploadingKey);
     try {
       const fileName = `${scope}-presentation-${index + 1}-${selectedBrand.subdomain || selectedBrand.id}-${Date.now()}`;
-      const folder = scope === 'location' ? (locationConfig?.imagekit?.folder || 'landing') : 'landing';
-      const { url, fileId } = await uploadToImageKit(file, fileName, folder, {
+      const folder = `website/${selectedBrand.id}/${scope === 'location' ? selectedLocationId : 'brand'}`;
+      const optimized = await optimizeGalleryImage(file);
+      const { url, fileId } = await uploadToImageKit(optimized, `${fileName}.${galleryImageExtension(optimized)}`, folder, {
         subdomainOverride: selectedBrand.subdomain,
         ...(scope === 'location' ? { localIdOverride: selectedLocationId } : {}),
       });
-      const config = scope === 'location' ? locationConfig : brandConfig;
-      const sections = getPresentationSections(config);
-      const previousFileId = sections[index]?.imageFileId as string | undefined;
+      const sections = getPresentationSections(presentationConfigForScope(scope));
       sections[index] = {
         ...sections[index],
         imageUrl: url,
@@ -2089,21 +2105,6 @@ const PlatformBrands: React.FC = () => {
         updatePresentationSections(setLocationConfig, sections);
       } else {
         updatePresentationSections(setBrandConfig, sections);
-      }
-      if (previousFileId && previousFileId !== fileId) {
-        try {
-          await deleteFromImageKit(previousFileId, {
-            subdomainOverride: selectedBrand.subdomain,
-            ...(scope === 'location' ? { localIdOverride: selectedLocationId } : {}),
-          });
-        } catch (cleanupError) {
-          console.error(cleanupError);
-          toast({
-            title: 'Aviso',
-            description: 'No se pudo borrar la imagen anterior en storage.',
-            variant: 'destructive',
-          });
-        }
       }
       toast({ title: 'Imagen subida', description: 'Guarda los cambios para aplicarla.' });
     } catch (error) {
@@ -2115,9 +2116,7 @@ const PlatformBrands: React.FC = () => {
 
   const handlePresentationImageRemove = async (scope: 'brand' | 'location', index: number) => {
     if (!selectedBrand) return;
-    const config = scope === 'location' ? locationConfig : brandConfig;
-    const sections = getPresentationSections(config);
-    const previousFileId = sections[index]?.imageFileId as string | undefined;
+    const sections = getPresentationSections(presentationConfigForScope(scope));
     sections[index] = {
       ...sections[index],
       imageUrl: '',
@@ -2128,26 +2127,12 @@ const PlatformBrands: React.FC = () => {
     } else {
       updatePresentationSections(setBrandConfig, sections);
     }
-    if (previousFileId) {
-      try {
-        await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
-      } catch (cleanupError) {
-        console.error(cleanupError);
-        toast({
-          title: 'Aviso',
-          description: 'No se pudo borrar la imagen anterior en storage.',
-          variant: 'destructive',
-        });
-      }
-    }
     toast({ title: 'Imagen eliminada', description: 'Guarda los cambios para aplicar.' });
   };
 
   const renderPresentationEditor = (scope: 'brand' | 'location', disabled: boolean) => {
     const isLocationScope = scope === 'location';
-    const config = isLocationScope ? locationConfig : brandConfig;
-    const displayConfig = isLocationScope && disabled ? brandConfig : config;
-    const sections = getPresentationSections(displayConfig);
+    const sections = getPresentationSections(presentationConfigForScope(scope));
     const updateSection = (index: number, updates: Partial<PlatformPresentationSection>) => {
       const next = sections.map((section, idx) => (idx === index ? { ...section, ...updates } : section));
       if (isLocationScope) {
@@ -2497,6 +2482,11 @@ const PlatformBrands: React.FC = () => {
     });
   };
 
+  const updateLandingBrandingFields = (updates: Record<string, string | boolean | number>) => {
+    updateBrandingFields(updates);
+    if (hasSingleLocation) updateLocationBrandingFields(updates);
+  };
+
   function readStripeConfig(config: PlatformConfig) {
     const stripe = config?.payments?.stripe || {};
     return {
@@ -2548,14 +2538,16 @@ const PlatformBrands: React.FC = () => {
     setUploadingAsset(assetKey);
     try {
       const fileName = `brand-${assetKey}-${selectedBrand.subdomain || selectedBrand.id}-${Date.now()}`;
-      const { url, fileId } = await uploadToImageKit(file, fileName, asset.folder, {
+      const isLandingImage = !assetKey.startsWith('logo');
+      const optimized = isLandingImage ? await optimizeGalleryImage(file) : file;
+      const { url, fileId } = await uploadToImageKit(optimized, isLandingImage ? `${fileName}.${galleryImageExtension(optimized)}` : fileName, isLandingImage ? `website/${selectedBrand.id}/brand` : asset.folder, {
         subdomainOverride: selectedBrand.subdomain,
       });
       updateBrandingFields({
         [asset.urlField]: url,
         [asset.fileIdField]: fileId,
       });
-      if (previousFileId && previousFileId !== fileId && previousFileId !== persistedFileId) {
+      if (assetKey.startsWith('logo') && previousFileId && previousFileId !== fileId && previousFileId !== persistedFileId) {
         try {
           await deleteFromImageKit(previousFileId, { subdomainOverride: selectedBrand.subdomain });
         } catch (cleanupError) {
@@ -2592,8 +2584,9 @@ const PlatformBrands: React.FC = () => {
     setUploadingAsset(assetKey);
     try {
       const fileName = `location-${assetKey}-${selectedLocationId}-${Date.now()}`;
-      const folder = locationConfig?.imagekit?.folder || asset.folder;
-      const { url, fileId } = await uploadToImageKit(file, fileName, folder, {
+      const folder = `website/${selectedBrand.id}/${selectedLocationId}`;
+      const optimized = await optimizeGalleryImage(file);
+      const { url, fileId } = await uploadToImageKit(optimized, `${fileName}.${galleryImageExtension(optimized)}`, folder, {
         subdomainOverride: selectedBrand.subdomain,
         localIdOverride: selectedLocationId,
       });
@@ -2601,7 +2594,7 @@ const PlatformBrands: React.FC = () => {
         [asset.urlField]: url,
         [asset.fileIdField]: fileId,
       });
-      if (previousFileId && previousFileId !== fileId && previousFileId !== persistedFileId) {
+      if (assetKey.startsWith('logo') && previousFileId && previousFileId !== fileId && previousFileId !== persistedFileId) {
         try {
           await deleteFromImageKit(previousFileId, {
             subdomainOverride: selectedBrand.subdomain,
@@ -2758,9 +2751,9 @@ const PlatformBrands: React.FC = () => {
   ) => {
     const asset = BRAND_ASSET_META[assetKey];
     const isDisabled = Boolean(options?.disabled);
-    const locationUrlValue = (locationConfig?.branding?.[asset.urlField] as string | undefined) || '';
+    const locationUrlValue = locationConfig?.branding?.[asset.urlField] as string | undefined;
     const brandUrlValue = (brandConfig?.branding?.[asset.urlField] as string | undefined) || '';
-    const urlValue = isDisabled ? brandUrlValue : locationUrlValue;
+    const urlValue = isDisabled ? brandUrlValue : (locationUrlValue ?? brandUrlValue);
     const isUploading = uploadingAsset === assetKey;
     const isAnyUpload = Boolean(uploadingAsset);
 
@@ -2820,6 +2813,30 @@ const PlatformBrands: React.FC = () => {
       </div>
     );
   };
+
+  const renderLandingScope = (scope: 'brand' | 'location', content: React.ReactNode) => {
+    if (scope === 'location') {
+      if (locationConfigQuery.isError) {
+        return <div role="alert" className="space-y-3 text-sm text-muted-foreground">
+          <p>{t('platform.landing.loadError')}</p>
+          <Button variant="outline" onClick={() => locationConfigQuery.refetch()}>{t('platform.landing.retry')}</Button>
+        </div>;
+      }
+      if (locationConfigQuery.isPending || loadedConfigs.current.localId !== selectedLocationId) {
+        return <p role="status" className="text-sm text-muted-foreground">{t('platform.landing.loading')}</p>;
+      }
+    }
+    return content;
+  };
+
+  const renderLandingImages = (scope: 'brand' | 'location') => (
+    <div className="space-y-5">
+      <p className="text-sm text-muted-foreground">{t('website.hint.hero')}</p>
+      {(['heroBackground', 'heroImage', 'heroImage2', 'heroImage3', 'heroImage4', 'heroImage5', 'signImage'] as const).map((key) =>
+        scope === 'brand' ? renderBrandAssetInput(key) : renderLocationAssetInput(key),
+      )}
+    </div>
+  );
 
   if (isLoading) {
     return <div className="text-muted-foreground">Cargando marcas...</div>;
@@ -3067,7 +3084,7 @@ const PlatformBrands: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <Label>Local por defecto</Label>
-                    <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
+                    <Select value={defaultLocationId || undefined} onValueChange={setDefaultLocationId}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecciona local" />
                       </SelectTrigger>
@@ -3364,6 +3381,7 @@ const PlatformBrands: React.FC = () => {
                                   <span className="text-[10px] uppercase tracking-widest text-primary">Obligatorio</span>
                                 )}
                                 <Switch
+                                  aria-label={section.label}
                                   checked={isVisible}
                                   disabled={isRequired}
                                   onCheckedChange={(checked) =>
@@ -3460,359 +3478,113 @@ const PlatformBrands: React.FC = () => {
 
               <TabsContent value="landing" className="space-y-6">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <LayoutTemplate className="h-4 w-4 text-primary" />
-                  Secciones de la landing
+                  <LayoutTemplate aria-hidden="true" className="h-4 w-4 text-primary" />
+                  {t('platform.landing.title')}
                 </div>
                 <div className={`grid gap-6 ${hasMultipleLocations ? 'lg:grid-cols-2' : ''}`}>
-                  <Card className="border border-border/60 bg-card/80">
-                    <CardHeader>
-                      <CardTitle className="text-base">Por marca</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <p className="text-xs text-muted-foreground">
-                        Organiza el orden general. El hero siempre se muestra primero.
-                      </p>
-                      <div className="rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                        Hero (cabecera principal) · fijo en la primera posición
-                      </div>
-                      <div className="space-y-3">
-                        {brandLandingItems.map((item, index) => {
-                          const meta = resolveLandingSectionMeta(item.key);
-                          const Icon = meta.icon;
-                          const isDragging = draggingLandingScope === 'brand' && draggingLandingKey === item.key;
-                          const isDragOver = draggingLandingScope === 'brand' && dragOverLandingIndex === index && !isDragging;
-                          return (
-                            <div
-                              key={item.key}
-                              draggable
-                              onDragStart={(event) => handleLandingDragStart(event, index, 'brand')}
-                              onDragOver={(event) => handleLandingDragOver(event, index, 'brand')}
-                              onDrop={(event) => handleLandingDrop(setBrandConfig, brandLandingItems, event, index)}
-                              onDragEnd={handleLandingDragEnd}
-                              data-section-key={item.key}
-                              className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 select-none cursor-grab active:cursor-grabbing ${
-                                isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''
-                              } ${
-                                isDragOver
-                                  ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
-                                  : ''
-                              }`}
-                            >
-                              <div className="flex items-start gap-3">
-                                <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                                <div className="flex items-start gap-3">
-                                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                                    <Icon className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <div className="text-sm font-semibold text-foreground">{meta.label}</div>
-                                    <p className="text-xs text-muted-foreground">{meta.description}</p>
-                                  </div>
-                                </div>
-                              </div>
-                              <Switch
-                                checked={item.enabled}
-                                onCheckedChange={(checked) =>
-                                  handleLandingToggle(setBrandConfig, brandLandingItems, item.key, checked)
-                                }
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="pt-4 border-t border-border/60 space-y-4">
-                        <div className="space-y-3">
-                          <p className="text-xs uppercase tracking-widest text-muted-foreground">Hero principal</p>
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                              <div>
-                                <div className="text-sm font-semibold text-foreground">Mostrar imagen principal</div>
-                                <p className="text-xs text-muted-foreground">Controla la foto destacada del hero.</p>
-                              </div>
-                              <Switch
-                                checked={brandHeroImageEnabled}
-                                onCheckedChange={(checked) => updateBrandingFields({ heroImageEnabled: checked })}
-                              />
-                            </div>
-                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                              <div>
-                                <div className="text-sm font-semibold text-foreground">Opacidad sobre el fondo</div>
-                                <p className="text-xs text-muted-foreground">Mejora la legibilidad del hero.</p>
-                              </div>
-                              <Switch
-                                checked={brandHeroBackgroundDimmed}
-                                onCheckedChange={(checked) => updateBrandingFields({ heroBackgroundDimmed: checked })}
-                              />
-                            </div>
-                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
-                              <div className="flex items-center justify-between gap-3">
-                                <Label className="text-xs text-muted-foreground">Opacidad del fondo</Label>
-                                <span className="text-xs font-medium text-foreground">{brandHeroBackgroundOpacity}%</span>
-                              </div>
-                              <Slider
-                                min={0}
-                                max={100}
-                                step={5}
-                                value={[brandHeroBackgroundOpacity]}
-                                onValueChange={(value) => updateBrandingFields({ heroBackgroundOpacity: value[0] })}
-                                disabled={!brandHeroBackgroundDimmed}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Ajusta la intensidad del overlay sobre la imagen de fondo.
-                              </p>
-                            </div>
-                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                              <div>
-                                <div className="text-sm font-semibold text-foreground">Card de ubicación</div>
-                                <p className="text-xs text-muted-foreground">Mostrar sobre la imagen principal.</p>
-                              </div>
-                              <Switch
-                                checked={brandHeroLocationCardEnabled}
-                                onCheckedChange={(checked) => updateBrandingFields({ heroLocationCardEnabled: checked })}
-                              />
-                            </div>
-                            <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
-                              <div>
-                                <div className="text-sm font-semibold text-foreground">Badge de reserva online</div>
-                                <p className="text-xs text-muted-foreground">Etiqueta "Reserva online disponible".</p>
-                              </div>
-                              <Switch
-                                checked={brandHeroBadgeEnabled}
-                                onCheckedChange={(checked) => updateBrandingFields({ heroBadgeEnabled: checked })}
-                              />
-                            </div>
-                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
-                              <Label className="text-xs text-muted-foreground">Color del texto del hero</Label>
-                              <Select
-                                value={brandHeroTextColor}
-                                onValueChange={(value) => updateBrandingFields({ heroTextColor: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona color" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {HERO_TEXT_COLOR_OPTIONS.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
-                              <Label className="text-xs text-muted-foreground">Posición de la imagen</Label>
-                              <Select
-                                value={brandHeroImagePosition}
-                                onValueChange={(value) => updateBrandingFields({ heroImagePosition: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona posición" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {HERO_IMAGE_POSITION_OPTIONS.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="rounded-xl border border-border/60 p-3 space-y-2">
-                              <Label className="text-xs text-muted-foreground">Alineación sin imagen</Label>
-                              <Select
-                                value={brandHeroNoImageAlign}
-                                onValueChange={(value) => updateBrandingFields({ heroNoImageAlign: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona alineación" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {HERO_NO_IMAGE_ALIGN_OPTIONS.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
-                          <div className="grid gap-4">
-                            {renderBrandAssetInput('heroBackground')}
-                            {renderBrandAssetInput('heroImage')}
-                            {renderBrandAssetInput('heroImage2')}
-                            {renderBrandAssetInput('heroImage3')}
-                            {renderBrandAssetInput('heroImage4')}
-                            {renderBrandAssetInput('heroImage5')}
-                            {renderBrandAssetInput('signImage')}
-                          </div>
-                        </div>
-                        <div className="pt-4 border-t border-border/60 space-y-4">
-                          <div>
-                            <p className="text-xs uppercase tracking-widest text-muted-foreground">Presentación del negocio</p>
-                            <p className="text-xs text-muted-foreground">
-                              Dos bloques con foto y texto. La segunda sección es opcional.
-                            </p>
-                          </div>
-                          {renderPresentationEditor('brand', false)}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {hasMultipleLocations && (
-                    <Card className="border border-border/60 bg-card/80">
+                  <Card role="region" aria-label={hasMultipleLocations ? t('platform.landing.brand') : t('platform.landing.title')} className="border border-border/60 bg-card/80">
+                    {hasMultipleLocations && (
                       <CardHeader>
-                        <CardTitle className="text-base">Por local</CardTitle>
+                        <CardTitle className="text-base">{t('platform.landing.brand')}</CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-4">
-                        {selectedBrand.locations?.length ? (
-                          <>
-                            <div className="space-y-2">
-                              <Label>Local a configurar</Label>
-                              <Select value={selectedLocationId || undefined} onValueChange={setSelectedLocationId}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona local" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {selectedBrand.locations?.map((location) => (
-                                    <SelectItem key={location.id} value={location.id}>
-                                      {location.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <Switch
-                                checked={isLocationLandingOverride}
-                                onCheckedChange={handleLocationLandingOverride}
-                              />
-                              <span className="text-sm text-muted-foreground">
-                                Personalizar landing para este local
-                              </span>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              Si está desactivado, el local hereda el orden y visibilidad de la marca.
-                            </p>
-                            <div
-                              className={`rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm ${
-                                isLocationLandingOverride ? 'text-muted-foreground' : 'text-muted-foreground/70'
-                              }`}
-                            >
-                              Hero (cabecera principal) · fijo en la primera posición
-                            </div>
-                            <div className="space-y-3">
-                              {locationLandingItems.map((item, index) => {
-                                const meta = resolveLandingSectionMeta(item.key);
-                                const Icon = meta.icon;
-                                const isDisabled = !isLocationLandingOverride;
-                                const isDragging = draggingLandingScope === 'location' && draggingLandingKey === item.key;
-                                const isDragOver =
-                                  draggingLandingScope === 'location' && dragOverLandingIndex === index && !isDragging;
-                                return (
-                                  <div
-                                    key={item.key}
-                                    draggable={!isDisabled}
-                                    onDragStart={(event) => {
-                                      if (!isDisabled) handleLandingDragStart(event, index, 'location');
-                                    }}
-                                    onDragOver={(event) => {
-                                      if (!isDisabled) handleLandingDragOver(event, index, 'location');
-                                    }}
-                                    onDrop={(event) => {
-                                      if (!isDisabled) {
-                                        handleLandingDrop(setLocationConfig, locationLandingItems, event, index);
-                                      }
-                                    }}
-                                    onDragEnd={handleLandingDragEnd}
-                                    data-section-key={item.key}
-                                    className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 ${
-                                      isDisabled ? 'opacity-60 cursor-not-allowed' : 'select-none cursor-grab active:cursor-grabbing'
-                                    } ${!isDisabled && isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''} ${
-                                      !isDisabled && isDragOver
-                                        ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
-                                        : ''
-                                    }`}
-                                  >
+                    )}
+                    <CardContent className={`space-y-4 ${hasMultipleLocations ? '' : 'pt-6'}`}>
+                      {renderLandingScope(hasSingleLocation ? 'location' : 'brand', <PlatformLandingPanel
+                        sections={<>
+                          <p className="text-xs text-muted-foreground">
+                            Organiza el orden general. El hero siempre se muestra primero.
+                          </p>
+                          <div className="rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                            Hero (cabecera principal) · fijo en la primera posición
+                          </div>
+                          <div className="space-y-3">
+                            {brandLandingItems.map((item, index) => {
+                              const meta = resolveLandingSectionMeta(item.key);
+                              const Icon = meta.icon;
+                              const capabilityDisabled = (item.key === 'faq' && brandConfig?.features?.faqEnabled !== true)
+                                || (item.key === 'gallery' && brandConfig?.features?.galleryEnabled !== true);
+                              const isDragging = draggingLandingScope === 'brand' && draggingLandingKey === item.key;
+                              const isDragOver = draggingLandingScope === 'brand' && dragOverLandingIndex === index && !isDragging;
+                              return (
+                                <div
+                                  key={item.key}
+                                  draggable
+                                  onDragStart={(event) => handleLandingDragStart(event, index, 'brand')}
+                                  onDragOver={(event) => handleLandingDragOver(event, index, 'brand')}
+                                  onDrop={(event) => handleLandingDrop(setBrandConfig, brandLandingItems, event, index)}
+                                  onDragEnd={handleLandingDragEnd}
+                                  data-section-key={item.key}
+                                  className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 select-none cursor-grab active:cursor-grabbing ${
+                                    isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''
+                                  } ${
+                                    isDragOver
+                                      ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
+                                      : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
                                     <div className="flex items-start gap-3">
-                                      <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                                      <div className="flex items-start gap-3">
-                                        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                                          <Icon className="h-4 w-4" />
-                                        </div>
-                                        <div>
-                                          <div className="text-sm font-semibold text-foreground">{meta.label}</div>
-                                          <p className="text-xs text-muted-foreground">{meta.description}</p>
-                                        </div>
+                                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                        <Icon className="h-4 w-4" />
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-semibold text-foreground">{meta.label}</div>
+                                        <p className="text-xs text-muted-foreground">{meta.description}</p>
                                       </div>
                                     </div>
-                                    <Switch
-                                      checked={item.enabled}
-                                      disabled={isDisabled}
-                                      onCheckedChange={(checked) =>
-                                        handleLandingToggle(setLocationConfig, locationLandingItems, item.key, checked)
-                                      }
-                                    />
                                   </div>
-                                );
-                              })}
-                            </div>
-                            <div className="pt-4 border-t border-border/60 space-y-4">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-xs uppercase tracking-widest text-muted-foreground">Hero principal</p>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-muted-foreground">Personalizar</span>
                                   <Switch
-                                    checked={isLocationBrandingOverride}
-                                    onCheckedChange={handleLocationLandingImagesOverride}
+                                    checked={item.enabled && !capabilityDisabled}
+                                    aria-label={meta.label}
+                                    onCheckedChange={(checked) =>
+                                      handleLandingToggle(setBrandConfig, brandLandingItems, item.key, checked, 'brand')
+                                    }
                                   />
                                 </div>
-                              </div>
-                              <div className={`grid gap-3 md:grid-cols-2 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
+                              );
+                            })}
+                          </div>
+                        </>}
+                        hero={<>
+                          <div className="space-y-4">
+                            <div className="space-y-3">
+                              <div className="grid gap-3 md:grid-cols-2">
                                 <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                                   <div>
                                     <div className="text-sm font-semibold text-foreground">Mostrar imagen principal</div>
-                                    <p className="text-xs text-muted-foreground">Hereda o sobrescribe el hero.</p>
+                                    <p className="text-xs text-muted-foreground">Controla la foto destacada del hero.</p>
                                   </div>
                                   <Switch
-                                    checked={locationHeroImageEnabled}
-                                    disabled={!isLocationBrandingOverride}
-                                    onCheckedChange={(checked) => updateLocationBrandingFields({ heroImageEnabled: checked })}
+                                    checked={brandHeroImageEnabled}
+                                    onCheckedChange={(checked) => updateLandingBrandingFields({ heroImageEnabled: checked })}
                                   />
                                 </div>
                                 <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
                                   <div>
                                     <div className="text-sm font-semibold text-foreground">Opacidad sobre el fondo</div>
-                                    <p className="text-xs text-muted-foreground">Legibilidad en el hero.</p>
+                                    <p className="text-xs text-muted-foreground">Mejora la legibilidad del hero.</p>
                                   </div>
                                   <Switch
-                                    checked={locationHeroBackgroundDimmed}
-                                    disabled={!isLocationBrandingOverride}
-                                    onCheckedChange={(checked) =>
-                                      updateLocationBrandingFields({ heroBackgroundDimmed: checked })
-                                    }
+                                    checked={brandHeroBackgroundDimmed}
+                                    onCheckedChange={(checked) => updateLandingBrandingFields({ heroBackgroundDimmed: checked })}
                                   />
                                 </div>
                                 <div className="rounded-xl border border-border/60 p-3 space-y-2">
                                   <div className="flex items-center justify-between gap-3">
                                     <Label className="text-xs text-muted-foreground">Opacidad del fondo</Label>
-                                    <span className="text-xs font-medium text-foreground">{locationHeroBackgroundOpacity}%</span>
+                                    <span className="text-xs font-medium text-foreground">{brandHeroBackgroundOpacity}%</span>
                                   </div>
                                   <Slider
                                     min={0}
                                     max={100}
                                     step={5}
-                                    value={[locationHeroBackgroundOpacity]}
-                                    onValueChange={(value) =>
-                                      updateLocationBrandingFields({ heroBackgroundOpacity: value[0] })
-                                    }
-                                    disabled={!isLocationBrandingOverride || !locationHeroBackgroundDimmed}
+                                    value={[brandHeroBackgroundOpacity]}
+                                    onValueChange={(value) => updateLandingBrandingFields({ heroBackgroundOpacity: value[0] })}
+                                    disabled={!brandHeroBackgroundDimmed}
                                   />
                                   <p className="text-xs text-muted-foreground">
-                                    Ajusta la intensidad del overlay para este local.
+                                    Ajusta la intensidad del overlay sobre la imagen de fondo.
                                   </p>
                                 </div>
                                 <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
@@ -3821,11 +3593,8 @@ const PlatformBrands: React.FC = () => {
                                     <p className="text-xs text-muted-foreground">Mostrar sobre la imagen principal.</p>
                                   </div>
                                   <Switch
-                                    checked={locationHeroLocationCardEnabled}
-                                    disabled={!isLocationBrandingOverride}
-                                    onCheckedChange={(checked) =>
-                                      updateLocationBrandingFields({ heroLocationCardEnabled: checked })
-                                    }
+                                    checked={brandHeroLocationCardEnabled}
+                                    onCheckedChange={(checked) => updateLandingBrandingFields({ heroLocationCardEnabled: checked })}
                                   />
                                 </div>
                                 <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
@@ -3834,19 +3603,15 @@ const PlatformBrands: React.FC = () => {
                                     <p className="text-xs text-muted-foreground">Etiqueta "Reserva online disponible".</p>
                                   </div>
                                   <Switch
-                                    checked={locationHeroBadgeEnabled}
-                                    disabled={!isLocationBrandingOverride}
-                                    onCheckedChange={(checked) =>
-                                      updateLocationBrandingFields({ heroBadgeEnabled: checked })
-                                    }
+                                    checked={brandHeroBadgeEnabled}
+                                    onCheckedChange={(checked) => updateLandingBrandingFields({ heroBadgeEnabled: checked })}
                                   />
                                 </div>
                                 <div className="rounded-xl border border-border/60 p-3 space-y-2">
                                   <Label className="text-xs text-muted-foreground">Color del texto del hero</Label>
                                   <Select
-                                    value={locationHeroTextColor}
-                                    onValueChange={(value) => updateLocationBrandingFields({ heroTextColor: value })}
-                                    disabled={!isLocationBrandingOverride}
+                                    value={brandHeroTextColor}
+                                    onValueChange={(value) => updateLandingBrandingFields({ heroTextColor: value })}
                                   >
                                     <SelectTrigger>
                                       <SelectValue placeholder="Selecciona color" />
@@ -3863,9 +3628,8 @@ const PlatformBrands: React.FC = () => {
                                 <div className="rounded-xl border border-border/60 p-3 space-y-2">
                                   <Label className="text-xs text-muted-foreground">Posición de la imagen</Label>
                                   <Select
-                                    value={locationHeroImagePosition}
-                                    onValueChange={(value) => updateLocationBrandingFields({ heroImagePosition: value })}
-                                    disabled={!isLocationBrandingOverride}
+                                    value={brandHeroImagePosition}
+                                    onValueChange={(value) => updateLandingBrandingFields({ heroImagePosition: value })}
                                   >
                                     <SelectTrigger>
                                       <SelectValue placeholder="Selecciona posición" />
@@ -3882,9 +3646,8 @@ const PlatformBrands: React.FC = () => {
                                 <div className="rounded-xl border border-border/60 p-3 space-y-2">
                                   <Label className="text-xs text-muted-foreground">Alineación sin imagen</Label>
                                   <Select
-                                    value={locationHeroNoImageAlign}
-                                    onValueChange={(value) => updateLocationBrandingFields({ heroNoImageAlign: value })}
-                                    disabled={!isLocationBrandingOverride}
+                                    value={brandHeroNoImageAlign}
+                                    onValueChange={(value) => updateLandingBrandingFields({ heroNoImageAlign: value })}
                                   >
                                     <SelectTrigger>
                                       <SelectValue placeholder="Selecciona alineación" />
@@ -3899,54 +3662,268 @@ const PlatformBrands: React.FC = () => {
                                   </Select>
                                 </div>
                               </div>
-                              <div className="space-y-3">
-                                <p className="text-xs uppercase tracking-widest text-muted-foreground">Imágenes landing</p>
-                                <div className={`grid gap-4 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
-                                  {renderLocationAssetInput('heroBackground', {
-                                    disabled: !isLocationBrandingOverride,
-                                    inheritedLabel: 'Hereda marca',
-                                  })}
-                                  {renderLocationAssetInput('heroImage', {
-                                    disabled: !isLocationBrandingOverride,
-                                    inheritedLabel: 'Hereda marca',
-                                  })}
-                                  {renderLocationAssetInput('heroImage2', {
-                                    disabled: !isLocationBrandingOverride,
-                                    inheritedLabel: 'Hereda marca',
-                                  })}
-                                  {renderLocationAssetInput('heroImage3', {
-                                    disabled: !isLocationBrandingOverride,
-                                    inheritedLabel: 'Hereda marca',
-                                  })}
-                                  {renderLocationAssetInput('heroImage4', {
-                                    disabled: !isLocationBrandingOverride,
-                                    inheritedLabel: 'Hereda marca',
-                                  })}
-                                  {renderLocationAssetInput('heroImage5', {
-                                    disabled: !isLocationBrandingOverride,
-                                    inheritedLabel: 'Hereda marca',
-                                  })}
-                                  {renderLocationAssetInput('signImage', {
-                                    disabled: !isLocationBrandingOverride,
-                                    inheritedLabel: 'Hereda marca',
-                                  })}
-                                </div>
-                              </div>
-                              <div className="pt-4 border-t border-border/60 space-y-4">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div>
-                                    <p className="text-xs uppercase tracking-widest text-muted-foreground">Presentación del negocio</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Personaliza los bloques de presentación para este local.
-                                    </p>
-                                  </div>
-                                  <span className="text-xs text-muted-foreground">
-                                    {isLocationLandingOverride ? 'Editando local' : 'Hereda marca'}
+                            </div>
+                          </div>
+                        </>}
+                        images={renderLandingImages(hasSingleLocation ? 'location' : 'brand')}
+                        presentation={renderPresentationEditor(hasSingleLocation ? 'location' : 'brand', false)} />)}
+                    </CardContent>
+                  </Card>
+
+                  {hasMultipleLocations && (
+                    <Card role="region" aria-label={t('platform.landing.location')} className="border border-border/60 bg-card/80">
+                      <CardHeader>
+                        <CardTitle className="text-base">{t('platform.landing.location')}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {selectedBrand.locations?.length ? (
+                          <>
+                            <div className="space-y-2">
+                              <Label htmlFor="landing-location">{t('platform.landing.selectLocation')}</Label>
+                              <Select value={selectedLocationId || ''} onValueChange={setSelectedLocationId} disabled={dirtyConfigs.current.location || Boolean(uploadingAsset || uploadingPresentation) || isSaving}>
+                                <SelectTrigger id="landing-location">
+                                  <SelectValue placeholder="Selecciona local" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {selectedBrand.locations?.map((location) => (
+                                    <SelectItem key={location.id} value={location.id}>
+                                      {location.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {renderLandingScope('location', <PlatformLandingPanel
+                              sections={<>
+                                <div className="flex items-center gap-3">
+                                  <Switch
+                                    checked={isLocationLandingOverride}
+                                    onCheckedChange={handleLocationLandingOverride}
+                                  />
+                                  <span className="text-sm text-muted-foreground">
+                                    Personalizar landing para este local
                                   </span>
                                 </div>
-                                {renderPresentationEditor('location', !isLocationLandingOverride)}
-                              </div>
-                            </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Si está desactivado, el local hereda el orden y visibilidad de la marca.
+                                </p>
+                                <div
+                                  className={`rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm ${
+                                    isLocationLandingOverride ? 'text-muted-foreground' : 'text-muted-foreground/70'
+                                  }`}
+                                >
+                                  Hero (cabecera principal) · fijo en la primera posición
+                                </div>
+                                <div className="space-y-3">
+                                  {locationLandingItems.map((item, index) => {
+                                    const meta = resolveLandingSectionMeta(item.key);
+                                    const Icon = meta.icon;
+                                    const capabilityDisabled = (item.key === 'faq' && brandConfig?.features?.faqEnabled !== true)
+                                      || (item.key === 'gallery' && brandConfig?.features?.galleryEnabled !== true);
+                                    const isDisabled = !isLocationLandingOverride;
+                                    const isDragging = draggingLandingScope === 'location' && draggingLandingKey === item.key;
+                                    const isDragOver =
+                                      draggingLandingScope === 'location' && dragOverLandingIndex === index && !isDragging;
+                                    return (
+                                      <div
+                                        key={item.key}
+                                        draggable={!isDisabled}
+                                        onDragStart={(event) => {
+                                          if (!isDisabled) handleLandingDragStart(event, index, 'location');
+                                        }}
+                                        onDragOver={(event) => {
+                                          if (!isDisabled) handleLandingDragOver(event, index, 'location');
+                                        }}
+                                        onDrop={(event) => {
+                                          if (!isDisabled) {
+                                            handleLandingDrop(setLocationConfig, locationLandingItems, event, index);
+                                          }
+                                        }}
+                                        onDragEnd={handleLandingDragEnd}
+                                        data-section-key={item.key}
+                                        className={`relative border border-border/60 rounded-xl p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-all duration-200 ${
+                                          isDisabled ? 'opacity-60 cursor-not-allowed' : 'select-none cursor-grab active:cursor-grabbing'
+                                        } ${!isDisabled && isDragging ? 'bg-primary/10 border-primary/40 shadow-lg scale-[0.99]' : ''} ${
+                                          !isDisabled && isDragOver
+                                            ? 'ring-2 ring-primary/30 bg-primary/5 before:absolute before:inset-x-3 before:-top-px before:h-[2px] before:bg-primary/60 before:rounded-full'
+                                            : ''
+                                        }`}
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          <GripVertical className={`h-4 w-4 mt-1 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                                          <div className="flex items-start gap-3">
+                                            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                              <Icon className="h-4 w-4" />
+                                            </div>
+                                            <div>
+                                              <div className="text-sm font-semibold text-foreground">{meta.label}</div>
+                                              <p className="text-xs text-muted-foreground">{meta.description}</p>
+                                              {capabilityDisabled && (
+                                                <p id={`location-${item.key}-capability-hint`} className="mt-1 text-xs text-muted-foreground">
+                                                  {t('platform.landing.capabilityRequired')}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <Switch
+                                          checked={item.enabled && !capabilityDisabled}
+                                          disabled={isDisabled || capabilityDisabled}
+                                          aria-label={meta.label}
+                                          aria-describedby={capabilityDisabled ? `location-${item.key}-capability-hint` : undefined}
+                                          onCheckedChange={(checked) =>
+                                            handleLandingToggle(setLocationConfig, locationLandingItems, item.key, checked, 'location')
+                                          }
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </>}
+                              hero={<>
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs uppercase tracking-widest text-muted-foreground">Hero principal</p>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-muted-foreground">Personalizar</span>
+                                      <Switch
+                                        checked={isLocationBrandingOverride}
+                                        onCheckedChange={handleLocationLandingImagesOverride}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className={`grid gap-3 md:grid-cols-2 ${isLocationBrandingOverride ? '' : 'opacity-70'}`}>
+                                    <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                      <div>
+                                        <div className="text-sm font-semibold text-foreground">Mostrar imagen principal</div>
+                                        <p className="text-xs text-muted-foreground">Hereda o sobrescribe el hero.</p>
+                                      </div>
+                                      <Switch
+                                        checked={locationHeroImageEnabled}
+                                        disabled={!isLocationBrandingOverride}
+                                        onCheckedChange={(checked) => updateLocationBrandingFields({ heroImageEnabled: checked })}
+                                      />
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                      <div>
+                                        <div className="text-sm font-semibold text-foreground">Opacidad sobre el fondo</div>
+                                        <p className="text-xs text-muted-foreground">Legibilidad en el hero.</p>
+                                      </div>
+                                      <Switch
+                                        checked={locationHeroBackgroundDimmed}
+                                        disabled={!isLocationBrandingOverride}
+                                        onCheckedChange={(checked) =>
+                                          updateLocationBrandingFields({ heroBackgroundDimmed: checked })
+                                        }
+                                      />
+                                    </div>
+                                    <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <Label className="text-xs text-muted-foreground">Opacidad del fondo</Label>
+                                        <span className="text-xs font-medium text-foreground">{locationHeroBackgroundOpacity}%</span>
+                                      </div>
+                                      <Slider
+                                        min={0}
+                                        max={100}
+                                        step={5}
+                                        value={[locationHeroBackgroundOpacity]}
+                                        onValueChange={(value) =>
+                                          updateLocationBrandingFields({ heroBackgroundOpacity: value[0] })
+                                        }
+                                        disabled={!isLocationBrandingOverride || !locationHeroBackgroundDimmed}
+                                      />
+                                      <p className="text-xs text-muted-foreground">
+                                        Ajusta la intensidad del overlay para este local.
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                      <div>
+                                        <div className="text-sm font-semibold text-foreground">Card de ubicación</div>
+                                        <p className="text-xs text-muted-foreground">Mostrar sobre la imagen principal.</p>
+                                      </div>
+                                      <Switch
+                                        checked={locationHeroLocationCardEnabled}
+                                        disabled={!isLocationBrandingOverride}
+                                        onCheckedChange={(checked) =>
+                                          updateLocationBrandingFields({ heroLocationCardEnabled: checked })
+                                        }
+                                      />
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                                      <div>
+                                        <div className="text-sm font-semibold text-foreground">Badge de reserva online</div>
+                                        <p className="text-xs text-muted-foreground">Etiqueta "Reserva online disponible".</p>
+                                      </div>
+                                      <Switch
+                                        checked={locationHeroBadgeEnabled}
+                                        disabled={!isLocationBrandingOverride}
+                                        onCheckedChange={(checked) =>
+                                          updateLocationBrandingFields({ heroBadgeEnabled: checked })
+                                        }
+                                      />
+                                    </div>
+                                    <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                      <Label className="text-xs text-muted-foreground">Color del texto del hero</Label>
+                                      <Select
+                                        value={locationHeroTextColor}
+                                        onValueChange={(value) => updateLocationBrandingFields({ heroTextColor: value })}
+                                        disabled={!isLocationBrandingOverride}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Selecciona color" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {HERO_TEXT_COLOR_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                              {option.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                      <Label className="text-xs text-muted-foreground">Posición de la imagen</Label>
+                                      <Select
+                                        value={locationHeroImagePosition}
+                                        onValueChange={(value) => updateLocationBrandingFields({ heroImagePosition: value })}
+                                        disabled={!isLocationBrandingOverride}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Selecciona posición" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {HERO_IMAGE_POSITION_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                              {option.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="rounded-xl border border-border/60 p-3 space-y-2">
+                                      <Label className="text-xs text-muted-foreground">Alineación sin imagen</Label>
+                                      <Select
+                                        value={locationHeroNoImageAlign}
+                                        onValueChange={(value) => updateLocationBrandingFields({ heroNoImageAlign: value })}
+                                        disabled={!isLocationBrandingOverride}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Selecciona alineación" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {HERO_NO_IMAGE_ALIGN_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                              {option.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                </div>
+                              </>}
+                              images={renderLandingImages('location')}
+                              presentation={renderPresentationEditor('location', false)} />)}
                           </>
                         ) : (
                           <p className="text-xs text-muted-foreground">Selecciona una marca con locales activos.</p>

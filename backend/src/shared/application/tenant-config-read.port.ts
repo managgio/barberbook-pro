@@ -16,6 +16,7 @@ export type TenantFirebaseAdminConfig = {
 };
 
 export type TenantEffectiveConfigReadModel = {
+  features?: { faqEnabled?: boolean; galleryEnabled?: boolean };
   business?: TenantConfigBusiness;
   notificationPrefs?: TenantNotificationPrefs;
 };

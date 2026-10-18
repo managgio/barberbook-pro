@@ -55,6 +55,17 @@ const emailVerifier = {
   verify: async () => ({ ok: true, code: 'SMTP_CONNECTION_OK', message: 'ok' }),
 } as any;
 
+test('Platform config response carries the committed revision without exposing the SMTP secret', async () => {
+  const service = new PlatformAdminService({
+    ...basePort(),
+    updateBrandConfig: async (_brandId, data) => ({ brandId: 'brand-1', data: { ...data, _revision: 'committed-version', email: { password: 'saved-secret' } } }),
+  }, emailVerifier);
+  const saved = await service.updateBrandConfig('brand-1', { _revision: 'previous-version', branding: { heroImageUrl: 'https://images.test/new.webp' } });
+  assert.equal(saved._revision, 'committed-version');
+  assert.equal((saved.email as any).password, undefined);
+  assert.equal((saved.branding as any).heroImageUrl, 'https://images.test/new.webp');
+});
+
 test('platform admin facade delegates create brand to management port', async () => {
   const calls: PlatformCreateBrandInput[] = [];
   const service = new PlatformAdminService({

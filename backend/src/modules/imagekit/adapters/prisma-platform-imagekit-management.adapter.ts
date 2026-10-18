@@ -1,4 +1,4 @@
-import { Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import {
   PLATFORM_MEDIA_MANAGEMENT_PORT,
@@ -10,6 +10,7 @@ import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../../contexts/platfo
 import { PrismaService } from '../../../prisma/prisma.service';
 import { DEFAULT_BRAND_SUBDOMAIN } from '../../../tenancy/tenant.constants';
 import { TenantConfigService } from '../../../tenancy/tenant-config.service';
+import { isWebsiteMediaReferenced } from '../../website/website-media-cleanup';
 
 @Injectable()
 export class PrismaPlatformImageKitManagementAdapter implements PlatformMediaManagementPort {
@@ -68,6 +69,18 @@ export class PrismaPlatformImageKitManagementAdapter implements PlatformMediaMan
       throw new InternalServerErrorException('ImageKit no está configurado');
     }
 
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(fileId)) throw new ForbiddenException('MEDIA_ACCESS_DENIED');
+    const details = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(fileId)}/details`, {
+      headers: { Authorization: `Basic ${Buffer.from(`${privateKey}:`).toString('base64')}` }, signal: AbortSignal.timeout(10_000),
+    });
+    if (details.status === 404) return { success: true };
+    if (!details.ok) throw new InternalServerErrorException('MEDIA_UNAVAILABLE');
+    const image = await details.json() as { filePath?: string; url?: string };
+    const { folder } = await this.signUpload();
+    if (!folder || !image.filePath?.startsWith(`${folder.replace(/\/$/, '')}/`)) throw new ForbiddenException('MEDIA_ACCESS_DENIED');
+    // Website files are lifecycle-managed by the durable cleanup queue, never by browser deletion.
+    if (image.filePath.includes('/website/')) throw new ConflictException('MEDIA_MANAGED_BY_WEBSITE');
+    if (!image.url || await isWebsiteMediaReferenced(this.prisma, fileId, image.url)) throw new ConflictException('MEDIA_IN_USE');
     await this.deleteWithPrivateKey(fileId, privateKey);
 
     return { success: true };

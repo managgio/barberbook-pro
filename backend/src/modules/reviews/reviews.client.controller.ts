@@ -1,47 +1,43 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Request } from 'express';
+import { AuthService } from '../../auth/auth.service';
 import { ReviewRequestService } from './review-request.service';
 import { ReviewRateDto } from './dto/review-rate.dto';
 import { ReviewFeedbackDto } from './dto/review-feedback.dto';
-import { ReviewActorDto } from './dto/review-actor.dto';
 
 @Controller('reviews')
 export class ReviewsClientController {
-  constructor(private readonly reviewService: ReviewRequestService) {}
+  constructor(private readonly reviewService: ReviewRequestService, private readonly auth: AuthService) {}
+
+  private async actor(req: Request) { return { userId: (await this.auth.requireUser(req)).id }; }
 
   @Get('pending')
-  getPending(
-    @Query('userId') userId?: string,
-    @Query('guestEmail') guestEmail?: string,
-    @Query('guestPhone') guestPhone?: string,
-  ) {
-    if (!userId && !guestEmail && !guestPhone) {
-      throw new BadRequestException('userId o contacto requerido.');
-    }
-    return this.reviewService.getPendingReview({ userId, guestEmail, guestPhone });
+  async getPending(@Req() req: Request) {
+    return this.reviewService.getPendingReview(await this.actor(req));
   }
 
   @Post(':id/shown')
-  markShown(@Param('id') id: string, @Body() data: ReviewActorDto) {
-    return this.reviewService.markShown(id, data);
+  async markShown(@Param('id') id: string, @Req() req: Request) {
+    return this.reviewService.markShown(id, await this.actor(req));
   }
 
   @Post(':id/rate')
-  rate(@Param('id') id: string, @Body() data: ReviewRateDto) {
-    return this.reviewService.rate(id, data.rating, data);
+  async rate(@Param('id') id: string, @Body() data: ReviewRateDto, @Req() req: Request) {
+    return this.reviewService.rate(id, data.rating, await this.actor(req));
   }
 
   @Post(':id/feedback')
-  feedback(@Param('id') id: string, @Body() data: ReviewFeedbackDto) {
-    return this.reviewService.submitFeedback(id, data.text, data);
+  async feedback(@Param('id') id: string, @Body() data: ReviewFeedbackDto, @Req() req: Request) {
+    return this.reviewService.submitFeedback(id, data.text, await this.actor(req));
   }
 
   @Post(':id/click')
-  click(@Param('id') id: string, @Body() data: ReviewActorDto) {
-    return this.reviewService.markClicked(id, data);
+  async click(@Param('id') id: string, @Req() req: Request) {
+    return this.reviewService.markClicked(id, await this.actor(req));
   }
 
   @Post(':id/snooze')
-  snooze(@Param('id') id: string, @Body() data: ReviewActorDto) {
-    return this.reviewService.snooze(id, data);
+  async snooze(@Param('id') id: string, @Req() req: Request) {
+    return this.reviewService.snooze(id, await this.actor(req));
   }
 }

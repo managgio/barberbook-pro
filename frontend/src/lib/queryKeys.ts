@@ -1,4 +1,6 @@
 export const queryKeys = {
+  faqs: (localId: string | null | undefined, languageOrAdmin: string) =>
+    ['faqs', localId || 'default', languageOrAdmin] as const,
   platformCriticalTraces: (minutes: number, page: number, pageSize: number) =>
     ['platform-observability-critical-traces', minutes, page, pageSize] as const,
   platformAiConversations: (filters: Record<string, unknown>) =>

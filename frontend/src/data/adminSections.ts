@@ -14,6 +14,11 @@ type AdminSectionTranslator = (key: string, values?: Record<string, string | num
 
 export const ADMIN_SECTIONS: AdminSectionDefinition[] = [
   {
+    key: 'website', label: 'Página Web', labelKey: 'website.title',
+    description: 'Imágenes, galería de trabajos y preguntas frecuentes de la web.',
+    descriptionKey: 'website.sidebarDescription', defaultVisible: false,
+  },
+  {
     key: 'dashboard',
     label: 'Dashboard',
     labelKey: 'admin.section.dashboard.label',

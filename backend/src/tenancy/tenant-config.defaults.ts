@@ -36,6 +36,8 @@ export const buildBrandConfigFromEnv = (): BrandConfigData => ({
   features: {
     communicationsEnabled: false,
     multiServiceBookingEnabled: false,
+    faqEnabled: false,
+    galleryEnabled: false,
   },
   invoicing: {
     enabled: false,

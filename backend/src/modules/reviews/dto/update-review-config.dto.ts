@@ -1,4 +1,5 @@
-import { IsBoolean, IsInt, IsObject, IsOptional, IsString, IsUrl, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, IsUrl, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export class ReviewCopyDto {
   @IsOptional()
@@ -44,36 +45,45 @@ export class UpdateReviewConfigDto {
 
   @IsOptional()
   @IsString()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @ValidateIf((_, value) => value !== '')
-  @IsUrl()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(2048)
   googleReviewUrl?: string;
 
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(3650)
   cooldownDays?: number;
 
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(1000)
   minVisitsToAsk?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(525600)
   showDelayMinutes?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(100)
   maxSnoozes?: number;
 
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(8760)
   snoozeHours?: number;
 
   @IsOptional()
   @IsObject()
+  @ValidateNested()
+  @Type(() => ReviewCopyDto)
   copyJson?: ReviewCopyDto;
 }

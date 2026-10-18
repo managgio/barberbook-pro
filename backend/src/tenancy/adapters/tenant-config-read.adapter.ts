@@ -13,6 +13,7 @@ export class TenantConfigReadAdapter implements TenantConfigReadPort {
   async getEffectiveConfig(): Promise<TenantEffectiveConfigReadModel> {
     const config = await this.tenantConfigService.getEffectiveConfig();
     return {
+      features: config.features,
       business: config.business,
       notificationPrefs: config.notificationPrefs,
     };

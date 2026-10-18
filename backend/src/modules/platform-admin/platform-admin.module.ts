@@ -1,3 +1,4 @@
+import { WebsiteModule } from '../website/website.module';
 import { Module } from '@nestjs/common';
 import { PLATFORM_ADMIN_MANAGEMENT_PORT } from '../../contexts/platform/ports/outbound/platform-admin-management.port';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -20,6 +21,7 @@ import { EngagementNotificationGatewayModule } from '../../contexts/engagement/i
 @Module({
   imports: [
     PrismaModule,
+    WebsiteModule,
     UsageMetricsModule,
     ImageKitModule,
     AuthModule,

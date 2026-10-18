@@ -36,7 +36,7 @@ const InlineTranslationPopover: React.FC<InlineTranslationPopoverProps> = ({
 }) => {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { tenant } = useTenant();
+  const { tenant, currentLocationId } = useTenant();
   const [open, setOpen] = useState(false);
   const [language, setLanguage] = useState('');
   const [draft, setDraft] = useState('');
@@ -52,7 +52,7 @@ const InlineTranslationPopover: React.FC<InlineTranslationPopoverProps> = ({
   const hasMultipleTenantLanguages = supportedLanguages.length > 1;
 
   const translationsQuery = useQuery({
-    queryKey: ['inline-localization', entityType, entityId || 'new'],
+    queryKey: ['inline-localization', currentLocationId, entityType, entityId || 'new'],
     enabled: open && Boolean(entityId),
     queryFn: () => getEntityTranslations(entityType, entityId as string),
     refetchInterval: open && entityId ? 2000 : false,

@@ -24,6 +24,14 @@ afterAll(() => {
 });
 
 describe('PlatformBrandTabsNav', () => {
+  it('keeps the selected label above the original background with its matching foreground', () => {
+    render(<Tabs value="datos"><PlatformBrandTabsNav activeTab="datos" /></Tabs>);
+    expect(screen.getByTestId('platform-brand-tab-indicator')).toHaveClass('-z-10', 'bg-background');
+    expect(screen.getByTestId('platform-brand-tab-indicator')).not.toHaveClass('bg-primary', 'z-0');
+    expect(screen.getByRole('tab', { name: 'Datos' })).toHaveClass('data-[state=active]:text-foreground');
+    expect(screen.getByRole('tab', { name: 'Datos' })).not.toHaveClass('data-[state=active]:text-primary-foreground');
+  });
+
   it('moves one shared indicator to the active tab', () => {
     const view = render(
       <Tabs value="datos">

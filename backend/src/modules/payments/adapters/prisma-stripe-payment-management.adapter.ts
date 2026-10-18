@@ -1,3 +1,4 @@
+import { withTenantConfigLock } from '../../../shared/infrastructure/transaction/tenant-config-lock';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { ProcessStripeWebhookUseCase } from '../../../contexts/commerce/application/use-cases/process-stripe-webhook.use-case';
@@ -75,42 +76,48 @@ export class PrismaStripePaymentManagementAdapter implements CommercePaymentMana
     brandId: string,
     updates: Partial<{ enabled: boolean; mode: 'brand' | 'location'; accountId: string } & StripeAccountStatus>,
   ) {
-    const current = await this.prisma.brandConfig.findUnique({
-      where: { brandId },
-      select: { data: true },
+    return withTenantConfigLock(this.prisma, brandId, async (tx) => {
+      const current = await tx.brandConfig.findUnique({
+        where: { brandId },
+        select: { data: true },
+      });
+      const data = (current?.data || {}) as Record<string, any>;
+      const payments = { ...(data.payments || {}) };
+      const stripe = { ...(payments.stripe || {}) };
+      const nextStripe = { ...stripe, ...updates };
+      const next = { ...data, payments: { ...payments, stripe: nextStripe } };
+      await tx.brandConfig.upsert({
+        where: { brandId },
+        update: { data: next as Prisma.InputJsonValue },
+        create: { brandId, data: next as Prisma.InputJsonValue },
+      });
+      return nextStripe;
     });
-    const data = (current?.data || {}) as Record<string, any>;
-    const payments = { ...(data.payments || {}) };
-    const stripe = { ...(payments.stripe || {}) };
-    const nextStripe = { ...stripe, ...updates };
-    const next = { ...data, payments: { ...payments, stripe: nextStripe } };
-    await this.prisma.brandConfig.upsert({
-      where: { brandId },
-      update: { data: next as Prisma.InputJsonValue },
-      create: { brandId, data: next as Prisma.InputJsonValue },
-    });
-    return nextStripe;
   }
 
   private async updateLocationStripeConfig(
     localId: string,
     updates: Partial<{ enabled: boolean; accountId: string } & StripeAccountStatus>,
   ) {
-    const current = await this.prisma.locationConfig.findUnique({
-      where: { localId },
-      select: { data: true },
+    const location = await this.prisma.location.findUnique({ where: { id: localId }, select: { brandId: true } });
+    if (!location) throw new NotFoundException('Location not found');
+    return withTenantConfigLock(this.prisma, location.brandId, async (tx) => {
+      const current = await tx.locationConfig.findUnique({
+        where: { localId },
+        select: { data: true },
+      });
+      const data = (current?.data || {}) as Record<string, any>;
+      const payments = { ...(data.payments || {}) };
+      const stripe = { ...(payments.stripe || {}) };
+      const nextStripe = { ...stripe, ...updates };
+      const next = { ...data, payments: { ...payments, stripe: nextStripe } };
+      await tx.locationConfig.upsert({
+        where: { localId },
+        update: { data: next as Prisma.InputJsonValue },
+        create: { localId, data: next as Prisma.InputJsonValue },
+      });
+      return nextStripe;
     });
-    const data = (current?.data || {}) as Record<string, any>;
-    const payments = { ...(data.payments || {}) };
-    const stripe = { ...(payments.stripe || {}) };
-    const nextStripe = { ...stripe, ...updates };
-    const next = { ...data, payments: { ...payments, stripe: nextStripe } };
-    await this.prisma.locationConfig.upsert({
-      where: { localId },
-      update: { data: next as Prisma.InputJsonValue },
-      create: { localId, data: next as Prisma.InputJsonValue },
-    });
-    return nextStripe;
   }
 
   private async syncStripeAccountStatus(

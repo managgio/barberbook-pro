@@ -123,7 +123,7 @@ test('manage reviews use case delegates all critical review operations to port',
     },
     getPendingReview: async (actor) => {
       calls.push({ type: 'getPendingReview', payload: actor });
-      return { id: 'review-1' };
+      return { id: 'review-1', status: 'PENDING', rating: null, eligibleAt: new Date(), snoozeCount: 0, googleReviewUrl: 'https://g.page/example/review', copy: { title: 't', subtitle: 's', positiveText: 'p', positiveCta: 'p', negativeText: 'n', negativeCta: 'n', snoozeCta: 's' } };
     },
     markShown: async (id, actor) => {
       calls.push({ type: 'markShown', payload: { id, actor } });
@@ -167,7 +167,7 @@ test('manage reviews use case delegates all critical review operations to port',
   assert.deepEqual(await useCase.getConfigRaw(), { source: 'raw' });
   assert.equal((await useCase.updateConfig({ googleReviewUrl: 'https://new.example' })).googleReviewUrl, 'https://new.example');
   assert.deepEqual(await useCase.handleAppointmentCompleted('appt-1'), { appointmentId: 'appt-1' });
-  assert.deepEqual(await useCase.getPendingReview(actor), { id: 'review-1' });
+  assert.equal((await useCase.getPendingReview(actor))?.id, 'review-1');
   assert.deepEqual(await useCase.markShown('review-1', actor), { id: 'review-1' });
   assert.deepEqual(await useCase.rate('review-1', 5, actor), { id: 'review-1', rating: 5 });
   assert.deepEqual(await useCase.submitFeedback('review-1', 'Buen servicio', actor), {

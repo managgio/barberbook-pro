@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../../auth/auth.module';
 import { ENGAGEMENT_REVIEW_MANAGEMENT_PORT } from '../../contexts/engagement/ports/outbound/review-management.port';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { TenancyModule } from '../../tenancy/tenancy.module';
@@ -10,7 +11,7 @@ import { ReviewsClientController } from './reviews.client.controller';
 import { PrismaReviewManagementAdapter } from './adapters/prisma-review-management.adapter';
 
 @Module({
-  imports: [PrismaModule, TenancyModule],
+  imports: [AuthModule, PrismaModule, TenancyModule],
   providers: [
     PrismaReviewManagementAdapter,
     {

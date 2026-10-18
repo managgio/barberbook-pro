@@ -201,6 +201,7 @@ export class TenantConfigService {
     const effectiveConfig = mergeConfig(brandConfig, locationConfig);
     return {
       ...effectiveConfig,
+      features: { ...effectiveConfig.features, faqEnabled: brandConfig.features?.faqEnabled === true, galleryEnabled: brandConfig.features?.galleryEnabled === true },
       theme: Object.keys(theme).length ? theme : undefined,
       i18n,
     };
@@ -256,7 +257,7 @@ export class TenantConfigService {
       notificationCapabilities,
       landing: Object.keys(landing).length ? landing : null,
       i18n: i18n || null,
-      features: Object.keys(features).length ? features : null,
+      features: { ...features, faqEnabled: brandConfig.features?.faqEnabled === true, galleryEnabled: brandConfig.features?.galleryEnabled === true },
       invoicing: Object.keys(invoicing).length ? invoicing : null,
       business: Object.keys(business).length ? business : null,
     };

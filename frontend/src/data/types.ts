@@ -125,6 +125,8 @@ export interface TenantBootstrap {
       barberServiceAssignmentEnabled?: boolean;
       communicationsEnabled?: boolean;
       multiServiceBookingEnabled?: boolean;
+      faqEnabled?: boolean;
+      galleryEnabled?: boolean;
     } | null;
     invoicing?: {
       enabled?: boolean;
@@ -653,6 +655,9 @@ export type LocalizableEntityType =
   | 'loyalty_program'
   | 'subscription_plan'
   | 'barber'
+  | 'faq'
+  | 'gallery_item'
+  | 'gallery_category'
   | 'review_config';
 
 export type LocalizedTranslationStatus = 'pending' | 'ready' | 'failed' | 'stale';
@@ -1092,6 +1097,7 @@ export interface CreateLoyaltyProgramPayload {
 }
 
 export type AdminSectionKey =
+  | 'website'
   | 'dashboard'
   | 'calendar'
   | 'search'

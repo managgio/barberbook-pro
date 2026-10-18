@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentStatus, Prisma, ReviewFeedbackStatus, ReviewRequestStatus } from '@prisma/client';
+import { Prisma, ReviewFeedbackStatus } from '@prisma/client';
 import {
   ENGAGEMENT_REVIEW_MANAGEMENT_PORT,
   EngagementReviewActor,
@@ -11,22 +11,8 @@ import {
 import { TENANT_CONTEXT_PORT, TenantContextPort } from '../../../contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TenantConfigService } from '../../../tenancy/tenant-config.service';
-
-const isEmail = (value: string) => value.includes('@');
-
-const parseGuestContact = (guestContact?: string | null) => {
-  if (!guestContact) return { guestEmail: null, guestPhone: null };
-  const trimmed = guestContact.trim();
-  if (!trimmed) return { guestEmail: null, guestPhone: null };
-  return isEmail(trimmed)
-    ? { guestEmail: trimmed, guestPhone: null }
-    : { guestEmail: null, guestPhone: trimmed };
-};
-
-const isFinalStatus = (status: ReviewRequestStatus) =>
-  status === ReviewRequestStatus.COMPLETED ||
-  status === ReviewRequestStatus.CLICKED ||
-  status === ReviewRequestStatus.EXPIRED;
+import { PrismaReviewRequests } from './prisma-review-requests';
+import { ReviewAction } from '../../../contexts/engagement/domain/services/review-request-policy';
 
 const buildDateFilter = (from?: Date, to?: Date) => {
   if (!from && !to) return undefined;
@@ -41,7 +27,7 @@ const DEFAULT_REVIEW_COPY: EngagementReviewCopyPayload = {
   subtitle: 'Tu opinión nos ayuda a mejorar.',
   positiveText: '¿Te importa dejar una reseña? Nos ayuda muchísimo.',
   positiveCta: 'Dejar reseña en Google',
-  negativeText: 'Lo sentimos. Cuéntanos qué pasó y lo solucionamos.',
+  negativeText: 'Cuéntanos qué te gustaría compartir con el equipo.',
   negativeCta: 'Enviar',
   snoozeCta: 'Ahora no',
 };
@@ -91,29 +77,20 @@ export class PrismaReviewManagementAdapter implements EngagementReviewManagement
 
   private requireActor(actor: EngagementReviewActor) {
     const userId = actor.userId?.trim();
-    const guestEmail = actor.guestEmail?.trim();
-    const guestPhone = actor.guestPhone?.trim();
-    if (!userId && !guestEmail && !guestPhone) {
-      throw new BadRequestException('userId o contacto del invitado es requerido.');
-    }
-    return { userId: userId || null, guestEmail: guestEmail || null, guestPhone: guestPhone || null };
+    if (!userId) throw new BadRequestException('Se requiere un usuario autenticado.');
+    return userId;
   }
 
-  private buildActorWhere(actor: { userId: string | null; guestEmail: string | null; guestPhone: string | null }) {
-    if (actor.userId) return { userId: actor.userId };
-    if (actor.guestEmail) return { guestEmail: actor.guestEmail };
-    if (actor.guestPhone) return { guestPhone: actor.guestPhone };
-    return {};
+  private async activeConfig() {
+    if (!(await this.isModuleEnabled())) return null;
+    const config = await this.getConfig();
+    return config.enabled && config.googleReviewUrl ? config : null;
   }
 
-  private async getRequestOrThrow(id: string, actor: EngagementReviewActor) {
-    const localId = this.getLocalId();
-    const actorInfo = this.requireActor(actor);
-    const request = await this.prisma.reviewRequest.findFirst({
-      where: { id, localId, ...this.buildActorWhere(actorInfo) },
-    });
-    if (!request) throw new NotFoundException('Review request not found');
-    return request;
+  private async transition(id: string, actor: EngagementReviewActor, action: ReviewAction) {
+    const config = await this.activeConfig();
+    if (!config) throw new BadRequestException('El programa de reseñas está desactivado.');
+    return new PrismaReviewRequests(this.prisma).transition(this.getLocalId(), this.requireActor(actor), id, action, config);
   }
 
   async isModuleEnabled() {
@@ -236,249 +213,62 @@ export class PrismaReviewManagementAdapter implements EngagementReviewManagement
   }
 
   async handleAppointmentCompleted(appointmentId: string) {
-    const localId = this.getLocalId();
-    const config = await this.getConfig();
-    if (!config.enabled || !config.googleReviewUrl) return null;
-
-    const appointment = await this.prisma.appointment.findFirst({
-      where: { id: appointmentId, localId },
-      select: { id: true, userId: true, guestContact: true, status: true, startDateTime: true },
-    });
-    if (!appointment || appointment.status !== AppointmentStatus.completed) return null;
-
-    const existing = await this.prisma.reviewRequest.findFirst({ where: { appointmentId } });
-    if (existing) return existing;
-
-    const contact = parseGuestContact(appointment.guestContact);
-    const hasActor = Boolean(appointment.userId || contact.guestEmail || contact.guestPhone);
-    if (!hasActor) return null;
-
-    const completedCount = appointment.userId
-      ? await this.prisma.appointment.count({
-          where: { localId, userId: appointment.userId, status: AppointmentStatus.completed },
-        })
-      : await this.prisma.appointment.count({
-          where: {
-            localId,
-            status: AppointmentStatus.completed,
-            guestContact: appointment.guestContact ?? undefined,
-          },
-        });
-
-    if (completedCount < config.minVisitsToAsk) return null;
-
-    const cutoff = new Date(Date.now() - config.cooldownDays * 24 * 60 * 60 * 1000);
-    const recent = await this.prisma.reviewRequest.findFirst({
-      where: {
-        localId,
-        createdAt: { gte: cutoff },
-        ...(appointment.userId
-          ? { userId: appointment.userId }
-          : contact.guestEmail
-          ? { guestEmail: contact.guestEmail }
-          : { guestPhone: contact.guestPhone ?? undefined }),
-      },
-      select: { id: true },
-    });
-
-    if (recent) return null;
-
-    const eligibleAt = new Date(Date.now() + config.showDelayMinutes * 60 * 1000);
-
-    return this.prisma.reviewRequest.create({
-      data: {
-        localId,
-        appointmentId: appointment.id,
-        userId: appointment.userId ?? null,
-        guestEmail: contact.guestEmail,
-        guestPhone: contact.guestPhone,
-        status: ReviewRequestStatus.PENDING,
-        eligibleAt,
-      },
-    });
+    const config = await this.activeConfig();
+    if (!config) return null;
+    return new PrismaReviewRequests(this.prisma).createForAppointment(this.tenantContextPort.getRequestContext(), appointmentId, config);
   }
 
   async getPendingReview(actor: EngagementReviewActor) {
-    const localId = this.getLocalId();
-    const config = await this.getConfig();
-    if (!config.enabled || !config.googleReviewUrl) return null;
-
-    const actorInfo = this.requireActor(actor);
-    const now = new Date();
-
-    const request = await this.prisma.reviewRequest.findFirst({
-      where: {
-        localId,
-        eligibleAt: { lte: now },
-        status: { in: [ReviewRequestStatus.PENDING, ReviewRequestStatus.ELIGIBLE, ReviewRequestStatus.DISMISSED] },
-        ...this.buildActorWhere(actorInfo),
-      },
-      orderBy: { eligibleAt: 'asc' },
-    });
-
-    if (!request) return null;
-
-    if (request.status === ReviewRequestStatus.DISMISSED && request.snoozeCount >= config.maxSnoozes) {
-      await this.prisma.reviewRequest.update({
-        where: { id: request.id },
-        data: { status: ReviewRequestStatus.EXPIRED, completedAt: new Date() },
-      });
-      return null;
-    }
-
-    const shouldPromote = request.status === ReviewRequestStatus.PENDING;
-    if (shouldPromote) {
-      await this.prisma.reviewRequest.update({
-        where: { id: request.id },
-        data: { status: ReviewRequestStatus.ELIGIBLE },
-      });
-    }
-
-    return {
-      id: request.id,
-      status: shouldPromote ? ReviewRequestStatus.ELIGIBLE : request.status,
-      rating: request.rating,
-      eligibleAt: request.eligibleAt,
-      snoozeCount: request.snoozeCount,
-      copy: config.copyJson,
-      googleReviewUrl: config.googleReviewUrl,
-    };
+    const config = await this.activeConfig();
+    if (!config) return null;
+    const request = await new PrismaReviewRequests(this.prisma).pending(this.getLocalId(), this.requireActor(actor), config);
+    return request ? { ...request, copy: config.copyJson, googleReviewUrl: config.googleReviewUrl } : null;
   }
 
-  async markShown(id: string, actor: EngagementReviewActor) {
-    const request = await this.getRequestOrThrow(id, actor);
-    if (request.shownAt) return request;
-    if (isFinalStatus(request.status)) {
-      return request;
-    }
-    return this.prisma.reviewRequest.update({
-      where: { id: request.id },
-      data: { status: ReviewRequestStatus.SHOWN, shownAt: new Date() },
-    });
+  markShown(id: string, actor: EngagementReviewActor) {
+    return this.transition(id, actor, { type: 'shown' });
   }
 
   async rate(id: string, rating: number, actor: EngagementReviewActor) {
-    const request = await this.getRequestOrThrow(id, actor);
-    if (isFinalStatus(request.status)) {
-      throw new BadRequestException('La solicitud ya está finalizada.');
-    }
-
-    await this.prisma.reviewRequest.update({
-      where: { id: request.id },
-      data: {
-        rating,
-        ratedAt: new Date(),
-        status: ReviewRequestStatus.RATED,
-      },
-    });
-
+    await this.transition(id, actor, { type: 'rate', rating });
     const config = await this.getConfig();
-    if (rating >= 4) {
-      return {
-        next: 'GOOGLE',
-        googleReviewUrl: config.googleReviewUrl,
-        ctaText: config.copyJson.positiveCta,
-        message: config.copyJson.positiveText,
-      };
-    }
-    return {
-      next: 'FEEDBACK',
-      ctaText: config.copyJson.negativeCta,
-      message: config.copyJson.negativeText,
-    };
+    return { next: 'GOOGLE' as const, googleReviewUrl: config.googleReviewUrl, ctaText: config.copyJson.positiveCta, message: config.copyJson.positiveText };
   }
 
-  async submitFeedback(id: string, text: string, actor: EngagementReviewActor) {
-    const request = await this.getRequestOrThrow(id, actor);
-    if (!request.rating || request.rating > 3) {
-      throw new BadRequestException('La valoración no es elegible para feedback.');
-    }
-    if (isFinalStatus(request.status)) {
-      throw new BadRequestException('La solicitud ya está finalizada.');
-    }
-
-    return this.prisma.reviewRequest.update({
-      where: { id: request.id },
-      data: {
-        privateFeedback: text.trim(),
-        feedbackStatus: ReviewFeedbackStatus.OPEN,
-        status: ReviewRequestStatus.COMPLETED,
-        completedAt: new Date(),
-      },
-    });
+  submitFeedback(id: string, text: string, actor: EngagementReviewActor) {
+    return this.transition(id, actor, { type: 'feedback', text });
   }
 
-  async markClicked(id: string, actor: EngagementReviewActor) {
-    const request = await this.getRequestOrThrow(id, actor);
-    if (isFinalStatus(request.status)) {
-      return request;
-    }
-    return this.prisma.reviewRequest.update({
-      where: { id: request.id },
-      data: {
-        status: ReviewRequestStatus.CLICKED,
-        clickedAt: new Date(),
-        completedAt: new Date(),
-      },
-    });
+  markClicked(id: string, actor: EngagementReviewActor) {
+    return this.transition(id, actor, { type: 'click' });
   }
 
-  async snooze(id: string, actor: EngagementReviewActor) {
-    const request = await this.getRequestOrThrow(id, actor);
-    if (isFinalStatus(request.status)) {
-      return request;
-    }
-
-    const config = await this.getConfig();
-    if (config.maxSnoozes <= 0) {
-      return this.prisma.reviewRequest.update({
-        where: { id: request.id },
-        data: { status: ReviewRequestStatus.EXPIRED, completedAt: new Date() },
-      });
-    }
-
-    const nextCount = request.snoozeCount + 1;
-    if (nextCount > config.maxSnoozes) {
-      return this.prisma.reviewRequest.update({
-        where: { id: request.id },
-        data: { snoozeCount: nextCount, status: ReviewRequestStatus.EXPIRED, completedAt: new Date() },
-      });
-    }
-
-    const eligibleAt = new Date(Date.now() + config.snoozeHours * 60 * 60 * 1000);
-    return this.prisma.reviewRequest.update({
-      where: { id: request.id },
-      data: {
-        snoozeCount: nextCount,
-        status: ReviewRequestStatus.DISMISSED,
-        eligibleAt,
-      },
-    });
+  snooze(id: string, actor: EngagementReviewActor) {
+    return this.transition(id, actor, { type: 'snooze' });
   }
 
   async getMetrics(params?: { from?: Date; to?: Date }) {
     const localId = this.getLocalId();
     const createdRange = buildDateFilter(params?.from, params?.to);
+    const cohort = { localId, ...(createdRange ? { createdAt: createdRange } : {}) };
 
     const [createdCount, shownCount, ratedCount, googleClicksCount, feedbackCount] = await Promise.all([
       this.prisma.reviewRequest.count({
-        where: { localId, ...(createdRange ? { createdAt: createdRange } : {}) },
+        where: cohort,
       }),
       this.prisma.reviewRequest.count({
-        where: { localId, ...(createdRange ? { shownAt: createdRange } : { shownAt: { not: null } }) },
+        where: { ...cohort, shownAt: { not: null } },
       }),
       this.prisma.reviewRequest.count({
-        where: { localId, ...(createdRange ? { ratedAt: createdRange } : { ratedAt: { not: null } }) },
+        where: { ...cohort, ratedAt: { not: null } },
       }),
       this.prisma.reviewRequest.count({
-        where: { localId, ...(createdRange ? { clickedAt: createdRange } : { clickedAt: { not: null } }) },
+        where: { ...cohort, clickedAt: { not: null } },
       }),
       this.prisma.reviewRequest.count({
         where: {
-          localId,
+          ...cohort,
           privateFeedback: { not: null },
-          rating: { lte: 3 },
-          ...(createdRange ? { completedAt: createdRange } : {}),
         },
       }),
     ]);
@@ -501,7 +291,6 @@ export class PrismaReviewManagementAdapter implements EngagementReviewManagement
     const where = {
       localId,
       privateFeedback: { not: null },
-      rating: { lte: 3 },
       ...(feedbackStatus ? { feedbackStatus } : {}),
     } as const;
 
@@ -550,10 +339,10 @@ export class PrismaReviewManagementAdapter implements EngagementReviewManagement
 
   async resolveFeedback(id: string) {
     const localId = this.getLocalId();
-    const request = await this.prisma.reviewRequest.findFirst({ where: { id, localId }, select: { id: true } });
+    const request = await this.prisma.reviewRequest.findFirst({ where: { id, localId, privateFeedback: { not: null } }, select: { id: true } });
     if (!request) throw new NotFoundException('Review request not found');
     return this.prisma.reviewRequest.update({
-      where: { id: request.id },
+      where: { id: request.id, localId },
       data: { feedbackStatus: ReviewFeedbackStatus.RESOLVED },
     });
   }

@@ -7,6 +7,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 export type ImageKitRequestOptions = {
   subdomainOverride?: string;
   localIdOverride?: string;
+  signal?: AbortSignal;
 };
 
 export type ImageKitAuth = {
@@ -23,6 +24,7 @@ export const requestImageKitAuth = async (options: ImageKitRequestOptions = {}):
   const tenantOverride = options.subdomainOverride ?? getTenantSubdomainOverride();
   const authHeaders = await buildAuthHeaders();
   const response = await fetch(`${API_BASE}/imagekit/sign`, {
+    signal: options.signal,
     headers: {
       ...authHeaders,
       ...(localId ? { 'x-local-id': localId } : {}),
@@ -91,6 +93,7 @@ export const uploadToImageKit = async (
   const response = await fetch(UPLOAD_URL, {
     method: 'POST',
     body: formData,
+    signal: options?.signal,
   });
 
   if (!response.ok) {

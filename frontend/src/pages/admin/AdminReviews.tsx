@@ -27,11 +27,15 @@ import { useI18n } from '@/hooks/useI18n';
 import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 
 const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
-const FEEDBACK_PAGE = 1;
 const FEEDBACK_PAGE_SIZE = 20;
 const EMPTY_FEEDBACK: { total: number; items: ReviewFeedbackItem[] } = { total: 0, items: [] };
 
 const AdminReviews: React.FC = () => {
+  const { currentLocationId } = useTenant();
+  return <AdminReviewsContent key={currentLocationId} />;
+};
+
+const AdminReviewsContent: React.FC = () => {
   const { toast } = useToast();
   const { t, language } = useI18n();
   const { currentLocationId } = useTenant();
@@ -39,6 +43,7 @@ const AdminReviews: React.FC = () => {
   const copy = useBusinessCopy();
   const [config, setConfig] = useState<ReviewProgramConfig | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [feedbackPage, setFeedbackPage] = useState(1);
   const [from, setFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -106,7 +111,7 @@ const AdminReviews: React.FC = () => {
   const feedbackQueryKey = queryKeys.adminReviewFeedback(
     currentLocationId,
     feedbackStatus,
-    FEEDBACK_PAGE,
+    feedbackPage,
     FEEDBACK_PAGE_SIZE,
   );
   const feedbackQuery = useQuery<{ total: number; items: ReviewFeedbackItem[] }>({
@@ -114,7 +119,7 @@ const AdminReviews: React.FC = () => {
     queryFn: () =>
       getReviewFeedback({
         status: feedbackStatus === 'ALL' ? undefined : feedbackStatus,
-        page: FEEDBACK_PAGE,
+        page: feedbackPage,
         pageSize: FEEDBACK_PAGE_SIZE,
       }),
   });
@@ -141,6 +146,12 @@ const AdminReviews: React.FC = () => {
       variant: 'destructive',
     });
   }, [feedbackQuery.error, t, toast]);
+
+  useEffect(() => {
+    if (!feedbackQuery.data) return;
+    const lastPage = Math.max(1, Math.ceil(feedbackQuery.data.total / FEEDBACK_PAGE_SIZE));
+    if (feedbackPage > lastPage) setFeedbackPage(lastPage);
+  }, [feedbackPage, feedbackQuery.data]);
 
   const metrics = metricsQuery.data ?? null;
   const feedback = feedbackQuery.data ?? EMPTY_FEEDBACK;
@@ -177,12 +188,7 @@ const AdminReviews: React.FC = () => {
   const handleResolve = async (id: string) => {
     try {
       await resolveReviewFeedback(id);
-      queryClient.setQueryData<{ total: number; items: ReviewFeedbackItem[] }>(feedbackQueryKey, (previous) => ({
-        total: previous?.total ?? 0,
-        items: (previous?.items ?? EMPTY_FEEDBACK.items).map((item) =>
-          item.id === id ? { ...item, feedbackStatus: 'RESOLVED' } : item,
-        ),
-      }));
+      await queryClient.invalidateQueries({ queryKey: ['reviews', currentLocationId || 'default', 'feedback'] });
       toast({
         title: t('admin.reviews.toast.feedbackResolvedTitle'),
         description: t('admin.reviews.toast.feedbackResolvedDescription'),
@@ -505,7 +511,7 @@ const AdminReviews: React.FC = () => {
                   <Button
                     key={status}
                     variant={feedbackStatus === status ? 'default' : 'outline'}
-                    onClick={() => setFeedbackStatus(status)}
+                    onClick={() => { setFeedbackStatus(status); setFeedbackPage(1); }}
                   >
                     {status === 'OPEN'
                       ? t('admin.reviews.feedback.status.open')
@@ -559,6 +565,11 @@ const AdminReviews: React.FC = () => {
                   ))}
                 </div>
               )}
+              <div className="flex items-center justify-between gap-3">
+                <Button variant="outline" disabled={feedbackPage <= 1 || feedbackQuery.isFetching} onClick={() => setFeedbackPage((page) => page - 1)}>{t('admin.reviews.feedback.previous')}</Button>
+                <span className="text-sm text-muted-foreground">{t('admin.reviews.feedback.page', { page: feedbackPage, total: Math.max(1, Math.ceil(feedback.total / FEEDBACK_PAGE_SIZE)) })}</span>
+                <Button variant="outline" disabled={feedbackPage * FEEDBACK_PAGE_SIZE >= feedback.total || feedbackQuery.isFetching} onClick={() => setFeedbackPage((page) => page + 1)}>{t('admin.reviews.feedback.next')}</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

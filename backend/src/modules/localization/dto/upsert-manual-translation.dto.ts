@@ -12,6 +12,9 @@ const ENTITY_TYPES = [
   'subscription_plan',
   'barber',
   'review_config',
+  'faq',
+  'gallery_item',
+  'gallery_category',
 ] as const;
 
 export class UpsertManualTranslationDto {

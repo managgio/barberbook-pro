@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
@@ -41,6 +41,11 @@ import LanguageSelector from '@/components/common/LanguageSelector';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useI18n } from '@/hooks/useI18n';
 import PublicServiceDescription from '@/components/services/PublicServiceDescription';
+import LandingPresentation from '@/components/landing/LandingPresentation';
+import LandingSectionAccent from '@/components/landing/LandingSectionAccent';
+
+const GallerySection = lazy(() => import('@/components/landing/GallerySection'));
+const FaqSection = lazy(() => import('@/components/landing/FaqSection'));
 
 const heroBackgroundFallback = '/placeholder.svg';
 const heroImageFallback = '/placeholder.svg';
@@ -50,7 +55,7 @@ const EMPTY_PRODUCTS: Product[] = [];
 const EMPTY_PRODUCT_CATEGORIES: ProductCategory[] = [];
 const EMPTY_SERVICE_CATEGORIES: ServiceCategory[] = [];
 const EMPTY_SERVICES: Service[] = [];
-const LANDING_SECTION_ORDER = ['presentation', 'services', 'products', 'barbers', 'cta'] as const;
+const LANDING_SECTION_ORDER = ['presentation', 'services', 'products', 'barbers', 'gallery', 'faq', 'cta'] as const;
 type LandingSectionKey = typeof LANDING_SECTION_ORDER[number];
 const isLandingSectionKey = (value: string): value is LandingSectionKey =>
   (LANDING_SECTION_ORDER as readonly string[]).includes(value);
@@ -74,7 +79,7 @@ const HERO_TEXT_COLOR_STYLES: Record<HeroTextColorKey, { title: string; descript
 const LandingPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const { settings } = useSiteSettings();
-  const { tenant } = useTenant();
+  const { tenant, currentLocationId } = useTenant();
   const { supportedLanguages } = useLanguage();
   const { t } = useI18n();
   const copy = useBusinessCopy();
@@ -319,57 +324,7 @@ const LandingPage: React.FC = () => {
     });
   }, [landingConfig?.presentation?.sections]);
 
-  const presentationSection = useMemo(() => {
-    const visible = presentationSections.filter(
-      (section) => section.enabled && (section.title || section.body || section.imageUrl),
-    );
-    if (visible.length === 0) return null;
-    return (
-      <section className="py-10 sm:py-20 bg-background">
-        <div className="container px-4 space-y-6 sm:space-y-14">
-          {visible.map((section, index) => {
-            const isImageLeft = section.imagePosition !== 'right';
-            return (
-              <div
-                key={`presentation-${index}`}
-                className={`flex flex-col gap-4 sm:gap-10 lg:gap-16 ${
-                  isImageLeft ? 'lg:flex-row' : 'lg:flex-row-reverse'
-                } items-center`}
-              >
-                <div className="w-full lg:w-1/2">
-                  <div className="relative overflow-hidden rounded-xl sm:rounded-3xl border border-border/60 bg-muted/20 shadow-lg">
-                    <div className="aspect-[4/3] w-full">
-                      <img
-                        src={section.imageUrl || heroImageFallback}
-                        alt={section.title || settings.branding.name}
-                        loading="lazy"
-                        decoding="async"
-                        width={1200}
-                        height={900}
-                        className="block h-full w-full object-cover"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="w-full lg:w-1/2 space-y-2.5 sm:space-y-4">
-                  {section.title && (
-                    <h3 className="text-xl sm:text-3xl md:text-4xl font-semibold text-foreground">
-                      {section.title}
-                    </h3>
-                  )}
-                  {section.body && (
-                    <p className="text-xs sm:text-base md:text-lg text-muted-foreground leading-relaxed">
-                      {section.body}
-                    </p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-    );
-  }, [presentationSections, settings.branding.name]);
+  const presentationSection = <LandingPresentation sections={presentationSections} brandName={settings.branding.name} />;
 
   const renderProductCard = (product: Product, index: number) => {
     const price = product.finalPrice ?? product.price;
@@ -609,6 +564,7 @@ const LandingPage: React.FC = () => {
     <section className="py-10 sm:py-24">
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
+          <LandingSectionAccent centered />
           <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             {t('landing.products.title')}
           </h2>
@@ -669,6 +625,7 @@ const LandingPage: React.FC = () => {
     <section className="py-10 sm:py-24">
       <div className="container px-4">
         <div className="text-center mb-6 sm:mb-16">
+          <LandingSectionAccent centered />
           <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-foreground mb-1.5 sm:mb-4">
             {t('landing.barbers.title', { staffPlural: copy.staff.plural })}
           </h2>
@@ -685,7 +642,7 @@ const LandingPage: React.FC = () => {
             >
               <Card
                 variant="interactive"
-                className="overflow-hidden animate-slide-up h-full"
+                className="overflow-hidden animate-slide-up h-full border-primary/15"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
                 <div className="h-[150px] sm:h-auto sm:aspect-square relative overflow-hidden">
@@ -699,6 +656,7 @@ const LandingPage: React.FC = () => {
                     className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                   />
                   <div className="absolute inset-x-0 bottom-0 hidden sm:block bg-gradient-to-t from-background/90 to-transparent p-2.5 sm:p-4" />
+                  <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-primary/70" />
                 </div>
                 <CardContent className="p-2.5 sm:p-4 space-y-1">
                   <h3 className="text-[11px] sm:text-base font-semibold leading-tight text-foreground line-clamp-1">{barber.name}</h3>
@@ -889,6 +847,12 @@ const LandingPage: React.FC = () => {
         }
         if (sectionKey === 'barbers') {
           return <React.Fragment key={sectionKey}>{barbersSection}</React.Fragment>;
+        }
+        if (sectionKey === 'gallery' && tenant?.config?.features?.galleryEnabled === true) {
+          return <Suspense key={sectionKey} fallback={null}><GallerySection key={currentLocationId} /></Suspense>;
+        }
+        if (sectionKey === 'faq' && tenant?.config?.features?.faqEnabled === true) {
+          return <Suspense key={sectionKey} fallback={null}><FaqSection /></Suspense>;
         }
         if (sectionKey === 'cta') {
           return <React.Fragment key={sectionKey}>{ctaSection}</React.Fragment>;

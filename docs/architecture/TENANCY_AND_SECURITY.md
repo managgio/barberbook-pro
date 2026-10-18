@@ -7,6 +7,7 @@ La separación entre tenants es una invariante de privacidad, no una convención
 El middleware de tenancy resuelve marca y local a partir del host/subdominio permitido y guarda el contexto en AsyncLocalStorage mediante `TenantContextPort`. El contexto incluye, como mínimo, `brandId`, `localId`, zona horaria y correlation ID.
 
 - En producción no se confía en headers de override salvo configuración explícita y controlada.
+- `AppModule` importa primero `bootstrap/nest/config/runtime-config.module.ts`: carga `.env` antes de evaluar constantes de tenancy, sin sobrescribir variables del entorno de despliegue. La resolución del dominio y el requisito de subdominio no pueden depender del orden de importación de los módulos de negocio ni de efectos secundarios de Prisma. Con `TENANT_BASE_DOMAIN=localhost`, `platform.localhost` debe producir `isPlatform: true`; un subdominio desconocido se rechaza cuando `TENANT_REQUIRE_SUBDOMAIN=true`.
 - Controllers y casos de uso no aceptan `localId` del cliente como autoridad.
 - Jobs y schedulers deben reconstruir un contexto por tenant antes de ejecutar.
 
@@ -30,6 +31,8 @@ El correo de superadmin de marca debe proceder de la configuración explícita d
 - Ejecuta `npm run tenant:scope:check` y consulta [ADR-0008](../../backend/docs/adr/ADR-0008-prisma-tenant-guard.md).
 
 ## Cachés e integraciones
+
+`WebsiteAccessGuard` protege las imágenes, FAQ, galería y publicación administrativas: exige `website` visible en la configuración efectiva y membresía `LocationStaff` en el local. Un rol asignado debe pertenecer al mismo local e incluir el permiso `website`. Ni `User.role` ni `isSuperAdmin` conceden acceso. Las capacidades FAQ/galería siguen comprobándose además en sus casos de uso. Desactivar la administración de Página Web no retira el contenido público ya publicado.
 
 Una caché de configuración o cliente externo se clavea al menos por `brandId:localId` si existen overrides locales. Si contiene credenciales, incluye una huella segura de configuración para renovarse cuando cambien, sin almacenar el secreto en logs o claves visibles.
 

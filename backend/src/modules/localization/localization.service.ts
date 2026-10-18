@@ -1,4 +1,5 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { withTenantConfigLock } from '../../shared/infrastructure/transaction/tenant-config-lock';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   LocalizedContentScope,
   LocalizedTranslationSource,
@@ -11,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RequestContext } from '../../shared/application/request-context';
 import { TenantConfigService } from '../../tenancy/tenant-config.service';
 import { TRANSLATION_PROVIDER_PORT, TranslationProviderPort } from './providers/translation-provider.port';
+import { pendingTranslationWhere, PendingTranslationSnapshot } from './pending-translation-write';
 import { LocalizableEntityType, LocalizableSourceFields, LocalizedFieldDescriptor, LocalizationPolicy } from './localization.types';
 
 const DEFAULT_LANGUAGE = 'es';
@@ -61,10 +63,12 @@ export class LocalizationService {
 
   async syncEntitySourceFields(params: {
     context?: RequestContext;
+    transaction?: Prisma.TransactionClient;
     entityType: LocalizableEntityType;
     entityId: string;
     fields: LocalizableSourceFields;
   }) {
+    const db = params.transaction || this.prisma;
     const context = params.context || this.tenantContextPort.getRequestContext();
     const scope = context.localId ? LocalizedContentScope.location : LocalizedContentScope.brand;
     const policy = await this.getPolicy(context.brandId, context.localId);
@@ -88,7 +92,7 @@ export class LocalizationService {
         },
       } as const;
 
-      const existing = await this.prisma.localizedContent.findUnique({
+      const existing = await db.localizedContent.findUnique({
         where,
         include: {
           translations: {
@@ -98,7 +102,7 @@ export class LocalizationService {
       });
 
       if (!existing) {
-        const created = await this.prisma.localizedContent.create({
+        const created = await db.localizedContent.create({
           data: {
             scope,
             brandId: context.brandId,
@@ -113,6 +117,7 @@ export class LocalizationService {
           },
         });
         await this.ensureMissingTranslationRows({
+          transaction: db,
           content: {
             ...created,
             sourceVersion: 1,
@@ -126,6 +131,7 @@ export class LocalizationService {
       const sourceChanged = existing.sourceHash !== sourceHash || existing.sourceLanguage !== policy.defaultLanguage;
       if (!sourceChanged) {
         await this.ensureMissingTranslationRows({
+          transaction: db,
           content: existing,
           supportedLanguages: policy.supportedLanguages,
         });
@@ -133,7 +139,7 @@ export class LocalizationService {
       }
 
       const nextVersion = existing.sourceVersion + 1;
-      await this.prisma.localizedContent.update({
+      await db.localizedContent.update({
         where: { id: existing.id },
         data: {
           sourceLanguage: policy.defaultLanguage,
@@ -143,7 +149,7 @@ export class LocalizationService {
         },
       });
 
-      await this.prisma.localizedContentTranslation.updateMany({
+      await db.localizedContentTranslation.updateMany({
         where: {
           contentId: existing.id,
           language: { not: policy.defaultLanguage },
@@ -156,7 +162,7 @@ export class LocalizationService {
         },
       });
 
-      await this.prisma.localizedContentTranslation.updateMany({
+      await db.localizedContentTranslation.updateMany({
         where: {
           contentId: existing.id,
           language: { not: policy.defaultLanguage },
@@ -169,6 +175,7 @@ export class LocalizationService {
       });
 
       await this.ensureMissingTranslationRows({
+        transaction: db,
         content: {
           ...existing,
           sourceVersion: nextVersion,
@@ -184,6 +191,7 @@ export class LocalizationService {
     entityType: LocalizableEntityType;
     items: T[];
     descriptors: LocalizedFieldDescriptor<T>[];
+    syncMissingSources?: boolean;
   }): Promise<{ items: T[]; language: string }> {
     const context = params.context || this.tenantContextPort.getRequestContext();
     const policy = await this.getPolicy(context.brandId, context.localId);
@@ -193,7 +201,7 @@ export class LocalizationService {
       return { items: params.items, language };
     }
 
-    if (policy.supportedLanguages.length > 1) {
+    if (policy.supportedLanguages.length > 1 && params.syncMissingSources !== false) {
       await this.ensureSourceRowsFromItems({
         context,
         policy,
@@ -255,6 +263,7 @@ export class LocalizationService {
     manualLocked?: boolean;
   }) {
     const context = params.context || this.tenantContextPort.getRequestContext();
+    await this.assertEntityEnabled(context, params.entityType);
     const policy = await this.getPolicy(context.brandId, context.localId);
     const language = normalizeLanguageCode(params.language);
     const text = trimText(params.translatedText);
@@ -331,6 +340,7 @@ export class LocalizationService {
     forceManual?: boolean;
   }) {
     const context = params.context || this.tenantContextPort.getRequestContext();
+    await this.assertEntityEnabled(context, params.entityType);
     const policy = await this.getPolicy(context.brandId, context.localId);
 
     const requestedLanguages = (params.languages || [])
@@ -442,6 +452,7 @@ export class LocalizationService {
     entityId: string;
   }) {
     const context = params.context || this.tenantContextPort.getRequestContext();
+    await this.assertEntityEnabled(context, params.entityType);
     const policy = await this.getPolicy(context.brandId, context.localId);
 
     await this.alignEntitySourceLanguagesToPolicy({
@@ -570,6 +581,7 @@ export class LocalizationService {
     entityIds: string[];
   }) {
     const context = params.context || this.tenantContextPort.getRequestContext();
+    await this.assertEntityEnabled(context, params.entityType);
     const entityIds = Array.from(new Set(params.entityIds.map((entry) => trimText(entry)).filter(Boolean)));
     if (entityIds.length === 0) return [];
 
@@ -697,6 +709,12 @@ export class LocalizationService {
       where: {
         status: LocalizedTranslationStatus.pending,
         manualLocked: false,
+        // Disabled section queues must not occupy the batch ahead of other tenants.
+        OR: [
+          { content: { entityType: { notIn: ['faq', 'gallery_item', 'gallery_category'] } } },
+          { content: { entityType: 'faq' }, brand: { config: { data: { path: '$.features.faqEnabled', equals: true } } } },
+          { content: { entityType: { in: ['gallery_item', 'gallery_category'] } }, brand: { config: { data: { path: '$.features.galleryEnabled', equals: true } } } },
+        ],
       },
       include: {
         content: true,
@@ -712,14 +730,13 @@ export class LocalizationService {
     for (const row of pendingRows) {
       const sourceText = trimText(row.content.sourceText);
       if (!sourceText) {
-        await this.markFailed(row.id, 'SOURCE_TEXT_EMPTY');
-        failed += 1;
+        failed += await this.markFailed(row, 'SOURCE_TEXT_EMPTY');
         continue;
       }
 
       if (row.language === row.content.sourceLanguage) {
-        await this.prisma.localizedContentTranslation.update({
-          where: { id: row.id },
+        const { count } = await this.prisma.localizedContentTranslation.updateMany({
+          where: pendingTranslationWhere(row),
           data: {
             translatedText: sourceText,
             status: LocalizedTranslationStatus.ready,
@@ -729,7 +746,7 @@ export class LocalizationService {
             lastGeneratedAt: new Date(),
           },
         });
-        processed += 1;
+        processed += count;
         continue;
       }
 
@@ -737,8 +754,7 @@ export class LocalizationService {
       if (!policy.autoTranslateEnabled || policy.autoTranslatePaused) continue;
 
       if (!policy.supportedLanguages.includes(row.language)) {
-        await this.markFailed(row.id, `LANGUAGE_NOT_ENABLED:${row.language}`);
-        failed += 1;
+        failed += await this.markFailed(row, `LANGUAGE_NOT_ENABLED:${row.language}`);
         continue;
       }
 
@@ -753,33 +769,31 @@ export class LocalizationService {
         usageCache.set(usageKey, usage);
 
         if (policy.monthlyRequestLimit && usage.requests >= policy.monthlyRequestLimit) {
-          await this.markFailed(row.id, 'AUTO_TRANSLATE_REQUEST_LIMIT_REACHED');
-          failed += 1;
+          failed += await this.markFailed(row, 'AUTO_TRANSLATE_REQUEST_LIMIT_REACHED');
           continue;
         }
         if (
           policy.monthlyCharacterLimit &&
           usage.characters + sourceText.length > policy.monthlyCharacterLimit
         ) {
-          await this.markFailed(row.id, 'AUTO_TRANSLATE_CHARACTER_LIMIT_REACHED');
-          failed += 1;
+          failed += await this.markFailed(row, 'AUTO_TRANSLATE_CHARACTER_LIMIT_REACHED');
           continue;
         }
       }
 
       const brandConfig = await this.tenantConfig.getBrandConfig(row.brandId);
+      if (row.content.entityType === 'faq' && brandConfig.features?.faqEnabled !== true) continue;
+      if (['gallery_item', 'gallery_category'].includes(row.content.entityType) && brandConfig.features?.galleryEnabled !== true) continue;
       const provider = (brandConfig.ai?.provider || 'openai').toLowerCase();
       if (provider !== 'openai') {
-        await this.markFailed(row.id, `UNSUPPORTED_PROVIDER:${provider}`);
-        failed += 1;
+        failed += await this.markFailed(row, `UNSUPPORTED_PROVIDER:${provider}`);
         continue;
       }
 
       const apiKey = trimText(brandConfig.ai?.apiKey);
       const model = trimText(brandConfig.ai?.model) || 'gpt-4o-mini';
       if (!apiKey) {
-        await this.markFailed(row.id, 'AI_API_KEY_MISSING');
-        failed += 1;
+        failed += await this.markFailed(row, 'AI_API_KEY_MISSING');
         continue;
       }
 
@@ -811,8 +825,9 @@ export class LocalizationService {
         this.logger.warn(
           `Translation failed contentId=${row.contentId} language=${row.language}: ${lastError}`,
         );
-        await this.markFailed(row.id, lastError || 'TRANSLATION_FAILED');
-        failed += 1;
+        const count = await this.markFailed(row, lastError || 'TRANSLATION_FAILED');
+        failed += count;
+        if (!count) continue;
         await this.maybeOpenCircuitBreaker({
           brandId: row.brandId,
           localId: row.localId || null,
@@ -821,8 +836,8 @@ export class LocalizationService {
         continue;
       }
 
-      await this.prisma.localizedContentTranslation.update({
-        where: { id: row.id },
+      const { count } = await this.prisma.localizedContentTranslation.updateMany({
+        where: pendingTranslationWhere(row),
         data: {
           translatedText,
           status: LocalizedTranslationStatus.ready,
@@ -840,7 +855,7 @@ export class LocalizationService {
         usage.characters += translatedText.length;
         usageCache.set(usageKey, usage);
       }
-      processed += 1;
+      processed += count;
     }
 
     return {
@@ -850,14 +865,15 @@ export class LocalizationService {
     };
   }
 
-  private async markFailed(translationId: string, reason: string) {
-    await this.prisma.localizedContentTranslation.update({
-      where: { id: translationId },
+  private async markFailed(row: PendingTranslationSnapshot, reason: string) {
+    const { count } = await this.prisma.localizedContentTranslation.updateMany({
+      where: pendingTranslationWhere(row),
       data: {
         status: LocalizedTranslationStatus.failed,
         errorMessage: reason.slice(0, 2000),
       },
     });
+    return count;
   }
 
   private async loadMonthlyUsage(params: {
@@ -950,9 +966,28 @@ export class LocalizationService {
     pauseUntil: string;
     reason: string;
   }): Promise<void> {
-    if (params.localId) {
-      const current = await this.prisma.locationConfig.findUnique({
-        where: { localId: params.localId },
+    return withTenantConfigLock(this.prisma, params.brandId, async (tx) => {
+      if (params.localId) {
+        const current = await tx.locationConfig.findUnique({
+          where: { localId: params.localId },
+          select: { data: true },
+        });
+        const currentData = (current?.data || {}) as Record<string, unknown>;
+        const nextData = this.mergeAutoTranslateConfig(currentData, {
+          paused: true,
+          pauseUntil: params.pauseUntil,
+          pauseReason: params.reason.slice(0, 240),
+        });
+        await tx.locationConfig.upsert({
+          where: { localId: params.localId },
+          create: { localId: params.localId, data: nextData as Prisma.InputJsonValue },
+          update: { data: nextData as Prisma.InputJsonValue },
+        });
+        return;
+      }
+
+      const current = await tx.brandConfig.findUnique({
+        where: { brandId: params.brandId },
         select: { data: true },
       });
       const currentData = (current?.data || {}) as Record<string, unknown>;
@@ -961,28 +996,11 @@ export class LocalizationService {
         pauseUntil: params.pauseUntil,
         pauseReason: params.reason.slice(0, 240),
       });
-      await this.prisma.locationConfig.upsert({
-        where: { localId: params.localId },
-        create: { localId: params.localId, data: nextData as Prisma.InputJsonValue },
+      await tx.brandConfig.upsert({
+        where: { brandId: params.brandId },
+        create: { brandId: params.brandId, data: nextData as Prisma.InputJsonValue },
         update: { data: nextData as Prisma.InputJsonValue },
       });
-      return;
-    }
-
-    const current = await this.prisma.brandConfig.findUnique({
-      where: { brandId: params.brandId },
-      select: { data: true },
-    });
-    const currentData = (current?.data || {}) as Record<string, unknown>;
-    const nextData = this.mergeAutoTranslateConfig(currentData, {
-      paused: true,
-      pauseUntil: params.pauseUntil,
-      pauseReason: params.reason.slice(0, 240),
-    });
-    await this.prisma.brandConfig.upsert({
-      where: { brandId: params.brandId },
-      create: { brandId: params.brandId, data: nextData as Prisma.InputJsonValue },
-      update: { data: nextData as Prisma.InputJsonValue },
     });
   }
 
@@ -1014,6 +1032,7 @@ export class LocalizationService {
   }
 
   private async ensureMissingTranslationRows(params: {
+    transaction?: Prisma.TransactionClient;
     content: {
       id: string;
       brandId: string;
@@ -1024,12 +1043,13 @@ export class LocalizationService {
     };
     supportedLanguages: string[];
   }) {
+    const db = params.transaction || this.prisma;
     const languagesToCreate = params.supportedLanguages.filter((language) => language !== params.content.sourceLanguage);
     if (languagesToCreate.length === 0) return;
 
     const existing =
       params.content.translations ||
-      (await this.prisma.localizedContentTranslation.findMany({
+      (await db.localizedContentTranslation.findMany({
         where: { contentId: params.content.id },
         select: { language: true },
       }));
@@ -1039,7 +1059,7 @@ export class LocalizationService {
 
     if (missing.length === 0) return;
 
-    await this.prisma.localizedContentTranslation.createMany({
+    await db.localizedContentTranslation.createMany({
       data: missing.map((language) => ({
         contentId: params.content.id,
         brandId: params.content.brandId,
@@ -1121,6 +1141,13 @@ export class LocalizationService {
         existingKeys.add(key);
       }
     }
+  }
+
+  private async assertEntityEnabled(context: RequestContext, entityType: LocalizableEntityType) {
+    if (!['faq', 'gallery_item', 'gallery_category'].includes(entityType)) return;
+    const config = await this.tenantConfig.getBrandConfig(context.brandId);
+    if (entityType === 'faq' && config.features?.faqEnabled !== true) throw new ForbiddenException('FAQ_DISABLED');
+    if (entityType !== 'faq' && config.features?.galleryEnabled !== true) throw new ForbiddenException('GALLERY_DISABLED');
   }
 
   private async getPolicy(brandId: string, localId?: string): Promise<LocalizationPolicy> {

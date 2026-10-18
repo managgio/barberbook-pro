@@ -97,6 +97,31 @@ El recordatorio de una cita invitada puede incluir `/cita/:token`, un enlace de 
 
 En procesos masivos también se registra por destinatario si fue enviado, falló, fue excluido o se canceló su cita.
 
+## Preguntas frecuentes de la landing
+
+`engagement` es propietario de las FAQ. Platform activa `BrandConfig.features.faqEnabled`; la ausencia del flag equivale a `false` y los overrides locales no pueden habilitarlo. Desactivar la capacidad conserva preguntas, orden y traducciones, pero oculta el editor y la sección pública. Platform mantiene el orden y la visibilidad de la sección `faq` dentro de la configuración habitual de landing.
+
+Los editores FAQ y galería se agrupan en Página Web. Sus endpoints administrativos y el control de publicación exigen además `WebsiteAccessGuard`; habilitar este acceso no cambia la publicación ni sustituye las capacidades de marca. La lectura pública mantiene sus condiciones existentes.
+
+- `GET /faqs` entrega las preguntas del local actual en el idioma solicitado, con fallback al texto fuente. Devuelve una lista vacía si la capacidad está desactivada o el administrador ha ocultado la publicación.
+- `/admin/faqs` exige `AdminEndpoint` y la capacidad activa. Permite listar originales, crear, editar y eliminar. `PATCH /admin/faqs/order` recibe `expectedIds` y `orderedIds`; ambos deben corresponder a la colección completa del local.
+- La colección admite hasta 50 preguntas; pregunta y respuesta se limitan a 240 y 5000 caracteres. Se persiste texto plano y el frontend no interpreta HTML.
+- Todas las escrituras bloquean la fila del local en una transacción MySQL. Crear añade al final, editar/eliminar exige la `version` leída y ordenar compara el orden esperado. Un conflicto devuelve HTTP 409 sin sobrescribir cambios de otro administrador. El backend ignora la identidad tenant del cliente y utiliza exclusivamente el contexto resuelto.
+- Guardar contenido y sus fuentes de traducción es atómico. Eliminar borra sus fuentes y traducciones dentro de la misma transacción. El worker de IA guarda mediante compare-and-set sobre tenant, estado pendiente, bloqueo manual, fecha de revisión y versión fuente; un resultado de una pregunta modificada o eliminada se descarta sin abortar el lote.
+- La traducción automática requiere tanto la capacidad FAQ como la configuración de IA activa. Las traducciones manuales bloqueadas se conservan como obsoletas tras cambiar el original y no se publican hasta su revisión. Las rutas genéricas de localización también rechazan FAQ si la capacidad está desactivada.
+
+## Galería y publicación de contenido
+
+`engagement` también gestiona la galería del local. `BrandConfig.features.galleryEnabled` nace en `false`, es autoritativo a nivel de marca y no admite activación mediante override local. Su desactivación bloquea los endpoints administrativos, las traducciones y la lectura pública, conservando el contenido.
+
+- `GET /gallery` devuelve categorías y trabajos traducidos del local actual. La lectura pública es de solo lectura y devuelve colecciones vacías si la capacidad está desactivada o la sección no está publicada.
+- `/admin/gallery/items` y `/admin/gallery/categories` requieren `AdminEndpoint`. Los trabajos tienen título (120 caracteres), descripción opcional (2000), categoría obligatoria y foto de resultado; la foto anterior es opcional. Cada local dispone de un cupo independiente de 12 imágenes de galería, incluidos trabajos sin publicar. Una marca con cinco locales puede usar hasta 60 imágenes, con un máximo de 12 en cada local. Cada foto asignada a un trabajo cuenta una plaza; una comparación antes/después consume dos. Se conservan 24 categorías por local, con nombres de hasta 80 caracteres y unicidad local sin distinguir mayúsculas según la collation de MySQL.
+- `GET /admin/gallery` añade `imageUsage: {used, limit}` con el agregado del local resuelto en el request; nunca devuelve trabajos ni consume cupo de otros locales. La lectura pública no expone ese agregado. El backend valida la capacidad en la misma transacción de alta/edición, contando el reemplazo por diferencia y devolviendo `GALLERY_IMAGE_LIMIT` (400) cuando aumenta el uso por encima del cupo. Las colecciones anteriores que excedan 12 se conservan y admiten mantenimiento o reducción, nunca ampliación. El máximo técnico de lectura de 100 trabajos se mantiene para poder administrar ese contenido anterior.
+- La categoría debe pertenecer al mismo local, también mediante FK compuesta. Solo se pueden eliminar categorías vacías. Editar y eliminar exige versión; ordenar mediante `PATCH /admin/gallery/items/order` exige una instantánea exacta y una permutación completa. El bloqueo del local serializa las altas, ediciones y eliminaciones concurrentes que consumen el mismo cupo, sin bloquear la marca completa. Eliminar libera las plazas de ese local. Los errores de concurrencia devuelven 409.
+- Las fuentes `gallery_item` (título/descripción) y `gallery_category` (nombre) se guardan o eliminan atómicamente con el contenido. La traducción manual y la automática siguen la política existente; el worker excluye en la consulta las capacidades desactivadas y conserva su protección compare-and-set.
+- `/admin/landing-sections/:section`, para `faq` o `gallery`, separa la capacidad de Platform de la publicación decidida por el admin. GET devuelve `{published, version}` y PATCH exige ambos campos. Un registro ausente tiene versión 0: FAQ publicada por compatibilidad con su comportamiento anterior, galería oculta hasta publicación explícita. El backend comprueba la publicación antes de devolver contenido público. Ocultar conserva todos los borradores, traducciones y orden; el editor permanece disponible mientras Platform lo permita.
+- El orden y `hiddenSections` de Platform continúan determinando la composición de la landing. Activar la publicación desde el admin no modifica esos ajustes.
+
 ## Pruebas críticas
 
 - motor de disponibilidad e intervalos solapados;
@@ -110,3 +135,17 @@ En procesos masivos también se registra por destinatario si fue enviado, falló
 - expiración/deduplicación de avisos de hueco.
 - outbox multicanal idempotente, backoff, clasificación SMTP/Twilio, retención y promoción crítica;
 - contacto estructurado de invitados y confirmación después de pago Stripe.
+
+## Solicitudes de reseña y feedback privado
+
+El programa existente pertenece al local. Solo genera solicitudes tras una cita completada, con el mínimo de visitas, retraso y cooldown configurados. La capacidad de Platform (`adminSidebar.hiddenSections`) y `ReviewProgramConfig.enabled` se comprueban al generar, consultar y actuar. Desactivarlo conserva el histórico, pero detiene el flujo cliente.
+
+Los endpoints `/reviews/*` exigen sesión y derivan `userId` del token verificado. Los identificadores y contactos enviados en query/body nunca autorizan acceso. Cada lectura, lock y escritura conserva `localId` y ownership. Los contactos de invitados se conservan desde `guestEmail`/`guestPhone`, con fallback legacy, pero conocer un contacto no permite consultar ni modificar sus solicitudes. El cliente actual ofrece el modal a usuarios autenticados; un canal para invitados requeriría verificación independiente.
+
+La creación bloquea la fila del local dentro de una transacción para serializar también el cooldown entre dos citas distintas del mismo cliente. Las acciones bloquean la solicitud tenant-scoped antes de aplicar `review-request-policy`, sin llamadas externas dentro de la transacción. Los reintentos no duplican aplazamientos ni feedback; eventos tardíos no degradan estados finales. Las solicitudes `SHOWN` y `RATED` siguen siendo recuperables tras recargar. Un aplazamiento con contador igual al máximo todavía puede mostrarse; expira al intentar aplazarlo otra vez. Una cita que ya no está completada no se ofrece ni admite acciones.
+
+Todas las puntuaciones reciben las mismas opciones de abrir Google y enviar feedback privado. Un clic solo demuestra apertura del enlace, nunca publicación de una reseña. Esta separación evita la solicitud selectiva de reseñas positivas prohibida por la [política de Google Maps](https://support.google.com/contributionpolicy/answer/7400114). El feedback privado sigue siendo privado y no alimenta ninguna landing.
+
+El modal recibe la copia localizada mediante el circuito existente de traducciones; el editor administrativo conserva el idioma fuente al guardar. El contrato de actualización excluye IDs de servidor y valida textos anidados, HTTPS y límites numéricos. El modal se reinicia por usuario, local e idioma y descarta respuestas tardías del contexto anterior; no interrumpe la reserva. Puede cerrarse aunque falle el aplazamiento, avisando del error sin bloquear al cliente.
+
+Las métricas usan una cohorte de solicitudes creadas en el periodo y cuentan su evolución. Los filtros de fecha incluyen el día completo en la zona horaria del local. La tasa es clics a Google entre solicitudes mostradas de esa cohorte. El listado privado incluye cualquier puntuación, pagina en servidor y refresca filtros y totales al resolver una entrada.

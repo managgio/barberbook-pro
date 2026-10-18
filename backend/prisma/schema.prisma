@@ -346,11 +346,80 @@ model Brand {
   notificationDeliveries NotificationDelivery[]
   invoices               Invoice[]
   invoiceSequences       InvoiceSequence[]
+  websiteMediaDeletions   WebsiteMediaDeletion[]
   createdAt              DateTime                      @default(now())
   updatedAt              DateTime                      @updatedAt
 }
 
+model Faq {
+  id        String   @id @default(cuid())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id], onDelete: Cascade)
+  question  String   @db.VarChar(240)
+  answer    String   @db.Text
+  position  Int
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([localId, position, id])
+}
+
+model LandingPublication {
+  localId   String
+  local     Location @relation(fields: [localId], references: [id], onDelete: Cascade)
+  section   String   @db.VarChar(32)
+  published Boolean  @default(false)
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@id([localId, section])
+}
+
+model GalleryCategory {
+  id        String   @id @default(cuid())
+  localId   String
+  local     Location @relation(fields: [localId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(80)
+  version   Int      @default(1)
+  items     GalleryItem[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([localId, id])
+  @@unique([localId, name])
+}
+
+model GalleryItem {
+  id           String   @id @default(cuid())
+  localId      String
+  local        Location @relation(fields: [localId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     GalleryCategory @relation(fields: [localId, categoryId], references: [localId, id], onDelete: Cascade)
+  title        String   @db.VarChar(120)
+  description  String   @db.Text
+  imageUrl     String   @db.VarChar(2048)
+  imageFileId  String   @db.VarChar(128)
+  imageWidth   Int
+  imageHeight  Int
+  beforeUrl    String?  @db.VarChar(2048)
+  beforeFileId String?  @db.VarChar(128)
+  beforeWidth  Int?
+  beforeHeight Int?
+  position     Int
+  version      Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([localId, position, id])
+  @@index([localId, categoryId])
+}
+
 model Location {
+  landingPublications            LandingPublication[]
+  galleryCategories              GalleryCategory[]
+  galleryItems                   GalleryItem[]
+  faqs                           Faq[]
   id                             String                          @id @default(cuid())
   brandId                        String
   brand                          Brand                           @relation(fields: [brandId], references: [id])
@@ -461,6 +530,22 @@ model BrandConfig {
   data      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model WebsiteMediaDeletion {
+  id          String   @id @default(cuid())
+  brandId     String
+  brand       Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  fileId      String   @db.VarChar(128)
+  url         String   @db.VarChar(2048)
+  status      String   @default("pending") @db.VarChar(16)
+  attempts    Int      @default(0)
+  nextAttempt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([brandId, fileId])
+  @@index([status, nextAttempt])
 }
 
 model BrandLegalSettings {

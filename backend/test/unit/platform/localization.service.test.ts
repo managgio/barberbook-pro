@@ -312,3 +312,44 @@ test('getEntityTranslations realigns legacy source language to tenant default', 
   assert.equal(rows.length, 1);
   assert.equal(rows[0].sourceLanguage, 'es');
 });
+
+test('FAQ source sync uses the supplied transaction for source and pending translations', async () => {
+  const context = buildContext('en');
+  const created: string[] = [];
+  const transaction = {
+    localizedContent: {
+      findUnique: async () => null,
+      create: async ({ data }: any) => { created.push(data.fieldKey); return { id: data.fieldKey, ...data }; },
+    },
+    localizedContentTranslation: {
+      findMany: async () => [],
+      createMany: async ({ data }: any) => {
+        assert.equal(data[0].brandId, context.brandId);
+        assert.equal(data[0].localId, context.localId);
+        assert.equal(data[0].status, 'pending');
+        created.push(`translation:${data[0].contentId}`);
+      },
+    },
+  };
+  const service = new LocalizationService({} as any, {
+    getBrandConfig: async () => ({ i18n: { defaultLanguage: 'es', supportedLanguages: ['es', 'en'] } }),
+    getLocationConfig: async () => ({}),
+  } as any, { getRequestContext: () => context } as any, {} as any);
+  await service.syncEntitySourceFields({ context, transaction: transaction as any, entityType: 'faq', entityId: 'faq-a', fields: { question: 'Pregunta', answer: 'Respuesta' } });
+  assert.deepEqual(created, ['question', 'translation:question', 'answer', 'translation:answer']);
+});
+
+test('FAQ public localization is read only and falls back when translations are stale', async () => {
+  const service = new LocalizationService({ localizedContent: { findMany: async ({ where }: any) => {
+    assert.equal(where.localId, 'local-1');
+    assert.equal(where.brandId, 'brand-1');
+    return [{ entityId: 'faq-a', fieldKey: 'question', sourceVersion: 2, translations: [{ status: 'ready', basedOnSourceVersion: 1, translatedText: 'Old question' }] }];
+  } } } as any, {
+    getBrandConfig: async () => ({ i18n: { defaultLanguage: 'es', supportedLanguages: ['es', 'en'] } }), getLocationConfig: async () => ({}),
+  } as any, { getRequestContext: () => buildContext('en') } as any, {} as any);
+  const result = await service.localizeCollection({ entityType: 'faq', syncMissingSources: false,
+    items: [{ id: 'faq-a', question: 'Pregunta nueva' }],
+    descriptors: [{ fieldKey: 'question', getValue: (item) => item.question, setValue: (item, text) => { item.question = text; } }],
+  });
+  assert.equal(result.items[0].question, 'Pregunta nueva');
+});

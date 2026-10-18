@@ -34,6 +34,9 @@ export class LocalizationController {
       | 'loyalty_program'
       | 'subscription_plan'
       | 'barber'
+      | 'faq'
+  | 'gallery_item'
+  | 'gallery_category'
       | 'review_config',
     @Param('entityId') entityId: string,
   ) {
@@ -54,6 +57,9 @@ export class LocalizationController {
       | 'loyalty_program'
       | 'subscription_plan'
       | 'barber'
+      | 'faq'
+  | 'gallery_item'
+  | 'gallery_category'
       | 'review_config',
     @Query('ids') ids?: string | string[],
   ) {

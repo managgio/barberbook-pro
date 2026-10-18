@@ -1,5 +1,6 @@
 import type { ElementType } from 'react';
 import {
+  Globe,
   Calendar,
   Search,
   Users,
@@ -53,6 +54,7 @@ const ADMIN_NAV_ITEM_DEFINITIONS: AdminNavItemDefinition[] = [
   { href: '/admin/deliveries', icon: MailWarning, section: 'email-deliveries', keywords: ['email', 'sms', 'whatsapp', 'entregas', 'errores'] },
   { href: '/admin/offers', icon: Tag, section: 'offers', keywords: ['descuentos', 'promos'] },
   { href: '/admin/holidays', icon: CalendarDays, section: 'holidays', keywords: ['cierres'] },
+  { href: '/admin/website', icon: Globe, section: 'website', keywords: ['web', 'landing', 'fotos', 'galeria', 'faq'] },
   { href: '/admin/settings', icon: Settings, section: 'settings', keywords: ['ajustes'] },
   { href: '/admin/roles', icon: Shield, section: 'roles', keywords: ['permisos'] },
 ];

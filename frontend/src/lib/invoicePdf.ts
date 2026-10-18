@@ -66,6 +66,7 @@ const loadLogoAsPng = async (source: string) => {
 export const generateAppointmentInvoicePdf = async (
   invoice: AppointmentInvoice,
   language = 'es',
+  themeMode: 'light' | 'dark' = 'light',
 ): Promise<InvoicePdfResult> => {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -101,24 +102,41 @@ export const generateAppointmentInvoicePdf = async (
   doc.rect(0, 0, PAGE_WIDTH, 7, 'F');
 
   let logoDrawn = false;
+  let logoBackgroundDrawn = false;
   if (invoice.branding.logoUrl) {
     try {
       const logo = await loadLogoAsPng(invoice.branding.logoUrl);
       const maxWidth = 42;
       const maxHeight = 20;
       const ratio = Math.min(maxWidth / logo.width, maxHeight / logo.height);
+      const width = logo.width * ratio;
+      const height = logo.height * ratio;
+      const hasDarkBackground = themeMode === 'dark';
+      const frameWidth = Math.max(28, width + 8);
+      const frameHeight = 28;
+      const frameTop = 14;
+      if (hasDarkBackground) {
+        // Matches the dark --background token used by the tenant website.
+        doc.setFillColor(10, 10, 10);
+        doc.roundedRect(MARGIN, frameTop, frameWidth, frameHeight, 3, 3, 'F');
+        logoBackgroundDrawn = true;
+      }
       doc.addImage(
         logo.dataUrl,
         'PNG',
-        MARGIN,
-        16,
-        Math.max(8, logo.width * ratio),
-        Math.max(8, logo.height * ratio),
+        hasDarkBackground ? MARGIN + (frameWidth - width) / 2 : MARGIN,
+        hasDarkBackground ? frameTop + (frameHeight - height) / 2 : 16,
+        width,
+        height,
         undefined,
         'FAST',
       );
       logoDrawn = true;
     } catch {
+      if (logoBackgroundDrawn) {
+        doc.setFillColor(255, 255, 255);
+        doc.rect(MARGIN, 14, 50, 28, 'F');
+      }
       logoDrawn = false;
     }
   }

@@ -1,229 +1,136 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Star } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
+import { useTenant } from '@/context/TenantContext';
 import { useToast } from '@/hooks/use-toast';
-import {
-  clickReview,
-  getPendingReview,
-  markReviewShown,
-  rateReview,
-  sendReviewFeedback,
-  snoozeReview,
-} from '@/data/api/reviews';
+import { clickReview, getPendingReview, markReviewShown, rateReview, sendReviewFeedback, snoozeReview } from '@/data/api/reviews';
 import { ReviewPendingResponse } from '@/data/types';
-import { cn } from '@/lib/utils';
 import { useI18n } from '@/hooks/useI18n';
 
 const allowedPaths = ['/app', '/app/appointments', '/app/profile'];
 
+// Remounting by actor/local/language discards responses and drafts from the previous scope.
 const ReviewPromptModal: React.FC = () => {
   const { user } = useAuth();
+  const { tenant, currentLocationId } = useTenant();
+  const { language } = useI18n();
+  const { pathname } = useLocation();
+  if (!user?.id || !currentLocationId || !allowedPaths.includes(pathname) || tenant?.config?.adminSidebar?.hiddenSections?.includes('reviews')) return null;
+  return <ScopedReviewPrompt key={`${currentLocationId}:${user.id}:${language}`} />;
+};
+
+const ScopedReviewPrompt: React.FC = () => {
   const { toast } = useToast();
   const { t } = useI18n();
-  const location = useLocation();
   const [request, setRequest] = useState<ReviewPendingResponse | null>(null);
-  const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<'rating' | 'positive' | 'negative'>('rating');
-  const [rating, setRating] = useState<number | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [showFeedback, setShowFeedback] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const completedRef = useRef(false);
-  const shownRef = useRef(false);
+  const busy = useRef(false);
+  const shown = useRef<Promise<unknown>>(Promise.resolve());
+  const active = useRef(true);
 
-  const shouldCheck = useMemo(() => {
-    return allowedPaths.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`));
-  }, [location.pathname]);
-
-  const resetState = useCallback(() => {
-    setStep('rating');
-    setRating(null);
-    setFeedback('');
-    setOpen(false);
-    setRequest(null);
-    completedRef.current = false;
-    shownRef.current = false;
+  useEffect(() => {
+    let cancelled = false;
+    active.current = true;
+    void getPendingReview().then((data) => {
+      if (cancelled || !data) return;
+      setRequest(data);
+      shown.current = markReviewShown(data.id).catch(() => undefined);
+    }).catch(() => undefined);
+    return () => { cancelled = true; active.current = false; };
   }, []);
 
-  const loadPending = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const data = await getPendingReview({ userId: user.id });
-      if (data && data.id) {
-        setRequest(data);
-        setOpen(true);
-        return;
-      }
-      setRequest(null);
-      resetState();
-    } catch (error) {
-      setRequest(null);
-    }
-  }, [resetState, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id || !shouldCheck) return;
-    loadPending();
-  }, [loadPending, shouldCheck, user?.id]);
-
-  useEffect(() => {
-    if (!open || !request || shownRef.current) return;
-    shownRef.current = true;
-    markReviewShown(request.id, { userId: user?.id })
-      .catch(() => {
-        shownRef.current = false;
-      });
-  }, [open, request, user?.id]);
-
-  const handleClose = useCallback(async () => {
-    if (!request || completedRef.current) {
-      resetState();
-      return;
-    }
-    try {
-      await snoozeReview(request.id, { userId: user?.id });
-    } catch {
-      // ignore
-    } finally {
-      resetState();
-    }
-  }, [request, resetState, user?.id]);
-
-  const handleRate = async (value: number) => {
-    if (!request || isSubmitting) return;
+  const execute = async (action: () => Promise<void>, errorTitle: string) => {
+    if (busy.current || !active.current) return;
+    busy.current = true;
     setIsSubmitting(true);
-    try {
-      const response = await rateReview(request.id, { rating: value, userId: user?.id });
-      setRating(value);
-      if (response.next === 'GOOGLE') {
-        setStep('positive');
-      } else {
-        setStep('negative');
-      }
-    } catch (error) {
-      toast({
-        title: t('reviewPrompt.toast.saveErrorTitle'),
-        description: error instanceof Error ? error.message : t('reviewPrompt.toast.tryLater'),
-        variant: 'destructive',
-      });
+    try { await shown.current; if (active.current) await action(); } catch {
+      if (active.current) toast({ title: errorTitle, description: t('reviewPrompt.toast.tryLater'), variant: 'destructive' });
     } finally {
-      setIsSubmitting(false);
+      busy.current = false;
+      if (active.current) setIsSubmitting(false);
     }
   };
 
-  const handlePositiveClick = async () => {
-    if (!request || !request.googleReviewUrl) return;
-    completedRef.current = true;
-    window.open(request.googleReviewUrl, '_blank', 'noopener');
-    try {
-      await clickReview(request.id, { userId: user?.id });
-    } catch {
-      // ignore
-    } finally {
-      resetState();
-    }
+  const close = () => {
+    if (!request || busy.current) return;
+    void execute(async () => { await snoozeReview(request.id); }, t('reviewPrompt.toast.saveErrorTitle'))
+      .finally(() => { if (active.current) setRequest(null); });
   };
-
-  const handleFeedback = async () => {
-    if (!request || isSubmitting) return;
-    if (!feedback.trim()) {
-      toast({
-        title: t('reviewPrompt.toast.missingFeedbackTitle'),
-        description: t('reviewPrompt.toast.missingFeedbackDescription'),
-      });
+  const rate = (rating: number) => {
+    if (!request) return;
+    void execute(async () => {
+      const result = await rateReview(request.id, { rating });
+      setRequest({ ...request, rating, googleReviewUrl: result.googleReviewUrl || request.googleReviewUrl });
+    }, t('reviewPrompt.toast.saveErrorTitle'));
+  };
+  const openGoogle = () => {
+    if (!request || busy.current) return;
+    window.open(request.googleReviewUrl, '_blank', 'noopener,noreferrer');
+    void execute(async () => { await clickReview(request.id); setRequest(null); }, t('reviewPrompt.toast.saveErrorTitle'));
+  };
+  const submitFeedback = () => {
+    if (!request) return;
+    const text = feedback.trim();
+    if (text.length < 3 || text.length > 2000) {
+      toast({ title: t('reviewPrompt.toast.missingFeedbackTitle'), description: t('reviewPrompt.feedbackLength') });
       return;
     }
-    setIsSubmitting(true);
-    try {
-      await sendReviewFeedback(request.id, { text: feedback.trim(), userId: user?.id });
-      completedRef.current = true;
-      resetState();
-      toast({
-        title: t('reviewPrompt.toast.feedbackSentTitle'),
-        description: t('reviewPrompt.toast.feedbackSentDescription'),
-      });
-    } catch (error) {
-      toast({
-        title: t('reviewPrompt.toast.sendErrorTitle'),
-        description: error instanceof Error ? error.message : t('reviewPrompt.toast.tryLater'),
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    void execute(async () => {
+      await sendReviewFeedback(request.id, { text });
+      setRequest(null);
+      if (active.current) toast({ title: t('reviewPrompt.toast.feedbackSentTitle'), description: t('reviewPrompt.toast.feedbackSentDescription') });
+    }, t('reviewPrompt.toast.sendErrorTitle'));
   };
 
   if (!request) return null;
-
   const copy = request.copy;
-
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : handleClose())}>
-      <DialogContent className="sm:max-w-md gap-6 rounded-2xl border border-border/60 bg-background/95 p-6 shadow-xl backdrop-blur">
+    <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
+      <DialogContent className="w-[calc(100%-2rem)] max-h-[90dvh] overflow-y-auto sm:max-w-md gap-6 rounded-2xl border border-border/60 bg-background/95 p-6 shadow-xl backdrop-blur"
+        onEscapeKeyDown={(event) => { if (busy.current) event.preventDefault(); }}
+        onPointerDownOutside={(event) => { if (busy.current) event.preventDefault(); }}>
         <DialogHeader className="space-y-2">
           <DialogTitle className="text-xl font-semibold text-foreground">{copy.title}</DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
-            {copy.subtitle}
-          </DialogDescription>
+          <DialogDescription>{copy.subtitle}</DialogDescription>
         </DialogHeader>
-
-        {step === 'rating' && (
+        {!request.rating ? (
           <div className="space-y-4">
             <div className="flex items-center justify-center gap-2">
-              {Array.from({ length: 5 }).map((_, index) => {
-                const value = index + 1;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => handleRate(value)}
-                    disabled={isSubmitting}
-                    className={cn(
-                      'flex h-10 w-10 items-center justify-center rounded-full border border-border/60 transition-all',
-                      rating && value <= rating ? 'bg-primary text-primary-foreground' : 'bg-muted/30 text-muted-foreground',
-                    )}
-                  >
-                    <Star className="h-5 w-5" />
-                  </button>
-                );
-              })}
+              {Array.from({ length: 5 }, (_, index) => index + 1).map((value) => (
+                <button key={value} type="button" aria-label={t('reviewPrompt.ratingLabel', { rating: value })}
+                  onClick={() => rate(value)} disabled={isSubmitting}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-muted/30 text-muted-foreground transition-all hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+                  <Star className="h-5 w-5" />
+                </button>
+              ))}
             </div>
             <p className="text-center text-xs text-muted-foreground">{t('reviewPrompt.ratingHint')}</p>
           </div>
-        )}
-
-        {step === 'positive' && (
+        ) : (
           <div className="space-y-4">
             <p className="text-sm text-foreground/90">{copy.positiveText}</p>
-            <Button onClick={handlePositiveClick} className="w-full">
-              {copy.positiveCta}
+            <Button onClick={openGoogle} disabled={isSubmitting} className="w-full">{copy.positiveCta}</Button>
+            <Button variant="outline" onClick={() => setShowFeedback((value) => !value)} disabled={isSubmitting}
+              aria-expanded={showFeedback} aria-controls="review-private-feedback" className="w-full">
+              {t('reviewPrompt.privateFeedback')}
             </Button>
+            {showFeedback && <div id="review-private-feedback" className="space-y-3">
+              <p className="text-sm text-foreground/90">{copy.negativeText}</p>
+              <label htmlFor="review-feedback" className="text-sm text-muted-foreground">{t('reviewPrompt.privateFeedbackHint')}</label>
+              <Textarea id="review-feedback" value={feedback} onChange={(event) => setFeedback(event.target.value)}
+                maxLength={2000} disabled={isSubmitting} placeholder={t('reviewPrompt.feedbackPlaceholder')} className="min-h-[120px]" />
+              <p className="text-xs text-muted-foreground">{t('reviewPrompt.feedbackLength')}</p>
+              <Button onClick={submitFeedback} disabled={isSubmitting} className="w-full">{copy.negativeCta}</Button>
+            </div>}
           </div>
         )}
-
-        {step === 'negative' && (
-          <div className="space-y-4">
-            <p className="text-sm text-foreground/90">{copy.negativeText}</p>
-            <Textarea
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder={t('reviewPrompt.feedbackPlaceholder')}
-              className="min-h-[120px]"
-            />
-            <Button onClick={handleFeedback} className="w-full" disabled={isSubmitting}>
-              {copy.negativeCta}
-            </Button>
-          </div>
-        )}
-
-        <div className="flex items-center justify-center">
-          <Button variant="ghost" onClick={handleClose} disabled={isSubmitting}>
-            {copy.snoozeCta}
-          </Button>
-        </div>
+        <Button variant="ghost" onClick={close} disabled={isSubmitting}>{copy.snoozeCta}</Button>
       </DialogContent>
     </Dialog>
   );

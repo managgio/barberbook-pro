@@ -46,7 +46,11 @@ const AppointmentInvoiceActions: React.FC<AppointmentInvoiceActionsProps> = ({
     const invoice = await issueAppointmentInvoice(appointmentId);
     return {
       invoice,
-      result: await generateAppointmentInvoicePdf(invoice, language),
+      result: await generateAppointmentInvoicePdf(
+        invoice,
+        language,
+        tenant?.config?.theme?.mode === 'light' ? 'light' : 'dark',
+      ),
     };
   };
 

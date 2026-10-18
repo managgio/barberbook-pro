@@ -1,3 +1,5 @@
+import { WebsiteConfigStore } from '../../website/website-config.store';
+import { configRevision } from '../../website/config-revision';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -217,6 +219,7 @@ const resolveCountsByStatus = (statuses: HealthStatus[]) =>
 export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdminManagementPort {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly websiteConfig: WebsiteConfigStore,
     private readonly imageKit: ImageKitService,
     private readonly usageMetrics: UsageMetricsService,
     @Inject(ENGAGEMENT_SMS_GATEWAY_PORT)
@@ -622,7 +625,7 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
       where: { brandId },
       select: { data: true },
     });
-    return stripProviderOwnedMessagingConfig(config?.data);
+    return { ...stripProviderOwnedMessagingConfig(config?.data), _revision: configRevision(config?.data) };
   }
 
   async listBrandAdmins(brandId: string) {
@@ -816,11 +819,7 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
 
   async updateBrandConfig(brandId: string, data: Record<string, unknown>) {
     const payload = sanitizeThemeConfig(stripProviderOwnedMessagingConfig(data)) as Prisma.InputJsonValue;
-    return this.prisma.brandConfig.upsert({
-      where: { brandId },
-      update: { data: payload },
-      create: { brandId, data: payload },
-    });
+    return this.websiteConfig.savePlatform(brandId, null, payload as Record<string, unknown>);
   }
 
   async getLocationConfig(localId: string) {
@@ -828,16 +827,14 @@ export class PrismaImageKitPlatformAdminManagementAdapter implements PlatformAdm
       where: { localId },
       select: { data: true },
     });
-    return stripProviderOwnedMessagingConfig(config?.data);
+    return { ...stripProviderOwnedMessagingConfig(config?.data), _revision: configRevision(config?.data) };
   }
 
   async updateLocationConfig(localId: string, data: Record<string, unknown>) {
     const payload = sanitizeThemeConfig(stripProviderOwnedMessagingConfig(data)) as Prisma.InputJsonValue;
-    return this.prisma.locationConfig.upsert({
-      where: { localId },
-      update: { data: payload },
-      create: { localId, data: payload },
-    });
+    const location = await this.prisma.location.findUnique({ where: { id: localId }, select: { brandId: true } });
+    if (!location) throw new NotFoundException('WEBSITE_NOT_FOUND');
+    return this.websiteConfig.savePlatform(location.brandId, localId, payload as Record<string, unknown>);
   }
 
   async getUsageMetrics(windowDays: number) {

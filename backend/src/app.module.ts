@@ -1,8 +1,10 @@
+import { runtimeConfigModule } from './bootstrap/nest/config/runtime-config.module';
+import { GalleryModule } from './modules/gallery/gallery.module';
+import { LandingPublicationModule } from './modules/landing-publication/landing-publication.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminGlobalGuard } from './bootstrap/nest/guards/admin-global.guard';
 import { TenantContextMiddleware } from './bootstrap/nest/middleware/tenant-context.middleware';
-import { ConfigModule } from '@nestjs/config';
 import { AlsTenantContextAdapter } from './contexts/platform/infrastructure/adapters/als-tenant-context.adapter';
 import { TENANT_CONTEXT_PORT } from './contexts/platform/ports/outbound/tenant-context.port';
 import { PrismaModule } from './prisma/prisma.module';
@@ -37,11 +39,12 @@ import { ObservabilityModule } from './modules/observability/observability.modul
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { LocalizationModule } from './modules/localization/localization.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
+import { FaqsModule } from './modules/faqs/faqs.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    runtimeConfigModule,
     PrismaModule,
     TenancyModule,
     AuthModule,
@@ -75,6 +78,9 @@ import { InvoicesModule } from './modules/invoices/invoices.module';
     LocalizationModule,
     CommunicationsModule,
     InvoicesModule,
+    FaqsModule,
+    GalleryModule,
+    LandingPublicationModule,
   ],
   providers: [
     { provide: TENANT_CONTEXT_PORT, useClass: AlsTenantContextAdapter },

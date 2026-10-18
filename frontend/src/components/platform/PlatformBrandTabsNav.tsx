@@ -16,13 +16,14 @@ const PlatformBrandTabsNav: React.FC<PlatformBrandTabsNavProps> = ({ activeTab }
       className="scrollbar-none relative isolate flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto sm:grid sm:grid-cols-8 sm:justify-center sm:overflow-visible"
       indicatorKey={activeTab}
       indicatorTestId="platform-brand-tab-indicator"
+      indicatorClassName="-z-10 bg-background shadow-sm"
     >
       {PLATFORM_BRAND_TABS.map((tab, index) => (
         <TabsTrigger
           key={tab}
           value={tab}
           data-tab-index={index}
-          className="shrink-0"
+          className="shrink-0 data-[state=active]:text-foreground"
         >
           {PLATFORM_BRAND_TAB_LABELS[tab]}
         </TabsTrigger>

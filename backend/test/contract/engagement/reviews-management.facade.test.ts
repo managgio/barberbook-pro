@@ -108,7 +108,7 @@ test('review request facade delegates rate', async () => {
       calls.push({ id, rating });
       return { next: 'GOOGLE' };
     },
-  });
+  }, {} as any);
 
   await service.rate('rr-1', 5, { userId: 'user-1' });
 
@@ -132,4 +132,27 @@ test('review analytics facade delegates list feedback', async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].page, 2);
   assert.equal(calls[0].pageSize, 25);
+});
+
+test('client review prompts use the localized copy while admin edits preserve the source copy', async () => {
+  const config = await basePort().getConfig();
+  const port = { ...basePort(), getConfig: async () => structuredClone(config), getPendingReview: async () => ({
+    id: 'request-1', status: 'RATED', rating: 2, eligibleAt: new Date(), snoozeCount: 0,
+    googleReviewUrl: 'https://g.page/salon/review', copy: config.copyJson,
+  }) };
+  let translations = 0;
+  const localized = new ReviewConfigService(port, tenantContextPort as any, {
+    ...localizationService,
+    localizeCollection: async ({ items }: { items: typeof config[] }) => {
+      translations++;
+      items[0].copyJson.title = 'How was your visit?';
+      return { items, language: 'en' };
+    },
+  } as any);
+  assert.equal((await localized.getConfig(false)).copyJson.title, 't');
+  assert.equal(translations, 0);
+  const service = new ReviewRequestService(port, localized);
+  assert.equal((await service.getPendingReview({ userId: 'user-1' }))?.copy.title, 'How was your visit?');
+  assert.equal(translations, 1);
+  assert.equal((await localized.getConfig(false)).copyJson.title, 't');
 });

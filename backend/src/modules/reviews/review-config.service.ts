@@ -111,9 +111,9 @@ export class ReviewConfigService {
     };
   }
 
-  async getConfig(): Promise<ReviewConfigPayload> {
+  async getConfig(localized = true): Promise<ReviewConfigPayload> {
     const config = (await this.manageReviewsUseCase.getConfig()) as ReviewConfigPayload;
-    return this.localizeConfig(config);
+    return localized ? this.localizeConfig(config) : config;
   }
 
   getConfigRaw() {
@@ -141,6 +141,6 @@ export class ReviewConfigService {
         'copyJson.snoozeCta': updated.copyJson.snoozeCta,
       },
     });
-    return this.localizeConfig(updated);
+    return updated;
   }
 }

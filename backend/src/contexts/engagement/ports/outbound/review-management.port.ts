@@ -35,13 +35,18 @@ export type EngagementUpdateReviewConfigInput = Partial<
   copyJson?: Partial<EngagementReviewCopyPayload>;
 };
 
+export type EngagementReviewPending = {
+  id: string; status: string; rating: number | null; eligibleAt: Date; snoozeCount: number;
+  copy: EngagementReviewCopyPayload; googleReviewUrl: string | null;
+};
+
 export interface EngagementReviewManagementPort {
   isModuleEnabled(): Promise<boolean>;
   getConfig(): Promise<EngagementReviewConfigPayload>;
   getConfigRaw(): Promise<unknown>;
   updateConfig(data: EngagementUpdateReviewConfigInput): Promise<EngagementReviewConfigPayload>;
   handleAppointmentCompleted(appointmentId: string): Promise<unknown>;
-  getPendingReview(actor: EngagementReviewActor): Promise<unknown>;
+  getPendingReview(actor: EngagementReviewActor): Promise<EngagementReviewPending | null>;
   markShown(id: string, actor: EngagementReviewActor): Promise<unknown>;
   rate(id: string, rating: number, actor: EngagementReviewActor): Promise<unknown>;
   submitFeedback(id: string, text: string, actor: EngagementReviewActor): Promise<unknown>;

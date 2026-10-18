@@ -38,7 +38,7 @@ export type TenantAdminSidebarConfig = {
   visibleSections?: string[];
 };
 
-export type TenantLandingSectionKey = 'presentation' | 'services' | 'products' | 'barbers' | 'cta';
+export type TenantLandingSectionKey = 'presentation' | 'services' | 'products' | 'barbers' | 'faq' | 'gallery' | 'cta';
 
 export type TenantLandingPresentationSection = {
   enabled?: boolean;
@@ -69,6 +69,8 @@ export type TenantFeaturesConfig = {
   barberServiceAssignmentEnabled?: boolean;
   communicationsEnabled?: boolean;
   multiServiceBookingEnabled?: boolean;
+  faqEnabled?: boolean;
+  galleryEnabled?: boolean;
 };
 
 export type TenantInvoicingConfig = {

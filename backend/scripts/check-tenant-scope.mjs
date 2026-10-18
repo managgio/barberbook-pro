@@ -28,6 +28,10 @@ const LOCAL_SCOPED_MODELS = new Set([
   'service',
   'appointment',
   'alert',
+  'faq',
+  'landingPublication',
+  'galleryCategory',
+  'galleryItem',
   'generalHoliday',
   'barberHoliday',
   'shopSchedule',
@@ -56,6 +60,7 @@ const LOCAL_SCOPED_MODELS = new Set([
 
 const BRAND_SCOPED_MODELS = new Set([
   'brandConfig',
+  'websiteMediaDeletion',
   'brandLegalSettings',
   'brandUser',
   'providerUsageDaily',

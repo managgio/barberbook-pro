@@ -9,6 +9,9 @@ export type LocalizableEntityType =
   | 'loyalty_program'
   | 'subscription_plan'
   | 'barber'
+  | 'faq'
+  | 'gallery_item'
+  | 'gallery_category'
   | 'review_config';
 
 export type LocalizedFieldKey = string;
