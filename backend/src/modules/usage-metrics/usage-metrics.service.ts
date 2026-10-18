@@ -63,9 +63,10 @@ export class UsageMetricsService {
     });
   }
 
-  private recordMessagingUsage(params: MessagingUsageParams) {
+  private recordMessagingUsage(params: MessagingUsageParams & { channel: 'sms' | 'whatsapp' }) {
     return this.recordMessagingUsageUseCase.execute({
       context: this.tenantContextPort.getRequestContext(),
+      channel: params.channel,
       messages: params.messages,
       costUsd: params.costUsd,
       brandId: params.brandId,
@@ -74,12 +75,12 @@ export class UsageMetricsService {
 
   /** Provider-neutral entry point for SMS delivery. Storage remains backward-compatible. */
   recordSmsUsage(params: MessagingUsageParams) {
-    return this.recordMessagingUsage(params);
+    return this.recordMessagingUsage({ ...params, channel: 'sms' });
   }
 
   /** Provider-neutral entry point for WhatsApp delivery. Storage remains backward-compatible. */
   recordWhatsappUsage(params: MessagingUsageParams) {
-    return this.recordMessagingUsage(params);
+    return this.recordMessagingUsage({ ...params, channel: 'whatsapp' });
   }
 
   recordImageKitUsage(params: ImageKitUsageParams) {

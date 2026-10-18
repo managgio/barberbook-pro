@@ -13,6 +13,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { cn } from '@/lib/utils';
 import { isLocalDevelopmentHostname } from '@/components/platform/platformSmsTest';
+import { PlatformSmsTenantSpend } from '@/components/platform/PlatformSmsTenantSpend';
+import { PlatformMessagingTenantUsage } from '@/data/types';
 import {
   Bar,
   BarChart,
@@ -115,6 +117,7 @@ type PlatformBrandSummary = {
 };
 const EMPTY_BRANDS: PlatformBrandSummary[] = [];
 const EMPTY_USAGE_SERIES: PlatformUsageSeriesPoint[] = [];
+const EMPTY_MESSAGING_TENANT_USAGE: PlatformMessagingTenantUsage[] = [];
 const PlatformSmsTestPanel = import.meta.env.DEV
   ? lazy(() => import('@/components/platform/PlatformSmsTestPanel'))
   : null;
@@ -255,6 +258,10 @@ const PlatformDashboard: React.FC = () => {
   const messagingSeries = useMemo(
     () => usageMetrics?.messaging.series ?? EMPTY_USAGE_SERIES,
     [usageMetrics?.messaging.series],
+  );
+  const messagingTenantBreakdown = useMemo(
+    () => usageMetrics?.messaging.tenantBreakdown ?? EMPTY_MESSAGING_TENANT_USAGE,
+    [usageMetrics?.messaging.tenantBreakdown],
   );
   const imagekitSeries = useMemo(
     () => usageMetrics?.imagekit.series ?? EMPTY_USAGE_SERIES,
@@ -585,6 +592,14 @@ const PlatformDashboard: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          <PlatformSmsTenantSpend
+            items={messagingTenantBreakdown}
+            isLoading={isUsageLoading}
+            windowDays={usageRange}
+            displayCurrencyCode={displayCurrencyCode}
+            usdDisplayRate={USD_EUR_RATE}
+          />
 
           <Card className="border border-border/60 bg-card/70">
             <CardHeader className="space-y-2">

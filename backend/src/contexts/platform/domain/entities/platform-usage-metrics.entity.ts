@@ -9,6 +9,14 @@ export type ProviderDailySeriesPoint = {
   storageLimitBytes: number;
 };
 
+export type MessagingTenantUsageBreakdown = {
+  brandId: string;
+  brandName: string;
+  subdomain: string;
+  costUsd: number;
+  messagesCount: number;
+};
+
 export type PlatformUsageMetrics = {
   windowDays: number;
   range: { start: string; end: string };
@@ -18,6 +26,9 @@ export type PlatformUsageMetrics = {
     imagekitStorageBytes: number | null;
   };
   openai: { series: ProviderDailySeriesPoint[] };
-  messaging: { series: ProviderDailySeriesPoint[] };
+  messaging: {
+    series: ProviderDailySeriesPoint[];
+    tenantBreakdown: MessagingTenantUsageBreakdown[];
+  };
   imagekit: { series: ProviderDailySeriesPoint[] };
 };

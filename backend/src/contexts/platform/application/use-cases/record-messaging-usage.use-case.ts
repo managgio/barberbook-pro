@@ -6,6 +6,7 @@ export class RecordMessagingUsageUseCase {
 
   execute(command: RecordMessagingUsageCommand) {
     return this.usageMetricsPort.recordMessagingUsage({
+      channel: command.channel,
       messages: command.messages,
       costUsd: command.costUsd,
       brandId: command.brandId ?? command.context.brandId,

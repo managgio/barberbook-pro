@@ -1,10 +1,10 @@
 # PERF_BASELINE
 
-Generated at: 2026-10-17T17:59:27.013Z
+Generated at: 2026-10-18T10:46:48.880Z
 
 ## Build Summary
 
-- Entry JS: assets/index-BGzvUXJl.js (59227 B raw, 19669 B gzip)
+- Entry JS: assets/index-YS397MGR.js (59227 B raw, 19661 B gzip)
 - Entry CSS: assets/index-V8HcEthQ.css (110026 B raw, 18813 B gzip)
 - Total image bytes in dist/assets: 174740 B
 - Largest image in dist/assets: fondo-managgio-1440-O-XZe9xr.webp (60748 B)
@@ -54,8 +54,8 @@ Generated at: 2026-10-17T17:59:27.013Z
 
 | Area | Bytes |
 |---|---:|
-| pages | 1502694 |
-| components | 336519 |
+| pages | 1503358 |
+| components | 345075 |
 | lib | 109173 |
 | data | 71361 |
 | context | 38562 |
@@ -70,7 +70,7 @@ Generated at: 2026-10-17T17:59:27.013Z
 | Metric | Actual (bytes) | Max (bytes) | Pass |
 |---|---:|---:|:---:|
 | entryJsRawMaxBytes | 59227 | 330000 | yes |
-| entryJsGzipMaxBytes | 19669 | 80000 | yes |
+| entryJsGzipMaxBytes | 19661 | 80000 | yes |
 | entryCssRawMaxBytes | 110026 | 115000 | yes |
 | entryCssGzipMaxBytes | 18813 | 20000 | yes |
 | totalImageBytesMaxBytes | 174740 | 9000000 | yes |

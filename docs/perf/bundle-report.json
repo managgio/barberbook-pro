@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-10-17T17:59:27.013Z",
+  "generatedAt": "2026-10-18T10:46:48.880Z",
   "entry": {
     "js": {
-      "file": "assets/index-BGzvUXJl.js",
+      "file": "assets/index-YS397MGR.js",
       "rawBytes": 59227,
-      "gzipBytes": 19669
+      "gzipBytes": 19661
     },
     "css": {
       "file": "assets/index-V8HcEthQ.css",
@@ -203,13 +203,13 @@
     "topSourceAreasBySourceBytes": [
       {
         "name": "pages",
-        "bytes": 1502694,
-        "kb": 1467.47
+        "bytes": 1503358,
+        "kb": 1468.12
       },
       {
         "name": "components",
-        "bytes": 336519,
-        "kb": 328.63
+        "bytes": 345075,
+        "kb": 336.99
       },
       {
         "name": "lib",
@@ -260,7 +260,7 @@
       "pass": true
     },
     "entryJsGzipMaxBytes": {
-      "actualBytes": 19669,
+      "actualBytes": 19661,
       "maxBytes": 80000,
       "pass": true
     },

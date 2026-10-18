@@ -33,7 +33,7 @@ const basePort = (): PlatformAdminManagementPort => ({
       imagekitStorageBytes: null,
     },
     openai: { series: [] },
-    messaging: { series: [] },
+    messaging: { series: [], tenantBreakdown: [] },
     imagekit: { series: [] },
   }),
   refreshUsageMetrics: async () => ({
@@ -45,7 +45,7 @@ const basePort = (): PlatformAdminManagementPort => ({
       imagekitStorageBytes: null,
     },
     openai: { series: [] },
-    messaging: { series: [] },
+    messaging: { series: [], tenantBreakdown: [] },
     imagekit: { series: [] },
   }),
   getBrandHealth: async () => ({}),

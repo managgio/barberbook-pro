@@ -1501,6 +1501,14 @@ export interface PlatformUsageSeriesPoint {
   storageLimitBytes: number;
 }
 
+export interface PlatformMessagingTenantUsage {
+  brandId: string;
+  brandName: string;
+  subdomain: string;
+  costUsd: number;
+  messagesCount: number;
+}
+
 export interface PlatformUsageMetrics {
   windowDays: number;
   range: { start: string; end: string };
@@ -1510,7 +1518,10 @@ export interface PlatformUsageMetrics {
     imagekitStorageBytes: number | null;
   };
   openai: { series: PlatformUsageSeriesPoint[] };
-  messaging: { series: PlatformUsageSeriesPoint[] };
+  messaging: {
+    series: PlatformUsageSeriesPoint[];
+    tenantBreakdown: PlatformMessagingTenantUsage[];
+  };
   imagekit: { series: PlatformUsageSeriesPoint[] };
 }
 

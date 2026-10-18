@@ -78,11 +78,11 @@ export default function PlatformSmsTestPanel() {
   });
 
   return (
-    <Card className="overflow-hidden border border-primary/25 bg-gradient-to-br from-card via-card to-primary/[0.06]">
+    <Card className="overflow-hidden border border-border/60 bg-card/70 shadow-sm">
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground">
               <MessageSquareText className="h-4 w-4" aria-hidden="true" />
             </div>
             <CardTitle className="text-base">{t('platform.smsTest.title')}</CardTitle>
@@ -93,7 +93,7 @@ export default function PlatformSmsTestPanel() {
           {t('platform.smsTest.description')}
         </p>
       </CardHeader>
-      <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] lg:items-end">
+      <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] lg:items-start">
         <div className="space-y-2">
           <Label htmlFor="platform-sms-test-phone">{t('platform.smsTest.phone')}</Label>
           <Input
@@ -102,17 +102,20 @@ export default function PlatformSmsTestPanel() {
             inputMode="tel"
             autoComplete="off"
             maxLength={40}
+            className="h-12"
             placeholder="+34 600 000 000"
             value={phone}
             aria-invalid={phone.length > 0 && !phoneValid}
             aria-describedby={phone.length > 0 && !phoneValid ? 'platform-sms-test-phone-error' : undefined}
             onChange={(event) => setPhone(event.target.value)}
           />
-          {phone.length > 0 && !phoneValid && (
-            <p id="platform-sms-test-phone-error" role="alert" className="text-xs text-destructive">
-              {t('platform.smsTest.phoneInvalid')}
-            </p>
-          )}
+          <div className="min-h-5">
+            {phone.length > 0 && !phoneValid && (
+              <p id="platform-sms-test-phone-error" role="alert" className="text-xs leading-5 text-destructive">
+                {t('platform.smsTest.phoneInvalid')}
+              </p>
+            )}
+          </div>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
@@ -124,12 +127,12 @@ export default function PlatformSmsTestPanel() {
             maxLength={280}
             rows={2}
             value={message}
-            className="min-h-[42px] resize-y"
+            className="h-12 min-h-12 resize-none py-3"
             aria-invalid={!messageFitsSegmentLimit}
             aria-describedby="platform-sms-test-analysis"
             onChange={(event) => setMessage(event.target.value)}
           />
-          <div id="platform-sms-test-analysis" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+          <div id="platform-sms-test-analysis" className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
             <span className="text-muted-foreground">
               {t('platform.smsTest.expectedSender', { sender: 'MANAGGIO' })}
             </span>
@@ -153,7 +156,7 @@ export default function PlatformSmsTestPanel() {
         </div>
         <Button
           type="button"
-          className="w-full lg:w-auto"
+          className="h-12 w-full lg:mt-7 lg:w-auto"
           disabled={!phoneValid || messageLength === 0 || !messageFitsSegmentLimit || testMutation.isPending}
           onClick={() => testMutation.mutate()}
         >

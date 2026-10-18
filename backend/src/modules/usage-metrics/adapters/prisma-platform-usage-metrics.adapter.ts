@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, ProviderUsageType } from '@prisma/client';
+import { Prisma, ProviderUsageChannel, ProviderUsageType } from '@prisma/client';
 import { PlatformUsageMetrics, ProviderDailySeriesPoint } from '../../../contexts/platform/domain/entities/platform-usage-metrics.entity';
 import {
   PlatformImageKitUsageInput,
@@ -59,6 +59,8 @@ const toNumber = (value?: Prisma.Decimal | number | null) => {
 
 const OPENAI_ORG_CACHE_TTL_MS = 5 * 60 * 1000;
 const LEGACY_MESSAGING_USAGE_PROVIDER: ProviderUsageType = 'twilio';
+const GENERAL_USAGE_CHANNEL: ProviderUsageChannel = 'general';
+const SMS_USAGE_CHANNEL: ProviderUsageChannel = 'sms';
 
 @Injectable()
 export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPort {
@@ -94,6 +96,7 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     const dateKey = getDateStringInTimeZone(new Date(), AI_TIME_ZONE);
     await this.upsertUsage({
       provider: LEGACY_MESSAGING_USAGE_PROVIDER,
+      usageChannel: params.channel,
       brandId,
       dateKey,
       costUsd: params.costUsd ?? null,
@@ -150,19 +153,61 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     const normalizedWindow = [7, 14, 30].includes(windowDays) ? windowDays : 7;
     const { dateKeys, start, end } = this.buildDateRange(normalizedWindow);
 
-    const [openaiSeries, messagingRows, imagekitRows] = await Promise.all([
+    const [openaiSeries, messagingRows, messagingTenantRows, imagekitRows] = await Promise.all([
       this.getOpenAiOrganizationSeries(dateKeys, options?.forceOpenAi),
       this.prisma.providerUsageDaily.groupBy({
         by: ['dateKey'],
-        where: { provider: LEGACY_MESSAGING_USAGE_PROVIDER, dateKey: { in: dateKeys } },
+        where: {
+          provider: LEGACY_MESSAGING_USAGE_PROVIDER,
+          usageChannel: SMS_USAGE_CHANNEL,
+          dateKey: { in: dateKeys },
+        },
+        _sum: { costUsd: true, messagesCount: true },
+      }),
+      this.prisma.providerUsageDaily.groupBy({
+        by: ['brandId'],
+        where: {
+          provider: LEGACY_MESSAGING_USAGE_PROVIDER,
+          usageChannel: SMS_USAGE_CHANNEL,
+          dateKey: { in: dateKeys },
+        },
         _sum: { costUsd: true, messagesCount: true },
       }),
       this.prisma.providerUsageDaily.groupBy({
         by: ['dateKey'],
-        where: { provider: 'imagekit', dateKey: { in: dateKeys } },
+        where: {
+          provider: 'imagekit',
+          usageChannel: GENERAL_USAGE_CHANNEL,
+          dateKey: { in: dateKeys },
+        },
         _sum: { storageUsedBytes: true, storageLimitBytes: true },
       }),
     ]);
+
+    const tenantBrandIds = messagingTenantRows.map((row) => row.brandId);
+    const tenantBrands = tenantBrandIds.length
+      ? await this.prisma.brand.findMany({
+          where: { id: { in: tenantBrandIds } },
+          select: { id: true, name: true, subdomain: true },
+        })
+      : [];
+    const tenantBrandMap = new Map(tenantBrands.map((brand) => [brand.id, brand]));
+    const messagingTenantBreakdown = messagingTenantRows
+      .map((row) => {
+        const brand = tenantBrandMap.get(row.brandId);
+        return {
+          brandId: row.brandId,
+          brandName: brand?.name || row.brandId,
+          subdomain: brand?.subdomain || '',
+          costUsd: toNumber(row._sum.costUsd),
+          messagesCount: row._sum.messagesCount ?? 0,
+        };
+      })
+      .sort((left, right) => (
+        right.costUsd - left.costUsd
+        || right.messagesCount - left.messagesCount
+        || left.brandName.localeCompare(right.brandName)
+      ));
 
     const messagingMap = new Map(
       messagingRows.map((row) => [
@@ -228,7 +273,7 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
         imagekitStorageBytes: this.getImagekitStorageLimitBytes(),
       },
       openai: { series: openaiSeries },
-      messaging: { series: messagingSeries },
+      messaging: { series: messagingSeries, tenantBreakdown: messagingTenantBreakdown },
       imagekit: { series: imagekitSeries },
     };
   }
@@ -415,6 +460,7 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
 
   private async upsertUsage(params: {
     provider: ProviderUsageType;
+    usageChannel?: ProviderUsageChannel;
     brandId: string;
     dateKey: string;
     costUsd?: number | null;
@@ -425,6 +471,7 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     storageUsedBytes?: number;
     storageLimitBytes?: number | null;
   }) {
+    const usageChannel = params.usageChannel ?? GENERAL_USAGE_CHANNEL;
     const update: Prisma.ProviderUsageDailyUpdateInput = {};
     const costUsd = params.costUsd ?? 0;
     update.costUsd = { increment: new Prisma.Decimal(costUsd) };
@@ -445,6 +492,7 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
 
     const create: Prisma.ProviderUsageDailyCreateInput = {
       provider: params.provider,
+      usageChannel,
       dateKey: params.dateKey,
       brand: { connect: { id: params.brandId } },
       costUsd: new Prisma.Decimal(costUsd),
@@ -459,8 +507,9 @@ export class PrismaPlatformUsageMetricsAdapter implements PlatformUsageMetricsPo
     try {
       await this.prisma.providerUsageDaily.upsert({
         where: {
-          provider_brandId_dateKey: {
+          provider_usageChannel_brandId_dateKey: {
             provider: params.provider,
+            usageChannel,
             brandId: params.brandId,
             dateKey: params.dateKey,
           },

@@ -95,6 +95,7 @@ La limpieza diaria usa lock distribuido y lotes de 500, con un máximo acotado p
 - Todo SMS se valida antes del gateway: E.164 entre 8 y 15 dígitos, código de país iniciado entre 1 y 9 y un máximo de tres segmentos. La plantilla de recordatorio se normaliza a GSM-7 y se limita a dos segmentos; los comunicados no se transforman silenciosamente.
 - Si el proveedor todavía no devuelve precio, `TWILIO_SMS_COST_USD` se interpreta como coste por segmento y se multiplica por la segmentación calculada. WhatsApp usa su propio fallback `TWILIO_WHATSAPP_COST_USD`; nunca se imputa el coste SMS a otro canal.
 - El presupuesto operativo usa el nombre neutral `MESSAGING_DAILY_BUDGET_USD`; `TWILIO_DAILY_BUDGET_USD` solo se admite como compatibilidad legacy en el adapter de métricas.
+- Las métricas diarias conservan el canal (`sms` o `whatsapp`) junto al proveedor y al `brandId`. La gráfica SMS de Platform excluye WhatsApp y desglosa importe, volumen y porcentaje de gasto para cada tenant dentro del periodo seleccionado. Las filas históricas anteriores a esta separación permanecen como `general` y no se reasignan de forma especulativa a un canal.
 - WhatsApp conserva configuración global independiente y cruza su propio puerto, sin acoplar los casos de uso al SDK.
 - Stripe: pagos/webhooks con validación de firma, idempotencia y pruebas críticas.
 - ImageKit: almacenamiento/media mediante adapters.

@@ -35,7 +35,7 @@ const basePort = (): PlatformUsageMetricsPort => ({
       imagekitStorageBytes: null,
     },
     openai: { series: [] },
-    messaging: { series: [] },
+    messaging: { series: [], tenantBreakdown: [] },
     imagekit: { series: [] },
   }),
 });
@@ -71,6 +71,7 @@ test('record messaging usage keeps explicit brand override', async () => {
 
   await useCase.execute({
     context,
+    channel: 'sms',
     brandId: 'brand-override',
     messages: 2,
     costUsd: 0.4,
@@ -78,6 +79,7 @@ test('record messaging usage keeps explicit brand override', async () => {
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].brandId, 'brand-override');
+  assert.equal(calls[0].channel, 'sms');
   assert.equal(calls[0].messages, 2);
 });
 

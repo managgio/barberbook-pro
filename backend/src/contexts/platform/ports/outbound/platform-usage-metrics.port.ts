@@ -11,6 +11,7 @@ export type PlatformOpenAiUsageInput = {
 };
 
 export type PlatformMessagingUsageInput = {
+  channel: 'sms' | 'whatsapp';
   messages?: number;
   costUsd?: number | null;
   brandId: string;
