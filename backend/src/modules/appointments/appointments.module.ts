@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AnonymizeAppointmentUseCase } from '../../contexts/booking/application/use-cases/anonymize-appointment.use-case';
 import { CreateAppointmentUseCase } from '../../contexts/booking/application/use-cases/create-appointment.use-case';
+import { GetAvailableDaysUseCase } from '../../contexts/booking/application/use-cases/get-available-days.use-case';
 import { GetAvailabilityBatchUseCase } from '../../contexts/booking/application/use-cases/get-availability-batch.use-case';
 import { GetAvailabilityUseCase } from '../../contexts/booking/application/use-cases/get-availability.use-case';
 import { GetBookingDashboardSummaryUseCase } from '../../contexts/booking/application/use-cases/get-booking-dashboard-summary.use-case';
@@ -50,6 +51,7 @@ import {
 import {
   BOOKING_AVAILABILITY_READ_PORT,
   BookingAvailabilityReadPort,
+  BookingAvailabilityRangeReadPort,
 } from '../../contexts/booking/ports/outbound/booking-availability-read.port';
 import {
   BOOKING_DASHBOARD_READ_PORT,
@@ -277,6 +279,18 @@ import { DISTRIBUTED_LOCK_PORT, DistributedLockPort } from '../../shared/applica
         clockPort: ClockPort,
       ) => new GetBookingDashboardSummaryUseCase(bookingDashboardReadPort, clockPort),
       inject: [BOOKING_DASHBOARD_READ_PORT, CLOCK_PORT],
+    },
+    {
+      provide: GetAvailableDaysUseCase,
+      useFactory: (
+        availabilityReadPort: BookingAvailabilityRangeReadPort,
+        scheduleReadPort: SchedulePolicyReadPort,
+        holidayReadPort: HolidayReadPort,
+        barberReadPort: BarberEligibilityReadPort,
+        serviceReadPort: ServiceCatalogReadPort,
+        clock: ClockPort,
+      ) => new GetAvailableDaysUseCase(availabilityReadPort, scheduleReadPort, holidayReadPort, barberReadPort, serviceReadPort, clock),
+      inject: [BOOKING_AVAILABILITY_READ_PORT, SCHEDULE_POLICY_READ_PORT, HOLIDAY_READ_PORT, BARBER_ELIGIBILITY_READ_PORT, SERVICE_CATALOG_READ_PORT, CLOCK_PORT],
     },
     {
       provide: GetAvailabilityBatchUseCase,

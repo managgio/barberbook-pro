@@ -12,6 +12,19 @@ export type BookingClosureSlotRecord = {
   endDateTime: Date;
 };
 
+export type BookingAvailabilityRange = {
+  localId: string;
+  barberIds: string[];
+  dateFrom: string;
+  dateTo: string;
+  timezone: string;
+};
+
+export interface BookingAvailabilityRangeReadPort {
+  listAppointmentsForBarbersRange(params: BookingAvailabilityRange): Promise<BookingAppointmentSlotRecord[]>;
+  listClosuresForBarbersRange(params: BookingAvailabilityRange): Promise<BookingClosureSlotRecord[]>;
+}
+
 export interface BookingAvailabilityReadPort {
   listAppointmentsForBarberDay(params: {
     localId: string;

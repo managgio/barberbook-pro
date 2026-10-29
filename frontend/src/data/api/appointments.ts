@@ -177,6 +177,20 @@ export const getAvailableSlots = async (
     },
   });
 
+export const getAvailableDays = async (
+  dateFrom: string,
+  dateTo: string,
+  barberIds: string[],
+  serviceIds: string[],
+  signal?: AbortSignal,
+): Promise<string[]> => {
+  const response = await apiRequest<{ availableDays: string[] }>('/appointments/available-days', {
+    query: { dateFrom, dateTo, barberIds: barberIds.join(','), serviceIds: serviceIds.join(',') },
+    signal,
+  });
+  return response.availableDays;
+};
+
 export const getAvailableSlotsBatch = async (
   date: string,
   barberIds: string[],

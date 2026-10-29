@@ -43,6 +43,13 @@ export const queryKeys = {
       barberId || "none",
       barberIdsKey || "none",
     ] as const,
+  bookingAvailableDays: (
+    localId: string | null | undefined,
+    dateFrom: string,
+    dateTo: string,
+    serviceIdsKey: string,
+    barberIdsKey: string,
+  ) => ['booking-available-days', localId || 'default', dateFrom, dateTo, serviceIdsKey, barberIdsKey] as const,
   bookingWeeklyLoad: (
     localId: string | null | undefined,
     serviceId: string | null | undefined,

@@ -124,6 +124,27 @@ export class AppointmentsController {
     });
   }
 
+  @Get('available-days')
+  getAvailableDays(
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('barberIds') barberIds?: string,
+    @Query('serviceIds') serviceIds?: string,
+  ) {
+    if (!dateFrom || !dateTo) throw new BadRequestException('dateFrom y dateTo son obligatorios.');
+    this.assertRangeSize(dateFrom, dateTo, 'available-days');
+    const from = this.parseIsoDateOnly(dateFrom, 'dateFrom');
+    const to = this.parseIsoDateOnly(dateTo, 'dateTo');
+    if (from.toISOString().slice(0, 10) !== dateFrom || to.toISOString().slice(0, 10) !== dateTo
+      || (to.getTime() - from.getTime()) / 86_400_000 >= 42) {
+      throw new BadRequestException('Envía fechas válidas y un rango máximo de 42 días.');
+    }
+    const ids = this.parseBoundedIds(barberIds, 'barberIds');
+    const services = this.parseServiceIds(serviceIds);
+    if (!ids?.length || !services?.length) throw new BadRequestException('barberIds y serviceIds son obligatorios.');
+    return this.appointmentsFacade.getAvailableDays(dateFrom, dateTo, ids, services);
+  }
+
   @Get('weekly-load')
   getWeeklyLoad(
     @Query('dateFrom') dateFrom?: string,

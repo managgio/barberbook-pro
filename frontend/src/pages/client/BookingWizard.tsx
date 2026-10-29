@@ -35,7 +35,7 @@ import {
   CreditCard,
   BellRing,
 } from 'lucide-react';
-import { format, addDays, startOfDay, isSameDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth, isBefore, differenceInCalendarDays, isAfter } from 'date-fns';
+import { format, startOfDay, startOfMonth, startOfWeek, endOfWeek, differenceInCalendarDays, isAfter, isBefore } from 'date-fns';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -67,6 +67,8 @@ import {
   updateActiveCriticalTrace,
 } from '@/lib/criticalTrace';
 import { classifyBookingSubmitError } from '@/lib/bookingSubmitError';
+import BookingAvailabilityCalendar from './booking/BookingAvailabilityCalendar';
+import { useBookingAvailableDays } from './booking/useBookingAvailableDays';
 import StaffHorizontalScroller from './booking/StaffHorizontalScroller';
 import PublicServiceDescription from '@/components/services/PublicServiceDescription';
 import ReminderChannelSelector from './booking/ReminderChannelSelector';
@@ -438,20 +440,6 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     }
   }, [barbers, booking.barberId]);
 
-  const calendarDays = useMemo(() => {
-    const monthStart = startOfMonth(visibleMonth);
-    const monthEnd = endOfMonth(visibleMonth);
-    const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-    const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-    const days: Date[] = [];
-    let current = calendarStart;
-    while (current <= calendarEnd) {
-      days.push(current);
-      current = addDays(current, 1);
-    }
-    return days;
-  }, [visibleMonth]);
-
   const orderedCategories = useMemo(
     () =>
       [...serviceCategories].sort(
@@ -512,9 +500,19 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () => format(selectedDate, 'yyyy-MM-dd'),
     [selectedDate],
   );
+  const daysAvailability = useBookingAvailableDays({
+    localId: currentLocationId,
+    visibleMonth,
+    serviceIds: selectedServiceIds,
+    barberIds: shouldSelectBarberManually ? (booking.barberId ? [booking.barberId] : []) : availableBarberIds,
+    enabled: currentStep === 1,
+    isStaffLoading: barbersQuery.isFetching,
+  });
+  const selectedDayAvailable = daysAvailability.isReady && daysAvailability.availableDays.has(selectedDateKey);
   const slotsQueryEnabled =
     selectedServiceIds.length > 0 &&
     currentStep === 1 &&
+    selectedDayAvailable &&
     (!shouldSelectBarberManually || Boolean(booking.barberId));
   const slotsQuery = useQuery<BookingSlotsData>({
     queryKey: queryKeys.bookingSlots(
@@ -611,8 +609,8 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     },
   });
   const availableSlots = useMemo(
-    () => slotsQuery.data?.availableSlots ?? EMPTY_SLOTS,
-    [slotsQuery.data?.availableSlots],
+    () => selectedDayAvailable ? slotsQuery.data?.availableSlots ?? EMPTY_SLOTS : EMPTY_SLOTS,
+    [selectedDayAvailable, slotsQuery.data?.availableSlots],
   );
   const slotsByBarber = useMemo(
     () => slotsQuery.data?.slotsByBarber ?? EMPTY_SLOTS_BY_BARBER,
@@ -622,7 +620,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
     () => weeklyLoadQuery.data ?? EMPTY_WEEKLY_LOAD,
     [weeklyLoadQuery.data],
   );
-  const isSlotsLoading = slotsQuery.isFetching && slotsQueryEnabled;
+  const isSlotsLoading = daysAvailability.isLoading || (slotsQuery.isFetching && slotsQueryEnabled);
   const slotGroups = useMemo(() => {
     const morning: string[] = [];
     const afternoon: string[] = [];
@@ -982,7 +980,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
       case 0:
         return !!booking.serviceId;
       case 1:
-        return !!(booking.barberId && booking.dateTime);
+        return !!(selectedDayAvailable && booking.barberId && booking.dateTime);
       case 2:
         return isGuest
           ? guestInfo.name.trim().length > 0
@@ -1008,6 +1006,10 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
 
   const invalidatePostBookingData = useCallback(async () => {
     dispatchAppointmentsUpdated({ source: 'booking-wizard' });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['booking-available-days', currentLocationId || 'default'] }),
+      queryClient.invalidateQueries({ queryKey: ['booking-slots', currentLocationId || 'default'] }),
+    ]);
     if (!user?.id) return;
     await Promise.all([
       queryClient.invalidateQueries({
@@ -1218,7 +1220,7 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
           variant: 'destructive',
         });
         setBooking((prev) => ({ ...prev, dateTime: null }));
-        await slotsQuery.refetch();
+        await Promise.all([slotsQuery.refetch(), daysAvailability.refetch()]);
       } else if (submitErrorKind === 'staff_mismatch') {
         toast({
           title: t('bookingWizard.toast.staffUnavailableTitle', { staffSingular: copy.staff.singular }),
@@ -1654,91 +1656,26 @@ const BookingWizard: React.FC<BookingWizardProps> = ({ isGuest = false }) => {
                 <div className="min-w-0 max-w-full space-y-3 overflow-hidden rounded-2xl border border-border bg-muted/5 p-2.5 sm:space-y-5 sm:rounded-3xl sm:p-4">
                   {canPickSlots ? (
                     <>
-                      <div className="min-w-0 max-w-full space-y-2 sm:space-y-3">
-                        <div className="flex min-w-0 items-center justify-between gap-1">
-                          <p className="shrink-0 text-xs font-medium text-muted-foreground sm:text-sm">{t('bookingWizard.step1.selectDay')}</p>
-                          <div className="flex min-w-0 items-center gap-0.5 sm:gap-2">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 sm:h-8 sm:w-8"
-                              onClick={() => setVisibleMonth((prev) => subMonths(prev, 1))}
-                            >
-                              <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                            </Button>
-                            <span className="min-w-0 truncate text-xs font-semibold text-foreground capitalize sm:text-sm">
-                              {format(visibleMonth, 'MMMM yyyy', { locale: dateLocale })}
-                            </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 sm:h-8 sm:w-8"
-                              onClick={() => setVisibleMonth((prev) => addMonths(prev, 1))}
-                            >
-                              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="grid min-w-0 max-w-full grid-cols-7 gap-1 text-center text-[10px] font-medium text-muted-foreground sm:text-[11px]">
-                          {[
-                            t('bookingWizard.weekday.mondayShort'),
-                            t('bookingWizard.weekday.tuesdayShort'),
-                            t('bookingWizard.weekday.wednesdayShort'),
-                            t('bookingWizard.weekday.thursdayShort'),
-                            t('bookingWizard.weekday.fridayShort'),
-                            t('bookingWizard.weekday.saturdayShort'),
-                            t('bookingWizard.weekday.sundayShort'),
-                          ].map((day) => (
-                            <span key={day} className="min-w-0 truncate">{day}</span>
-                          ))}
-                        </div>
-                        <div className="grid min-w-0 max-w-full grid-cols-7 gap-1">
-                          {calendarDays.map((date) => {
-                            const isSelected = isSameDay(date, selectedDate);
-                            const isCurrentMonth = isSameMonth(date, visibleMonth);
-                            const isPast = isBefore(date, today);
-                            return (
-                              <button
-                                key={date.toISOString()}
-                                disabled={isPast}
-                                onClick={() => {
-                                  void reportCriticalTrace({
-                                    traceId: bookingTraceId,
-                                    path: window.location.pathname,
-                                    serviceId: booking.serviceId || undefined,
-                                    barberId: booking.barberId || undefined,
-                                    stage: 'date_selected',
-                                    level: 'info',
-                                    outcome: 'succeeded',
-                                    metadata: { date: format(date, 'yyyy-MM-dd') },
-                                  });
-                                  setSelectedDate(startOfDay(date));
-                                  setBooking((prev) => ({
-                                    ...prev,
-                                    dateTime: null,
-                                    barberId: shouldSelectBarberManually ? prev.barberId : null,
-                                  }));
-                                }}
-                                className={cn(
-                                  'flex min-h-[44px] min-w-0 max-w-full flex-col items-center justify-center overflow-hidden rounded-lg border px-0 py-1 text-center text-[11px] transition-all sm:min-h-[52px] sm:text-xs',
-                                  isSelected
-                                    ? 'bg-primary text-primary-foreground border-primary shadow-glow'
-                                    : isPast
-                                    ? 'bg-muted text-muted-foreground border-border/50 cursor-not-allowed opacity-60'
-                                    : 'bg-card border-border hover:border-primary/40',
-                                  !isCurrentMonth && 'opacity-50'
-                                )}
-                              >
-                                <span className="text-[10px] uppercase">{format(date, 'EEE', { locale: dateLocale })}</span>
-                                <span className="text-sm sm:text-base font-semibold leading-none mt-0.5">{format(date, 'd')}</span>
-                                <span className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">{format(date, 'MMM', { locale: dateLocale })}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      <BookingAvailabilityCalendar
+                        selectedDate={selectedDate}
+                        visibleMonth={visibleMonth}
+                        onMonthChange={setVisibleMonth}
+                        availability={daysAvailability}
+                        onSelectDate={(date) => {
+                          void reportCriticalTrace({
+                            traceId: bookingTraceId,
+                            path: window.location.pathname,
+                            serviceId: booking.serviceId || undefined,
+                            barberId: booking.barberId || undefined,
+                            stage: 'date_selected',
+                            level: 'info',
+                            outcome: 'succeeded',
+                            metadata: { date: format(date, 'yyyy-MM-dd') },
+                          });
+                          setSelectedDate(date);
+                          setBooking((prev) => ({ ...prev, dateTime: null, barberId: shouldSelectBarberManually ? prev.barberId : null }));
+                        }}
+                      />
 
                       <div className="min-w-0 max-w-full">
                         <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2 sm:mb-3">{t('bookingWizard.step1.availableTimes')}</p>

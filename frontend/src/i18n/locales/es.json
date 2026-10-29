@@ -1,4 +1,9 @@
 {
+  "bookingWizard.step1.loadingDays": "Cargando días disponibles...",
+  "bookingWizard.step1.daysError": "No se pudieron cargar los días disponibles.",
+  "bookingWizard.step1.noAvailableDays": "No hay días disponibles este mes.",
+  "bookingWizard.step1.previousMonth": "Mes anterior",
+  "bookingWizard.step1.nextMonth": "Mes siguiente",
   "admin.reviews.feedback.page": "Página {page} de {total}",
   "admin.reviews.feedback.next": "Siguiente",
   "admin.reviews.feedback.previous": "Anterior",

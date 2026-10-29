@@ -1,7 +1,5 @@
-import {
-  computeAvailableSlotsForBarber,
-  isDateBlockedByHolidayRanges,
-} from '../../domain/services/availability-engine';
+import { computeBarberDayAvailability } from '../../domain/services/barber-day-availability.policy';
+import { isDateBlockedByHolidayRanges } from '../../domain/services/availability-engine';
 import { normalizeDateRange } from '../../domain/value-objects/date-range';
 import { BarberEligibilityReadPort } from '../../ports/outbound/barber-eligibility-read.port';
 import { BookingAvailabilityReadPort } from '../../ports/outbound/booking-availability-read.port';
@@ -97,41 +95,19 @@ export class GetAvailabilityBatchUseCase {
     const response: Record<string, string[]> = {};
 
     normalizedBarberIds.forEach((barberId) => {
-      const barber = barberById.get(barberId);
-      if (!barber || barber.isActive === false) {
-        response[barberId] = [];
-        return;
-      }
-
-      if (serviceIds.length > 0 && !eligibleSet.has(barberId)) {
-        response[barberId] = [];
-        return;
-      }
-
-      const startDate = barber.startDate ? barber.startDate.toISOString().split('T')[0] : null;
-      const endDate = barber.endDate ? barber.endDate.toISOString().split('T')[0] : null;
-      if ((startDate && dateOnly < startDate) || (endDate && dateOnly > endDate)) {
-        response[barberId] = [];
-        return;
-      }
-
-      const barberHolidays = (barberHolidaysByBarberIdRaw[barberId] || []).map(normalizeDateRange);
-      if (isDateBlockedByHolidayRanges(dateOnly, barberHolidays)) {
-        response[barberId] = [];
-        return;
-      }
-
-      const barberSchedule = barberSchedules[barberId] || shopSchedule;
       const barberAppointments = appointmentsByBarberId.get(barberId) || [];
       const barberClosures = closures.filter(
         (closure) => closure.barberId === null || closure.barberId === barberId,
       );
 
-      response[barberId] = computeAvailableSlotsForBarber({
+      response[barberId] = computeBarberDayAvailability({
         dateOnly,
         timezone: query.context.timezone,
-        barberId,
-        barberSchedule,
+        barber: barberById.get(barberId),
+        eligible: eligibleSet.has(barberId),
+        generalHolidays,
+        barberHolidays: (barberHolidaysByBarberIdRaw[barberId] || []).map(normalizeDateRange),
+        barberSchedule: barberSchedules[barberId],
         shopSchedule,
         appointments: barberAppointments,
         closures: barberClosures,

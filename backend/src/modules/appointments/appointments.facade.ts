@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { GetAvailabilityUseCase } from '../../contexts/booking/application/use-cases/get-availability.use-case';
 import { GetAvailabilityBatchUseCase } from '../../contexts/booking/application/use-cases/get-availability-batch.use-case';
+import { GetAvailableDaysUseCase } from '../../contexts/booking/application/use-cases/get-available-days.use-case';
 import { GetWeeklyLoadUseCase } from '../../contexts/booking/application/use-cases/get-weekly-load.use-case';
 import { GetBookingDashboardSummaryUseCase } from '../../contexts/booking/application/use-cases/get-booking-dashboard-summary.use-case';
 import { SendAppointmentPaymentConfirmationUseCase } from '../../contexts/booking/application/use-cases/send-appointment-payment-confirmation.use-case';
@@ -25,6 +26,7 @@ export class AppointmentsFacade {
   constructor(
     private readonly getAvailabilityUseCase: GetAvailabilityUseCase,
     private readonly getAvailabilityBatchUseCase: GetAvailabilityBatchUseCase,
+    private readonly getAvailableDaysUseCase: GetAvailableDaysUseCase,
     private readonly getWeeklyLoadUseCase: GetWeeklyLoadUseCase,
     private readonly getBookingDashboardSummaryUseCase: GetBookingDashboardSummaryUseCase,
     private readonly sendAppointmentPaymentConfirmationUseCase: SendAppointmentPaymentConfirmationUseCase,
@@ -137,6 +139,27 @@ export class AppointmentsFacade {
       return response;
     } catch (error) {
       this.logUseCaseTiming('booking.availability.batch.read', Date.now() - startedAt, 'error');
+      throw error;
+    }
+  }
+
+  async getAvailableDays(dateFrom: string, dateTo: string, barberIds: string[], serviceIds: string[]) {
+    const startedAt = Date.now();
+    try {
+      const settings = await this.settingsService.getSettings();
+      await this.assertMultiServiceEnabled(serviceIds, settings.appointments?.multiServiceEnabled === true);
+      const availableDays = await this.getAvailableDaysUseCase.execute({
+        context: this.tenantContextPort.getRequestContext(),
+        dateFrom,
+        dateTo,
+        barberIds,
+        serviceIds,
+        slotIntervalMinutes: this.resolveSlotIntervalMinutes(settings.appointments?.slotIntervalMinutes),
+      });
+      this.logUseCaseTiming('booking.available-days.read', Date.now() - startedAt, 'ok');
+      return { availableDays };
+    } catch (error) {
+      this.logUseCaseTiming('booking.available-days.read', Date.now() - startedAt, 'error');
       throw error;
     }
   }

@@ -4,12 +4,46 @@ import { APP_TIMEZONE, endOfDayInTimeZone, startOfDayInTimeZone } from '../../..
 import {
   BookingAppointmentSlotRecord,
   BookingAvailabilityReadPort,
+  BookingAvailabilityRange,
+  BookingAvailabilityRangeReadPort,
   BookingClosureSlotRecord,
 } from '../../ports/outbound/booking-availability-read.port';
 
 @Injectable()
-export class PrismaBookingAvailabilityReadAdapter implements BookingAvailabilityReadPort {
+export class PrismaBookingAvailabilityReadAdapter implements BookingAvailabilityReadPort, BookingAvailabilityRangeReadPort {
   constructor(private readonly prisma: PrismaService) {}
+
+  async listAppointmentsForBarbersRange(params: BookingAvailabilityRange): Promise<BookingAppointmentSlotRecord[]> {
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        localId: params.localId,
+        barberId: { in: params.barberIds },
+        status: { not: 'cancelled' },
+        startDateTime: {
+          gte: startOfDayInTimeZone(params.dateFrom, params.timezone),
+          lte: endOfDayInTimeZone(params.dateTo, params.timezone),
+        },
+      },
+      select: { barberId: true, startDateTime: true, totalDurationMinutes: true, service: { select: { duration: true } } },
+    });
+    return appointments.map((appointment) => ({
+      barberId: appointment.barberId,
+      startDateTime: appointment.startDateTime,
+      serviceDurationMinutes: appointment.totalDurationMinutes ?? appointment.service?.duration,
+    }));
+  }
+
+  async listClosuresForBarbersRange(params: BookingAvailabilityRange): Promise<BookingClosureSlotRecord[]> {
+    return this.prisma.bookingClosure.findMany({
+      where: {
+        localId: params.localId,
+        OR: [{ barberId: null }, { barberId: { in: params.barberIds } }],
+        startDateTime: { lte: endOfDayInTimeZone(params.dateTo, params.timezone) },
+        endDateTime: { gt: startOfDayInTimeZone(params.dateFrom, params.timezone) },
+      },
+      select: { barberId: true, startDateTime: true, endDateTime: true },
+    });
+  }
 
   async listAppointmentsForBarberDay(params: {
     localId: string;
