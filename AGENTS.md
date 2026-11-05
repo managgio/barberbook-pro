@@ -14,6 +14,7 @@ Este archivo es el punto de entrada obligatorio para cualquier agente o persona 
 | NestJS, casos de uso, puertos o adapters | [Backend](docs/architecture/BACKEND.md) |
 | Tenant, auth, permisos o Prisma con datos de negocio | [Tenancy y seguridad](docs/architecture/TENANCY_AND_SECURITY.md) |
 | React, rutas, estado, React Query o i18n | [Frontend](docs/architecture/FRONTEND.md) |
+| Cualquier desarrollo nuevo o modificación de UI | [UX/UI: estándar obligatorio de interacción directa](docs/architecture/UX_UI.md) |
 | Citas, disponibilidad, festivos, comunicados o avisos | [Booking y engagement](docs/architecture/BOOKING_AND_ENGAGEMENT.md) |
 | Prisma, migraciones, SMTP, Twilio, Firebase, Stripe o ImageKit | [Datos e integraciones](docs/architecture/DATA_AND_INTEGRATIONS.md) |
 | Tests, rendimiento, Definition of Done o documentación | [Estándares de ingeniería](docs/ENGINEERING_STANDARDS.md) |

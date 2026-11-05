@@ -54,7 +54,7 @@ Durante desarrollo usa `npm run test:advisor -- --phase=dev` y `npm run test:cha
 - [ ] Migración e índices incluidos si cambia el modelo.
 - [ ] Casos felices, bordes y regresiones cubiertos.
 - [ ] Typecheck, tests afectados, build y gates de arquitectura/tenant en verde.
-- [ ] UI con carga/error/vacío, accesibilidad e i18n cuando aplica.
+- [ ] Todo desarrollo nuevo o modificación de UI cumple el [criterio de aceptación de UX/UI](architecture/UX_UI.md#criterio-de-aceptación), con evidencias automáticas y revisión humana; i18n comprobada cuando aplica.
 - [ ] Logs/errores sin secretos ni PII.
 - [ ] Documentación temática actualizada.
 - [ ] Diff revisado sin cambios laterales ni archivos generados accidentales.

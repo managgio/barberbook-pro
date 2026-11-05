@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,25 +6,27 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_SITE_SETTINGS } from '@/data/salonInfo';
-import { AdminStripeConfig, BreakRange, DayKey, InvoiceLegalSettings, ShopSchedule, SiteSettings } from '@/data/types';
+import { AdminStripeConfig, InvoiceLegalSettings, ShopSchedule, SiteSettings } from '@/data/types';
 import { getShopSchedule, updateShopSchedule } from '@/data/api/schedules';
 import { updateSiteSettings } from '@/data/api/settings';
 import { getAdminInvoiceLegalSettings, updateAdminInvoiceLegalSettings } from '@/data/api/legal';
 import { createAdminStripeConnect, getAdminStripeConfig, updateAdminStripeConfig } from '@/data/api/payments';
 import { useToast } from '@/hooks/use-toast';
-import { composePhone, normalizePhoneParts } from '@/lib/siteSettings';
+import { buildSettingsSectionPayload, settingsWithDraftPhone, SETTINGS_PHONE_PREFIX as PHONE_PREFIX } from '@/lib/settingsSections';
 import { useTenant } from '@/context/TenantContext';
 import { dispatchSchedulesUpdated, dispatchSiteSettingsUpdated } from '@/lib/adminEvents';
 import { useBusinessCopy } from '@/lib/businessCopy';
 import { fetchSiteSettingsCached } from '@/lib/siteSettingsQuery';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { isApiRequestError } from '@/lib/networkErrors';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useI18n } from '@/hooks/useI18n';
-import { mergeShopScheduleAvailability } from '@/lib/shopSchedule';
 import InlineTranslationPopover from '@/components/admin/InlineTranslationPopover';
 import ExtraordinaryOpeningsSettings from '@/components/admin/settings/ExtraordinaryOpeningsSettings';
+import AgendaSettings from '@/components/admin/settings/AgendaSettings';
+import { useGeneralSettingsDraft } from '@/components/admin/settings/useGeneralSettingsDraft';
 import {
   Loader2,
   MapPin,
@@ -36,8 +38,6 @@ import {
   Repeat,
   Settings,
   Clock,
-  Plus,
-  Trash2,
   Instagram,
   Music2,
   Youtube,
@@ -49,17 +49,10 @@ import {
 } from 'lucide-react';
 
 
-const DAY_KEYS: DayKey[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-
-const SHIFT_KEYS = ['morning', 'afternoon'] as const;
-type ShiftKey = (typeof SHIFT_KEYS)[number];
 type SettingsTab = 'identity' | 'operations' | 'availability' | 'extraordinary-openings';
 
-const cloneSettings = (data: SiteSettings): SiteSettings => JSON.parse(JSON.stringify(data));
-const DEFAULT_BREAK_RANGE: BreakRange = { start: '13:30', end: '14:00' };
 const SETTINGS_TAB_STORAGE_KEY = 'admin-settings-active-tab';
 const SETTINGS_TABS: SettingsTab[] = ['identity', 'operations', 'availability', 'extraordinary-openings'];
-const PHONE_PREFIX = '+34';
 
 const AdminSettings: React.FC = () => {
   const XBrandIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -76,16 +69,20 @@ const AdminSettings: React.FC = () => {
 
   const { toast } = useToast();
   const { tenant, currentLocationId } = useTenant();
+  const currentLocationRef = useRef({ localId: currentLocationId });
+  if (currentLocationRef.current.localId !== currentLocationId) {
+    currentLocationRef.current = { localId: currentLocationId };
+  }
   const copy = useBusinessCopy();
   const { t, language } = useI18n();
   const productsModuleEnabled = !tenant?.config?.adminSidebar?.hiddenSections?.includes('stock');
   const invoicingEnabled = tenant?.config?.invoicing?.enabled === true;
   const multiServiceCapabilityEnabled = tenant?.config?.features?.multiServiceBookingEnabled === true;
-  const [settings, setSettings] = useState<SiteSettings>(() => cloneSettings(DEFAULT_SITE_SETTINGS));
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [shopSchedule, setShopSchedule] = useState<ShopSchedule | null>(null);
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
+  const [agendaActionsContainer, setAgendaActionsContainer] = useState<HTMLDivElement | null>(null);
   const [isStripeSaving, setIsStripeSaving] = useState(false);
   const [isStripeConnecting, setIsStripeConnecting] = useState(false);
   const [isSavingInvoiceLegal, setIsSavingInvoiceLegal] = useState(false);
@@ -97,17 +94,11 @@ const AdminSettings: React.FC = () => {
     legalContactPhone: '',
     country: 'ES',
   });
-  const [newOverflowDate, setNewOverflowDate] = useState('');
-  const [newBreakDate, setNewBreakDate] = useState('');
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
     if (typeof window === 'undefined') return 'identity';
     const saved = window.sessionStorage.getItem(SETTINGS_TAB_STORAGE_KEY);
     return SETTINGS_TABS.includes(saved as SettingsTab) ? (saved as SettingsTab) : 'identity';
   });
-  const [{ number: phoneNumber }, setPhoneParts] = useState(() => ({
-    prefix: PHONE_PREFIX,
-    number: normalizePhoneParts(DEFAULT_SITE_SETTINGS.contact.phone).number,
-  }));
   const settingsQuery = useQuery({
     queryKey: queryKeys.siteSettings(currentLocationId),
     enabled: Boolean(currentLocationId),
@@ -128,24 +119,23 @@ const AdminSettings: React.FC = () => {
     enabled: Boolean(currentLocationId && invoicingEnabled),
     queryFn: getAdminInvoiceLegalSettings,
   });
+  const { settings, baseline, phoneNumber, setSettings, setPhoneNumber, acceptSaved } =
+    useGeneralSettingsDraft(currentLocationRef.current, settingsQuery.data);
   const isLoading = settingsQuery.isLoading;
   const isScheduleLoading = scheduleQuery.isLoading;
   const isStripeLoading = stripeConfigQuery.isLoading;
   const stripeConfig = stripeConfigQuery.data ?? null;
 
   useEffect(() => {
-    if (!settingsQuery.data) return;
-    setSettings(cloneSettings(settingsQuery.data));
-    setPhoneParts({
-      prefix: PHONE_PREFIX,
-      number: normalizePhoneParts(settingsQuery.data.contact.phone).number,
-    });
-  }, [settingsQuery.data]);
-
-  useEffect(() => {
     if (!scheduleQuery.data) return;
     setShopSchedule(scheduleQuery.data);
   }, [scheduleQuery.data]);
+
+  useEffect(() => {
+    setIsSaving(false);
+    setIsSavingAvailability(false);
+    setIsSavingSchedule(false);
+  }, [currentLocationId]);
 
   useEffect(() => {
     if (!invoiceLegalQuery.data) return;
@@ -184,41 +174,28 @@ const AdminSettings: React.FC = () => {
     window.sessionStorage.setItem(SETTINGS_TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
 
-  const buildSettingsPayload = (nextSettings: SiteSettings) => {
-    const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
-    const phone = cleanPhoneNumber ? composePhone(PHONE_PREFIX, cleanPhoneNumber) : '';
-    const payload: SiteSettings = {
-      ...nextSettings,
-      contact: { ...nextSettings.contact, phone },
-      socials: { ...nextSettings.socials },
-    };
-    Object.entries(payload.socials).forEach(([key, value]) => {
-      payload.socials[key as keyof SiteSettings['socials']] = value?.trim() || '';
-    });
-    return payload;
-  };
-
   const handleSave = async () => {
+    if ((activeTab !== 'identity' && activeTab !== 'operations') || isSaving || !settingsQuery.data) return;
+    const savingScope = currentLocationRef.current;
+    const savingLocalId = currentLocationId;
+    const payload = buildSettingsSectionPayload(baseline, settingsWithDraftPhone(settings, phoneNumber), activeTab);
     setIsSaving(true);
     try {
-      const payload = buildSettingsPayload(settings);
-      const previousSlotInterval = settingsQuery.data?.appointments?.slotIntervalMinutes ?? 15;
+      const previousSlotInterval = baseline.appointments?.slotIntervalMinutes ?? 15;
       const updated = await updateSiteSettings(payload);
-      setSettings(updated);
-      setPhoneParts({
-        prefix: PHONE_PREFIX,
-        number: normalizePhoneParts(updated.contact.phone).number,
-      });
+      if (currentLocationRef.current !== savingScope) return;
+      acceptSaved(updated, payload);
       dispatchSiteSettingsUpdated(updated);
       const nextSlotInterval = updated.appointments?.slotIntervalMinutes ?? 15;
       if (previousSlotInterval !== nextSlotInterval) {
-        dispatchSchedulesUpdated({ source: 'admin-settings' });
+        dispatchSchedulesUpdated({ source: 'admin-settings', localId: savingLocalId });
       }
       toast({
         title: t('admin.settings.toast.updatedTitle'),
         description: t('admin.settings.toast.updatedDescription'),
       });
     } catch (error) {
+      if (currentLocationRef.current !== savingScope) return;
       const message = error instanceof Error ? error.message : t('admin.settings.toast.genericSaveError');
       toast({
         title: t('admin.settings.toast.saveErrorTitle'),
@@ -226,37 +203,7 @@ const AdminSettings: React.FC = () => {
         variant: 'destructive',
       });
     } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const saveProductsPreference = async (nextProducts: SiteSettings['products']) => {
-    if (isLoading || isSaving || isSavingSchedule) return;
-    const nextSettings = { ...settings, products: nextProducts };
-    setSettings(nextSettings);
-    setIsSaving(true);
-    try {
-      const payload = buildSettingsPayload(nextSettings);
-      const updated = await updateSiteSettings(payload);
-      setSettings(updated);
-      setPhoneParts({
-        prefix: PHONE_PREFIX,
-        number: normalizePhoneParts(updated.contact.phone).number,
-      });
-      dispatchSiteSettingsUpdated(updated);
-      toast({
-        title: t('admin.settings.toast.preferencesUpdatedTitle'),
-        description: t('admin.settings.toast.updatedDescription'),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t('admin.settings.toast.genericSaveError');
-      toast({
-        title: t('admin.settings.toast.saveErrorTitle'),
-        description: message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSaving(false);
+      if (currentLocationRef.current === savingScope) setIsSaving(false);
     }
   };
 
@@ -385,246 +332,42 @@ const AdminSettings: React.FC = () => {
     }));
   };
 
-  const ensureBreaksRecord = (current?: Record<DayKey, BreakRange[]>) =>
-    DAY_KEYS.reduce((acc, key) => {
-      acc[key] = current?.[key] ? [...current[key]] : [];
-      return acc;
-    }, {} as Record<DayKey, BreakRange[]>);
-
-  const ensureEndOverflowByDayRecord = (current?: Partial<Record<DayKey, number>>) =>
-    DAY_KEYS.reduce((acc, key) => {
-      const value = current?.[key];
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        acc[key] = Math.max(0, Math.floor(value));
-      }
-      return acc;
-    }, {} as Partial<Record<DayKey, number>>);
-
-  const ensureEndOverflowByDateRecord = (current?: Record<string, number>) => {
-    if (!current || typeof current !== 'object') return {};
-    return Object.entries(current).reduce((acc, [dateKey, value]) => {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return acc;
-      if (typeof value !== 'number' || !Number.isFinite(value)) return acc;
-      acc[dateKey] = Math.max(0, Math.floor(value));
-      return acc;
-    }, {} as Record<string, number>);
-  };
-
-  const ensureBreaksByDateRecord = (current?: Record<string, BreakRange[]>) => {
-    if (!current || typeof current !== 'object') return {};
-    return Object.entries(current).reduce((acc, [dateKey, ranges]) => {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !Array.isArray(ranges)) return acc;
-      acc[dateKey] = ranges.map((range) => ({ ...range }));
-      return acc;
-    }, {} as Record<string, BreakRange[]>);
-  };
-
-  const handleBufferMinutesChange = (value: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      if (value.trim() === '') {
-        return { ...prev, bufferMinutes: undefined };
-      }
-      const parsed = Math.max(0, Math.floor(Number(value)));
-      return { ...prev, bufferMinutes: Number.isFinite(parsed) ? parsed : prev.bufferMinutes };
-    });
-  };
-
-  const handleEndOverflowMinutesChange = (value: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      if (value.trim() === '') {
-        return { ...prev, endOverflowMinutes: undefined };
-      }
-      const parsed = Math.max(0, Math.floor(Number(value)));
-      return { ...prev, endOverflowMinutes: Number.isFinite(parsed) ? parsed : prev.endOverflowMinutes };
-    });
-  };
-
-  const handleEndOverflowByDayChange = (day: DayKey, value: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const nextByDay = ensureEndOverflowByDayRecord(prev.endOverflowByDay);
-      if (value.trim() === '') {
-        delete nextByDay[day];
-      } else {
-        const parsed = Math.max(0, Math.floor(Number(value)));
-        if (Number.isFinite(parsed)) {
-          nextByDay[day] = parsed;
-        }
-      }
-      return { ...prev, endOverflowByDay: nextByDay };
-    });
-  };
-
-  const handleAddEndOverflowDate = (dateKey: string) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const nextByDate = ensureEndOverflowByDateRecord(prev.endOverflowByDate);
-      if (nextByDate[dateKey] !== undefined) return prev;
-      nextByDate[dateKey] = Math.max(0, Math.floor(prev.endOverflowMinutes ?? 0));
-      return { ...prev, endOverflowByDate: nextByDate };
-    });
-  };
-
-  const handleEndOverflowByDateChange = (dateKey: string, value: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const nextByDate = ensureEndOverflowByDateRecord(prev.endOverflowByDate);
-      if (value.trim() === '') {
-        delete nextByDate[dateKey];
-      } else {
-        const parsed = Math.max(0, Math.floor(Number(value)));
-        if (Number.isFinite(parsed)) {
-          nextByDate[dateKey] = parsed;
-        }
-      }
-      return { ...prev, endOverflowByDate: nextByDate };
-    });
-  };
-
-  const handleRemoveEndOverflowDate = (dateKey: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const nextByDate = ensureEndOverflowByDateRecord(prev.endOverflowByDate);
-      if (nextByDate[dateKey] === undefined) return prev;
-      delete nextByDate[dateKey];
-      return { ...prev, endOverflowByDate: nextByDate };
-    });
-  };
-
-  const handleAddBreak = (day: DayKey) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaks = ensureBreaksRecord(prev.breaks);
-      const newRange = { ...DEFAULT_BREAK_RANGE };
-      breaks[day] = [...breaks[day], { ...newRange }];
-      return { ...prev, breaks };
-    });
-  };
-
-  const handleCopyBreaksToAll = (day: DayKey) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaks = ensureBreaksRecord(prev.breaks);
-      const source = breaks[day].map((range) => ({ ...range }));
-      DAY_KEYS.forEach((key) => {
-        breaks[key] = [...breaks[key], ...source.map((range) => ({ ...range }))];
-      });
-      return { ...prev, breaks };
-    });
-  };
-
-  const handleUpdateBreak = (day: DayKey, index: number, field: 'start' | 'end', value: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaks = ensureBreaksRecord(prev.breaks);
-      breaks[day] = breaks[day].map((range, idx) => (idx === index ? { ...range, [field]: value } : range));
-      return { ...prev, breaks };
-    });
-  };
-
-  const handleRemoveBreak = (day: DayKey, index: number) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaks = ensureBreaksRecord(prev.breaks);
-      breaks[day] = breaks[day].filter((_, idx) => idx !== index);
-      return { ...prev, breaks };
-    });
-  };
-
-  const handleAddBreakDate = (dateKey: string) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
-      if (!breaksByDate[dateKey]) {
-        breaksByDate[dateKey] = [];
-      }
-      return { ...prev, breaksByDate };
-    });
-  };
-
-  const handleAddBreakForDate = (dateKey: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
-      const current = breaksByDate[dateKey] ?? [];
-      breaksByDate[dateKey] = [...current, { ...DEFAULT_BREAK_RANGE }];
-      return { ...prev, breaksByDate };
-    });
-  };
-
-  const handleUpdateBreakByDate = (dateKey: string, index: number, field: 'start' | 'end', value: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
-      const current = breaksByDate[dateKey] ?? [];
-      breaksByDate[dateKey] = current.map((range, idx) => (idx === index ? { ...range, [field]: value } : range));
-      return { ...prev, breaksByDate };
-    });
-  };
-
-  const handleRemoveBreakByDate = (dateKey: string, index: number) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
-      const current = breaksByDate[dateKey] ?? [];
-      breaksByDate[dateKey] = current.filter((_, idx) => idx !== index);
-      return { ...prev, breaksByDate };
-    });
-  };
-
-  const handleRemoveBreakDate = (dateKey: string) => {
-    setShopSchedule((prev) => {
-      if (!prev) return prev;
-      const breaksByDate = ensureBreaksByDateRecord(prev.breaksByDate);
-      delete breaksByDate[dateKey];
-      return { ...prev, breaksByDate };
-    });
-  };
-
-  const handleSaveAvailabilityAndSchedule = async () => {
-    if (!shopSchedule || isSavingAvailability || isSavingSchedule) return;
+  const handleSaveAvailabilityAndSchedule = async (schedulePayload: ShopSchedule): Promise<ShopSchedule> => {
+    if (isSavingAvailability || isSavingSchedule) throw new Error(t('admin.settings.agenda.saving'));
+    const savingLocalId = currentLocationId;
+    const savingScope = currentLocationRef.current;
     setIsSavingAvailability(true);
     setIsSavingSchedule(true);
     try {
-      const schedulePayload = mergeShopScheduleAvailability(shopSchedule, settings.openingHours);
       const updatedSchedule = await updateShopSchedule(schedulePayload);
-      const updatedSettings = { ...settings, openingHours: updatedSchedule };
+      if (currentLocationRef.current !== savingScope) return updatedSchedule;
+      const updatedSettings = { ...baseline, openingHours: updatedSchedule };
       setShopSchedule(updatedSchedule);
-      setSettings(updatedSettings);
-      setPhoneParts({
-        prefix: PHONE_PREFIX,
-        number: normalizePhoneParts(updatedSettings.contact.phone).number,
-      });
+      acceptSaved(updatedSettings, baseline);
       await scheduleQuery.refetch();
-      dispatchSchedulesUpdated({ source: 'admin-settings' });
+      if (currentLocationRef.current !== savingScope) return updatedSchedule;
+      dispatchSchedulesUpdated({ source: 'admin-settings', localId: savingLocalId });
       dispatchSiteSettingsUpdated(updatedSettings);
       toast({
         title: t('admin.settings.toast.scheduleUpdatedTitle'),
         description: t('admin.settings.toast.scheduleUpdatedDescription'),
       });
+      return updatedSchedule;
     } catch (error) {
+      if (currentLocationRef.current !== savingScope) throw error;
       const message = error instanceof Error ? error.message : t('admin.settings.toast.genericSaveError');
       toast({
         title: t('admin.settings.toast.saveErrorTitle'),
         description: message,
         variant: 'destructive',
       });
+      throw error;
     } finally {
-      setIsSavingAvailability(false);
-      setIsSavingSchedule(false);
+      if (currentLocationRef.current === savingScope) {
+        setIsSavingAvailability(false);
+        setIsSavingSchedule(false);
+      }
     }
-  };
-
-  const handleSaveByActiveTab = async () => {
-    if (activeTab === 'availability') {
-      await handleSaveAvailabilityAndSchedule();
-      return;
-    }
-    await handleSave();
   };
 
   const handleExtraordinaryOpeningsUpdated = (
@@ -635,60 +378,7 @@ const AdminSettings: React.FC = () => {
       ...current,
       openingHours: { ...current.openingHours, extraordinaryOpenings },
     }));
-  };
-
-  const handleShiftTimeChange = (
-    day: DayKey,
-    shift: ShiftKey,
-    field: 'start' | 'end',
-    value: string,
-  ) => {
-    setSettings((prev) => {
-      const dayData = prev.openingHours[day];
-      const updatedDay = {
-        ...dayData,
-        [shift]: { ...dayData[shift], [field]: value },
-      };
-      return {
-        ...prev,
-        openingHours: { ...prev.openingHours, [day]: updatedDay },
-      };
-    });
-  };
-
-  const handleShiftToggle = (
-    day: DayKey,
-    shift: ShiftKey,
-    enabled: boolean,
-  ) => {
-    setSettings((prev) => {
-      const dayData = prev.openingHours[day];
-      const updatedDay = {
-        ...dayData,
-        [shift]: { ...dayData[shift], enabled },
-      };
-      const closed = !updatedDay.morning.enabled && !updatedDay.afternoon.enabled;
-      return {
-        ...prev,
-        openingHours: { ...prev.openingHours, [day]: { ...updatedDay, closed } },
-      };
-    });
-  };
-
-  const handleScheduleClosed = (day: DayKey, closed: boolean) => {
-    setSettings((prev) => {
-      const dayData = prev.openingHours[day];
-      const updatedDay = {
-        ...dayData,
-        closed,
-        morning: { ...dayData.morning, enabled: closed ? false : dayData.morning.enabled || true },
-        afternoon: { ...dayData.afternoon, enabled: closed ? false : dayData.afternoon.enabled },
-      };
-      return {
-        ...prev,
-        openingHours: { ...prev.openingHours, [day]: updatedDay },
-      };
-    });
+    void scheduleQuery.refetch();
   };
 
   const experienceYears = Math.max(0, new Date().getFullYear() - settings.stats.experienceStartYear);
@@ -739,9 +429,11 @@ const AdminSettings: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="pl-12 md:pl-0">
-          <h1 className="text-3xl font-bold text-foreground">{t('admin.settings.title')}</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            {activeTab === 'availability' ? t('admin.settings.tabs.availability') : t('admin.settings.title')}
+          </h1>
           <p className="text-muted-foreground mt-1">
-            {t('admin.settings.subtitle')}
+            {activeTab === 'availability' ? t('admin.settings.agenda.subtitle') : t('admin.settings.subtitle')}
           </p>
         </div>
       </div>
@@ -759,29 +451,30 @@ const AdminSettings: React.FC = () => {
         className="space-y-6"
       >
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="overflow-x-auto pb-1">
-            <TabsList className="h-auto w-max justify-start gap-1 rounded-xl bg-muted/60 p-1">
-              <TabsTrigger value="identity" className="min-h-9 whitespace-nowrap">
+          <div className="min-w-0 w-full overflow-x-auto pb-1 sm:w-auto">
+            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1 lg:flex lg:justify-start">
+              <TabsTrigger value="identity" className="min-h-10 whitespace-normal">
                 {t('admin.settings.tabs.identity')}
               </TabsTrigger>
-              <TabsTrigger value="operations" className="min-h-9 whitespace-nowrap">
+              <TabsTrigger value="operations" className="min-h-10 whitespace-normal">
                 {t('admin.settings.tabs.operations')}
               </TabsTrigger>
-              <TabsTrigger value="availability" className="min-h-9 whitespace-nowrap">
+              <TabsTrigger value="availability" className="min-h-10 whitespace-normal">
                 {t('admin.settings.tabs.availability')}
               </TabsTrigger>
-              <TabsTrigger value="extraordinary-openings" className="min-h-9 whitespace-nowrap">
+              <TabsTrigger value="extraordinary-openings" className="min-h-10 whitespace-normal">
                 {t('admin.settings.tabs.extraordinaryOpenings')}
               </TabsTrigger>
             </TabsList>
           </div>
           {activeTab !== 'extraordinary-openings' && (
             <div className="flex flex-wrap items-center gap-2 md:shrink-0">
-              <Button onClick={handleSaveByActiveTab} disabled={isCurrentTabSaveDisabled}>
+              <div ref={setAgendaActionsContainer} hidden={activeTab !== 'availability'} />
+              {activeTab !== 'availability' && <Button onClick={handleSave} disabled={isCurrentTabSaveDisabled}>
                 {isCurrentTabSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 <Settings className="w-4 h-4 mr-2" />
                 {t('admin.settings.saveChanges')}
-              </Button>
+              </Button>}
             </div>
           )}
         </div>
@@ -1026,7 +719,7 @@ const AdminSettings: React.FC = () => {
                   <Input
                     className="col-span-2"
                     value={phoneNumber}
-                    onChange={(e) => setPhoneParts((prev) => ({ ...prev, number: e.target.value }))}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
                     placeholder="656 610 045"
                     disabled={isLoading}
                   />
@@ -1396,8 +1089,9 @@ const AdminSettings: React.FC = () => {
                 </div>
                 <Switch
                   checked={settings.products.clientPurchaseEnabled}
+                  aria-label={t('admin.settings.products.clientPurchase.title')}
                   onCheckedChange={(checked) =>
-                    saveProductsPreference({ ...settings.products, clientPurchaseEnabled: checked })
+                    setSettings((current) => ({ ...current, products: { ...current.products, clientPurchaseEnabled: checked } }))
                   }
                   disabled={isLoading || isSaving || isSavingSchedule}
                 />
@@ -1409,8 +1103,9 @@ const AdminSettings: React.FC = () => {
                 </div>
                 <Switch
                   checked={settings.products.showOnLanding}
+                  aria-label={t('admin.settings.products.showOnLanding.title')}
                   onCheckedChange={(checked) =>
-                    saveProductsPreference({ ...settings.products, showOnLanding: checked })
+                    setSettings((current) => ({ ...current, products: { ...current.products, showOnLanding: checked } }))
                   }
                   disabled={isLoading || isSaving || isSavingSchedule}
                 />
@@ -1521,435 +1216,20 @@ const AdminSettings: React.FC = () => {
 
         </TabsContent>
 
-        <TabsContent value="availability" className="mt-0 space-y-6">
-
-      {/* Breaks and buffers */}
-      <Card variant="elevated">
-        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-primary" />
-              {t('admin.settings.availability.breaksAndBuffers.title')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {t('admin.settings.availability.breaksAndBuffers.description')}
-            </p>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <div className="space-y-2">
-                <Label>{t('admin.settings.availability.bufferMinutes')}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={5}
-                  value={shopSchedule?.bufferMinutes ?? ''}
-                  onChange={(e) => handleBufferMinutesChange(e.target.value)}
-                  disabled={isScheduleLoading || !shopSchedule}
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t('admin.settings.availability.bufferHint', { staffToWithDefinitePlural: copy.staff.toWithDefinitePlural })}
-                </p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>{t('admin.settings.availability.endOverflowMinutes')}</Label>
-              <Input
-                type="number"
-                min={0}
-                step={5}
-                value={shopSchedule?.endOverflowMinutes ?? ''}
-                onChange={(e) => handleEndOverflowMinutesChange(e.target.value)}
-                disabled={isScheduleLoading || !shopSchedule}
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('admin.settings.availability.endOverflowHint')}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4 rounded-xl border border-border/70 bg-muted/20 p-4">
-            <div>
-              <p className="text-sm font-semibold text-foreground">{t('admin.settings.availability.tolerance.title')}</p>
-              <p className="text-xs text-muted-foreground">
-                {t('admin.settings.availability.tolerance.priorityHint')}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {t('admin.settings.availability.tolerance.byDayTitle')}
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {DAY_KEYS.map((key) => (
-                <div key={`overflow-day-${key}`} className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">{t(`admin.settings.day.${key}`)}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={5}
-                    value={shopSchedule?.endOverflowByDay?.[key] ?? ''}
-                    placeholder={t('admin.settings.availability.tolerance.inheritGlobal')}
-                    onChange={(e) => handleEndOverflowByDayChange(key, e.target.value)}
-                    disabled={isScheduleLoading || !shopSchedule}
-                    onFocus={(e) => e.currentTarget.select()}
-                  />
-                </div>
-              ))}
-              </div>
-            </div>
-
-            <div className="space-y-3 border-t border-border/60 pt-4">
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {t('admin.settings.availability.tolerance.byDateTitle')}
-                </p>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{t('admin.settings.availability.newDate')}</Label>
-                    <Input
-                      type="date"
-                      value={newOverflowDate}
-                      onChange={(e) => setNewOverflowDate(e.target.value)}
-                      disabled={isScheduleLoading || !shopSchedule}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      handleAddEndOverflowDate(newOverflowDate);
-                      setNewOverflowDate('');
-                    }}
-                    disabled={!newOverflowDate || isScheduleLoading || !shopSchedule}
-                  >
-                    {t('admin.settings.actions.addDate')}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {Object.entries(shopSchedule?.endOverflowByDate ?? {})
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([dateKey, value]) => (
-                    <div
-                      key={`overflow-date-${dateKey}`}
-                      className="grid items-end gap-2 rounded-lg border border-border/60 bg-background/80 p-2.5 sm:grid-cols-[minmax(120px,1fr)_minmax(90px,120px)_auto]"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">{dateKey}</p>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">{t('admin.settings.availability.minutes')}</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          step={5}
-                          value={value}
-                          onChange={(e) => handleEndOverflowByDateChange(dateKey, e.target.value)}
-                          disabled={isScheduleLoading || !shopSchedule}
-                          onFocus={(e) => e.currentTarget.select()}
-                        />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="sm:justify-self-end"
-                        onClick={() => handleRemoveEndOverflowDate(dateKey)}
-                        disabled={isScheduleLoading || !shopSchedule}
-                      >
-                        {t('admin.settings.actions.remove')}
-                      </Button>
-                    </div>
-                  ))}
-                {Object.keys(shopSchedule?.endOverflowByDate ?? {}).length === 0 && (
-                  <p className="text-xs text-muted-foreground">{t('admin.settings.availability.tolerance.noSpecificDates')}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-foreground">{t('admin.settings.availability.breaks.byDayTitle')}</p>
-              <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.byDayDescription')}</p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {DAY_KEYS.map((key) => {
-              const dayBreaks = shopSchedule?.breaks?.[key] ?? [];
-              return (
-                <div key={key} className="rounded-xl border border-border/70 bg-muted/30 p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-foreground">{t(`admin.settings.day.${key}`)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {dayBreaks.length
-                          ? t('admin.settings.availability.breaks.count', { count: dayBreaks.length })
-                          : t('admin.settings.availability.breaks.none')}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleCopyBreaksToAll(key)}
-                        disabled={isScheduleLoading || !shopSchedule}
-                      >
-                        {t('admin.settings.actions.copyToWeek')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAddBreak(key)}
-                        disabled={isScheduleLoading || !shopSchedule}
-                        className="gap-2"
-                      >
-                        <Plus className="h-4 w-4" />
-                        {t('admin.settings.actions.addBreak')}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {dayBreaks.length > 0 ? (
-                    <div className="mt-4 space-y-2">
-                      {dayBreaks.map((range, index) => (
-                        <div key={`${key}-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
-                          <Input
-                            type="time"
-                            value={range.start}
-                            onChange={(e) => handleUpdateBreak(key, index, 'start', e.target.value)}
-                            disabled={isScheduleLoading || !shopSchedule}
-                          />
-                          <Input
-                            type="time"
-                            value={range.end}
-                            onChange={(e) => handleUpdateBreak(key, index, 'end', e.target.value)}
-                            disabled={isScheduleLoading || !shopSchedule}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveBreak(key, index)}
-                            disabled={isScheduleLoading || !shopSchedule}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-4 text-xs text-muted-foreground">{t('admin.settings.availability.breaks.noneConfigured')}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
-            <div className="space-y-2">
-              <div>
-                <p className="text-sm font-semibold text-foreground">{t('admin.settings.availability.breaks.byDateTitle')}</p>
-                <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.byDateDescription')}</p>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">{t('admin.settings.availability.newDate')}</Label>
-                  <Input
-                    type="date"
-                    value={newBreakDate}
-                    onChange={(e) => setNewBreakDate(e.target.value)}
-                    disabled={isScheduleLoading || !shopSchedule}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    handleAddBreakDate(newBreakDate);
-                    setNewBreakDate('');
-                  }}
-                  disabled={!newBreakDate || isScheduleLoading || !shopSchedule}
-                >
-                  {t('admin.settings.actions.addDate')}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {Object.entries(shopSchedule?.breaksByDate ?? {})
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([dateKey, ranges]) => (
-                  <div key={`break-date-${dateKey}`} className="space-y-2 rounded-lg border border-border/60 bg-background/85 p-2.5">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="font-semibold text-foreground">{dateKey}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {ranges.length
-                            ? t('admin.settings.availability.breaks.count', { count: ranges.length })
-                            : t('admin.settings.availability.breaks.none')}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 sm:justify-end">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleAddBreakForDate(dateKey)}
-                          disabled={isScheduleLoading || !shopSchedule}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          {t('admin.settings.actions.addBreak')}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveBreakDate(dateKey)}
-                          disabled={isScheduleLoading || !shopSchedule}
-                        >
-                          {t('admin.settings.actions.removeDate')}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {ranges.length > 0 ? (
-                      <div className="space-y-2">
-                        {ranges.map((range, index) => (
-                          <div
-                            key={`break-date-${dateKey}-${index}`}
-                            className="grid items-center gap-2 rounded-md bg-muted/20 p-2 sm:grid-cols-[1fr_1fr_auto]"
-                          >
-                            <Input
-                              type="time"
-                              value={range.start}
-                              onChange={(e) => handleUpdateBreakByDate(dateKey, index, 'start', e.target.value)}
-                              disabled={isScheduleLoading || !shopSchedule}
-                            />
-                            <Input
-                              type="time"
-                              value={range.end}
-                              onChange={(e) => handleUpdateBreakByDate(dateKey, index, 'end', e.target.value)}
-                              disabled={isScheduleLoading || !shopSchedule}
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveBreakByDate(dateKey, index)}
-                              disabled={isScheduleLoading || !shopSchedule}
-                              className="text-muted-foreground hover:text-foreground sm:justify-self-end"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.noneConfigured')}</p>
-                    )}
-                  </div>
-                ))}
-              {Object.keys(shopSchedule?.breaksByDate ?? {}).length === 0 && (
-                <p className="text-xs text-muted-foreground">{t('admin.settings.availability.breaks.noSpecificDates')}</p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Opening hours */}
-      <Card variant="elevated">
-        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-primary" />
-              {t('admin.settings.openingHours.title')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {t('admin.settings.openingHours.description', { staffFromWithDefinitePlural: copy.staff.fromWithDefinitePlural })}
-            </p>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-4 xl:grid-cols-3">
-            {DAY_KEYS.map((key) => {
-              const day = settings.openingHours[key];
-              return (
-                <div key={key} className="rounded-xl border border-border/70 bg-muted/30 p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-foreground">{t(`admin.settings.day.${key}`)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {day.closed ? t('admin.settings.openingHours.closed') : t('admin.settings.openingHours.open')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{t('admin.settings.openingHours.closeDay')}</span>
-                      <Switch
-                        checked={day.closed}
-                        onCheckedChange={(checked) => handleScheduleClosed(key, checked)}
-                        disabled={isLoading}
-                      />
-                    </div>
-                  </div>
-
-                  {!day.closed && (
-                    <div className="mt-4 grid md:grid-cols-2 gap-4">
-                      {SHIFT_KEYS.map((shift) => (
-                        <div key={shift} className="rounded-lg border border-border/60 bg-background/80 p-3">
-                          <div className="flex items-center justify-between gap-2 mb-3">
-                            <p className="text-sm font-medium">
-                              {shift === 'morning'
-                                ? t('admin.settings.openingHours.shiftMorning')
-                                : t('admin.settings.openingHours.shiftAfternoon')}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">{t('admin.settings.openingHours.active')}</span>
-                              <Switch
-                                checked={day[shift].enabled}
-                                onCheckedChange={(checked) => handleShiftToggle(key, shift, checked)}
-                                disabled={isLoading}
-                              />
-                            </div>
-                          </div>
-                          {day[shift].enabled ? (
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs text-muted-foreground">{t('admin.settings.openingHours.start')}</Label>
-                                <Input
-                                  type="time"
-                                  value={day[shift].start}
-                                  onChange={(e) => handleShiftTimeChange(key, shift, 'start', e.target.value)}
-                                  disabled={isLoading}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs text-muted-foreground">{t('admin.settings.openingHours.end')}</Label>
-                                <Input
-                                  type="time"
-                                  value={day[shift].end}
-                                  onChange={(e) => handleShiftTimeChange(key, shift, 'end', e.target.value)}
-                                  disabled={isLoading}
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">{t('admin.settings.openingHours.shiftDisabled')}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="availability" forceMount hidden={activeTab !== 'availability'} className="mt-0">
+          <AgendaSettings
+            key={currentLocationId ?? 'no-local'}
+            localId={currentLocationId}
+            schedule={scheduleQuery.data}
+            openingHours={settingsQuery.data?.openingHours}
+            isLoading={isLoading || isScheduleLoading}
+            isSaving={isSavingAvailability || isSavingSchedule}
+            loadFailed={Boolean(settingsQuery.error || scheduleQuery.error)}
+            permissionDenied={[settingsQuery.error, scheduleQuery.error].some((error) => isApiRequestError(error) && error.status === 403)}
+            onRetry={() => { void settingsQuery.refetch(); void scheduleQuery.refetch(); }}
+            onSave={handleSaveAvailabilityAndSchedule}
+            actionsContainer={agendaActionsContainer}
+          />
         </TabsContent>
 
         <TabsContent value="extraordinary-openings" className="mt-0 space-y-6">

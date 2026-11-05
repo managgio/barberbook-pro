@@ -36,9 +36,9 @@ Al cambiar de local se refresca el perfil tenant-scoped y se aíslan las queries
 
 ## UX, accesibilidad e i18n
 
-- Labels, foco, teclado, estados de carga/error/vacío y contraste son obligatorios.
+El [estándar de UX/UI](UX_UI.md) es obligatorio para cualquier desarrollo nuevo o modificación de UI. Centraliza las reglas transversales de interacción, calidad visual, componentes, accesibilidad, estados y aceptación; las decisiones específicas de producto y marca se mantienen en este documento.
+
 - Los grupos construidos con `TabsList` comparten un indicador deslizante accesible desde el componente base; no dupliques medición ni animación en cada página.
-- Toda acción destructiva o masiva muestra impacto y confirmación.
 - No introduzcas texto visible inline si existe infraestructura i18n.
 - Actualiza al menos `es.json` y `en.json`, y ejecuta `npm run i18n:check`.
 - Consulta [FRONTEND_I18N_COPY_CHECKLIST.md](../FRONTEND_I18N_COPY_CHECKLIST.md).
@@ -77,6 +77,18 @@ El secundario acompaña al primario dentro de cada elemento. La raya larga de se
 - `npm run lint`
 - `npm run build`
 - `npm run i18n:check` cuando aplique.
+
+## Agenda y horarios del tenant
+
+Configuración > Agenda y horarios se compone en `components/admin/settings/AgendaSettings.tsx`. Presenta la semana en filas compactas y despliega la edición de un día junto a sus horas; los días cerrados conservan sus turnos en el borrador para poder reabrirlos. Los minutos entre citas ofrecen presets y entrada exacta. Descansos y márgenes al cierre se despliegan bajo demanda, con un resumen de los valores y excepciones activos. Los títulos de Tiempo entre citas, Descansos de la agenda y Cierre y excepciones incluyen una ayuda de información con una explicación breve y un ejemplo, accesible por clic, teclado y táctil; abrir la ayuda no despliega ni modifica la sección. En móvil las secciones se apilan; los campos de hora conservan etiquetas, entrada exacta y navegación por teclado. La composición reutiliza `Card`, `Button`, `Input`, `Label`, `Switch`, `Collapsible`, `Select`, `Checkbox`, `Popover` y `AlertDialog`, con los tokens efectivos del tenant.
+
+Copiar horario o descansos permite elegir los días de destino y exige confirmar el alcance antes de modificar el borrador. La copia sustituye únicamente los valores semanales de esos días, excluye el origen y conserva las fechas concretas y las aperturas extraordinarias. Copiar descansos repetidamente no los acumula ni duplica los del día de origen. Las eliminaciones muestran su impacto y requieren confirmación. Un margen específico de `0` sigue siendo una excepción explícita; quitarlo recupera la herencia de fecha, día o valor general que corresponda.
+
+El borrador se limita al local actual y se conserva al cambiar de pestaña, al refrescar consultas y ante un error de guardado. Descartar recupera la última versión leída del servidor. Cambiar de local reinicia el editor y las respuestas tardías de otro local no actualizan sus datos ni emiten eventos en el nuevo ámbito. Guardar cambios se sitúa en la cabecera, junto a las pestañas, en la misma posición que en Identidad y landing y Operativa. El editor conserva la validación y el estado del guardado aunque sus acciones se presenten en la cabecera. El guardado muestra estado pendiente, en curso, éxito o error; bloquea los controles durante la escritura y valida horas, intervalos y minutos antes de enviar. Se mantiene una única escritura de `ShopSchedule` con el horario y las reglas; la sincronización de `SiteSettings.openingHours` sigue siendo responsabilidad del backend. La explicación del horario público y su relación con los profesionales se conserva.
+
+El botón de cabecera guarda únicamente la pestaña visible. Identidad y landing guarda sus datos públicos; Operativa guarda las preferencias de reserva, perfil y productos, incluidos los interruptores de productos, que permanecen en el borrador hasta guardar. La selección de campos vive en `lib/settingsSections.ts`: el contrato de configuración completa se compone desde la base confirmada y los campos de la pestaña elegida. Los borradores de las demás pestañas no se envían ni se publican en caché. La respuesta del servidor actualiza la base y conserva los cambios todavía pendientes, incluso los introducidos durante el guardado. Agenda mantiene su única escritura de horario y reglas.
+
+Las regresiones de composición, teclado, copia confirmada, valores heredados, errores, refrescos y cambio de local están en `AgendaSettings.test.tsx`, `AdminSettings.agenda.test.tsx` y `lib/scheduleSettings.test.ts`. Esta cobertura no certifica por sí sola conformidad WCAG ni sustituye la revisión visual del flujo.
 
 ## Galería y publicación de la landing
 

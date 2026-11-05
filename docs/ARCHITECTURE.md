@@ -46,6 +46,7 @@ app/
 - [Backend](architecture/BACKEND.md): capas, dependencias, CQRS y puertos.
 - [Tenancy y seguridad](architecture/TENANCY_AND_SECURITY.md): resolución, autorización e invariantes de privacidad.
 - [Frontend](architecture/FRONTEND.md): composición, estado, rutas, accesibilidad e i18n.
+- [UX/UI](architecture/UX_UI.md): estándar obligatorio de interacción directa y criterios de aceptación para toda UI nueva o modificada.
 - [Booking y engagement](architecture/BOOKING_AND_ENGAGEMENT.md): disponibilidad, citas, festivos, comunicados y avisos.
 - [Datos e integraciones](architecture/DATA_AND_INTEGRATIONS.md): Prisma, migraciones y proveedores externos.
 - [Estándares de ingeniería](ENGINEERING_STANDARDS.md): calidad, rendimiento, tests y Definition of Done.
