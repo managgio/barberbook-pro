@@ -26,6 +26,8 @@ La UI no concede permisos. `ProtectedRoute` mejora navegación, pero el backend 
 
 Al cambiar de local se refresca el perfil tenant-scoped y se aíslan las queries. Un usuario admin de otro tenant debe navegar como cliente.
 
+`/auth` ofrece recuperación por correo y admite acciones `mode=resetPassword`. Los formularios de recuperación se separan del login, reutilizan el correo y reinician sus borradores al cambiar de ámbito. El retorno del correo conserva el origen del tenant, también en subdominios locales; un dominio no autorizado produce un error visible y nunca un envío alternativo sin retorno. Consulta [Recuperación de contraseña](PASSWORD_RECOVERY.md) para configuración Firebase, casos de error y evidencias de aceptación.
+
 ## Componentización
 
 - Una página orquesta; los formularios complejos, paneles y diálogos viven en componentes/secciones dedicados.

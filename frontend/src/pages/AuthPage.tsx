@@ -20,14 +20,20 @@ import LegalFooter from '@/components/layout/LegalFooter';
 import { resolveBrandLogo } from '@/lib/branding';
 import { useI18n } from '@/hooks/useI18n';
 import { hasTenantAdminAccess } from '@/lib/userAccess';
+import PasswordRecoveryForm from '@/components/auth/PasswordRecoveryForm';
+import PasswordResetForm from '@/components/auth/PasswordResetForm';
+import { readPasswordResetAction } from '@/lib/passwordRecovery';
 
-const AuthPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') === 'signup' ? 'signup' : 'login';
+const AuthPageContent: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'recover' ? 'recover' : searchParams.get('tab') === 'signup' ? 'signup' : 'login';
+  const [resetAction, setResetAction] = useState(() => readPasswordResetAction(
+    searchParams, window.location.origin, import.meta.env.VITE_FIREBASE_API_KEY,
+  ));
   const rawRedirect = searchParams.get('redirect');
   const redirectTarget =
     rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : null;
-  const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'login' | 'signup' | 'recover'>(initialTab);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
@@ -37,12 +43,12 @@ const AuthPage: React.FC = () => {
     password: '',
   });
 
-  const { login, loginWithGoogle, loginWithMicrosoft, signup, isAuthenticated, user } = useAuth();
+  const { login, loginWithGoogle, loginWithMicrosoft, signup, isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
   const { settings } = useSiteSettings();
-  const { tenant } = useTenant();
+  const { tenant, currentLocationId } = useTenant();
   const { t } = useI18n();
   const isPlatform = Boolean(tenant?.isPlatform);
   const isLocalEnv = typeof window !== 'undefined'
@@ -68,6 +74,20 @@ const AuthPage: React.FC = () => {
     return value.toString();
   };
   const isSignup = activeTab === 'signup' && !isPlatform;
+  const isRecovering = activeTab === 'recover' || resetAction !== null;
+  const recoveryScope = `${tenant?.brand?.id || 'platform'}:${currentLocationId}`;
+  const returnToLogin = (email = formData.email) => {
+    setFormData((previous) => ({ ...previous, email, password: '' }));
+    setResetAction(null);
+    setActiveTab('login');
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      ['mode', 'oobCode', 'apiKey', 'continueUrl', 'lang'].forEach((key) => next.delete(key));
+      next.set('tab', 'login');
+      return next;
+    }, { replace: true, state: location.state });
+    window.requestAnimationFrame(() => document.getElementById('email')?.focus());
+  };
   const fromPath = React.useMemo(() => {
     const state = location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null;
     const from = state?.from;
@@ -80,7 +100,7 @@ const AuthPage: React.FC = () => {
 
   // Redirect if already authenticated
   React.useEffect(() => {
-    if (isAuthenticated && user) {
+    if (isAuthenticated && user && !isRecovering) {
       const preferredTarget = fromPath ?? redirectTarget;
       if (isPlatform) {
         if (user.isPlatformAdmin) {
@@ -104,10 +124,10 @@ const AuthPage: React.FC = () => {
       const hasAdminAccess = hasTenantAdminAccess(user);
       navigate(hasAdminAccess ? '/admin' : '/app/book', { replace: true });
     }
-  }, [isAuthenticated, user, navigate, isPlatform, redirectTarget, fromPath, location.search]);
+  }, [isAuthenticated, user, navigate, isPlatform, redirectTarget, fromPath, location.search, isRecovering]);
 
   React.useEffect(() => {
-    if (isPlatform && activeTab !== 'login') {
+    if (isPlatform && activeTab === 'signup') {
       setActiveTab('login');
     }
   }, [isPlatform, activeTab]);
@@ -363,6 +383,17 @@ const AuthPage: React.FC = () => {
             </div>
           )}
 
+          {resetAction ? (
+            <PasswordResetForm key={`reset:${recoveryScope}`} code={resetAction.code}
+              onLogin={async () => { await logout(); returnToLogin(); }}
+              onRequestLink={() => {
+                setResetAction(null); setActiveTab('recover');
+                setSearchParams({ tab: 'recover' }, { replace: true, state: location.state });
+              }}
+              onConsumed={() => setSearchParams({ tab: 'login' }, { replace: true, state: location.state })} />
+          ) : activeTab === 'recover' ? (
+            <PasswordRecoveryForm key={`recover:${recoveryScope}`} initialEmail={formData.email} onBack={returnToLogin} />
+          ) : (<>
           {/* Tab Switcher */}
           {!isPlatform && (
             <div className="flex bg-secondary rounded-lg p-0.5 sm:p-1 mb-5 sm:mb-8">
@@ -472,6 +503,9 @@ const AuthPage: React.FC = () => {
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   placeholder={t('auth.emailPlaceholder')}
                   className="pl-10 h-10 sm:h-12 text-sm"
                   value={formData.email}
@@ -488,6 +522,7 @@ const AuthPage: React.FC = () => {
                 <Input
                   id="password"
                   type="password"
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
                   placeholder="••••••••"
                   className="pl-10 h-10 sm:h-12 text-sm"
                   value={formData.password}
@@ -496,6 +531,14 @@ const AuthPage: React.FC = () => {
                 />
               </div>
             </div>
+
+            {!isSignup && <div className="flex justify-end">
+              <Button type="button" variant="link" className="min-h-11 px-0 text-sm"
+                disabled={isSubmittingForm || isGoogleLoading || isMicrosoftLoading}
+                onClick={() => { setFormData((previous) => ({ ...previous, password: '' })); setActiveTab('recover'); }}>
+                {t('auth.recovery.forgotPassword')}
+              </Button>
+            </div>}
 
             <Button
               type="submit"
@@ -531,12 +574,19 @@ const AuthPage: React.FC = () => {
             </div>
           )}
 
+          </>)}
+
         </div>
       </div>
       </div>
       {!isPlatform && <LegalFooter />}
     </div>
   );
+};
+
+const AuthPage: React.FC = () => {
+  const { tenant, currentLocationId } = useTenant();
+  return <AuthPageContent key={`${tenant?.brand?.id || 'platform'}:${currentLocationId}`} />;
 };
 
 export default AuthPage;

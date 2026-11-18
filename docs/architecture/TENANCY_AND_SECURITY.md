@@ -47,3 +47,9 @@ Una caché de configuración o cliente externo se clavea al menos por `brandId:l
 - ¿Los administradores de plataforma son la única excepción transversal?
 
 Los cambios de auth/tenancy son P0: requieren pruebas de regresión y `npm run test:critical`.
+
+## Recuperación de credenciales
+
+La recuperación utiliza el mismo proyecto Firebase Web que el login, sin seleccionar proyecto o tenant desde el enlace. Firebase emite, valida y consume los códigos y aplica la política de contraseña. El cambio afecta a la identidad Firebase; cuando varios negocios comparten ese proyecto, no existen contraseñas independientes por membresía. No crea perfiles, concede permisos ni modifica `BrandUser` o `LocationStaff`.
+
+La UI responde igual para correos existentes, desconocidos y cuentas deshabilitadas. Los errores técnicos se clasifican sin mostrar mensajes internos. La protección de enumeración y los límites efectivos dependen también de la configuración y cuotas Firebase; el cooldown visual no es una barrera de seguridad. Contratos, operación y límites de verificación: [Recuperación de contraseña](PASSWORD_RECOVERY.md).

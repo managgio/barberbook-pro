@@ -8,7 +8,6 @@ import {
   reauthenticateFirebaseWithGooglePopup,
   reauthenticateFirebaseWithMicrosoftPopup,
   reauthenticateFirebaseWithPassword,
-  sendFirebasePasswordResetEmail,
   signInFirebaseWithEmailAndPassword,
   signInFirebaseWithGooglePopup,
   signInFirebaseWithMicrosoftPopup,
@@ -21,6 +20,7 @@ import { createUser, getUserByEmail, getUserByFirebaseUid, updateUser } from '@/
 import { useTenant } from './TenantContext';
 import { translateUi } from '@/lib/i18n';
 import { getRequestLanguage } from '@/lib/language';
+import { completePasswordRecovery, inspectPasswordRecoveryCode, requestPasswordRecovery, RecoveryResult } from '@/lib/passwordRecovery';
 
 interface AuthContextType {
   user: User | null;
@@ -31,6 +31,8 @@ interface AuthContextType {
   loginWithMicrosoft: () => Promise<{ success: boolean; error?: string }>;
   signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  inspectPasswordReset: (code: string) => Promise<RecoveryResult>;
+  resetPassword: (code: string, password: string) => Promise<RecoveryResult>;
   requestEmailChange: (
     newEmail: string,
     currentPassword?: string,
@@ -43,11 +45,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const defaultNotificationPrefs = { email: true, whatsapp: true, sms: true };
 
-const tAuth = (key: string) =>
+const tAuth = (key: string, values?: Record<string, string | number>) =>
   translateUi({
     language: getRequestLanguage(),
     defaultLanguage: 'es',
     key,
+    values,
   });
 
 const getFirebaseFallback = () => ({
@@ -155,6 +158,8 @@ const getFriendlyError = (error: unknown) => {
       return tAuth('auth.errors.recoveryDomainNotAuthorized');
     case 'auth/too-many-requests':
       return tAuth('auth.errors.tooManyRequests');
+    case 'auth/network-request-failed':
+      return tAuth('auth.recovery.errors.network');
     default:
       if (error instanceof Error && error.message === 'FIREBASE_CONFIG_MISSING') {
         return tAuth('auth.errors.firebaseConfigMissing');
@@ -369,40 +374,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [authenticateAndSync, ensureFirebaseReady]);
 
-  const forgotPassword = useCallback(
-    async (email: string): Promise<{ success: boolean; error?: string }> => {
-      const normalizedEmail = email.trim().toLowerCase();
-      if (!normalizedEmail) {
-        return { success: false, error: tAuth('auth.errors.invalidEmail') };
-      }
-      try {
-        await ensureFirebaseReady();
-        try {
-          await sendFirebasePasswordResetEmail(
-            normalizedEmail,
-            buildActionCodeSettings('/auth?tab=login'),
-          );
-        } catch (error) {
-          const code = getErrorCode(error);
-          if (isContinueUrlError(code)) {
-            // Fallback to Firebase default handler when local/custom domains are not authorized.
-            await sendFirebasePasswordResetEmail(normalizedEmail);
-          } else {
-            throw error;
-          }
-        }
-        return { success: true };
-      } catch (error) {
-        const code = getErrorCode(error);
-        if (code === 'auth/user-not-found') {
-          // Avoid user enumeration leaks.
-          return { success: true };
-        }
-        return { success: false, error: getFriendlyError(error) };
-      }
-    },
-    [ensureFirebaseReady],
-  );
+  const forgotPassword = useCallback((email: string) => requestPasswordRecovery(email, {
+    ensureReady: ensureFirebaseReady,
+    origin: window.location.origin,
+    language: getRequestLanguage(),
+    t: tAuth,
+  }), [ensureFirebaseReady]);
+
+  const inspectPasswordReset = useCallback((code: string) =>
+    inspectPasswordRecoveryCode(code, ensureFirebaseReady, tAuth), [ensureFirebaseReady]);
+
+  const resetPassword = useCallback((code: string, password: string) =>
+    completePasswordRecovery(code, password, ensureFirebaseReady, tAuth), [ensureFirebaseReady]);
 
   const requestEmailChange = useCallback(
     async (
@@ -553,6 +536,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       loginWithMicrosoft,
       signup,
       forgotPassword,
+      inspectPasswordReset,
+      resetPassword,
       requestEmailChange,
       logout,
       updateProfile,
@@ -565,6 +550,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       loginWithMicrosoft,
       signup,
       forgotPassword,
+      inspectPasswordReset,
+      resetPassword,
       requestEmailChange,
       logout,
       updateProfile,

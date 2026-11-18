@@ -95,9 +95,27 @@ export const createFirebaseUserWithEmailAndPassword = async (email: string, pass
 export const sendFirebasePasswordResetEmail = async (
   email: string,
   actionCodeSettings?: ActionCodeSettings,
+  languageCode?: string,
 ) => {
   const authModule = await loadAuthModule();
-  return authModule.sendPasswordResetEmail(requireAuth(), email, actionCodeSettings);
+  const currentAuth = requireAuth();
+  if (languageCode) currentAuth.languageCode = languageCode;
+  return authModule.sendPasswordResetEmail(currentAuth, email, actionCodeSettings);
+};
+
+export const verifyFirebasePasswordResetCode = async (code: string) => {
+  const authModule = await loadAuthModule();
+  return authModule.verifyPasswordResetCode(requireAuth(), code);
+};
+
+export const validateFirebasePassword = async (password: string) => {
+  const authModule = await loadAuthModule();
+  return authModule.validatePassword(requireAuth(), password);
+};
+
+export const confirmFirebasePasswordReset = async (code: string, password: string) => {
+  const authModule = await loadAuthModule();
+  return authModule.confirmPasswordReset(requireAuth(), code, password);
 };
 
 export const verifyFirebaseBeforeUpdateEmail = async (
